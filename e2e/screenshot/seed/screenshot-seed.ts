@@ -43,6 +43,10 @@ const BASE_CURRENCY: Currency = 'UAH';
 // category pie, and the per-category trend chart.
 const LEDGER_MONTHS = 6;
 const MONTH_DAYS = 30;
+const MIDDLE_OF_MONTH_DAY = 15;
+// How far a shop's day moves in an odd month, so its rhythm is not a monthly one. It stays
+// inside the 30-day month, so that month's total is unchanged.
+const SHOP_DAY_SHIFT = 10;
 
 // ---------------------------------------------------------------------------
 // Dataset shape (pure data — no DB). Kept separate from the writer so the whole
@@ -393,6 +397,8 @@ type MonthlyExpense = {
   monthlyDriftMinorUnits: number;
   dayOfMonth: number;
   everyNthMonth?: number;
+  // A steady bill keeps its day every month; the other merchants drift within the month.
+  isSteadyBill: boolean;
 };
 
 // An irregular big-ticket spend that lands in only ONE of the ledger months.
@@ -441,6 +447,14 @@ const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => {
     ['other', text.ukrposhta, 18_000, 0, 28],
   ];
 
+  const steadyBills = new Set([
+    'Netflix',
+    text.kyivstar,
+    text.kyivteploenergo,
+    'YASNO',
+    text.kyivvodokanal,
+  ]);
+
   return rows.map(
     ([
       category,
@@ -456,6 +470,7 @@ const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => {
       monthlyDriftMinorUnits,
       dayOfMonth,
       everyNthMonth,
+      isSteadyBill: steadyBills.has(description),
     }),
   );
 };
@@ -511,8 +526,27 @@ const P2P_FUNDING_MINOR_UNITS = 415_000;
 const CARD_FUNDING_MINOR_UNITS = 260_000;
 const FIAT_DEPOSIT_FUNDING_MINOR_UNITS = 10_000;
 
-// Raised by the two UAH funding debits, so the card keeps its end balance.
-const CARD_OPENING_MINOR_UNITS = 2_000_000 + P2P_FUNDING_MINOR_UNITS + CARD_FUNDING_MINOR_UNITS;
+// One merchant that writes a store number after its name, so the Apply sheet can offer the rule
+// for every name that starts the same way. The days are uneven and the rows span under three
+// weeks, so they cannot read as a monthly series.
+const STORE_NUMBER_MERCHANT = 'Varus';
+const STORE_NUMBER_PURCHASES = [
+  { storeNumber: '0212', amountMinorUnits: -27_450, daysAgo: 20 },
+  { storeNumber: '0340', amountMinorUnits: -41_900, daysAgo: 14 },
+  { storeNumber: '0212', amountMinorUnits: -18_320, daysAgo: 9 },
+];
+const STORE_NUMBER_PURCHASES_MINOR_UNITS = STORE_NUMBER_PURCHASES.reduce(
+  (total, purchase) => total - purchase.amountMinorUnits,
+  0,
+);
+
+// Raised by the two UAH funding debits and by the store-number purchases, so the card keeps its
+// end balance.
+const CARD_OPENING_MINOR_UNITS =
+  2_000_000 +
+  P2P_FUNDING_MINOR_UNITS +
+  CARD_FUNDING_MINOR_UNITS +
+  STORE_NUMBER_PURCHASES_MINOR_UNITS;
 // Raised by the fiat funding debit and by the three card purchases below, so Wise keeps its end
 // balance.
 const WISE_PURCHASES_MINOR_UNITS = 4_500 + 3_900 + 2_200;
@@ -587,6 +621,16 @@ const buildFoodDeliveryTransactions = (calendar: DemoCalendar, text: DemoText): 
     description,
   }));
 
+// Three rows left in the default category under one merchant and two store numbers: the Apply
+// sheet offers "All starting with Varus" for a pick on any of them.
+const buildStoreNumberTransactions = (calendar: DemoCalendar): SeedTransaction[] =>
+  STORE_NUMBER_PURCHASES.map(({ storeNumber, amountMinorUnits, daysAgo }) => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category: 'other',
+    description: `${STORE_NUMBER_MERCHANT} ${storeNumber}`,
+  }));
+
 // A debit stays in the default category: a matched debit leaves spending, so it is no spend to
 // categorize. The P2P transfer is dated with its USDT row (day 110) and the card payment posts
 // two days after its row (day 35), both inside the matcher's window; both are older than the
@@ -605,6 +649,17 @@ const buildExchangeFundingDebits = (calendar: DemoCalendar): SeedTransaction[] =
     description: 'Binance',
   },
 ];
+
+// Month 0 never moves: the default 30-day window and the newest-rows pins read it.
+const shopDayOf = (expense: MonthlyExpense, month: number): number => {
+  if (expense.isSteadyBill || month % 2 === 0) {
+    return expense.dayOfMonth;
+  }
+
+  return expense.dayOfMonth < MIDDLE_OF_MONTH_DAY
+    ? expense.dayOfMonth + SHOP_DAY_SHIFT
+    : expense.dayOfMonth - SHOP_DAY_SHIFT;
+};
 
 /** The main UAH card ledger: an opening deposit, then a monthly salary + spends. */
 const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] => {
@@ -640,7 +695,7 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
 
       list.push({
         amountMinorUnits: -(expense.baseMinorUnits + month * expense.monthlyDriftMinorUnits),
-        time: calendar.at(monthStart + expense.dayOfMonth),
+        time: calendar.at(monthStart + shopDayOf(expense, month)),
         category: expense.category,
         description: expense.description,
       });
@@ -664,6 +719,7 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
     ...list,
     ...buildCarLoanPayments(calendar, text),
     ...buildFoodDeliveryTransactions(calendar, text),
+    ...buildStoreNumberTransactions(calendar),
     ...buildExchangeFundingDebits(calendar),
   ];
 };

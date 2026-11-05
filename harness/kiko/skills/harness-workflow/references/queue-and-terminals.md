@@ -37,7 +37,8 @@ brief names the exact `__tests__` suites a role may run, never the folder. The g
 (`guard-*.test.ts`, `guard-replay.test.ts`) spawn semgrep-core. The qa agent rule (a qa that
 edits a test file runs every guard suite) yields to a hold only if the brief says so by name:
 write "qa: the guard-suites rule is suspended until RESUME; owed: check:guard-replay by hand". Run
-`scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+`scripts/job-queue.sh verify <worktree> <label> [--sha <commit>] [--scoped]`,
+`scripts/job-queue.sh check-all|security <worktree> <label>` or
 `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
 await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in
 `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first,
@@ -67,12 +68,19 @@ ticket writes one `lost` done.log line, and a reclaimed dead lock writes a lock-
 with a live waiter. When many tracks run, the load never drops below a `wait-load.sh` limit:
 queue directly (the queue serializes) and throttle feature tracks with a LOAD HOLD (no new jest
 or tsc agent until RESUME; a RESUME names its limits). Keep `wait-load.sh` for a lone security
-run only. A queued check:all or verify reads the worktree until
-the job is DONE; keep that tree untouched from the queue time until DONE, and never queue one while
-a developer still edits that tree. `verify` and `gate` refuse a changed tree (untracked included)
-with exit 3, at enqueue and again at START: commit it (for example `ios/Podfile.lock`) or copy
-files aside, never stash. done.log's head field is `unknown` if the job itself changed the tree
-(a `NOTE` names the path) or HEAD moved; `check-all` and `security` still run on a dirty tree. A
+run only. A queued verify runs in the shared `<main checkout>-verify` worktree at the commit read
+at enqueue (`--sha`, else the worktree HEAD) and never reads the track's tree afterwards: the track
+goes on with its next task during a verify. `verify` refuses a changed tree (untracked included)
+with exit 3 at enqueue only, and not with `--sha`; commit it (for example `ios/Podfile.lock`) or
+copy files aside, never stash. Pass `--scoped` on a track verify and no flag on a main-bound one
+(`ff-main.sh` needs field 7 of the done.log line absent or `full`). The `-verify` checkout is a
+listed worktree, not "unused": pruning it costs one `npm ci`. Before a fix round, withdraw a
+queued verify of the old sha. A queued check:all, security or gate still reads the worktree until
+the job is DONE: keep that tree untouched from the queue time until DONE, and never queue one
+while a developer still edits that tree. `gate` refuses a changed tree with exit 3, at enqueue
+and again at START. done.log's head field is the sha the job tested, or `unknown` if the job itself
+changed its tree (a `NOTE` names the path) or HEAD moved; `check-all` and `security` still run on
+a dirty tree. A
 verify prints no live output: read `<queue dir>/logs/verify-<label>.log` (path printed at the
 end) for a failure, and wait only for the exit code. Detail: the `scripts/job-queue.sh` header.
 

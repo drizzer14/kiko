@@ -3,6 +3,7 @@ import {
   type CategoryRuleMatcher,
   AMOUNT_ROW_LABEL_KEYS,
   DIRECTION_LABEL_KEYS,
+  MCC_DIGITS,
   TIME_ROW_LABEL_KEYS,
   wallClockOf,
 } from '@kiko/categories/category-rules';
@@ -14,6 +15,8 @@ type RuleSummaryOptions = {
   t: TFunction;
   clock: TimeClock;
   formatAmount: (minorUnits: number, currency: Currency) => string;
+  // The shown name of a live account, null for an id that is in no row.
+  accountNameOf: (accountId: string) => string | null;
 };
 
 // One condition of a rule: the subject it tests and what it tests it against.
@@ -23,7 +26,7 @@ const SEPARATOR = ' · ';
 
 const describeMatcher = (
   matcher: CategoryRuleMatcher,
-  { t, clock, formatAmount }: RuleSummaryOptions,
+  { t, clock, formatAmount, accountNameOf }: RuleSummaryOptions,
 ): Omit<RuleRow, 'key'> =>
   match(matcher)
     .with({ type: 'nameIs' }, ({ text }) => ({
@@ -32,6 +35,10 @@ const describeMatcher = (
     }))
     .with({ type: 'nameStartsWith' }, ({ text }) => ({
       label: t('ruleForm.nameStartsWith'),
+      value: t('categoryPage.quotedName', { name: text }),
+    }))
+    .with({ type: 'nameContains' }, ({ text }) => ({
+      label: t('ruleForm.nameContains'),
       value: t('categoryPage.quotedName', { name: text }),
     }))
     .with({ type: 'amount' }, ({ operator, minorUnits, currency }) => ({
@@ -45,6 +52,18 @@ const describeMatcher = (
     .with({ type: 'time' }, ({ operator, minuteOfDay }) => ({
       label: t(TIME_ROW_LABEL_KEYS[operator]),
       value: formatTime(wallClockOf(minuteOfDay), clock),
+    }))
+    .with({ type: 'mcc' }, ({ code }) => ({
+      label: t('ruleForm.mcc'),
+      value: String(code).padStart(MCC_DIGITS, '0'),
+    }))
+    .with({ type: 'account' }, ({ accountId }) => ({
+      label: t('ruleForm.account'),
+      value: accountNameOf(accountId) ?? t('categoryPage.deletedAccount'),
+    }))
+    .with({ type: 'counterIban' }, ({ iban }) => ({
+      label: t('ruleForm.counterIban'),
+      value: iban,
     }))
     .exhaustive();
 

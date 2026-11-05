@@ -10,6 +10,7 @@ import {
   DIRECTIONS,
   DIRECTION_LABEL_KEYS,
   MATCHER_TYPES,
+  MCC_DIGITS,
   TIME_OPERATORS,
   TIME_OPERATOR_LABEL_KEYS,
   labelsOf,
@@ -38,6 +39,7 @@ type MatcherType = CategoryRuleMatcher['type'];
 const MatcherRow: FC<MatcherRowProps> = ({
   draft,
   currencyGroups,
+  accounts,
   position,
   canRemove,
   onChange,
@@ -49,13 +51,17 @@ const MatcherRow: FC<MatcherRowProps> = ({
   const typeLabels: Record<MatcherType, string> = {
     nameIs: t('ruleForm.nameIs'),
     nameStartsWith: t('ruleForm.nameStartsWith'),
+    nameContains: t('ruleForm.nameContains'),
     amount: t('ruleForm.amount'),
     direction: t('ruleForm.direction'),
     time: t('ruleForm.time'),
+    mcc: t('ruleForm.mcc'),
+    account: t('ruleForm.account'),
+    counterIban: t('ruleForm.counterIban'),
   };
 
   const inputs = match(draft.type)
-    .with('nameIs', 'nameStartsWith', () => (
+    .with('nameIs', 'nameStartsWith', 'nameContains', () => (
       <TextField
         label={t('forms.fields.name')}
         value={draft.text}
@@ -128,6 +134,41 @@ const MatcherRow: FC<MatcherRowProps> = ({
           {t('ruleForm.timeHint')}
         </Text>
       </>
+    ))
+    .with('mcc', () => (
+      <TextField
+        label={t('ruleForm.mcc')}
+        value={draft.mccText}
+        onChangeText={(text) => onChange({ mccText: text.replace(/\D/g, '').slice(0, MCC_DIGITS) })}
+        keyboardType="number-pad"
+        required
+        error={error}
+      />
+    ))
+    .with('account', () => (
+      <SelectField<string>
+        label={t('ruleForm.account')}
+        sheetTitle={t('ruleForm.accountSheetTitle')}
+        options={accounts.map((account) => account.id)}
+        selected={draft.accountId}
+        onSelect={(accountId) => onChange({ accountId })}
+        labels={Object.fromEntries(accounts.map((account) => [account.id, account.label]))}
+        placeholder={t('ruleForm.selectAccount')}
+        required
+        error={error}
+        testID={`matcher-account-${position}`}
+      />
+    ))
+    .with('counterIban', () => (
+      <TextField
+        label={t('ruleForm.counterIban')}
+        value={draft.ibanText}
+        onChangeText={(ibanText) => onChange({ ibanText })}
+        autoCapitalize="characters"
+        autoCorrect={false}
+        required
+        error={error}
+      />
     ))
     .exhaustive();
 

@@ -3,6 +3,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { bifoldMap, type Either, eitherSync } from 'fnts/either';
+import type { BalanceProviderId } from '@kiko/crypto-sync/provider';
 
 import { type AmountError, type AmountUse, exchangeMinorUnits } from '../amounts';
 
@@ -416,12 +417,12 @@ type WalletPlannedRow = {
   externalId: string;
 };
 
-type PlacedWalletRow<Planned extends WalletPlannedRow> = Omit<
+type PlacedWalletRow<Planned extends WalletPlannedRow, Source extends BalanceProviderId> = Omit<
   Planned,
   'wallet' | 'counterpartWallet'
 > & {
   holdingId: string;
-  source: 'binance';
+  source: Source;
   exchangeCounterpartHoldingId?: string;
 };
 
@@ -431,14 +432,17 @@ type PlacedWalletRow<Planned extends WalletPlannedRow> = Omit<
  * creation is no one record's stop: it throws `BinanceWalkStop(missingCode)` and the span is
  * owed (see `placed`).
  */
-export const placeWalletRows = async <Planned extends WalletPlannedRow>(input: {
+export const placeWalletRows = async <
+  Planned extends WalletPlannedRow,
+  Source extends BalanceProviderId,
+>(input: {
   accountId: string;
   planned: Planned[];
-  config: ExchangeWalkConfig<Error, unknown>;
+  config: ExchangeWalkConfig<Error, unknown, Source>;
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
   missingCode: string;
-}): Promise<PlacedWalletRow<Planned>[]> => {
+}): Promise<PlacedWalletRow<Planned, Source>[]> => {
   const { accountId, config, listHoldings, ensureHoldings, missingCode } = input;
   const planned = [...new Map(input.planned.map((row) => [row.externalId, row])).values()];
 
@@ -461,7 +465,7 @@ export const placeWalletRows = async <Planned extends WalletPlannedRow>(input: {
     ensureHoldings,
   });
 
-  return planned.map(({ wallet, counterpartWallet, ...row }): PlacedWalletRow<Planned> => {
+  return planned.map(({ wallet, counterpartWallet, ...row }): PlacedWalletRow<Planned, Source> => {
     const holding = holdings.get(wallet);
     const counterpart = foldMap(maybe(counterpartWallet), (key) => holdings.get(key));
 
@@ -472,7 +476,7 @@ export const placeWalletRows = async <Planned extends WalletPlannedRow>(input: {
     return {
       ...row,
       holdingId: holding.id,
-      source: 'binance',
+      source: config.source,
       ...foldMap(maybe(counterpart), (found) => ({ exchangeCounterpartHoldingId: found.id })),
     };
   });

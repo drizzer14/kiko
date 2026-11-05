@@ -161,8 +161,9 @@ describe('help topic registry', () => {
     ['editTransaction', 3],
     ['useTemplates', 4],
     ['manageCategories', 5],
-    ['categoryRules', 5],
+    ['categoryRules', 6],
     ['viewStatistics', 9],
+    ['viewRecurringCharges', 5],
     ['backupData', 4],
     ['restoreData', 4],
     ['systemSettings', 4],
@@ -185,6 +186,7 @@ describe('help topic registry', () => {
     ['manageCategories', 'openCategories'],
     ['categoryRules', 'openCategories'],
     ['viewStatistics', 'openStatistics'],
+    ['viewRecurringCharges', 'openRecurringCharges'],
     ['backupData', 'openExportData'],
     ['restoreData', 'openImportData'],
     ['systemSettings', 'openSystem'],
@@ -204,9 +206,9 @@ describe('help group registry', () => {
       ['transactions', ['addTransaction', 'editTransaction', 'useTemplates']],
       ['categories', ['manageCategories', 'categoryRules']],
       ['statistics', ['viewStatistics']],
-      ['settings', ['backupData', 'restoreData', 'systemSettings']],
+      ['settings', ['viewRecurringCharges', 'backupData', 'restoreData', 'systemSettings']],
     ]);
-    expect(HELP_TOPICS).toHaveLength(17);
+    expect(HELP_TOPICS).toHaveLength(18);
   });
 
   it('puts every topic in exactly one group', () => {
@@ -523,6 +525,7 @@ describe('the Ukrainian wording of the help topics', () => {
     ['manageCategories', 'Керування категоріями'],
     ['categoryRules', 'Автоматичні категорії'],
     ['viewStatistics', 'Перегляд статистики'],
+    ['viewRecurringCharges', 'Перегляд регулярних платежів'],
     ['backupData', 'Резервна копія даних'],
     ['restoreData', 'Відновлення з резервної копії'],
     ['systemSettings', 'Мова й блокування застосунку'],

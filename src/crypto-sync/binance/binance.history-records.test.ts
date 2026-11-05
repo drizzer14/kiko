@@ -685,8 +685,8 @@ describe('commitSettledSpan', () => {
     await commit('pending', { rows: [], codes: ['same', 'same', 'other'], owed: [SPAN] });
 
     expect(warn.mock.calls).toEqual([
-      ['[binance sync] history window stopped', { name: 'BinanceWalkStop', code: 'same' }],
-      ['[binance sync] history window stopped', { name: 'BinanceWalkStop', code: 'other' }],
+      ['[exchange sync] history window stopped', { name: 'BinanceWalkStop', code: 'same' }],
+      ['[exchange sync] history window stopped', { name: 'BinanceWalkStop', code: 'other' }],
     ]);
   });
 
@@ -783,7 +783,7 @@ describe('commitSettledSpan', () => {
       await commitOwing({ rows: [], codes: ['owed-only'], owed: [point] });
 
       expect(warn.mock.calls).toEqual([
-        ['[binance sync] history window stopped', { name: 'BinanceWalkStop', code: 'owed-only' }],
+        ['[exchange sync] history window stopped', { name: 'BinanceWalkStop', code: 'owed-only' }],
       ]);
     });
 
@@ -934,6 +934,19 @@ describe('placeWalletRows', () => {
     ).resolves.toEqual([
       { holdingId: `h-${FUNDING_KEY}`, source: 'binance', externalId: 'a', amountMinorUnits: 5 },
     ]);
+  });
+
+  it('puts the source of the config it is given on a row, not a fixed one', async () => {
+    const rows = await placeWalletRows({
+      accountId: 'acc-1',
+      planned: [{ wallet: SPOT_KEY, externalId: 'a' }],
+      config: { ...BINANCE_WALK_CONFIG, source: 'btc_wallet' },
+      listHoldings,
+      ensureHoldings,
+      missingCode: 'x-holding-missing',
+    });
+
+    expect(rows.map((row) => row.source)).toEqual(['btc_wallet']);
   });
 
   it('puts the other leg of a row on its own holding', async () => {

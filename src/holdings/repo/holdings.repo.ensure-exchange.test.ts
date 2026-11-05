@@ -13,6 +13,14 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+// The gate is the institution list's own predicate, so a test swaps it to name an institution the
+// list does not hold yet.
+const mockIsWalletHoldingInstitution = jest.fn<boolean, [string | null | undefined]>();
+jest.mock('@kiko/holdings/wallet-holding-institution', () => ({
+  isWalletHoldingInstitution: (institution: string | null | undefined) =>
+    mockIsWalletHoldingInstitution(institution),
+}));
+
 import { asc } from 'drizzle-orm';
 import { DatabaseSync } from 'node:sqlite';
 import { type database, holdings } from '@kiko/db';
@@ -72,6 +80,27 @@ const insertFunding = (
 };
 
 describe('holdingsRepo.ensureExchangeHoldings', () => {
+  beforeEach(() => {
+    mockIsWalletHoldingInstitution.mockImplementation(
+      jest.requireActual('@kiko/holdings/wallet-holding-institution').isWalletHoldingInstitution,
+    );
+  });
+
+  it('creates the holding of an account whose institution the list holds, and only that one', async () => {
+    mockIsWalletHoldingInstitution.mockImplementation(
+      (institution) => institution === 'fixture-exchange',
+    );
+    const { rawDatabase, drizzleDatabase } = openTestDatabase();
+    rawDatabase
+      .prepare("UPDATE accounts SET institution = 'fixture-exchange' WHERE id = 'acc-2'")
+      .run();
+
+    await holdingsRepo.ensureExchangeHoldings([FUNDING, { ...FUNDING, accountId: 'acc-2' }]);
+
+    const rows = await drizzleDatabase.select().from(holdings);
+    expect(rows.map((row) => row.accountId)).toEqual(['acc-2']);
+  });
+
   it('inserts a missing key at the given balance with only the key in its metadata', async () => {
     const { drizzleDatabase } = openTestDatabase();
 

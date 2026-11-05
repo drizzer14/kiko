@@ -17,6 +17,7 @@ import { isRecord } from '@kiko/type-guards';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
+import { isWalletHoldingInstitution } from '@kiko/holdings/wallet-holding-institution';
 
 import {
   ownershipMetadata,
@@ -1203,7 +1204,7 @@ export const holdingsRepo = {
           .where(eq(accounts.id, rest.accountId))
           .limit(1);
 
-        if (accountRows.at(0)?.institution !== 'binance') {
+        if (!isWalletHoldingInstitution(accountRows.at(0)?.institution)) {
           continue;
         }
 

@@ -7,6 +7,7 @@ import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import type { TablePeriod } from '@kiko/statistics/table-period';
+import type { RecurringPeriod } from '@kiko/recurring/detection';
 import type { EntryTab } from '@kiko/screens/forms/transaction-form';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
@@ -348,6 +349,7 @@ export type SettingsStackParamList = {
   Settings: undefined;
   System: undefined;
   Categories: undefined;
+  CategoryReview: undefined;
   // No key: a new category; a key opens that category with its rules.
   CategoryForm: { categoryKey?: string; draft?: CategoryFormDraft };
   // No `ruleId`: a new rule for the category.
@@ -359,6 +361,19 @@ export type SettingsStackParamList = {
   Help: undefined;
   HelpTopic: { topicId: HelpTopicId };
   TransactionTemplates: undefined;
+  RecurringCharges: undefined;
+  // `seriesId` is the earliest charge's id; the key, currency and period find the series again
+  // when an older import moves that charge. `name` is the merchant's own text, the screen's title.
+  // `markedAmountMinorUnits` is a marked series' lowest stored amount, the key that finds its
+  // piece again whatever its id or period became; a detected series has none.
+  RecurringSeries: {
+    seriesId: string;
+    merchantKey: string;
+    currency: Currency;
+    period: RecurringPeriod;
+    name: string;
+    markedAmountMinorUnits?: number;
+  };
   // The template forms, and the create forms their empty holding picker's "Add holding" row
   // opens, sit in this stack for the reason they sit in Home's: a switch to the Accounts tab
   // would reset this stack and drop the form's draft.

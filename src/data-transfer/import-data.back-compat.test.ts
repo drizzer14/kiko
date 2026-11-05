@@ -88,6 +88,7 @@ const EARLIER_BUILD_SETTINGS_COLUMNS = [
   'lotsRecosted',
   'importTimesRezoned',
   'mccCategoriesBackfilled',
+  'recurringMerchantChoices',
 ];
 
 // A statement-import row an earlier build stored with the bank's wall clock

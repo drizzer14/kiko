@@ -120,6 +120,26 @@ name (Glovo has five rows under 800 that import as other) would count more rows 
 statement is imported.
 `build-demo-snapshot.rule-demo.test.ts` pins the rule and the count with the app's own matcher.
 
+## The store-number rows
+
+Three Monobank card rows (`Varus 0212` twice and `Varus 0340`, 9 to 20 days before the anchor,
+at uneven gaps) sit in the default category. Edit one of them, pick a category and save: the
+Apply sheet then offers `All starting with "Varus"` below Apply, because the name ends in a store
+number. Tapping it shows the transactions that would move, `Varus 0212` and `Varus 0340`, and
+moves nothing until Move is tapped. `Varus` is a Latin brand name in both files, as `Novus` is.
+The rows raise the card's opening deposit by their total, so the card keeps its end balance.
+`build-demo-snapshot.test.ts` pins that the only name with a prefix is this one.
+
+## The steady bills
+
+Netflix, Kyivstar, Kyivteploenergo, YASNO and Kyivvodokanal keep their day every month, so the
+Recurring charges list in Settings shows exactly these five. Every other merchant on the main card
+moves in the odd months only: a row on a day under 15 moves ten days later, any other row ten days
+earlier. The even months and month 0, the newest, never move. So a shop or the taxi reads as
+spending that comes and goes, not as a subscription. The amount stays and the row stays in its
+30-day month, so each month's total is unchanged.
+`build-demo-snapshot.recurring.test.ts` pins the five on every anchor it tries.
+
 ## Importing on a device
 
 Settings → Import Data → pick the `.kiko` file → paste the key from

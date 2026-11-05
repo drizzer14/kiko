@@ -7,7 +7,8 @@ import { clearCredentials, HISTORY_FLOOR_MS } from '../binance';
 /**
  * Disconnect a wallet- or Binance-connected account, the required first step
  * before it can be deleted. Mirrors `src/monobank/disconnect/disconnect.ts`. For Binance the DB
- * mutation is `accountsRepo.disconnectExchange`, ONE write that resets the walk state first and
+ * mutation is `accountsRepo.disconnectExchange`, ONE write that deletes the account's stored
+ * funding match rows (none for a Binance account), resets the walk state and
  * then does what `accountsRepo.disconnect` does (clear `institution`, drop the stale `syncedAt`
  * stamp, and KEEP each holding's `walletAddress` / `binanceAsset` so a later reconnect re-adopts
  * those rows). Every walk cursor goes to the floor (`HISTORY_FLOOR_MS`), never gone: a missing

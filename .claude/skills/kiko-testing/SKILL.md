@@ -51,6 +51,24 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   stack reader, for a navigator test a spy cannot replace.
 - `transaction-form-data-layer.ts`: the data layer the real transaction form reads and writes,
   for a navigator test that renders it.
+- `recurring-mark-live-queries.ts`: the settings and whole-ledger reads of the transaction form's
+  mark field (`createMarkLiveQueries`, `taggedQuery`) and the Netflix fixtures its three suites
+  share.
+- `recurring-ledger.ts`: builders for a recurring-detection ledger (`ledgerOf`, `chargeOf`,
+  `monthly`, `weekly`, `holdingOf`, `randomLedgerOf`) and the views that compare series with
+  their expected shape (`viewsOf`, `expectedViewsOf`).
+- `marked-series-world.ts`: the mark, expected-series and outcome types of a marked-series world,
+  and the views and random entries (`entryOf`, `outcomeOf`, `randomEntriesOf`) that check it.
+- `marked-series-worlds.ts`: the table of marked-series worlds (`ONE_AMOUNT_WORLDS`,
+  `exclusionWorlds`) and the small builders they share (`series`, `marked`, `detected`, `chain`).
+- `marked-series-chain-worlds.ts`: the amount-chain worlds (`AMOUNT_CHAIN_WORLDS`), built from the
+  same builders.
+- `marked-series-hook-result.ts`: what the series hook hands its screens for a ledger and marked
+  entries (`hookStateOf`, with the `MarkedNames` type), made of the real detection functions.
+- `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
+  real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
+  `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and
+  the rows of a `ledgerOf` ledger put into it.
 - `form-header-items.ts`: the nav-bar items a form sets (`pressSave`, `saveItem`,
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
@@ -136,6 +154,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - A `jest.mock` factory replaces the whole module. When an import rewrite makes production code
   resolve a function through a partially mocked module (`holdingsRepo.balanceOf` via the barrel),
   add that function to the factory; never widen the mock to the real module.
+  A mock must target the module that holds the call site. After you extract code,
+  re-point each mock of a function that the moved code calls from a sibling file
+  (a mock on the barrel `exchange/walk` missed `runWalkPlan`, which
+  `exchange-walk-plan.ts` calls from `./walk`).
 - Before adding a prop to a hand-written `__mocks__` module, check the real library's own type in
   `node_modules` first. A mock that accepts a prop the real component discards lets a test pass
   while the real UI is silently broken: forward only the props the real library consumes.
@@ -200,6 +222,14 @@ test from being decorative.
   exercising it: pick a distinct value. A one-frame paint bug (a stale value shown for one render)
   needs a render-log pin that records every render and asserts none shows the stale value; a
   final-state assertion misses it.
+- A counted-work pin counts the work itself (sort comparisons, calls of the inner function), not
+  reads on input rows: a copy of a field hides later reads. See
+  `src/recurring/detection/detection.performance.test.ts`.
+- A hook memo over several live reads is gated on readiness, and its pin settles the reads one
+  at a time, so a half-loaded set is seen to run nothing. See
+  `src/recurring/use-recurring-series/use-recurring-series.test.tsx`.
+- A `*-test-helper.ts` beside a test counts as production for feature-imports and the pre-write
+  rules, so it holds no `@kiko/test-support` import.
 
 ## Property tests
 
@@ -240,7 +270,9 @@ test from being decorative.
   geometry (whether a `hitSlop` or `minHeight`-grown touch target is reachable on the device). A
   fix for either needs a real-navigator test (see
   `src/navigation/root-navigator/statement-import-return.navigator.test.tsx`) or a device check;
-  a green Jest assertion on a prop is never proof the real behavior is fixed. An accessible iOS
+  a green Jest assertion on a prop is never proof the real behavior is fixed. A navigator flow
+  where a write must change what Back shows runs the real `useLiveQuery` through
+  `src/test-support/sqlite-live-query.ts`. An accessible iOS
   `Pressable` groups its children into one VoiceOver element, and RNTL `getByLabelText` still
   finds the inner control: device-check a control inside a pressable row with VoiceOver.
 - The time zone is pinned by a top-level assignment in `jest.config.js` only. Jest gives each test

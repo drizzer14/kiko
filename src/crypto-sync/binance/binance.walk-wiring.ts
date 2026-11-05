@@ -1,15 +1,10 @@
 import { match } from 'ts-pattern';
 import {
-  advanceWalkMarks,
-  commitSettledSpan,
-  dropReadPoints,
+  commitExchangeSpan,
   type ExchangeStateDeps,
-  historyListWriterOf,
-  notImportedWriterOf,
   type OwedWindow,
   placeWalletRows,
-  roundRobinHooksOf,
-  runWalkPlan,
+  runExchangeWalkPlan,
   type SettledSpan,
   type SpanCommit,
   type SpanRead,
@@ -19,7 +14,6 @@ import {
   type WalkPlan,
   type WalkResult,
   type WalkWindow,
-  walkSpans,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
@@ -96,10 +90,8 @@ const rowsOfScope = <Planned extends { wallet: string }>(
     .exhaustive();
 
 /**
- * Commit one span of a Binance walk: the rows first, the marks second (see `commitSettledSpan`).
- * `series` names the series a window was narrowed to and `scope` the scope it was read in; a walk
- * that never narrows a window leaves `series` out, so a span reads all of it, and a window read
- * for every coin has no scope.
+ * Commit one span of a Binance walk (see `commitExchangeSpan`). A window of the backfill scope
+ * writes the rows of every coin but BTC.
  */
 export const commitBinanceSpan = <Planned extends { wallet: string }, Row>(input: {
   context: SpanCommitContext<Row>;
@@ -111,39 +103,15 @@ export const commitBinanceSpan = <Planned extends { wallet: string }, Row>(input
   series?: OwedWindow['series'];
   scope?: OwedWindow['scope'];
   forwardOwes?: readonly string[];
-}): Promise<SpanCommit | undefined> => {
-  const { context, pass, span, series, scope, restartMs } = input;
-  const { deps, accountId, plan, marks, write } = context;
-
-  return commitSettledSpan({
-    pass,
-    span,
-    settled: input.settled,
-    forwardOwes: input.forwardOwes,
-    place: (planned) => input.place(rowsOfScope(planned, scope)),
-    add: deps.addTransactions,
-    writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
-    writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
-    writeNotImported: notImportedWriterOf(deps, accountId),
-    advance: ({ owed }) =>
-      advanceWalkMarks({
-        pass,
-        span,
-        series,
-        scope,
-        owed,
-        plan,
-        marks,
-        restartMs,
-        write,
-      }),
+}): Promise<SpanCommit | undefined> =>
+  commitExchangeSpan({
+    ...input,
+    place: (planned) => input.place(rowsOfScope(planned, input.scope)),
   });
-};
 
 /**
  * Run a Binance walk's plan: each window is read span by span and committed, on the lane's budget
- * and while the account is not cooling down. `callsOf` and `owedFirst` are the walks' own
- * (see `runWalkPlan`).
+ * and while the account is not cooling down (see `runExchangeWalkPlan`).
  */
 export const runBinanceWalkPlan = <Page>(input: {
   context: Pick<
@@ -162,37 +130,12 @@ export const runBinanceWalkPlan = <Page>(input: {
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
   readOnPastUnreadableForward?: boolean;
-}): Promise<WalkResult> => {
-  const { context, lane, cost, read, commit } = input;
-  const { deps, run, accountId, plan, marks, write } = context;
-
-  return runWalkPlan({
-    plan,
-    callsOf: input.callsOf,
-    owedFirst: input.owedFirst,
-    readOnPastUnreadableForward: input.readOnPastUnreadableForward,
-    canAfford: (keep) =>
-      run.budget.canAfford(lane, cost, keep) && !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
-        window,
-        read: (span, keepCalls) => read(window, span, keepCalls),
-        commit: (span, page) => commit(window, span, page, pass),
-        keep,
-        hint,
-        onComplete: (readPoints) =>
-          dropReadPoints({
-            pass,
-            window,
-            read: readPoints,
-            marks,
-            write,
-          }),
-      }),
+}): Promise<WalkResult> =>
+  runExchangeWalkPlan({
+    ...input,
+    isCoolingDown: isBinanceCoolingDown,
     isUnreadableWindowError,
-    ...roundRobinHooksOf({ marks, write }),
   });
-};
 
 /**
  * A plan holds a capped number of windows, so a forward pass that ends before `endTime` has more

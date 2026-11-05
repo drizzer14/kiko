@@ -274,7 +274,9 @@ than restated here:
   hints of the passes a turn did not read, and `rescanStuck` holds the
   ranges the re-scan cannot clear.
   `binance.walk-wiring.ts` holds the wiring every Binance walk shares; read
-  it there.
+  it there. The shared code is in `src/crypto-sync/exchange/walk/exchange-walk-plan.ts`
+  and `src/crypto-sync/exchange/walk/exchange-span.ts`; `runBinanceWalkPlan` and
+  `commitBinanceSpan` stay in `binance.walk-wiring.ts` as thin callers.
 - **A failed read.** `isUnreadableWindowError` (`binance.walk-config.ts`):
   the pending and points passes read on past an unreadable owed window and
   the first such error is rethrown after; a rate limit, rejected key, clock
@@ -403,6 +405,20 @@ than restated here:
   surfaced as the localized `accountDetail.binanceRequestFailed` message
   (never the raw `BinanceRateLimitError` text) — Spot's failure still
   fails the whole balance sync, per its own strict rule above.
+  `BinanceCredentialsField.handleConnect` checks
+  `isBinanceCoolingDown(accountId, Date.now())` before its first request.
+  On a cooling account it makes no `fetchAccount`, no `saveCredentials` and
+  no sync, and shows `accountDetail.binanceCoolingDown` as a `saveError`, so
+  the provider's quiet skip serves a sync of an already connected account.
+  A cooldown that starts after the check can still reach the provider's
+  cooling return. After the cooldown check, `handleConnect` checks
+  `isBinanceSyncRunning(accountId)` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`; it
+  reads `inFlightBinanceSyncs`, the Binance map only). A running sync shows
+  `accountDetail.binanceSyncStillRunning` and makes no `fetchAccount`, save or sync, because a
+  Disconnect does not end the run and the join would hand the Connect a run that holds the old
+  pair. Residuals: a job queued before a Disconnect can start after the check, and
+  `src/crypto-sync/sync/sync.ts` joins a wallet run by account id, which
+  `isBinanceSyncRunning` does not see.
 - **Disconnect resets the walk state, not the holdings.**
   `disconnectCryptoAccount`'s Binance path calls
   `accountsRepo.disconnectExchange(accountId, 'binance', HISTORY_FLOOR_MS)`,

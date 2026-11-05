@@ -463,6 +463,20 @@
       "when": 1793733244517,
       "tag": "0065_add_mcc_categories_backfilled",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "6",
+      "when": 1793839162131,
+      "tag": "0066_add_funding_match_rows",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1793860693780,
+      "tag": "0067_add_recurring_merchant_choices",
+      "breakpoints": true
     }
   ]
 }

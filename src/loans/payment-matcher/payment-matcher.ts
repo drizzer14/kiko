@@ -8,6 +8,7 @@ import {
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { dayKeyOf } from '@kiko/prices/price-book';
+import { ibanKeyOf } from '@kiko/transactions/iban';
 import type { Currency } from '@kiko/currency/currency';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
@@ -43,7 +44,7 @@ const MIN_LENDER_NAME_LENGTH = 3;
  * persist an already-normalized `lenderIban`, rather than duplicating this
  * logic in a second place.
  */
-export const normalizeIban = (value: string): string => value.replace(/\s+/g, '').toUpperCase();
+export const normalizeIban = ibanKeyOf;
 
 /** A loan holding as the matcher needs it — mirrors `loan-payments.ts`'s
  * `LoanHolding`, parsing `LoanMeta` internally so a caller hands it plain

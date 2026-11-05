@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { settingsRepo } from '@kiko/settings';
+import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
@@ -13,6 +14,7 @@ import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
 import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import FieldError from '@kiko/design-system/components/field-error';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
@@ -29,6 +31,7 @@ import type { CategoryRuleFormDraft, SettingsStackParamList } from '@kiko/naviga
 import {
   type MatcherDraft,
   type MatcherDraftError,
+  clearStaleAccounts,
   emptyMatcherDraft,
   toMatcherDrafts,
 } from './rule-draft';
@@ -50,6 +53,9 @@ const rowErrorMessage = (error: MatcherDraftError | undefined, t: TFunction): st
   foldMap(maybe(error), (refusal) =>
     match(refusal)
       .with('errorName', () => t('ruleForm.errorName'))
+      .with('errorMcc', () => t('ruleForm.errorMcc'))
+      .with('errorAccount', () => t('ruleForm.errorAccount'))
+      .with('errorIban', () => t('ruleForm.errorIban'))
       .with('errorAmountNegative', () => t('ruleForm.errorAmountNegative'))
       .with('errorAmountTooLarge', () => t('ruleForm.errorAmountTooLarge'))
       .with('errorAmountWholeOnly', () => t('ruleForm.errorAmountWholeOnly'))
@@ -95,7 +101,12 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
     true,
     { cached: true },
   );
-  const isReady = useDataReady(rulesLoading, settingsLoading);
+  // Uncached, with the rules: the seed clears an account id that is in no row, so it must not run
+  // before this read lands.
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
+    'accounts',
+  ]);
+  const isReady = useDataReady(rulesLoading, settingsLoading, accountsLoading);
   const baseCurrency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
   const currencyGroups = useCurrencyPickerGroups({ kind: 'any' });
   const { initialDraft, saveDraft } = useDraftParam<CategoryRuleFormDraft>(navigation, route);
@@ -106,6 +117,11 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const categoryTitles = useMemo(() => buildCategoryDisplayMap(categories), [categories]);
   const drafts = useMemo(() => rows.map((row) => row.draft), [rows]);
+  const liveAccountIds = useMemo(() => new Set(accounts.map((account) => account.id)), [accounts]);
+  const savableDrafts = useMemo(
+    () => clearStaleAccounts(drafts, liveAccountIds),
+    [drafts, liveAccountIds],
+  );
   const onFieldBlur = useDraftAutosave({ rows: drafts }, saveDraft);
 
   const bringIntoView = (target: RefusalTarget): void =>
@@ -119,7 +135,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   const { errors, save, sheet } = useSaveRule({
     ruleId: ruleId ?? null,
     categoryKey,
-    drafts,
+    drafts: savableDrafts,
     rules,
     onSaved: () => navigation.goBack(),
     onRefused: bringIntoView,
@@ -162,8 +178,18 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
       return;
     }
 
-    seedRows(toMatcherDrafts(stored.displayMatchers, baseCurrency));
-  }, [hydrated, isReady, isEdit, rules, ruleId, baseCurrency, navigation, initialDraft]);
+    seedRows(toMatcherDrafts(stored.displayMatchers, baseCurrency, liveAccountIds));
+  }, [
+    hydrated,
+    isReady,
+    isEdit,
+    rules,
+    ruleId,
+    baseCurrency,
+    liveAccountIds,
+    navigation,
+    initialDraft,
+  ]);
 
   const isLoaded = isReady && hydrated;
 
@@ -190,6 +216,13 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
 
   const categoryTitleOf = (key: string): string =>
     categoryTitles.get(categoryKeyOf(key))?.title ?? key;
+
+  // An archived account still holds its rows, so a rule can name it; it is offered only to the row
+  // that already names it.
+  const accountsFor = (draft: MatcherDraft): { id: string; label: string }[] =>
+    accounts
+      .filter((account) => account.archivedAt === null || account.id === draft.accountId)
+      .map((account) => ({ id: account.id, label: accountDisplayName(account, t) }));
 
   if (!isLoaded) {
     return (
@@ -225,6 +258,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
                 <MatcherRow
                   draft={row.draft}
                   currencyGroups={currencyGroups}
+                  accounts={accountsFor(row.draft)}
                   position={position}
                   canRemove={rows.length > 1}
                   onChange={(fields) => changeRow(row.key, fields)}

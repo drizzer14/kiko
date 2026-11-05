@@ -280,7 +280,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
   // A provider-id -> connect-field map, so a later provider task adds one row
   // here without rewriting the rest of this section.
   const connectFieldByProviderId: Partial<Record<BankProviderId, ReactNode>> = {
-    monobank: <MonobankConnectField onConnect={connectMonobank} />,
+    monobank: <MonobankConnectField accountId={account.id} onConnect={connectMonobank} />,
   };
 
   const providerSheetEntries = visibleCatalogEntries().map((entry) => ({

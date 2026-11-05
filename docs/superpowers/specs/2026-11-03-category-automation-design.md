@@ -530,7 +530,7 @@ user's own device), the MCC padded.
 | `ruleForm.account` | Account | Рахунок |
 | `ruleForm.counterIban` | Counterparty IBAN | IBAN контрагента |
 | `ruleForm.errorMcc` | Enter a four-digit code. | Введіть чотиризначний код. |
-| `ruleForm.errorAccount` | Choose an account. | Виберіть рахунок. |
+| `ruleForm.errorAccount` | Select an account. | Оберіть рахунок. |
 | `ruleForm.errorIban` | Enter a valid IBAN. | Введіть правильний IBAN. |
 | `categoryPage.deletedAccount` | Deleted account | Видалений рахунок |
 

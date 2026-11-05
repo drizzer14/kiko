@@ -147,6 +147,24 @@ const CACHEABLE_API_KEY_HEADER_CLIENT = [
   '',
 ].join('\n');
 
+const CACHEABLE_BAPI_KEY_HEADER_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (key: string): Promise<Response> =>',
+  "  fetch(QUOTES_API_ENDPOINT + '/eod', { headers: { 'X-BAPI-API-KEY': key } });",
+  '',
+].join('\n');
+
+const NO_STORE_BAPI_KEY_HEADER_CLIENT = [
+  "import { QUOTES_API_ENDPOINT } from '@env';",
+  '',
+  'export const fetchQuote = (key: string): Promise<Response> =>',
+  "  fetch(QUOTES_API_ENDPOINT + '/eod', {",
+  "    headers: { 'X-BAPI-API-KEY': key, 'Cache-Control': 'no-store' },",
+  '  });',
+  '',
+].join('\n');
+
 const NO_CACHE_HEADER_TOKEN_CLIENT = [
   "import { QUOTES_API_ENDPOINT } from '@env';",
   '',
@@ -276,6 +294,32 @@ describe('scripts/checks/plist.sh credential detection', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('src/quotes.client.ts');
+  });
+
+  it("fails (exit 2) when a pinned 'X-BAPI-API-KEY' header client sends no Cache-Control: no-store", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, CACHEABLE_BAPI_KEY_HEADER_CLIENT),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('src/quotes.client.ts');
+    expect(result.stderr).toContain('no-store');
+  });
+
+  it("fails (exit 2) when an 'X-BAPI-API-KEY' header client's host is not pinned", () => {
+    const result = runPlistCheck(buildRoot({}, NO_STORE_BAPI_KEY_HEADER_CLIENT));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(QUOTES_HOST);
+  });
+
+  it("passes when the pinned 'X-BAPI-API-KEY' header client sends Cache-Control: no-store", () => {
+    const result = runPlistCheck(
+      buildRoot({ [QUOTES_HOST]: TWO_PINS }, NO_STORE_BAPI_KEY_HEADER_CLIENT),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
   });
 
   it("fails (exit 2) when the 'X-Token' header client sends Cache-Control: no-cache, not no-store", () => {

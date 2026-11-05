@@ -849,7 +849,9 @@ why this is the deliberate exception to functional-first). It holds
   point.
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
-  or float column. Convert to/from `Money` at the repository
+  or float column. Exception: `funding_match_rows` `amount`, `fee`, `tax`
+  are TEXT, because rule 51 compares `normalizeDecimal` text and no scale
+  is known per coin (O70). Convert to/from `Money` at the repository
   boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
   through `holdingsRepo.balanceOf(row): Money`, never a direct
   member read outside a repository (mechanized, Class B:
@@ -1009,6 +1011,22 @@ come from `src/categories/category-rules/matcher-options.ts`. The
 editor's amount draft converts through `Money.fromMajor` exactly; a
 draft with too many decimals for the currency is refused.
 
+**Rule IBAN spelling.** `IBAN_PATTERN` and `ibanKeyOf` live in `src/transactions/iban/iban.ts`
+(barrel `@kiko/transactions/iban`). The parser stores the key form (no whitespace, uppercase), so
+the stored, compared and displayed forms are one.
+
+**Rule on a deleted account.** A rule on an account id that no row holds stays stored and never
+matches (`src/categories/category-rules/prepare-rules.ts`); the card reads "Deleted account"
+(`src/screens/forms/category-form/rule-summary/rule-summary.ts`); a restore keeps the id. The form
+seeds an unknown id as none, so Save asks for a pick
+(`src/screens/forms/category-rule-form/rule-draft/rule-draft.ts`). An account deleted while the
+form is open: `clearStaleAccounts` (same file, used in `category-rule-form.screen.tsx`) clears
+it, so Save asks for a pick.
+
+**Review list.** `planReviewGroups` (`src/categories/category-rules/plan-review-groups.ts`),
+`reviewCandidateRowsQuery`, `name-tally.ts` and the `CategoryReview` route
+(`src/navigation/settings-stack/settings.stack.tsx`) build and show it.
+
 ## Spending-exclusion pipeline
 
 An internal money movement (cash-out, own-account transfer, one leg of
@@ -1022,6 +1040,31 @@ the exchange-funding module (`src/statistics/exchange-funding-match/`, which pai
 purchase row with its funding bank debit)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
+
+A NEW exclusion rule also goes in `recurringExcludedIds`
+(`src/recurring/eligibility/eligibility.ts`), so a recurring series never counts the row.
+
+### Recurring detection
+
+`src/recurring/` holds the recurring-charge detection: read `detection.ts` and `eligibility.ts`
+there for the rules and thresholds; none is restated here. Eligibility reuses `ledgerRowsOf`,
+`ownIbansOf` and `accountKindByHoldingIdOf` from the spending-ledger barrel.
+
+A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
+`src/recurring/marked-series/marked-series.ts` (the chain and series rules),
+`src/recurring/recurring-periods/recurring-periods.ts` (the periods and their order) and
+`src/settings/recurring-merchant-choices.ts` (the one map). The rules, in words:
+- A mark stores the absolute stored amount and the currency of the marked row's holding, under the
+  merchant key. It covers one currency: the same amount in another currency never compares.
+- A mark's chain is the amount chain that holds its stored amount, cut by the same 1.25 step as
+  detection. The chain's charges are the series, with the mark's period; the stored amount joins
+  the cut like a charge, so it can bridge two charges. Pieces share no row, and a detected series
+  that shares a row with a marked one leaves whole.
+- The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
+- The accepted false stop: a subscription that goes on at a price outside the chain shows "No
+  charge since" until the user re-marks. This is the user's ruling, not a defect.
+- One choice map holds every key's hide flag and its list of marks, one entry per key; removing
+  a mark clears only that mark, and "Show again" clears only the hide.
 
 Which rows each step reads (`src/statistics/spending-ledger/`, one hook and one pure builder
 that the Statistics screen calls; `useStatisticsSources` in

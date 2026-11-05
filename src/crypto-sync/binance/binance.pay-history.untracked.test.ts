@@ -18,7 +18,7 @@ import { type BinancePayHistoryDeps, syncBinancePayHistory } from './binance.pay
 const ACCOUNT_ID = 'acc-1';
 const CURSOR = NOW - 3_600_000;
 const PAID_AT = NOW - 1_800_000;
-const STOP_TAG = '[binance sync] history window stopped';
+const STOP_TAG = '[exchange sync] history window stopped';
 
 const spotHolding = { id: 'h-spot', metadata: { binanceAsset: 'BTC' } } as unknown as HoldingRow;
 

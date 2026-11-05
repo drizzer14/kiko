@@ -3,7 +3,7 @@ import {
   NavigationContainer,
   type ParamListBase,
 } from '@react-navigation/native';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { render, waitFor } from '@testing-library/react-native';
 
 type StackRef = NavigationContainerRefWithCurrent<ParamListBase>;
@@ -19,11 +19,16 @@ export const stackProbe = (navigationRef: StackRef) => {
   };
 };
 
-export const renderStackInContainer = async (navigationRef: StackRef, Stack: ComponentType) => {
+export const renderStackInContainer = async (
+  navigationRef: StackRef,
+  Stack: ComponentType,
+  wrapper?: ComponentType<{ children: ReactNode }>,
+) => {
   const view = await render(
     <NavigationContainer ref={navigationRef}>
       <Stack />
     </NavigationContainer>,
+    { wrapper },
   );
 
   await waitFor(() => expect(navigationRef.isReady()).toBe(true));

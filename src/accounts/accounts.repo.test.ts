@@ -26,6 +26,7 @@ jest.mock('@kiko/crypto-sync/binance', () => ({
 import {
   accounts,
   deletedImportKeys,
+  fundingMatchRows,
   holdings,
   reminders,
   syncState,
@@ -973,6 +974,7 @@ describe('accountsRepo.disconnect', () => {
       transactions,
       deletedImportKeys,
       syncState,
+      fundingMatchRows,
       reminders,
       holdings,
       accounts,
@@ -1038,6 +1040,7 @@ describe('accountsRepo.remove', () => {
       transactions,
       deletedImportKeys,
       syncState,
+      fundingMatchRows,
       reminders,
       holdings,
       accounts,
@@ -1061,6 +1064,7 @@ describe('accountsRepo.remove', () => {
       transactions,
       deletedImportKeys,
       syncState,
+      fundingMatchRows,
       reminders,
       holdings,
       accounts,
@@ -1079,6 +1083,24 @@ describe('accountsRepo.remove', () => {
     const remindersDelete = captured.deleteWhereArgs.find((entry) => entry.table === reminders);
     expect(renderCondition(remindersDelete?.whereArg)).toEqual({
       sql: '"reminders"."account_id" = ?',
+      params: ['acc-1'],
+    });
+  });
+
+  it('deletes the account’s stored funding match rows scoped to that account id', async () => {
+    const { databaseTransaction, captured } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+
+    await accountsRepo.remove('acc-1');
+
+    const fundingDelete = captured.deleteWhereArgs.find(
+      (entry) => entry.table === fundingMatchRows,
+    );
+    expect(renderCondition(fundingDelete?.whereArg)).toEqual({
+      sql: '"funding_match_rows"."account_id" = ?',
       params: ['acc-1'],
     });
   });
@@ -1167,7 +1189,7 @@ describe('accountsRepo.remove', () => {
 
     expect(mockClearToken).toHaveBeenCalledWith('acc-1');
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
-    expect(order).toEqual(['token after 6 deletes', 'credentials after 6 deletes']);
+    expect(order).toEqual(['token after 7 deletes', 'credentials after 7 deletes']);
   });
 
   // The account is already gone when the clear runs, so a failed clear is not a

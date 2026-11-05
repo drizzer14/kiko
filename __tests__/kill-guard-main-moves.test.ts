@@ -1212,6 +1212,14 @@ describe('kill-guard: the block for a move of main', () => {
     expect(reason).toContain('separate detached worktree');
   });
 
+  it('names the --sha form of the queue command', () => {
+    const reason: string = JSON.parse(hookResult(`git reset --hard ${COMMIT}`, REAL_MAIN_CHECKOUT))
+      .hookSpecificOutput.permissionDecisionReason;
+
+    expect(reason).toContain('bash scripts/job-queue.sh verify <worktree> <label> --sha <sha>');
+    expect(reason).not.toContain('<worktree at the sha>');
+  });
+
   it.each([
     [REAL_MAIN_CHECKOUT, 'git commit -m x'],
     [REAL_MAIN_CHECKOUT, 'git commit --amend --no-edit'],

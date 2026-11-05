@@ -25,6 +25,7 @@ describe('tracked shell scripts and git hooks', () => {
     const paths = trackedEntries().map((entry) => entry.path);
 
     expect(paths).toContain('scripts/job-queue.sh');
+    expect(paths).toContain('scripts/verify-checkout.sh');
     expect(paths).toContain('scripts/checks/medium.sh');
     expect(paths).toContain('githooks/pre-commit');
   });

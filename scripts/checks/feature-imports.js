@@ -46,6 +46,7 @@ const CONTAINERS = new Set([
   'navigation',
   'prices',
   'rates',
+  'recurring',
   'reminders',
   'screens',
   'screens/forms',

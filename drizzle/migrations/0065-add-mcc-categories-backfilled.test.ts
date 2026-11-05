@@ -1,5 +1,3 @@
-// drizzle/migrations/0065-add-mcc-categories-backfilled.test.ts
-//
 // Runs the shipped SQL on a real `node:sqlite` engine seeded as a device's
 // database stood before it, so the column, its default and the absence of an
 // index are proven on the real engine.
@@ -23,7 +21,7 @@ const applyMigration = (database: DatabaseSync): void => {
   }
 };
 
-const databaseThrough0064 = (): DatabaseSync => {
+const databaseBeforeMarkColumn = (): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(database, '0064_seed_travel_category');
@@ -51,9 +49,9 @@ const markOf = (database: DatabaseSync, id: number): number =>
     }
   ).value;
 
-describe('migration 0065: the MCC back-fill mark column', () => {
+describe('the MCC back-fill mark column migration', () => {
   it('adds a NOT NULL integer column defaulting to false', () => {
-    const database = databaseThrough0064();
+    const database = databaseBeforeMarkColumn();
 
     expect(settingsColumns(database).map((column) => column.name)).not.toContain(
       'mcc_categories_backfilled',
@@ -67,7 +65,7 @@ describe('migration 0065: the MCC back-fill mark column', () => {
   });
 
   it('keeps the settings row with the mark false', () => {
-    const database = databaseThrough0064();
+    const database = databaseBeforeMarkColumn();
 
     applyMigration(database);
 
@@ -76,7 +74,7 @@ describe('migration 0065: the MCC back-fill mark column', () => {
   });
 
   it('adds no index', () => {
-    const database = databaseThrough0064();
+    const database = databaseBeforeMarkColumn();
     const before = indexCount(database);
 
     applyMigration(database);
