@@ -385,15 +385,6 @@ describe('rewriting 50 000 rows for a rule with a new condition', () => {
 });
 
 describe('listing the review groups of 50 000 rows', () => {
-  type ReviewCandidateQuery = PromiseLike<ReviewCandidate[]> & {
-    toSQL: () => { sql: string; params: unknown[] };
-  };
-
-  const reviewCandidateRowsQuery = (): ReviewCandidateQuery =>
-    (
-      categoryRulesRepo as unknown as { reviewCandidateRowsQuery: () => ReviewCandidateQuery }
-    ).reviewCandidateRowsQuery();
-
   const candidateRows: ReviewCandidate[] = rows.map((row) => ({
     ...row,
     exchangeCounterpartHoldingId: null,
@@ -424,7 +415,7 @@ describe('listing the review groups of 50 000 rows', () => {
 
       const known = knownCategoryKeys();
       const statements = spyOnStatements();
-      const read = await reviewCandidateRowsQuery();
+      const read = await categoryRulesRepo.reviewCandidateRowsQuery();
       const groups = planReviewGroups(prepared, read, known);
 
       expect(countOf(statements, /^select .* from "transactions"/i)).toBe(1);
@@ -477,7 +468,7 @@ describe('listing the review groups of 50 000 rows', () => {
   );
 
   it('reviewCandidateRowsQuery scans the table with no temp B-tree', () => {
-    const { sql: statement, params } = reviewCandidateRowsQuery().toSQL();
+    const { sql: statement, params } = categoryRulesRepo.reviewCandidateRowsQuery().toSQL();
     const plan = (
       mockDatabase
         .prepare(`EXPLAIN QUERY PLAN ${statement}`)

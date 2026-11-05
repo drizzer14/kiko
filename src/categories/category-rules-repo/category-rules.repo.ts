@@ -26,7 +26,7 @@ import {
   validateRule,
   winningRule,
 } from '@kiko/categories/category-rules';
-import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { ruleDescriptionOf } from '@kiko/transactions/row-description';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { smallestSpelling, tidiedNameOf } from '@kiko/transactions/merchant-name';
@@ -532,6 +532,19 @@ export const categoryRulesRepo = {
    * form can prepare the rules once and pre-select a category from the typed description.
    */
   allQuery: () => database.select().from(categoryRules),
+  /**
+   * The rows the review list is planned from, as a reactive Drizzle builder: a stored non-blank
+   * description and no real category. SQL only narrows; `planReviewGroups` decides, so a row a
+   * rule wins or the user picked by hand is read here and left out there. The description test
+   * comes first and the category arms sit in the parentheses of `noRealCategorySql`, so a blank
+   * name in `other` stays out. Nothing here is indexed: the plan scans the table once.
+   */
+  reviewCandidateRowsQuery: () =>
+    database
+      .select(candidateColumns)
+      .from(transactions)
+      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+      .where(and(ne(transactions.description, ''), noRealCategorySql)),
   /**
    * How many rules a category delete takes with it. Every stored rule counts, a rule that can no
    * longer be read included, and the key matches case-insensitively, exactly as the delete does,

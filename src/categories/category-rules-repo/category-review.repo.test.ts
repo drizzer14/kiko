@@ -18,7 +18,6 @@ jest.mock('@kiko/db/client', () => {
 import {
   type NameRuleKind,
   type PreparedRules,
-  type ReviewCandidate,
   type ReviewGroup,
   planReviewGroups,
   prepareRules,
@@ -28,15 +27,6 @@ import { remindersRepo } from '@kiko/reminders/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { categoryRulesRepo } from './category-rules.repo';
-
-type ReviewCandidateQuery = PromiseLike<ReviewCandidate[]> & {
-  toSQL: () => { sql: string; params: unknown[] };
-};
-
-const reviewCandidateRowsQuery = (): ReviewCandidateQuery =>
-  (
-    categoryRulesRepo as unknown as { reviewCandidateRowsQuery: () => ReviewCandidateQuery }
-  ).reviewCandidateRowsQuery();
 
 type Seed = {
   id: string;
@@ -135,14 +125,18 @@ const preparedRules = async (): Promise<PreparedRules> =>
   prepareRules(await categoryRulesRepo.allQuery());
 
 const currentGroups = async (): Promise<ReviewGroup[]> =>
-  planReviewGroups(await preparedRules(), await reviewCandidateRowsQuery(), knownCategoryKeys());
+  planReviewGroups(
+    await preparedRules(),
+    await categoryRulesRepo.reviewCandidateRowsQuery(),
+    knownCategoryKeys(),
+  );
 
 // A row is listed when the plan keeps it alone: groups never depend on each other's rows.
 const listedIdsOf = async (group: ReviewGroup): Promise<string[]> => {
   const prepared = await preparedRules();
   const known = knownCategoryKeys();
 
-  return (await reviewCandidateRowsQuery())
+  return (await categoryRulesRepo.reviewCandidateRowsQuery())
     .filter((row) => planReviewGroups(prepared, [row], known).at(0)?.key === group.key)
     .map((row) => row.id)
     .sort();
@@ -263,7 +257,9 @@ describe('the review list against the rows a tap writes', () => {
     const prefixRule: ReviewGroup['rule'] = { kind: 'nameStartsWith', text: 'ATB' };
     const preview = await previewOf(prefixRule);
 
-    expect((await reviewCandidateRowsQuery()).map((row) => row.id)).toContain('atb-hand');
+    expect((await categoryRulesRepo.reviewCandidateRowsQuery()).map((row) => row.id)).toContain(
+      'atb-hand',
+    );
     expect(await listedIdsOf(group)).not.toContain('atb-hand');
     expect(preview.names).not.toContain('ATB 0340');
 
@@ -304,7 +300,7 @@ describe('the review list against the rows a tap writes', () => {
       untrackedCounterpart: 'untracked',
     });
 
-    const ids = (await reviewCandidateRowsQuery()).map((row) => row.id);
+    const ids = (await categoryRulesRepo.reviewCandidateRowsQuery()).map((row) => row.id);
 
     expect(ids).toEqual(expect.arrayContaining(['leg-paired', 'leg-untracked']));
     expect((await currentGroups()).map((group) => group.key)).not.toContain('leg shop');
@@ -342,7 +338,7 @@ describe('reviewCandidateRowsQuery', () => {
     insertRow({ id: 'blank-null', description: '', category: null });
     insertRow({ id: 'blank-orphan', description: '', category: 'ghost' });
 
-    const query = reviewCandidateRowsQuery();
+    const query = categoryRulesRepo.reviewCandidateRowsQuery();
     const ids = (await query).map((row) => row.id);
 
     expect(query.toSQL().sql.toLowerCase()).toMatch(ARMS_IN_ONE_GROUP);
