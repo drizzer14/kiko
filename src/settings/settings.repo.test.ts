@@ -2,17 +2,24 @@
 // transaction). Override `write` to run the callback against a fake transaction
 // handle so the test can capture the update payload.
 let mockDatabaseTransaction: unknown;
+// The recurring merchant choices run on a real migrated engine: their stored JSON, a repeated
+// key and an absent key are what a fake handle answers by its own rules.
+let mockRealDatabase: DatabaseSync;
 jest.mock('@kiko/db/client', () => {
   const actual = jest.requireActual('@kiko/db/client');
+  const { executingClient } = require('@kiko/test-support/real-sqlite');
 
   return {
     ...actual,
+    database: executingClient(() => mockRealDatabase).database,
     write: (work: (db: unknown) => unknown) => work(mockDatabaseTransaction),
   };
 });
 
 import { database } from '@kiko/db';
+import { DatabaseSync } from 'node:sqlite';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
+import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
 
 import { isReminderOfferDismissed, settingsRepo } from './settings.repo';
 import { EMPTY_HISTORY_BACKFILL_STATE, parseHistoryBackfillState } from './history-backfill-state';
@@ -322,5 +329,234 @@ describe('isReminderOfferDismissed', () => {
     expect(isReminderOfferDismissed(settingsRow, 'account-1', 'statement_import')).toBe(true);
     expect(isReminderOfferDismissed(settingsRow, 'account-1', 'add_transactions')).toBe(false);
     expect(isReminderOfferDismissed(settingsRow, 'account-2', 'statement_import')).toBe(false);
+  });
+});
+
+type Choice = { name: string; hidden: true };
+
+type ChoiceFunctions = {
+  hideRecurringMerchant: (key: string, name: string) => Promise<void>;
+  showRecurringMerchantAgain: (key: string) => Promise<void>;
+  recurringMerchantChoicesQuery: () => Promise<readonly object[]>;
+  recurringMerchantChoicesOf: (stored: unknown) => ReadonlyMap<string, Choice>;
+};
+
+// The functions are read by name at run time while they do not exist yet, so the file
+// type-checks; a missing one fails the case that calls it, saying which.
+const choiceFunction = <Name extends keyof ChoiceFunctions>(name: Name): ChoiceFunctions[Name] => {
+  const found = (settingsRepo as unknown as Partial<ChoiceFunctions>)[name];
+
+  if (typeof found !== 'function') {
+    throw new Error(`settingsRepo.${name} is missing`);
+  }
+
+  return found as ChoiceFunctions[Name];
+};
+
+const hide = (key: string, name: string) => choiceFunction('hideRecurringMerchant')(key, name);
+
+const showAgain = (key: string) => choiceFunction('showRecurringMerchantAgain')(key);
+
+const COLUMN = 'recurring_merchant_choices';
+
+const writeCounts = { count: 0 };
+
+const countingHandle = (engine: DatabaseSync): unknown => {
+  const handle = executingDrizzle<typeof database>(engine);
+
+  return new Proxy(handle, {
+    get: (target, property) => {
+      const member = Reflect.get(target, property) as unknown;
+
+      if (property === 'update' || property === 'insert' || property === 'delete') {
+        writeCounts.count += 1;
+      }
+
+      return typeof member === 'function' ? member.bind(target) : member;
+    },
+  });
+};
+
+const storeRawChoices = (stored: string): void => {
+  mockRealDatabase.prepare(`UPDATE settings SET ${COLUMN} = ? WHERE id = 1`).run(stored);
+};
+
+const storedText = (): string | null =>
+  (
+    mockRealDatabase.prepare(`SELECT ${COLUMN} AS stored FROM settings WHERE id = 1`).get() as {
+      stored: string | null;
+    }
+  ).stored;
+
+const storedEntries = (): Map<string, unknown> =>
+  new Map(Object.entries(JSON.parse(storedText() ?? '{}') as object));
+
+const readChoices = async (): Promise<ReadonlyMap<string, Choice>> => {
+  const rows = await choiceFunction('recurringMerchantChoicesQuery')();
+  const [column] = Object.values(rows[0] ?? {}) as unknown[];
+
+  return choiceFunction('recurringMerchantChoicesOf')(column);
+};
+
+const transactionsFingerprint = (): { count: number; checksum: string } => {
+  const rows = mockRealDatabase.prepare('SELECT * FROM transactions ORDER BY id').all();
+
+  return { count: rows.length, checksum: JSON.stringify(rows) };
+};
+
+describe('settingsRepo recurring merchant choices, on a real database', () => {
+  beforeEach(async () => {
+    mockRealDatabase = new DatabaseSync(':memory:');
+    applyAllMigrations(mockRealDatabase);
+    mockRealDatabase.exec(`
+      INSERT INTO accounts (id, name, kind) VALUES ('own', 'Manual', 'bank');
+      INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units)
+        VALUES ('wallet', 'own', 'Wallet', 'cash', 'UAH', 0);
+      INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, source)
+        VALUES ('first', 'wallet', -29900, 1700000000000, 'Netflix', 'manual'),
+               ('second', 'wallet', -5000, 1700000100000, 'ATB', 'manual');
+    `);
+    mockDatabaseTransaction = countingHandle(mockRealDatabase);
+    await settingsRepo.ensure();
+    writeCounts.count = 0;
+  });
+
+  it('stores a hide as the merchant name and a hidden flag', async () => {
+    await hide('atb', 'ATB');
+
+    expect(storedEntries()).toEqual(new Map([['atb', { name: 'ATB', hidden: true }]]));
+    expect(await readChoices()).toEqual(new Map([['atb', { name: 'ATB', hidden: true }]]));
+  });
+
+  it('keeps the first merchant when a second is hidden', async () => {
+    await hide('atb', 'ATB');
+    await hide('silpo', 'Silpo');
+
+    expect(await readChoices()).toEqual(
+      new Map([
+        ['atb', { name: 'ATB', hidden: true }],
+        ['silpo', { name: 'Silpo', hidden: true }],
+      ]),
+    );
+  });
+
+  it('holds one entry with the last name when a merchant is hidden twice', async () => {
+    await hide('atb', 'ATB');
+    await hide('atb', 'Atb Market');
+
+    expect(storedEntries()).toEqual(new Map([['atb', { name: 'Atb Market', hidden: true }]]));
+  });
+
+  it('removes one entry on show again and keeps the others', async () => {
+    await hide('atb', 'ATB');
+    await hide('silpo', 'Silpo');
+
+    await showAgain('atb');
+
+    expect(await readChoices()).toEqual(new Map([['silpo', { name: 'Silpo', hidden: true }]]));
+  });
+
+  it('writes nothing when show again names a key that is not stored', async () => {
+    await hide('atb', 'ATB');
+    writeCounts.count = 0;
+
+    await showAgain('unknown');
+
+    expect(writeCounts.count).toBe(0);
+    expect(await readChoices()).toEqual(new Map([['atb', { name: 'ATB', hidden: true }]]));
+  });
+
+  it('writes when show again names a stored key', async () => {
+    await hide('atb', 'ATB');
+    writeCounts.count = 0;
+
+    await showAgain('atb');
+
+    expect(writeCounts.count).toBeGreaterThan(0);
+  });
+
+  it('touches no transactions row on a hide or a show again', async () => {
+    const before = transactionsFingerprint();
+
+    await hide('atb', 'ATB');
+    await showAgain('atb');
+    await hide('silpo', 'Silpo');
+
+    expect(before.count).toBe(2);
+    expect(transactionsFingerprint()).toEqual(before);
+  });
+
+  it('reads a changed transactions row as a different fingerprint', () => {
+    const before = transactionsFingerprint();
+
+    mockRealDatabase.exec("UPDATE transactions SET description = 'Changed' WHERE id = 'first'");
+
+    expect(transactionsFingerprint().checksum).not.toBe(before.checksum);
+  });
+
+  it.each([
+    ['an array', '[{"name":"ATB","hidden":true}]'],
+    ['a number', '7'],
+    ['a string', '"atb"'],
+  ])('reads %s as no choice and replaces it on the next hide', async (_title, stored) => {
+    storeRawChoices(stored);
+
+    expect(await readChoices()).toEqual(new Map());
+
+    await hide('atb', 'ATB');
+
+    expect(storedEntries()).toEqual(new Map([['atb', { name: 'ATB', hidden: true }]]));
+  });
+
+  it.each([
+    ['a name that is not a string', { name: 7, hidden: true }],
+    ['a hidden flag of false', { name: 'Bad', hidden: false }],
+    ['a hidden flag that is a string', { name: 'Bad', hidden: 'true' }],
+    ['no hidden flag', { name: 'Bad' }],
+    ['no name', { hidden: true }],
+    ['a null entry', null],
+    ['a string entry', 'Bad'],
+  ])('drops an entry with %s alone beside a good one', async (_title, bad) => {
+    storeRawChoices(JSON.stringify({ good: { name: 'ATB', hidden: true }, bad }));
+
+    const choices = await readChoices();
+
+    expect(choices.get('good')).toEqual({ name: 'ATB', hidden: true });
+    expect(choices.has('bad')).toBe(false);
+
+    await hide('silpo', 'Silpo');
+
+    expect(storedEntries()).toEqual(
+      new Map([
+        ['good', { name: 'ATB', hidden: true }],
+        ['silpo', { name: 'Silpo', hidden: true }],
+      ]),
+    );
+  });
+
+  it('reads a key that names an object property as absent while nothing is stored', async () => {
+    expect((await readChoices()).has('constructor')).toBe(false);
+    expect((await readChoices()).has('__proto__')).toBe(false);
+  });
+
+  it('reads constructor and __proto__ back beside a plain key and keeps all on the next write', async () => {
+    await hide('atb', 'ATB');
+    await hide('constructor', 'Constructor Shop');
+    await hide('__proto__', 'Proto Shop');
+
+    const choices = await readChoices();
+
+    expect(choices.has('constructor')).toBe(true);
+    expect(choices.get('constructor')).toEqual({ name: 'Constructor Shop', hidden: true });
+    expect(choices.get('__proto__')).toEqual({ name: 'Proto Shop', hidden: true });
+    expect(choices.get('atb')).toEqual({ name: 'ATB', hidden: true });
+    expect(choices.size).toBe(3);
+
+    await hide('silpo', 'Silpo');
+
+    const afterWrite = await readChoices();
+
+    expect([...afterWrite.keys()].sort()).toEqual(['__proto__', 'atb', 'constructor', 'silpo']);
+    expect(afterWrite.get('__proto__')).toEqual({ name: 'Proto Shop', hidden: true });
   });
 });
