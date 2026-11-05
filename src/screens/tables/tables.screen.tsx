@@ -46,7 +46,8 @@ type TablesScreenProps = {
  */
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
-  // Visibility, not focus: in two panes this screen is on screen without being the focused route.
+  // Visibility, not focus: in two panes the panes behind this screen are in view without being the
+  // focused route, and this screen is the only one read while it shows.
   const isVisible = useIsScreenVisible();
 
   // A filter sheet is a native Modal that stays presented over another tab, so the controls are
