@@ -49,22 +49,22 @@ type RouteParams = RecurringSeriesScreenProps['route']['params'];
 // counterpart holding and needs no holding names.
 const NO_HOLDING_TEXT: ReadonlyMap<string, string> = new Map();
 
-// The series by its id; on a miss (an older import moved the earliest charge) the one series with
-// the same key, currency and period. With none or several there is no series: a guess could show
-// another merchant's charges.
+// The series by its id, when it also has the route's merchant key and currency: an id can pass to
+// another merchant's series when a charge is renamed. On a miss (an older import moved the earliest
+// charge) the one series with the same key, currency and period. With none or several there is no
+// series: a guess could show another merchant's charges.
 const seriesOfRoute = (
   series: readonly RecurringSeries[],
   { seriesId, merchantKey, currency, period }: RouteParams,
 ): RecurringSeries | undefined => {
-  const sameKind = series.filter(
-    (candidate) =>
-      candidate.merchantKey === merchantKey &&
-      candidate.currency === currency &&
-      candidate.period === period,
+  const sameMerchant = series.filter(
+    (candidate) => candidate.merchantKey === merchantKey && candidate.currency === currency,
   );
+  const sameKind = sameMerchant.filter((candidate) => candidate.period === period);
 
   return (
-    series.find(({ id }) => id === seriesId) ?? (sameKind.length === 1 ? sameKind[0] : undefined)
+    sameMerchant.find(({ id }) => id === seriesId) ??
+    (sameKind.length === 1 ? sameKind[0] : undefined)
   );
 };
 

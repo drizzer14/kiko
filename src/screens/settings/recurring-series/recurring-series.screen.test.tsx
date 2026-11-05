@@ -449,7 +449,7 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
     );
 
     expect(within(found.getByTestId(chargeTestId('netflix-3'))).getByText('Netflix')).toBeTruthy();
-    found.unmount();
+    await found.unmount();
 
     const missing = await renderScreen(
       { series: [], isLoading: false },
@@ -458,6 +458,85 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
     );
 
     expect(missing.getByTestId(EMPTY)).not.toHaveTextContent(/netflix/i);
+  });
+
+  describe('after a charge was renamed into another merchant', () => {
+    const NETFLIX_IDS = ['netflix-1', 'netflix-2', 'netflix-3', 'netflix-4'];
+    const RENAMED_LEDGER = [
+      ...NETFLIX_IDS.map((id, index) =>
+        chargeRow(id, new Date(2026, 5 + index, 15, 9, 30).getTime(), 'Netflix'),
+      ),
+      chargeRow('spotify-2', new Date(2026, 6, 20, 9, 30).getTime(), 'Spotify'),
+      chargeRow('spotify-3', new Date(2026, 7, 20, 9, 30).getTime(), 'Spotify'),
+    ];
+    const netflixRoute = paramsOf(
+      seriesWith({
+        id: 'netflix-1',
+        chargeIds: ['netflix-4', 'netflix-3', 'netflix-2', 'netflix-1'],
+      }),
+    );
+    // The first Netflix charge became "Spotify": the Spotify series now starts at that row and
+    // the Netflix series at the next one.
+    const spotifyHoldingTheOldId = seriesWith({
+      id: 'netflix-1',
+      merchantKey: 'spotify',
+      name: 'Spotify',
+      chargeIds: ['spotify-3', 'spotify-2', 'netflix-1'],
+    });
+    const netflixFromTheNextCharge = seriesWith({
+      id: 'netflix-2',
+      chargeIds: ['netflix-4', 'netflix-3', 'netflix-2'],
+    });
+
+    it('does not show the other merchant under an id that it now holds', async () => {
+      const { getAllByTestId, getByTestId, queryByTestId } = await renderScreen(
+        { series: [spotifyHoldingTheOldId, netflixFromTheNextCharge], isLoading: false },
+        netflixRoute,
+        RENAMED_LEDGER,
+      );
+
+      expect(shownChargeIds(getAllByTestId)).toEqual([
+        chargeTestId('netflix-4'),
+        chargeTestId('netflix-3'),
+        chargeTestId('netflix-2'),
+      ]);
+      expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+      expect(queryByTestId(chargeTestId('spotify-2'))).toBeNull();
+      expect(queryByTestId(chargeTestId('netflix-1'))).toBeNull();
+      expect(queryByTestId(EMPTY)).toBeNull();
+    });
+
+    it('shows the neutral text when no series of the route is left', async () => {
+      const { getByTestId, queryAllByTestId } = await renderScreen(
+        { series: [spotifyHoldingTheOldId], isLoading: false },
+        netflixRoute,
+        RENAMED_LEDGER,
+      );
+
+      expect(getByTestId(EMPTY)).toBeTruthy();
+      expect(queryAllByTestId(CHARGE_ROW)).toHaveLength(0);
+    });
+
+    it('still shows a series found by its id under the same key and currency', async () => {
+      const sameMerchantNewPeriod = seriesWith({
+        id: 'netflix-1',
+        period: 'weekly',
+        recurrence: { kind: 'onWeekday', weekday: 2 },
+        chargeIds: ['netflix-4', 'netflix-3', 'netflix-1'],
+      });
+      const { getAllByTestId, getByTestId } = await renderScreen(
+        { series: [sameMerchantNewPeriod, spotifyHoldingTheOldId], isLoading: false },
+        netflixRoute,
+        RENAMED_LEDGER,
+      );
+
+      expect(shownChargeIds(getAllByTestId)).toEqual([
+        chargeTestId('netflix-4'),
+        chargeTestId('netflix-3'),
+        chargeTestId('netflix-1'),
+      ]);
+      expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+    });
   });
 
   it('states the neutral text literally', () => {
