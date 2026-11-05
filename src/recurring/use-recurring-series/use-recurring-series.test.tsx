@@ -32,19 +32,29 @@ jest.mock('@kiko/settings', () => {
   };
 });
 
-const mockDetectRecurringSeries = jest.fn();
+// The two parts of detection the hook calls, so a rule moved into the marked memo is counted.
+const mockChargeGroupsOf = jest.fn();
+const mockSeriesOfGroups = jest.fn();
 jest.mock('@kiko/recurring/detection', () => {
   const actual = jest.requireActual('@kiko/recurring/detection');
 
   return {
     ...actual,
-    detectRecurringSeries: (...args: unknown[]) => mockDetectRecurringSeries(...args),
+    chargeGroupsOf: (...args: unknown[]) => mockChargeGroupsOf(...args),
+    seriesOfGroups: (...args: unknown[]) => mockSeriesOfGroups(...args),
   };
 });
 
+import type {
+  RecurringMark,
+  RecurringSeries,
+  RecurringLedgerRow,
+  chargeGroupsOf,
+  seriesOfGroups,
+} from '@kiko/recurring/detection';
 import { startOfLocalDay } from '@kiko/dates';
 import type { AccountRow, HoldingRow } from '@kiko/db';
-import type { RecurringLedgerRow, detectRecurringSeries } from '@kiko/recurring/detection';
+import type { MarkedChain } from '@kiko/recurring/marked-series';
 
 import { useRecurringSeries } from './use-recurring-series';
 
@@ -110,11 +120,10 @@ let listenedTables: Map<string, string[]>;
 // How often the ledger read ran again: a ledger write, or a write to a table it listens to.
 let ledgerReruns: number;
 
-const actualDetection = (
-  jest.requireActual('@kiko/recurring/detection') as {
-    detectRecurringSeries: typeof detectRecurringSeries;
-  }
-).detectRecurringSeries;
+const actualDetection = jest.requireActual('@kiko/recurring/detection') as {
+  chargeGroupsOf: typeof chargeGroupsOf;
+  seriesOfGroups: typeof seriesOfGroups;
+};
 
 const optionsOfEveryCall = (): unknown[] => mockUseLiveQuery.mock.calls.map((call) => call[3]);
 
@@ -124,8 +133,10 @@ beforeEach(() => {
   jest.spyOn(Date, 'now').mockImplementation(() => clock);
   clock = MORNING;
   mockUseIsScreenVisible.mockReturnValue(true);
-  mockDetectRecurringSeries.mockReset();
-  mockDetectRecurringSeries.mockImplementation(actualDetection);
+  mockChargeGroupsOf.mockReset();
+  mockChargeGroupsOf.mockImplementation(actualDetection.chargeGroupsOf);
+  mockSeriesOfGroups.mockReset();
+  mockSeriesOfGroups.mockImplementation(actualDetection.seriesOfGroups);
   mockUseLiveQuery.mockReset();
   committed = worldOf([...monthlyCharges('Netflix', -41_900)]);
   pending = undefined;
@@ -291,9 +302,12 @@ describe('useRecurringSeries', () => {
     it('once on mount, with the start of the local day as now', async () => {
       await renderHook(() => useRecurringSeries());
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
-      expect(mockDetectRecurringSeries.mock.calls[0][1]).toBe(startOfLocalDay(MORNING));
-      expect(mockDetectRecurringSeries.mock.calls[0][0]).toEqual({
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups.mock.calls[0][1]).toBe(startOfLocalDay(MORNING));
+      // The input is the first part's, since the second part reads its groups.
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
+      expect(mockChargeGroupsOf.mock.calls[0][1]).toBe(startOfLocalDay(MORNING));
+      expect(mockChargeGroupsOf.mock.calls[0][0]).toEqual({
         rows: committed.transactions,
         holdings: committed.holdings,
         accounts: committed.accounts,
@@ -316,12 +330,12 @@ describe('useRecurringSeries', () => {
       await settle('transactions', fullWorld.transactions);
       await settle('holdings', fullWorld.holdings);
 
-      expect(mockDetectRecurringSeries).not.toHaveBeenCalled();
+      expect(mockSeriesOfGroups).not.toHaveBeenCalled();
       expect(result.current.series).toEqual([]);
 
       await settle('accounts', fullWorld.accounts);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
       expect(names(result.current.series)).toEqual(['Netflix']);
     });
 
@@ -340,7 +354,7 @@ describe('useRecurringSeries', () => {
       await setVisible(rerender, true);
 
       expect(shown.every((frame) => frame.join() === 'Netflix')).toBe(true);
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
     });
 
     it('once for one fire of the ledger read, and for no re-render after it', async () => {
@@ -349,12 +363,12 @@ describe('useRecurringSeries', () => {
       pending = worldOf([...committed.transactions, ...monthlyCharges('Spotify', -9_900)]);
       await setVisible(rerender, true);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(2);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
 
       await setVisible(rerender, true);
       await setVisible(rerender, true);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(2);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
     });
 
     it('not at all for a write made while hidden, until the screen is back, then once', async () => {
@@ -364,11 +378,11 @@ describe('useRecurringSeries', () => {
       pending = worldOf([...committed.transactions, ...monthlyCharges('Spotify', -9_900)]);
       await setVisible(rerender, false);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
 
       await setVisible(rerender, true);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(2);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
     });
 
     it('not on a return to the screen on the same local day', async () => {
@@ -378,7 +392,7 @@ describe('useRecurringSeries', () => {
       clock = EVENING_OF_THE_SAME_DAY;
       await setVisible(rerender, true);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
     });
 
     it('once on a return to the screen on the next local day, with that day as now', async () => {
@@ -388,11 +402,9 @@ describe('useRecurringSeries', () => {
       clock = NEXT_MORNING;
       await setVisible(rerender, true);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(2);
-      expect(mockDetectRecurringSeries.mock.calls[1][1]).toBe(startOfLocalDay(NEXT_MORNING));
-      expect(mockDetectRecurringSeries.mock.calls[1][1]).not.toBe(
-        mockDetectRecurringSeries.mock.calls[0][1],
-      );
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
+      expect(mockSeriesOfGroups.mock.calls[1][1]).toBe(startOfLocalDay(NEXT_MORNING));
+      expect(mockSeriesOfGroups.mock.calls[1][1]).not.toBe(mockSeriesOfGroups.mock.calls[0][1]);
     });
   });
 });
@@ -492,7 +504,7 @@ describe('useRecurringSeries — the merchant choices', () => {
       });
 
       expect(result.current.isLoading).toBe(true);
-      expect(mockDetectRecurringSeries).not.toHaveBeenCalled();
+      expect(mockSeriesOfGroups).not.toHaveBeenCalled();
       expect(result.current.series).toEqual([]);
 
       await land('settings', () => {
@@ -500,7 +512,7 @@ describe('useRecurringSeries — the merchant choices', () => {
       });
 
       expect(result.current.isLoading).toBe(false);
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
       expect(names(result.current.series)).toEqual(['Netflix']);
       expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
     });
@@ -513,7 +525,7 @@ describe('useRecurringSeries — the merchant choices', () => {
       await setVisible(rerender, true);
 
       expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
       expect(ledgerReruns).toBe(0);
       expect(result.current.series).toBe(seriesBefore);
     });
@@ -533,12 +545,12 @@ describe('useRecurringSeries — the merchant choices', () => {
       pendingSettingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
       await setVisible(rerender, true);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
 
       pending = worldOf([...committed.transactions, ...monthlyCharges('Spotify', -9_900)]);
       await setVisible(rerender, true);
 
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(2);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
     });
 
     it('shows a settings write made while hidden once the screen is back, running nothing', async () => {
@@ -553,7 +565,181 @@ describe('useRecurringSeries — the merchant choices', () => {
       await setVisible(rerender, true);
 
       expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
-      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe('useRecurringSeries — the marks', () => {
+  const NETFLIX_MARK: RecurringMark = {
+    currency: 'UAH',
+    amountMinorUnits: 41_900,
+    period: 'monthly',
+  };
+  const MARKED_NETFLIX = [
+    { recurringMerchantChoices: { netflix: { name: 'Netflix', marks: [NETFLIX_MARK] } } },
+  ];
+  const GHOST_MARK: RecurringMark = { currency: 'UAH', amountMinorUnits: 7_700, period: 'yearly' };
+  const MARKED_GHOST = [
+    { recurringMerchantChoices: { ghost: { name: 'Ghost', marks: [GHOST_MARK] } } },
+  ];
+
+  type MarkedFields = { markedSeries?: RecurringSeries[]; withoutCharges?: MarkedChain[] };
+
+  // Read by name, so the file type-checks before the hook returns these two.
+  const markedFieldsOf = (hook: object): MarkedFields => hook as MarkedFields;
+
+  const readsOf = (table: string): unknown[][] =>
+    mockUseLiveQuery.mock.calls.filter((call) => (call[1] as string[])[0] === table);
+
+  const ledgerReadsAreOnTheLedgerAlone = (): boolean =>
+    readsOf('transactions').every((call) => (call[1] as string[]).join() === 'transactions');
+
+  it('hands over the marked series, and leaves out the detected series that shares its rows', async () => {
+    committed = worldOf([
+      ...monthlyCharges('Netflix', -41_900),
+      ...monthlyCharges('Spotify', -9_900),
+    ]);
+    settingsRows = MARKED_NETFLIX;
+
+    const { result } = await renderHook(() => useRecurringSeries());
+    const marked = markedFieldsOf(result.current);
+
+    expect(names(marked.markedSeries ?? [])).toEqual(['Netflix']);
+    expect(marked.markedSeries?.[0]?.marks).toEqual([NETFLIX_MARK]);
+    expect(names(result.current.series)).toEqual(['Spotify']);
+    expect(marked.withoutCharges).toEqual([]);
+  });
+
+  it('hands over every detected series, and no marked one, when nothing is marked', async () => {
+    committed = worldOf([
+      ...monthlyCharges('Netflix', -41_900),
+      ...monthlyCharges('Spotify', -9_900),
+    ]);
+
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect(names(result.current.series)).toEqual(['Netflix', 'Spotify']);
+    expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
+    expect(markedFieldsOf(result.current).withoutCharges).toEqual([]);
+  });
+
+  it('hands over a mark with no charge as a chain without charges', async () => {
+    settingsRows = MARKED_GHOST;
+
+    const { result } = await renderHook(() => useRecurringSeries());
+    const marked = markedFieldsOf(result.current);
+
+    expect(marked.markedSeries).toEqual([]);
+    expect(marked.withoutCharges).toEqual([
+      { key: 'ghost', name: 'Ghost', currency: 'UAH', period: 'yearly', marks: [GHOST_MARK] },
+    ]);
+    expect(names(result.current.series)).toEqual(['Netflix']);
+  });
+
+  describe('a mark written while the screen shows', () => {
+    it('runs no grouping, no detection and no new ledger read', async () => {
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+
+      expect(names(result.current.series)).toEqual(['Netflix']);
+      expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
+
+      const ledgerReadsBefore = readsOf('transactions').length;
+      const holdingReadsBefore = readsOf('holdings').length;
+
+      pendingSettingsRows = MARKED_NETFLIX;
+      await setVisible(rerender, true);
+
+      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
+      expect(result.current.series).toEqual([]);
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
+      expect(ledgerReruns).toBe(0);
+      // The settings write re-renders the hook, and every read is called once per render: a
+      // second ledger read would call the ledger more often than the holdings.
+      expect(readsOf('transactions').length - ledgerReadsBefore).toBe(
+        readsOf('holdings').length - holdingReadsBefore,
+      );
+      expect(ledgerReadsAreOnTheLedgerAlone()).toBe(true);
+    });
+
+    it('runs the same two parts once for a ledger write beside it, which the mark did not stand for', async () => {
+      settingsRows = MARKED_NETFLIX;
+
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
+
+      pending = worldOf([...committed.transactions, ...monthlyCharges('Spotify', -9_900)]);
+      await setVisible(rerender, true);
+
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(2);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
+      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
+      expect(names(result.current.series)).toEqual(['Spotify']);
+    });
+
+    it('hands the detected series back for a mark removed, running nothing', async () => {
+      settingsRows = MARKED_NETFLIX;
+
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+
+      expect(result.current.series).toEqual([]);
+
+      pendingSettingsRows = [];
+      await setVisible(rerender, true);
+
+      expect(names(result.current.series)).toEqual(['Netflix']);
+      expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
+      expect(ledgerReruns).toBe(0);
+    });
+
+    it('runs nothing for a mark written while hidden, and shows it once the screen is back', async () => {
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+
+      await setVisible(rerender, false);
+      pendingSettingsRows = MARKED_NETFLIX;
+      await setVisible(rerender, false);
+
+      expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
+
+      await setVisible(rerender, true);
+
+      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('with a mark stored', () => {
+    beforeEach(() => {
+      settingsRows = MARKED_NETFLIX;
+    });
+
+    it('runs neither part on a return to the screen on the same local day', async () => {
+      const { rerender } = await renderHook(() => useRecurringSeries());
+
+      await setVisible(rerender, false);
+      clock = EVENING_OF_THE_SAME_DAY;
+      await setVisible(rerender, true);
+
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs each part once on a return on the next local day, and keeps the marked series', async () => {
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+
+      await setVisible(rerender, false);
+      clock = NEXT_MORNING;
+      await setVisible(rerender, true);
+
+      expect(mockChargeGroupsOf).toHaveBeenCalledTimes(2);
+      expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
+      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
     });
   });
 });
