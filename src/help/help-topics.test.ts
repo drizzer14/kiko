@@ -339,7 +339,7 @@ describe('reading how a catalogue key is used in source', () => {
   });
 });
 
-// A holding a sync owns takes no copy (O92), so the sentence that says what "Duplicate" does
+// A holding a sync owns takes no copy, so the sentence that says what "Duplicate" does
 // names the exception, in each language.
 describe('the Duplicate sentence of the edit-transaction help', () => {
   const lastSentenceOf = (values: Map<string, string>): string | undefined =>

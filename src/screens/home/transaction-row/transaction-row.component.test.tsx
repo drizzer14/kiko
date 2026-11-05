@@ -64,7 +64,7 @@ const renderRow = (
   onPress = jest.fn(),
   onDuplicate = jest.fn(),
   selected = false,
-  onSyncedHolding = false,
+  isOnSyncedHolding = false,
 ) =>
   render(
     <TransactionRow
@@ -79,7 +79,7 @@ const renderRow = (
       onViewAccount={onViewAccount}
       onViewHolding={onViewHolding}
       selected={selected}
-      onSyncedHolding={onSyncedHolding}
+      isOnSyncedHolding={isOnSyncedHolding}
     />,
     { wrapper: GestureRootWrapper },
   );

@@ -2077,7 +2077,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
   // Defense in depth: the counterpart picker already excludes a synced
   // holding, but a write reached directly (not through the picker)
   // must refuse the same way — a sync already owns that holding's balance. The refusal is the
-  // gate's own literal (O94), so the form can tell it apart from any other failed write.
+  // gate's own literal, so the form can tell it apart from any other failed write.
   it('throws when the counterpart holding is synced, writing nothing', async () => {
     const { databaseTransaction, inserts, updates } = makeExchangeDatabaseTransaction([
       [{ accountId: 'sync-acc', metadata: { monobankId: 'mono-1' } }],

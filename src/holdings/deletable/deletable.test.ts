@@ -4,7 +4,6 @@ import {
   isSyncedHolding,
   syncedHoldingIds,
   isSyncedTransaction,
-  SYNCED_HOLDING_REFUSAL,
   isImportedTransaction,
   isDeletableTransaction,
 } from './deletable';
@@ -140,11 +139,5 @@ describe('syncedHoldingIds', () => {
     ];
 
     expect(syncedHoldingIds(holdings, accountById)).toEqual(new Set(['keyed']));
-  });
-});
-
-describe('SYNCED_HOLDING_REFUSAL', () => {
-  it('is the message the repository throws and the form reads', () => {
-    expect(SYNCED_HOLDING_REFUSAL).toBe('transactions/synced-holding');
   });
 });

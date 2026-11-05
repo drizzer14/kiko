@@ -26,7 +26,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
   categoryKeyForRow,
   onPress,
   onDuplicate,
-  onSyncedHolding,
+  isOnSyncedHolding,
   onViewAccount,
   onViewHolding,
   selected,
@@ -83,7 +83,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
       // A synced row is not duplicable, and neither is a manual row on a holding a sync owns:
       // its copy would be refused at save. Pass no handler. Any other manual row's Duplicate
       // opens the create form pre-filled from this row.
-      onDuplicate={isSynced || onSyncedHolding ? undefined : () => onDuplicate(item.id)}
+      onDuplicate={isSynced || isOnSyncedHolding ? undefined : () => onDuplicate(item.id)}
       onViewAccount={() => onViewAccount(item)}
       onViewHolding={() => onViewHolding(item)}
       liftOnHold

@@ -130,7 +130,7 @@ const setBalance = (holdingId: string, balanceMinorUnits: number): void => {
 };
 
 // A write onto a holding of the connected account, made as the app made it before the account
-// connected: the write gate (O92) refuses a row on a holding a sync owns, so the account is
+// connected: the write gate refuses a row on a holding a sync owns, so the account is
 // disconnected for the write and connected again after it. The world a delete then meets is the
 // real one of a row typed before the reconnect.
 const writtenBeforeTheConnect = async (write: () => Promise<unknown>): Promise<void> => {

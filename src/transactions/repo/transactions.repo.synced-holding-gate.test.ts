@@ -1,5 +1,5 @@
 // A holding that a sync owns right now takes no manual row: `recordManualTransaction` refuses it
-// before the insert, and a refusal rolls back the whole write of the caller (O92, O94). This file
+// before the insert, and a refusal rolls back the whole write of the caller. This file
 // runs the real repo on a migrated engine: each case reads back the balances and the rows, and
 // the disconnect is the one the app runs for the kind.
 let mockDatabase: DatabaseSync;
@@ -62,10 +62,16 @@ const disconnect = (institution: Institution): Promise<void> =>
     ? accountsRepo.disconnect(SYNCED_ACCOUNT)
     : disconnectCryptoAccount(SYNCED_ACCOUNT, institution satisfies BalanceProviderId);
 
-const seedAccounts = (institution: string | null): void => {
+// A Monobank connect lands on a bank account, the other kinds on a crypto account.
+const accountKindOf = (institution: string | null): string =>
+  institution === 'monobank' ? 'bank' : 'crypto';
+
+const seedAccounts = (institution: string | null, kind = accountKindOf(institution)): void => {
   run(
-    "INSERT INTO accounts (id, name, kind, institution) VALUES (?, 'Synced', 'crypto', ?)",
+    'INSERT INTO accounts (id, name, kind, institution) VALUES (?, ?, ?, ?)',
     SYNCED_ACCOUNT,
+    'Synced',
+    kind,
     institution,
   );
   run(`INSERT INTO accounts (id, name, kind) VALUES ('${PLAIN_ACCOUNT}', 'Plain', 'cash')`);
@@ -143,7 +149,7 @@ describe('recordManual on a holding a sync owns', () => {
   });
 
   it('a keyed holding on a plain account takes the row after one read of the account', async () => {
-    seedAccounts(null);
+    seedAccounts(null, 'bank');
     insertHolding(SYNCED, 'card', 'UAH', OPENING, {
       accountId: SYNCED_ACCOUNT,
       metadata: { monobankId: 'synced-key' },

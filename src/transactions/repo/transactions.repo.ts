@@ -2426,6 +2426,8 @@ export const transactionsRepo = {
    * on a partial failure. The balance moves by the row's full amount whatever
    * its date, a back-dated row included: every transaction updates the balance. Returns the new
    * row's id; `categorySetByHand` marks a category the user picked, which no rule replaces.
+   * Refuses a holding that a sync owns now (a synced key on an account that is connected): the
+   * write throws `SYNCED_HOLDING_REFUSAL` before the insert and rolls back, `alongside` included.
    */
   recordManual: (input: ManualTransaction, alongside?: Alongside) =>
     write(async (databaseTransaction) => {

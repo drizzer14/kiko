@@ -565,7 +565,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
-          onSyncedHolding={syncedIds.has(item.holdingId)}
+          isOnSyncedHolding={syncedIds.has(item.holdingId)}
           onViewAccount={handleViewAccount}
           onViewHolding={handleViewHolding}
           selected={item.id === editedTransactionId}

@@ -26,7 +26,7 @@ export type TransactionRowProps = {
   onDuplicate: (transactionId: string) => void;
   // Whether the row's own holding is owned by a sync right now. A boolean per row, so a change of
   // the holdings list re-renders only the rows whose answer flipped.
-  onSyncedHolding: boolean;
+  isOnSyncedHolding: boolean;
   // Open the account / the holding the row belongs to. Passed for EVERY row, synced or not: a
   // synced row has nothing else to offer, so these two are what its hold opens.
   onViewAccount: (item: HomeTransactionRow) => void;

@@ -796,7 +796,7 @@ describe('a Convert or a split with a leg on a coin whose read overwrote it, on 
   });
 });
 
-// The account stays connected, so the gate refuses the row (O92): no copy of the row of row 15 can
+// The account stays connected, so the gate refuses the row: no copy of the row of row 15 can
 // exist, and Home and the line stay at the read.
 describe('row 34, a manual row on the connected coin, on real SQLite', () => {
   const REFUSAL = new Error('transactions/synced-holding');

@@ -731,7 +731,7 @@ describe('TransactionFormScreen — add mode', () => {
     alertSpy.mockRestore();
   });
 
-  // The gate refuses a manual row on a holding that connected after the form opened (O92). The
+  // The gate refuses a manual row on a holding that connected after the form opened. The
   // generic advice would be false: a retry fails the same way until the holding is disconnected.
   it('a save the gate refuses names the synced holding and leaves the form open', async () => {
     mockRecordManual.mockRejectedValueOnce(new Error('transactions/synced-holding'));
@@ -3827,7 +3827,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
   });
 
   // The holding picked in "To" can connect while the form is open: the picker then drops it, and
-  // the writer refuses it (O94). The text says to select another holding, because that saves.
+  // the writer refuses it. The text says to select another holding, because that saves.
   describe('a Convert whose picked holding connects while the form is open', () => {
     const pickCashUsd = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
       await fireEvent.press(utils.getByText('Exchange'));
