@@ -20,6 +20,7 @@ const groupOf = (text: string, rowCount: number): ReviewGroup => ({
   rowCount,
   newestTime: 1_000,
   rule: { kind: 'nameIs', text },
+  suggestion: null,
 });
 
 const FIRST = groupOf('Silpo', 2);

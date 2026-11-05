@@ -18,6 +18,7 @@ jest.mock('@kiko/db/client', () => {
 import {
   type NameRuleKind,
   type PreparedRules,
+  type ReviewEvidence,
   type ReviewGroup,
   planReviewGroups,
   prepareRules,
@@ -129,6 +130,7 @@ const currentGroups = async (): Promise<ReviewGroup[]> =>
     await preparedRules(),
     await categoryRulesRepo.reviewCandidateRowsQuery(),
     knownCategoryKeys(),
+    await reviewEvidenceQuery(),
   );
 
 // A row is listed when the plan keeps it alone: groups never depend on each other's rows.
@@ -137,7 +139,7 @@ const listedIdsOf = async (group: ReviewGroup): Promise<string[]> => {
   const known = knownCategoryKeys();
 
   return (await categoryRulesRepo.reviewCandidateRowsQuery())
-    .filter((row) => planReviewGroups(prepared, [row], known).at(0)?.key === group.key)
+    .filter((row) => planReviewGroups(prepared, [row], known, []).at(0)?.key === group.key)
     .map((row) => row.id)
     .sort();
 };
@@ -366,30 +368,14 @@ describe('reviewCandidateRowsQuery', () => {
   });
 });
 
-type EvidenceRow = { description: string; categoryKey: string; rowCount: number };
-type EvidenceQuery = PromiseLike<EvidenceRow[]> & { toSQL: () => { sql: string } };
+const reviewEvidenceQuery = () => categoryRulesRepo.reviewEvidenceQuery();
 
-// The read has no definition yet, so the red run reaches it through a runtime lookup.
-const reviewEvidenceQuery = (): EvidenceQuery =>
-  (
-    categoryRulesRepo as unknown as { reviewEvidenceQuery: () => EvidenceQuery }
-  ).reviewEvidenceQuery();
+// Sorted by code unit: a locale compare ignores the separator and puts `Cafe Roma 7` first.
+const sortKeyOf = (row: ReviewEvidence): string => `${row.description}\u0000${row.categoryKey}`;
 
-// The fourth argument has no type yet either.
-const planWithEvidence = planReviewGroups as unknown as (
-  prepared: PreparedRules,
-  rows: Awaited<ReturnType<typeof categoryRulesRepo.reviewCandidateRowsQuery>>,
-  known: ReadonlySet<string>,
-  evidence: EvidenceRow[],
-) => (ReviewGroup & {
-  suggestion?: { category: string; agreeing: number; total: number } | null;
-})[];
-
-const evidenceSorted = async (): Promise<EvidenceRow[]> =>
+const evidenceSorted = async (): Promise<ReviewEvidence[]> =>
   [...(await reviewEvidenceQuery())].sort((first, second) =>
-    `${first.description}|${first.categoryKey}`.localeCompare(
-      `${second.description}|${second.categoryKey}`,
-    ),
+    sortKeyOf(first) < sortKeyOf(second) ? -1 : 1,
   );
 
 const insertSplitChangeRow = (id: string, description: string, category: string): void => {
@@ -470,7 +456,7 @@ describe('reviewEvidenceQuery', () => {
     insertRows('silpo-sorted', 3, { description: 'Silpo 7', category: 'groceries' });
 
     const group = await groupOf('silpo');
-    const [suggested] = planWithEvidence(
+    const [suggested] = planReviewGroups(
       await preparedRules(),
       await categoryRulesRepo.reviewCandidateRowsQuery(),
       knownCategoryKeys(),

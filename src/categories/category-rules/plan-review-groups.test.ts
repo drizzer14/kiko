@@ -2,11 +2,17 @@ import { sweep } from '@kiko/test-support/property-sweep';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
+import type {
+  ReviewCandidate,
+  ReviewEvidence,
+  ReviewGroup,
+  ReviewSuggestion,
+  StoredCategoryRule,
+} from './category-rules.d';
 import { ruleRow } from './__fixtures__/rule-row';
 import { subjectOfStoredRow } from './rule-subject';
 import { planReviewGroups } from './plan-review-groups';
 import { matchesRule, prepareRules } from './prepare-rules';
-import type { ReviewCandidate, ReviewGroup, StoredCategoryRule } from './category-rules.d';
 
 const KNOWN_CATEGORY_KEYS: ReadonlySet<string> = new Set([
   'groceries',
@@ -44,7 +50,7 @@ const rowsOf = (descriptions: readonly string[]): ReviewCandidate[] =>
   descriptions.map((description, index) => rowOf(`row-${index}`, description));
 
 const plan = (rows: readonly ReviewCandidate[], rules: readonly StoredCategoryRule[] = []) =>
-  planReviewGroups(prepareRules(rules), rows, KNOWN_CATEGORY_KEYS);
+  planReviewGroups(prepareRules(rules), rows, KNOWN_CATEGORY_KEYS, []);
 
 const namesOf = (groups: readonly ReviewGroup[]): string[] =>
   groups.flatMap((group) => [...group.names]).sort();
@@ -314,42 +320,25 @@ describe('every listed row matches its group rule', () => {
   });
 });
 
-type Evidence = { description: string; categoryKey: string; rowCount: number };
-type Suggestion = { category: string; agreeing: number; total: number };
-type SuggestedGroup = ReviewGroup & { suggestion?: Suggestion | null };
-type PlanWithEvidence = (
-  prepared: ReturnType<typeof prepareRules>,
-  rows: readonly ReviewCandidate[],
-  knownCategoryKeys: ReadonlySet<string>,
-  evidence: readonly Evidence[],
-) => SuggestedGroup[];
-
-// The evidence argument has no type yet, so the red run reaches it through a cast.
 const planWithEvidence = (
   rows: readonly ReviewCandidate[],
-  evidence: readonly Evidence[],
+  evidence: readonly ReviewEvidence[],
   rules: readonly StoredCategoryRule[] = [],
-): SuggestedGroup[] =>
-  (planReviewGroups as unknown as PlanWithEvidence)(
-    prepareRules(rules),
-    rows,
-    KNOWN_CATEGORY_KEYS,
-    evidence,
-  );
+): ReviewGroup[] => planReviewGroups(prepareRules(rules), rows, KNOWN_CATEGORY_KEYS, evidence);
 
-const votes = (description: string, categoryKey: string, rowCount: number): Evidence => ({
+const votes = (description: string, categoryKey: string, rowCount: number): ReviewEvidence => ({
   description,
   categoryKey,
   rowCount,
 });
 
-const suggestionOf = (rows: readonly ReviewCandidate[], evidence: readonly Evidence[]) =>
+const suggestionOf = (rows: readonly ReviewCandidate[], evidence: readonly ReviewEvidence[]) =>
   planWithEvidence(rows, evidence)[0]?.suggestion;
 
 describe('suggestions', () => {
   const atbRows = rowsOf(['ATB 0212']);
 
-  it.each<[string, number, number, Suggestion | null]>([
+  it.each<[string, number, number, ReviewSuggestion | null]>([
     ['3 of 4 (exactly the share) suggests', 3, 4, { category: 'groceries', agreeing: 3, total: 4 }],
     ['1 of 1 suggests nothing', 1, 1, null],
     ['2 of 2 suggests', 2, 2, { category: 'groceries', agreeing: 2, total: 2 }],
@@ -367,8 +356,8 @@ describe('suggestions', () => {
 
   it('a hand-set, a rule-set and an MCC-set row each vote one', () => {
     const evidence = [
-      votes('ATB 1', 'groceries', 1),
-      votes('ATB 2', 'groceries', 1),
+      votes('ATB 0101', 'groceries', 1),
+      votes('ATB 0102', 'groceries', 1),
       votes('ATB', 'groceries', 1),
     ];
 
@@ -379,7 +368,7 @@ describe('suggestions', () => {
     });
   });
 
-  it.each<[string, Evidence[]]>([
+  it.each<[string, ReviewEvidence[]]>([
     ['other', [votes('ATB', 'groceries', 2), votes('ATB', 'other', 5)]],
     ['an orphan key', [votes('ATB', 'groceries', 2), votes('ATB', 'ghost', 5)]],
     ['an empty key', [votes('ATB', 'groceries', 2), votes('ATB', '', 5)]],

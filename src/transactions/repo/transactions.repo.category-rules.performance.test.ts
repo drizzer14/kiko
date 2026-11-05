@@ -416,14 +416,14 @@ describe('listing the review groups of 50 000 rows', () => {
       const known = knownCategoryKeys();
       const statements = spyOnStatements();
       const read = await categoryRulesRepo.reviewCandidateRowsQuery();
-      const groups = planReviewGroups(prepared, read, known);
+      const groups = planReviewGroups(prepared, read, known, []);
 
       expect(countOf(statements, /^select .* from "transactions"/i)).toBe(1);
       expect(countOf(statements, /^(insert|update|delete)/i)).toBe(0);
       expect(read.length).toBeGreaterThan(0);
       expect(read.length).toBeLessThan(rows.length);
       expect(groups.length).toBeGreaterThan(0);
-      expect(groups).toEqual(planReviewGroups(prepared, candidateRows, known));
+      expect(groups).toEqual(planReviewGroups(prepared, candidateRows, known, []));
     },
     TEST_TIMEOUT,
   );
@@ -441,7 +441,7 @@ describe('listing the review groups of 50 000 rows', () => {
         keptByKey.set(key, (keptByKey.get(key) ?? 0) + 1);
       }
 
-      const groups = planReviewGroups(prepared, candidateRows, known);
+      const groups = planReviewGroups(prepared, candidateRows, known, []);
 
       expect(kept.length).toBeGreaterThan(0);
       expect(kept.length).toBeLessThan(rows.length);
@@ -454,7 +454,7 @@ describe('listing the review groups of 50 000 rows', () => {
     'calls merchantNameOf once per distinct description',
     () => {
       jest.mocked(merchantNameOf).mockClear();
-      planReviewGroups(prepared, candidateRows, knownCategoryKeys());
+      planReviewGroups(prepared, candidateRows, knownCategoryKeys(), []);
 
       const described = jest.mocked(merchantNameOf).mock.calls.map(([name]) => name);
 
@@ -479,23 +479,13 @@ describe('listing the review groups of 50 000 rows', () => {
     expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
   });
 
-  // The read has no definition yet, so the red run reaches it through a runtime lookup.
-  const evidenceQuery = () =>
-    (
-      categoryRulesRepo as unknown as {
-        reviewEvidenceQuery: () => PromiseLike<
-          { description: string; categoryKey: string; rowCount: number }[]
-        > & { toSQL: () => { sql: string; params: unknown[] } };
-      }
-    ).reviewEvidenceQuery();
-
   it(
     'reviewEvidenceQuery scans with a temp B-tree for the group, and returns one row per pair',
     async () => {
       seedLedger();
 
       const known = knownCategoryKeys();
-      const query = evidenceQuery();
+      const query = categoryRulesRepo.reviewEvidenceQuery();
       const { sql: statement, params } = query.toSQL();
       const plan = (
         mockDatabase

@@ -734,6 +734,7 @@ describe.each(['en', 'uk'] as const)('the review list of the %s demo file', (lan
       prepareRules(demo.categoryRules),
       candidates,
       new Set(demo.categories.map((category) => category.key.toLowerCase())),
+      [],
     ).find((group) => group.key === key);
 
   it('the review list offers a starts-with line on the store-number rows', () => {

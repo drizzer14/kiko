@@ -80,6 +80,7 @@ const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
             prepareRules(rules),
             candidates,
             new Set(categories.map(({ key }) => categoryKeyOf(key))),
+            [],
           )
         : [],
     [isReady, candidates, rules, categories],
