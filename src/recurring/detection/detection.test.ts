@@ -5,10 +5,6 @@ import {
   smallestSpelling,
   merchantSpellingOf,
 } from '@kiko/transactions/merchant-name';
-import { sweep } from '@kiko/test-support/property-sweep';
-import { seededRandom } from '@kiko/test-support/seeded-random';
-import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
-
 import {
   at,
   weekly,
@@ -34,7 +30,11 @@ import {
   type LedgerRow,
   type ExpectedSeries,
   type RecurrenceView,
-} from './detection-test-helper';
+} from '@kiko/test-support/recurring-ledger';
+import { sweep } from '@kiko/test-support/property-sweep';
+import { seededRandom } from '@kiko/test-support/seeded-random';
+import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
+
 import { detectRecurringSeries } from './detection';
 import type { RecurringSeries } from './detection.types.d';
 
@@ -734,6 +734,33 @@ describe('detectRecurringSeries', () => {
         );
       },
     );
+  });
+
+  describe('the groups and the series it is composed of', () => {
+    type Composed = {
+      chargeGroupsOf: (input: Ledger, now: number) => unknown;
+      seriesOfGroups: (groups: unknown, now: number) => RecurringSeries[];
+    };
+
+    // A missing export fails the test that reaches for it, not the whole file.
+    const composedExportOf = <Name extends keyof Composed>(name: Name): Composed[Name] => {
+      const found = (jest.requireActual('./detection') as Record<string, unknown>)[name];
+
+      if (typeof found !== 'function') {
+        throw new Error(`./detection does not export the function ${name}`);
+      }
+
+      return found as Composed[Name];
+    };
+
+    it.each(MATRIX)('%s: equals seriesOfGroups of chargeGroupsOf', (_title, world) => {
+      const ledger = world();
+      const groups = composedExportOf('chargeGroupsOf')(ledger, nowOf());
+
+      expect(composedExportOf('seriesOfGroups')(groups, nowOf())).toEqual(
+        detectRecurringSeries(ledger, nowOf()),
+      );
+    });
   });
 
   describe('a device zone without daylight saving', () => {

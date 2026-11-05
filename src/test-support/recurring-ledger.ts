@@ -1,15 +1,14 @@
-import { match, P } from 'ts-pattern';
-import { maxOf } from '@kiko/numbers';
-import maybe, { foldMap } from 'fnts/maybe';
-import type { AccountRow, HoldingRow } from '@kiko/db';
-import { merchantNameOf } from '@kiko/transactions/merchant-name';
-
 import type {
   Recurrence,
   RecurringPeriod,
   RecurringSeries,
   RecurringLedgerRow,
-} from './detection.types.d';
+} from '@kiko/recurring/detection';
+import { match, P } from 'ts-pattern';
+import { maxOf } from '@kiko/numbers';
+import maybe, { foldMap } from 'fnts/maybe';
+import type { AccountRow, HoldingRow } from '@kiko/db';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
 
 type Random = () => number;
 export type LedgerRow = RecurringLedgerRow;
