@@ -224,6 +224,7 @@ const topicsById = {
       'help.topics.categoryRules.steps.3',
       'help.topics.categoryRules.steps.4',
       'help.topics.categoryRules.steps.5',
+      'help.topics.categoryRules.steps.6',
     ],
     action: 'openCategories',
   },

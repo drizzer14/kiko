@@ -76,9 +76,6 @@ type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
 
 const navigation = navigationSpy();
 
-// The review keys are not in the typed catalogue until the copy lands.
-const copy = (key: string): string => (i18n as unknown as { t: (key: string) => string }).t(key);
-
 const screenElement = () => (
   <CategoriesScreen
     navigation={asNavigationProp<CategoriesProps['navigation']>(navigation)}
@@ -478,10 +475,10 @@ describe('CategoriesScreen', () => {
 
       expect(order).toContain(ENTRY);
       expect(order.indexOf(ENTRY)).toBeLessThan(order.indexOf('sortable-grid'));
-      expect(view.getByTestId(ENTRY)).toHaveTextContent(copy('categoryReview.entryLabel'));
-      expect(copy('categoryReview.entryLabel')).not.toBe('categoryReview.entryLabel');
+      expect(view.getByTestId(ENTRY)).toHaveTextContent(i18n.t('categoryReview.entryLabel'));
+      expect(i18n.t('categoryReview.entryLabel')).not.toBe('categoryReview.entryLabel');
 
-      await fireEvent.press(view.getByText(copy('categoryReview.entryLabel')));
+      await fireEvent.press(view.getByText(i18n.t('categoryReview.entryLabel')));
 
       expect(navigation.navigate).toHaveBeenCalledTimes(1);
       expect(navigation.navigate.mock.calls[0][0]).toBe('CategoryReview');
@@ -494,7 +491,7 @@ describe('CategoriesScreen', () => {
       const view = await renderScreen();
 
       expect(view.queryAllByTestId('category-card')).toHaveLength(0);
-      expect(view.getByTestId(ENTRY)).toHaveTextContent(copy('categoryReview.entryLabel'));
+      expect(view.getByTestId(ENTRY)).toHaveTextContent(i18n.t('categoryReview.entryLabel'));
     });
   });
 

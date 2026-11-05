@@ -161,7 +161,7 @@ describe('help topic registry', () => {
     ['editTransaction', 3],
     ['useTemplates', 4],
     ['manageCategories', 5],
-    ['categoryRules', 5],
+    ['categoryRules', 6],
     ['viewStatistics', 8],
     ['viewRecurringCharges', 3],
     ['backupData', 4],

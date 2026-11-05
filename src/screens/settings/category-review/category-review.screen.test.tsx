@@ -76,15 +76,8 @@ jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 
-// The review screen and its catalogue keys are read by a lookup, so this file compiles before
-// either exists.
+// The review screen is read by a lookup, so this file compiles before it exists.
 const reviewScreen = (): FC<ReviewScreenProps> => require('./category-review.screen').default;
-
-const copy = (key: string, options?: Record<string, unknown>): string =>
-  (i18n as unknown as { t: (key: string, options?: Record<string, unknown>) => string }).t(
-    key,
-    options,
-  );
 
 const navigation = navigationSpy();
 
@@ -148,7 +141,7 @@ const linesOf = (screen: Screen) => screen.getAllByTestId(LINE);
 
 const pressChoose = async (screen: Screen, lineIndex: number): Promise<void> => {
   await fireEvent.press(
-    within(linesOf(screen)[lineIndex]).getByText(copy('categoryReview.choose')),
+    within(linesOf(screen)[lineIndex]).getByText(i18n.t('categoryReview.choose')),
   );
 };
 
@@ -238,8 +231,8 @@ describe('CategoryReviewScreen', () => {
 
       const screen = await renderReview();
 
-      expect(screen.queryByText(copy('categoryReview.emptyTitle'))).toBeNull();
-      expect(screen.queryByText(copy('categoryReview.emptyMessage'))).toBeNull();
+      expect(screen.queryByText(i18n.t('categoryReview.emptyTitle'))).toBeNull();
+      expect(screen.queryByText(i18n.t('categoryReview.emptyMessage'))).toBeNull();
     });
 
     it('shows the empty state with no data', async () => {
@@ -249,9 +242,9 @@ describe('CategoryReviewScreen', () => {
 
       const screen = await renderReview();
 
-      expect(copy('categoryReview.emptyTitle')).not.toBe('categoryReview.emptyTitle');
-      expect(screen.getByText(copy('categoryReview.emptyTitle'))).toBeTruthy();
-      expect(screen.getByText(copy('categoryReview.emptyMessage'))).toBeTruthy();
+      expect(i18n.t('categoryReview.emptyTitle')).not.toBe('categoryReview.emptyTitle');
+      expect(screen.getByText(i18n.t('categoryReview.emptyTitle'))).toBeTruthy();
+      expect(screen.getByText(i18n.t('categoryReview.emptyMessage'))).toBeTruthy();
       expect(screen.queryByTestId(LOADING)).toBeNull();
     });
 
@@ -259,7 +252,7 @@ describe('CategoryReviewScreen', () => {
       const screen = await renderReview();
 
       expect(linesOf(screen).length).toBeGreaterThan(0);
-      expect(screen.queryByText(copy('categoryReview.emptyTitle'))).toBeNull();
+      expect(screen.queryByText(i18n.t('categoryReview.emptyTitle'))).toBeNull();
       expect(screen.queryByTestId(LOADING)).toBeNull();
     });
 
@@ -271,8 +264,8 @@ describe('CategoryReviewScreen', () => {
 
       const screen = await renderReview();
 
-      expect(screen.getByText(copy('categoryReview.emptyTitle'))).toBeTruthy();
-      expect(screen.getByText(copy('categoryReview.emptyMessage'))).toBeTruthy();
+      expect(screen.getByText(i18n.t('categoryReview.emptyTitle'))).toBeTruthy();
+      expect(screen.getByText(i18n.t('categoryReview.emptyMessage'))).toBeTruthy();
       expect(screen.queryAllByTestId(LINE)).toHaveLength(0);
     });
   });
@@ -283,10 +276,10 @@ describe('CategoryReviewScreen', () => {
       const [atb, silpo] = linesOf(screen);
 
       expect(linesOf(screen)).toHaveLength(2);
-      expect(atb).toHaveTextContent(copy('categoryReview.nameCount', { count: 2 }));
-      expect(atb).toHaveTextContent(copy('categoryReview.rowCount', { count: ATB_ROWS }));
+      expect(atb).toHaveTextContent(i18n.t('categoryReview.nameCount', { count: 2 }));
+      expect(atb).toHaveTextContent(i18n.t('categoryReview.rowCount', { count: ATB_ROWS }));
       expect(silpo).toHaveTextContent('Silpo');
-      expect(silpo).toHaveTextContent(copy('categoryReview.rowCount', { count: SILPO_ROWS }));
+      expect(silpo).toHaveTextContent(i18n.t('categoryReview.rowCount', { count: SILPO_ROWS }));
     });
 
     it('reads Starts with for a prefix group', async () => {
@@ -294,10 +287,10 @@ describe('CategoryReviewScreen', () => {
       const [atb, silpo] = linesOf(screen);
 
       expect(
-        within(atb).getByText(copy('categoryReview.startsWith', { name: 'ATB' })),
+        within(atb).getByText(i18n.t('categoryReview.startsWith', { name: 'ATB' })),
       ).toBeTruthy();
       expect(
-        within(silpo).queryByText(copy('categoryReview.startsWith', { name: 'Silpo' })),
+        within(silpo).queryByText(i18n.t('categoryReview.startsWith', { name: 'Silpo' })),
       ).toBeNull();
     });
 

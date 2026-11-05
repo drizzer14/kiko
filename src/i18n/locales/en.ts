@@ -326,6 +326,26 @@ export const en = {
     namesAndMore: '{{names}}, and {{count}} more',
     noRowsMessage: 'No existing transactions move. New ones will go to "{{category}}".',
   },
+  categoryReview: {
+    choose: 'Select category',
+    emptyMessage:
+      'Transactions without a category appear here, grouped by name. Select a category once, and Kiko adds a rule for it.',
+    emptyTitle: 'Nothing to sort',
+    entryLabel: 'Sort transactions without a category',
+    // English defines every plural form so both catalogues carry the same keys (Ukrainian selects
+    // all four).
+    nameCount_one: '{{count}} name',
+    nameCount_few: '{{count}} names',
+    nameCount_many: '{{count}} names',
+    nameCount_other: '{{count}} names',
+    optionsTitle: 'Select Category',
+    rowCount_one: '{{count}} transaction',
+    rowCount_few: '{{count}} transactions',
+    rowCount_many: '{{count}} transactions',
+    rowCount_other: '{{count}} transactions',
+    startsWith: 'Starts with "{{name}}"',
+    title: 'Sort Uncategorized',
+  },
   forms: {
     // Field labels reused across two or more of the forms below (the account,
     // holding, transaction, and contribution create/edit screens), so callers
@@ -1164,6 +1184,7 @@ export const en = {
           '3': 'Tap "Save". If existing transactions match, choose "Apply to existing" or "New transactions only".',
           '4': 'Rules also sort the transactions you import or sync later.',
           '5': 'When you change the category of a transaction and choose "Apply", Kiko adds a rule for its name. If the name ends in a store number, you can also apply to all names that start the same way.',
+          '6': 'To sort what has no category yet, open "Categories", tap "Sort transactions without a category" and select a category for a name.',
         },
         title: 'Set Categories Automatically',
       },

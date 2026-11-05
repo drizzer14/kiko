@@ -116,8 +116,7 @@ describe('SettingsStack', () => {
   });
 
   it('registers the review screen with its localized title', () => {
-    // The review keys are not in the typed catalogue until the copy lands.
-    const title = (i18n as unknown as { t: (key: string) => string }).t('categoryReview.title');
+    const title = i18n.t('categoryReview.title');
 
     expect(title).not.toBe('categoryReview.title');
     expect(screenElements().map((screen) => screen.props.name)).toContain('CategoryReview');
