@@ -218,6 +218,13 @@ describe('kill-guard: the block for a raw fast-forward of the main checkout', ()
     expect(reason).toContain('--abort, --quit, --skip, and --continue stay allowed');
   });
 
+  it('names the --sha form of the queue command', () => {
+    const reason = hookReason('git merge --ff-only 1a2b3c4', MAIN_CHECKOUT);
+
+    expect(reason).toContain('bash scripts/job-queue.sh verify <worktree> <label> --sha <sha>');
+    expect(reason).not.toContain('<worktree at the sha>');
+  });
+
   it('sends a merge that is not a fast-forward to ff-main.sh as well', () => {
     const reason = hookReason('git merge feat/x', MAIN_CHECKOUT);
 

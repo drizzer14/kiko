@@ -7,14 +7,17 @@ run from it, so a conflict marker there breaks every hook. The
 kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree. Verify
 it there = a verify the coordinator queues with `scripts/job-queue.sh verify` (not a bare
-`make verify`) at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
+`make verify`, and with no flag: `ff-main.sh` needs a full verify) at the MERGE COMMIT (the
+per-window gate ran on the branch tip, not on
 the merge result). Move main only on exit 0 with the full test count. A
 clean `git merge-tree` is not proof of a green merge. A merge with 0 src
 files in it still gets the verify, because check:all and the hooks run
 from it. Then fast-forward main with `bash scripts/ff-main.sh <sha>`. It
 runs only for a sha whose LAST `verify` line in the queue's done.log is exit 0, so queue the
-verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), keep the
-tree untouched until DONE, and do not move HEAD after. When the head field is the full sha or
+verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), and merge
+only the verified sha: a verify reads the commit named at enqueue, so a later commit on the
+branch is not verified. A fix round after a failure fixes on top of the branch tip, and the next
+verify names the new tip. When the head field is the full sha or
 `unknown`, and the dirty-tree refusal: see the queue paragraph in `queue-and-terminals.md` and the
 `scripts/job-queue.sh` header. The
 kill-guard denies a raw

@@ -47,8 +47,8 @@ Rules:
   your default test command (exit 3 `AFFECTS EVERY SUITE` means the verify must run); a focused
   `npx jest <files> --maxWorkers=2` stays allowed. Ask the coordinator to queue
   the verify ONCE, at the end (`bash scripts/job-queue.sh verify <worktree> <label>`; it runs
-  lint, the full jest suite (two stages, 2a and 2b; see scripts/checks/verify.sh), and the gate
-  in one fail-fast pass), and fix what it reports until it
+  the gate, then the full jest suite (two stages, 2a and 2b; see scripts/checks/verify.sh) in
+  one fail-fast pass), and fix what it reports until it
   is green, before you report done. `make verify`, `make gate`, `make deep`, a full jest run, and
   a whole-repository Semgrep scan are denied outside the queue.
 - A new rule or exemption covers every call-site class, with one red row per class (for a version

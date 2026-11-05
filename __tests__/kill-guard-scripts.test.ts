@@ -426,6 +426,7 @@ describe('kill-guard script scan: every tracked script and the routine commands'
   const real: Options = { cwd: REPOSITORY_ROOT };
   const routine = [
     'bash scripts/job-queue.sh verify /tmp/some-worktree some-label',
+    'bash scripts/job-queue.sh verify /tmp/some-worktree some-label --sha abc1234 --scoped',
     'bash scripts/job-queue.sh gate /tmp/some-worktree label base head',
     'bash scripts/job-queue.sh check-all /tmp/some-worktree label',
     './scripts/job-queue.sh verify /tmp/some-worktree label',

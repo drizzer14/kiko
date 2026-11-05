@@ -82,17 +82,17 @@ Rules:
   stays the backstop. Mapping rules and limits: the header of `scripts/checks/jest-affected.sh`;
   usage: `docs/harness/checks.md` "Makefile targets".
 - The COORDINATOR owns the queue (user 2026-10-26). An orchestrator never queues a verify,
-  check-all, security or gate job: it reports READY FOR VERIFY naming the worktree, the label and
-  the base sha, and the coordinator queues it. Every later "queue the verify" means that report.
+  check-all, security or gate job: it reports READY FOR VERIFY naming the worktree, label, base sha
+  and tip sha, and the coordinator queues it. Every later "queue the verify" means that report.
 - An acceptance pin's seed or world is part of the pin. An edit of a shared seed helper that
-  changes an acceptance pin's world is an edit of that pin (Binance S15-Q13): re-seed that pin
+  changes a pin's world is an edit of that pin (Binance S15-Q13): re-seed that pin
   with its own per-pin seed line, never in the shared helper. A plan line "existing suites green
-  unchanged" for a change that adds owed state first asks which seeds are 1.2-upgrade worlds
+  unchanged" for a change that adds owed state asks which seeds are 1.2-upgrade worlds
   (S15: 48 pins went red).
 - Run the FULL jest through the queued verify (`bash scripts/job-queue.sh verify <worktree>
-  <label>`; a typed `make verify` is denied) before every BATCH READY. `check:all`
-  alone missed a fixture that broke two guard rules: the rule-inventory
-  and guard-rule jest suites run only in the verify.
+  <label>`, no flag when main-bound; a typed `make verify` is denied) before every BATCH READY.
+  `check:all` alone missed a fixture that broke two guard rules: the rule-inventory
+  and guard-rule suites run only there.
 - A change set that adds a repo-wide invariant or rule merges main first and re-runs
   `check:all` (queued: `bash scripts/job-queue.sh check-all <worktree> <label>`): the new rule
   must hold on code main gained since the base. After that merge the

@@ -46,7 +46,12 @@ const commitFile = (fixture: Fixture, directory: string, name: string, body = `$
 // detached linked worktree one commit ahead of main, so the tip commit is a fast-forward of main.
 const createdFixtureFolders: string[] = [];
 
-const createFixture = (): Fixture => {
+const VERIFY_SCRIPT = join(__dirname, '../scripts/checks/verify.sh');
+const VERIFY_SUPPORT_FILES = ['semgrep-jest-suites.txt', 'semgrep-suite-triggers.txt'];
+
+// With `withVerifyScripts` the base commit also holds verify.sh and its two lists, for the cases
+// that run the real verify.sh through the real queue.
+const createFixture = (withVerifyScripts = false): Fixture => {
   const root = realpathSync(createTemporaryDirectory('kiko-ff-main-'));
   createdFixtureFolders.push(basename(root));
   const home = join(root, 'home');
@@ -58,6 +63,15 @@ const createFixture = (): Fixture => {
   mkdirSync(join(main, 'scripts/checks'), { recursive: true });
   copyFileSync(SCRIPT, join(main, 'scripts/ff-main.sh'));
   copyFileSync(LIBRARY, join(main, 'scripts/checks/_lib.sh'));
+
+  if (withVerifyScripts) {
+    copyFileSync(VERIFY_SCRIPT, join(main, 'scripts/checks/verify.sh'));
+
+    for (const name of VERIFY_SUPPORT_FILES) {
+      copyFileSync(join(__dirname, '../scripts/checks', name), join(main, 'scripts/checks', name));
+    }
+  }
+
   const environment = isolatedGitEnvironment(home, {
     KIKO_QUEUE_DIR: queue,
     GIT_AUTHOR_NAME: 'Test',
@@ -74,8 +88,13 @@ const createFixture = (): Fixture => {
   return fixture;
 };
 
-const doneLine = (head: string, kind = 'verify', exitCode = '0'): string =>
-  `${kind} label ${exitCode} 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z ${head}`;
+const doneLine = (head: string, kind = 'verify', exitCode = '0', scope?: string): string =>
+  `${kind} label ${exitCode} 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z ${head}${
+    scope === undefined ? '' : ` ${scope}`
+  }`;
+
+// The line verify.sh prints when stage 2b starts; the queue reads it to write `full`.
+const STAGE_2B_HEADER = '── make verify: stage 2b (jest (real-semgrep suites, in band)) ──';
 
 const record = (fixture: Fixture, ...lines: string[]): void => {
   appendFileSync(join(fixture.queue, 'done.log'), `${lines.join('\n')}\n`);
@@ -122,16 +141,27 @@ const recordOnly =
     return ofTip(fixture);
   };
 
-// Runs the real `job-queue.sh verify` on the linked worktree with a stub `make` of `makeBody`.
-const runQueuedVerify = (fixture: Fixture, makeBody: string) => {
+// Runs the real `job-queue.sh verify` on the linked worktree with a stub `make` of `makeBody`, the
+// queue arguments after the label, and `otherStubs` (name to script text) beside `make`.
+const runQueuedVerify = (
+  fixture: Fixture,
+  makeBody: string,
+  queueArguments: string[] = [],
+  otherStubs: Record<string, string> = {},
+) => {
   const bin = join(fixture.home, 'bin');
   mkdirSync(bin);
   writeExecutable(join(bin, 'make'), makeBody);
+
+  for (const [name, body] of Object.entries(otherStubs)) {
+    writeExecutable(join(bin, name), body);
+  }
+
   // The queue holds a job while the machine's load is high, and a held spawnSync cannot be
   // stopped, so the case reads a low load whatever the machine is doing.
   writeExecutable(join(bin, 'sysctl'), '#!/usr/bin/env bash\necho "{ 0.10 0.10 0.10 }"\n');
 
-  return spawnSync('bash', [JOB_QUEUE, 'verify', fixture.work, 'end-to-end'], {
+  return spawnSync('bash', [JOB_QUEUE, 'verify', fixture.work, 'end-to-end', ...queueArguments], {
     env: {
       ...fixture.environment,
       PATH: `${bin}:${process.env.PATH}`,
@@ -236,7 +266,10 @@ describe('scripts/ff-main.sh moves main', () => {
 
   it('accepts the done.log line a real `job-queue.sh verify` writes', () => {
     const fixture = createFixture();
-    const queued = runQueuedVerify(fixture, '#!/usr/bin/env bash\nexit 0\n');
+    const queued = runQueuedVerify(
+      fixture,
+      `#!/usr/bin/env bash\necho '${STAGE_2B_HEADER}'\nexit 0\n`,
+    );
 
     const result = runScript(fixture, [fixture.tipCommit]);
 
@@ -507,6 +540,126 @@ describe('scripts/ff-main.sh refuses', () => {
 
     expect(lines).toContain(`WHAT FAILED:    ${what}`);
     expect(lines.find((line) => line.startsWith('DETAILS:'))).toContain(details);
+  });
+});
+
+const lastDoneLine = (fixture: Fixture): string =>
+  readFileSync(join(fixture.queue, 'done.log'), 'utf8').trim().split('\n').slice(-1)[0];
+
+const NO_OP_TOOL = '#!/usr/bin/env bash\nexit 0\n';
+
+// The whole chain: the real queue, a `make` stub that runs the real verify.sh in the checkout the
+// queue prepared, and no-op npm, npx and node, so jest and the gate cost nothing.
+const runRealVerify = (fixture: Fixture, queueArguments: string[]) =>
+  runQueuedVerify(
+    fixture,
+    '#!/usr/bin/env bash\nexec bash "$2/scripts/checks/verify.sh"\n',
+    queueArguments,
+    { npm: NO_OP_TOOL, npx: NO_OP_TOOL, node: NO_OP_TOOL },
+  );
+
+const SCOPE_WHAT = 'WHAT FAILED:    The last verify at this commit did not run stage 2b';
+
+describe('scripts/ff-main.sh reads the scope field of the verify line', () => {
+  it.each(['partial', 'skipped', 'FULL'])(
+    'exit 2 for a verify line whose 7th field is %s',
+    (scope) => {
+      const fixture = createFixture();
+      record(fixture, doneLine(fixture.tipCommit, 'verify', '0', scope));
+
+      const result = runScript(fixture, [fixture.tipCommit]);
+      const lines = result.stderr.split('\n');
+      const fix = lines.find((line) => line.startsWith('HOW TO FIX:')) ?? '';
+
+      expect(result.status).toBe(2);
+      expect(mainHead(fixture)).toBe(fixture.baseCommit);
+      expect(lines).toContain(SCOPE_WHAT);
+      expect(lines.find((line) => line.startsWith('DETAILS:'))).toContain(` ${scope}`);
+      expect(fix).toContain('Queue a full verify, with no --scoped:');
+      expect(fix).toContain(
+        `bash scripts/job-queue.sh verify <worktree> <label> --sha ${fixture.tipCommit}`,
+      );
+      expect(fix).not.toMatch(/--sha \S+ --scoped|--scoped --sha/);
+    },
+  );
+
+  it('exit 0 for a verify line whose 7th field is full', () => {
+    const fixture = createFixture();
+    record(fixture, doneLine(fixture.tipCommit, 'verify', '0', 'full'));
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(result.status).toBe(0);
+    expect(mainHead(fixture)).toBe(fixture.tipCommit);
+  });
+
+  it('exit 2 when a partial line follows a full line at the commit', () => {
+    const fixture = createFixture();
+    record(
+      fixture,
+      doneLine(fixture.tipCommit, 'verify', '0', 'full'),
+      doneLine(fixture.tipCommit, 'verify', '0', 'partial'),
+    );
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr.split('\n')).toContain(SCOPE_WHAT);
+    expect(mainHead(fixture)).toBe(fixture.baseCommit);
+  });
+
+  it('exit 0 when a full line follows a partial line at the commit', () => {
+    const fixture = createFixture();
+    record(
+      fixture,
+      doneLine(fixture.tipCommit, 'verify', '0', 'partial'),
+      doneLine(fixture.tipCommit, 'verify', '0', 'full'),
+    );
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(result.status).toBe(0);
+    expect(mainHead(fixture)).toBe(fixture.tipCommit);
+  });
+
+  it.each(['full', 'partial'])('exit 2 with the no-verify text for a failed %s line', (scope) => {
+    const fixture = createFixture();
+    record(fixture, doneLine(fixture.tipCommit, 'verify', '1', scope));
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+    const lines = result.stderr.split('\n');
+
+    expect(result.status).toBe(2);
+    expect(lines).toContain('WHAT FAILED:    No successful queued verify at this commit');
+    expect(lines).not.toContain(SCOPE_WHAT);
+    expect(mainHead(fixture)).toBe(fixture.baseCommit);
+  });
+
+  it('exit 2 for the line a real scoped verify writes', () => {
+    const fixture = createFixture(true);
+    const queued = runRealVerify(fixture, ['--scoped']);
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(queued.status).toBe(0);
+    expect(queued.stdout).toContain('stage 2b SKIPPED');
+    expect(lastDoneLine(fixture)).toMatch(/ partial$/);
+    expect(result.status).toBe(2);
+    expect(result.stderr.split('\n')).toContain(SCOPE_WHAT);
+    expect(mainHead(fixture)).toBe(fixture.baseCommit);
+  });
+
+  it('exit 0 for the line a real unflagged verify writes', () => {
+    const fixture = createFixture(true);
+    const queued = runRealVerify(fixture, []);
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(queued.status).toBe(0);
+    expect(queued.stdout).not.toContain('stage 2b SKIPPED');
+    expect(lastDoneLine(fixture)).toMatch(/ full$/);
+    expect(result.status).toBe(0);
+    expect(mainHead(fixture)).toBe(fixture.tipCommit);
   });
 });
 
