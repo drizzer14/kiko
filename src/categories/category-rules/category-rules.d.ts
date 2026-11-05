@@ -72,6 +72,8 @@ export type RewriteCandidate = {
   changeGroupId: string | null;
 };
 
+export type MccBackfillRow = RewriteCandidate & { mcc: number | null };
+
 export type RuleValidation =
   | { kind: 'valid' }
   | { kind: 'noMatchers' }

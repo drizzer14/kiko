@@ -65,6 +65,8 @@ import m0060 from './0060_add_history_backfill_state.sql';
 import m0061 from './0061_exchange_state.sql';
 import m0062 from './0062_add_account_currency.sql';
 import m0063 from './0063_add_transaction_operation.sql';
+import m0064 from './0064_seed_travel_category.sql';
+import m0065 from './0065_add_mcc_categories_backfilled.sql';
 
 export default {
   journal,
@@ -133,5 +135,7 @@ export default {
     m0061,
     m0062,
     m0063,
+    m0064,
+    m0065,
   },
 };

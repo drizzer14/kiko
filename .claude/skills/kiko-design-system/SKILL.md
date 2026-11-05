@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, ConvertedCaption, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, ConvertedCaption, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, DataTable, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -28,9 +28,9 @@ file before you edit the component it describes.
 - [component-set.md](component-set.md) — "Component set", part 1: the shared layout, text,
   action and surface components (`TwoPaneLayout`, `Screen`, `LoadingState`, `Box`, `Text`,
   `MoneyText`, `ConvertedCaption`, `Button` with its pinned treatments and sizes, `Card`,
-  `GlassSurface`, `BottomSheet`, `SelectableRow` and `SelectField`). Read it before you build
-  or change any of them. The set continues in component-set-forms.md under "Component set
-  (continued)".
+  `GlassSurface`, `BottomSheet`, `SelectableRow`, `SelectField` and
+  `DataTable`). Read it before you build or change any of them. The set continues in
+  component-set-forms.md under "Component set (continued)".
 - [component-set-forms.md](component-set-forms.md) — "Component set (continued)": the sheet,
   card, form-field and chart components (`ConfirmSheet`, `InfoHint`, `NoticeBanner`,
   the exchange history footer, `ReminderOfferCard`, `EmptyState`, `NotificationPreAlertSheet`,
@@ -203,7 +203,7 @@ then one of these call sites, rather than reinventing the check.
 
 ## Styling layer: react-native-unistyles v3
 
-`react-native-unistyles` (^3.3.0) is the styling layer. A single
+`react-native-unistyles` (3.6.0) is the styling layer. A single
 Unistyles v3 theme object — the OLED `darkTheme` above — is registered
 in `src/design-system/unistyles/unistyles.ts` as `themes = { dark: darkTheme }`,
 with `settings: { initialTheme: 'dark' }`. There is no second theme to

@@ -25,10 +25,13 @@
 //   `bottom-sheet.component.tsx`) rather than reanimated's own
 //   `useAnimatedKeyboard`, so this stub need not expose that hook.
 //
+// - the animated `ScrollView` (`DataTable`'s horizontal body scroller, whose live offset drives
+//   its header), a plain RN `ScrollView` here.
+//
 // Any other accessed member still resolves to a no-op through the Proxy, so a
 // stray reanimated import can never crash a test.
 const React = require('react');
-const { View } = require('react-native');
+const { View, ScrollView } = require('react-native');
 
 const useAnimatedRef = () => ({ current: null });
 const useSharedValue = (initial) => {
@@ -55,6 +58,7 @@ const base = {
   withTiming,
   runOnJS,
   View,
+  ScrollView,
 };
 const proxy = new Proxy(base, {
   get: (target, prop) => (prop in target ? target[prop] : noop),

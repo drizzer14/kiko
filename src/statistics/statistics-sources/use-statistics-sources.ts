@@ -54,7 +54,7 @@ export const useStatisticsSources = (input: {
   // hiding this tab causes no read, no state change, and no memo recompute —
   // `enabled: false` would instead unsubscribe and drop every chart to empty
   // (see kiko-architecture's `useLiveQuery` pattern section for the design).
-  // Visibility, not focus: as the Home tab's companion default this screen is on screen and
+  // Visibility, not focus: a screen shown as the Home tab's companion default is on screen and
   // never the focused route.
   const liveOptions = { cached: true, paused: !isVisible } as const;
 
@@ -110,8 +110,8 @@ export const useStatisticsSources = (input: {
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const rateTable = useMemo(() => buildRateTable(rates), [rates]);
-  // kiko-architecture: skip the price_points read while nothing rendered on
-  // this screen ever reads it — a holding whose type carries no priced spec
+  // kiko-architecture: skip the price_points read while nothing rendered from
+  // these sources ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It
   // stays enabled while holdings are still on their first load, so the two
   // reads run in parallel instead of price_points waiting on holdings. Only a
@@ -124,8 +124,8 @@ export const useStatisticsSources = (input: {
     holdingsLoading || holdings.some((holding) => holding.type === 'loan'),
   );
   // Every chart (bar/pie/trend) must never render an empty state while any of
-  // this screen's own queries is still on its first load (kiko-architecture's
-  // useLiveQuery consumer rule) — gated by the screen, right at its return. This is
+  // this hook's own queries is still on its first load (kiko-architecture's
+  // useLiveQuery consumer rule) — gated by the caller, right at its return. This is
   // SEPARATE from the net-worth line's own `loading` prop, which tracks
   // the incremental rate-history backfill (a later, non-blocking concern once
   // this base data has already loaded).

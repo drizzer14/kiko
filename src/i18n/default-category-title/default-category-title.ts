@@ -21,6 +21,8 @@ const DEFAULT_CATEGORY_SEED_TITLES = {
   // by 0002 like the ten above — see that migration's own comment for why
   // it is a separate, later journal entry.
   loan_interest: 'Loan interest',
+  // The twelfth default, seeded by its own later migration, the same way.
+  travel: 'Travel',
 };
 
 // The literal union of seeded slugs, derived from the map above so it can

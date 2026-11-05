@@ -65,7 +65,7 @@ const bondRecognitionsFor = (
   );
 };
 
-export type HoldingValuesInput = {
+type HoldingValuesInput = {
   holdings: SeriesHolding[];
   transactionsByHolding: Map<string, SeriesTransaction[]>;
   historyRows: HistoryRow[];
@@ -77,7 +77,7 @@ export type HoldingValuesInput = {
 };
 
 /** Each holding's value at one instant, in base MINOR units; a holding with no rate is absent. */
-export type HoldingValuesAt = { t: number; byHolding: Map<string, number> };
+type HoldingValuesAt = { t: number; byHolding: Map<string, number> };
 
 /**
  * Value every holding at each of `instants`, converted to the base currency at that instant's

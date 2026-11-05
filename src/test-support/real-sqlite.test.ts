@@ -4,6 +4,7 @@ import { accounts, type database, holdings } from '@kiko/db';
 
 import {
   addAccountCurrencyColumn,
+  addMccCategoriesBackfilledColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -64,6 +65,20 @@ describe('addTransactionOperationColumn', () => {
     expect(rawDatabase.prepare('SELECT id, operation FROM transactions').all()).toEqual([
       { id: 't-1', operation: null },
     ]);
+  });
+});
+
+describe('addMccCategoriesBackfilledColumn', () => {
+  it('adds the column to a database below the mark and nothing else', () => {
+    const rawDatabase = new DatabaseSync(':memory:');
+
+    applyMigrationsThrough(rawDatabase, '0064_seed_travel_category');
+    rawDatabase.prepare('INSERT INTO settings (id) VALUES (1)').run();
+    addMccCategoriesBackfilledColumn(rawDatabase);
+
+    expect(
+      rawDatabase.prepare('SELECT id, mcc_categories_backfilled AS mark FROM settings').all(),
+    ).toEqual([{ id: 1, mark: 0 }]);
   });
 });
 
