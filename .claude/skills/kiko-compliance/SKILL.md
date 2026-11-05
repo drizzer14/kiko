@@ -343,7 +343,8 @@ Standing items:
   synchronizable. `hardenedFor` (`src/crypto-sync/exchange/credentials/credentials.ts`) sets
   `accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY`, and both Binance writers
   use it (`saveExchangeCredentials` in that file,
-  `src/crypto-sync/binance/migrate-binance-credential.ts`). Re-check
+  `src/crypto-sync/binance/migrate-binance-credential.ts`); Bybit writes through
+  `saveExchangeCredentials` in `src/crypto-sync/bybit/bybit.credentials.ts`. Re-check
   that any new writer of the key goes through `hardenedFor`.
 - (c) The Connect help keeps asking for a read-only key with no trading or withdrawal
   permission (4(b)); a change to that help text re-opens this item. Pinned by

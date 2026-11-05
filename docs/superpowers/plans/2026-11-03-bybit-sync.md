@@ -183,7 +183,7 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
 
 ## 1.4-bybit set 3/10: provider id, client, keys and balances (stage A core)
 
-Base: set 2 tip. Needs step 2/11 of set 1 and P1, P11, P15, P16, all MEASURED. Steps 1/7 to 6/7 need no user step: coin-row fixtures use the page samples,
+Status: steps 1/7 to 6/7 are done on branch 1.4-bybit; step 7/7 still waits. Base: set 2 tip. Needs step 2/11 of set 1 and P1, P11, P15, P16, all MEASURED. Steps 1/7 to 6/7 need no user step: coin-row fixtures use the page samples,
 and the empty read when it exists. Step 7/7 needs step 10/11 of set 1. Was: P2 and P3 with the `R4 P3` run around the redeem (O62). Size:
 about 1,270 code lines in 25 to 29 files (under the cap of 30; `make mutable` measures, and a count over the cap is a
 report to the orchestrator), about 2,350 test lines (was 1,200, 21 to 25, 2,050: O30 moves seams 3, 4 and 9 here; O31, O33
@@ -201,7 +201,7 @@ Binance caption result the same after the re-pins.
   `no-store`, `fetchKeyInfo` (with `readOnly`, `isMaster` for set 7; `permissions` stays unread), `fetchUnifiedBalance`,
   `fetchFundBalance`, the refusal table of spec section 4, `BybitRateLimitError`, `BybitRefusalError`. `bybit.cooldown.ts`.
   `BYBIT_SIGNED_PATHS` in `bybit.endpoints.ts`, a path added in each later step that adds a route, with its literal in
-  `bybit.endpoints.test.ts` (C2). Check: rows A9, A10, A15, A52 (C1: the host, and no tracked file names `api-testnet`), A53 (C2: GET only, a closed list), A62;
+  `bybit.endpoints.test.ts` (C2). Check: rows A9, A10, A15, A52 (C1: the host, and no tracked env file, plist entry or source module names `api-testnet`), A53 (C2: GET only, a closed list), A62;
   `npm run check:plist` now sees the client; `check:dup`.
 - [ ] **step 3/7: Keychain.** `exchange/credentials`: `createWriteSerial`; `bybit.credentials.ts`: service
   `kiko.bybit.credentials`, username `bybit`, save, read, clear, clear-if-written. `accounts.repo.ts`
@@ -368,7 +368,7 @@ every new key.
   ships, the user subscribes again on testnet first, because K11 redeemed it (PLANNER CALL 22). Coin rows on Unified and Funding, a balance moving, Earn if it ships, one transfer if K2 ran, one spot trade as two legs and out of spending if K9 filled, one convert if K10 ran, the past of the net-worth line with those rows. Then real: the coordinator merges current `next` into this tip first, so its journal holds every migration of `next` and none that `next` lacks (F3, PLANNER CALL 72), then this tip, `make deploy EXPECT=api.bybit.com`; the empty account with Last sync; the expiry line with 2027-02-04; each surface
   in section 6.4, `statistics.bybitPastLimits` too; connect in 10, 11 or 12 calls; a wrong key; a read-write key; a key refused on a route (a narrow key, made and deleted by the user, optional); disconnect and reconnect;
   Binance still syncs; light and dark. Positive and negative pin checks of `docs/security/README.md`. Guard: `.env` is in `.gitignore`, the worktree's `.env` never changes, and A52
-  pins that no tracked file names `api-testnet`. This check is "fundamentals done" (O44), the next device call for Bybit. It proves the connect path, the expiry, balances from a live answer and every
+  pins that no tracked env file, plist entry or source module names `api-testnet`. This check is "fundamentals done" (O44), the next device call for Bybit. It proves the connect path, the expiry, balances from a live answer and every
   stated limit, and, if K9 filled, a trade through the real walk on testnet. It does not prove a coin row or a trade on mainnet, or any deposit or withdrawal row, which no build can show: those are the accepted residuals of spec section 10 (O64). If the
   testnet account step failed, only the real build runs, and the report says that no coin row was seen. A defect in data, a stated limit or a
   condition blocks it. A visual wish does not block it: it goes to fast visual rounds after it, on this branch, before the batch

@@ -209,8 +209,8 @@ than restated here:
   `readSeriesSpan`) and the walk-state seam in `exchange/walk/exchange-state-deps.ts`
   (`ExchangeStateDeps`, `exchangeStateDepsOf`).
 - **Dust is a read, not a walk** (`binance.dust-history.ts`): no WalkId, cursor,
-  `CAPTION_WALKS` entry, forward-owes or not-imported kind. It reads the newest 100 records every
-  run. An entry is accepted only when `targetAsset` is BNB (`DUST_TARGET`); a repeated
+  `captionWalksOf` table entry, forward-owes or not-imported kind. It reads the newest 100
+  records every run. An entry is accepted only when `targetAsset` is BNB (`DUST_TARGET`); a repeated
   `fromAsset` refuses all its entries; an entry with a leg that rounds to 0 gives no row for
   either leg; an untracked coin is listed only when its BNB leg imports. A rate limit sets the
   cooldown and logs nothing. A dust row for a tracked coin with no Spot holding creates that
@@ -440,13 +440,14 @@ than restated here:
   `walkCursorsOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
   derive from the account's `sync_state` row (`CryptoSyncSection` reads it with
   its own `useLiveQuery` and shows no caption while it is loading):
-  `walkCursorsOf` reads the forward cursors of `CAPTION_WALKS`
+  `walkCursorsOf` reads the forward cursors of `captionWalksOf(provider)`
   (`binance-history-status.ts`) off the parsed `exchange_state` (nulls when it is not
-  readable), `isBinanceHistoryBehind`
+  readable; `walkCursorsOf(state, provider)` takes a required provider, with no default to
+  Binance), `isBinanceHistoryBehind`
   compares them against `latestBalanceSyncAt(holdings, stateStamp)` (the later of the
   holdings' `syncedAt` and the `exchange_state` balance-sync stamp), true when
   any of those walks never caught up (`null` cursor) or is behind by more than a day,
-  or when any walk owes a range (`historyOwesRange(state, lastBalanceSyncAt)`: ground its
+  or when any walk owes a range (`historyOwesRange(state, lastBalanceSyncAt, provider)`: ground its
   cursor passed, read off the `pending` list of every one of the walks), or a point
   that has stayed owed for more than a day (`since`, below), or when a candidate trade
   symbol still waits for its first read (`historyOwesTrades`, the `tradesUnread` input, off
@@ -467,12 +468,13 @@ than restated here:
   no `since` (stored before it) is quiet until a run owes it again, and a `since` that is
   no non-negative integer reads as none (`asPendingRange`), never as a malformed list. A
   malformed walk state PAUSES the history: `CryptoSyncSection`'s
-  `historyPaused` (Binance and `walkState.kind === 'malformed'`) shows
+  `historyPaused` (an exchange provider, `hasExchangeHistory`, and
+  `walkState.kind === 'malformed'`) shows
   `accountDetail.exchangeHistoryPaused` INSTEAD of `exchangeHistoryPending`, and
   the repair is disconnect + reconnect (`resetExchangeStateDatabaseTransaction`
   replaces a malformed top level with a capital floor cursor). `CryptoSyncSection`
   renders the `accountDetail.exchangeHistoryPending` caption under the
-  status line only when `connectedProvider === 'binance'`, so a wallet
+  status line only when `hasExchangeHistory(connectedProvider)` is true, so a wallet
   account never evaluates or shows it.
 - **The P2P read-failure caption** is separate from the lagging caption. `p2pReadFailed(state)`
   (`binance-history-status.ts`) is true when `walks.p2p.readFailedAt` is set, and false for a
