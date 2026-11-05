@@ -6,8 +6,6 @@ export const SECRET = 'secret-fixture';
 // in what the client gives back.
 export const SERVER_TEXT = 'server text that must never be read';
 
-const SERVER_TEXT_FIELD = 'retMsg';
-
 type SentRequest = {
   url: string;
   init: { method: string; headers: Record<string, string> };
@@ -51,7 +49,7 @@ export const answerWith = (answer: Answer): { fetchImpl: typeof fetch; sent: Sen
 /** The envelope of a Bybit answer: a code, a text this client never reads, and a result. */
 export const envelopeOf = (retCode: number, result?: unknown) => ({
   retCode,
-  [SERVER_TEXT_FIELD]: SERVER_TEXT,
+  retMsg: SERVER_TEXT,
   result,
   retExtInfo: {},
   time: NOW,

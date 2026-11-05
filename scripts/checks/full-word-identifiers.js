@@ -138,6 +138,12 @@ const EXEMPTIONS = [
     reason: 'msg is the literal field name in a Binance error body {code, msg}',
   },
   {
+    suffix: 'src/crypto-sync/bybit/bybit.client-test-fixtures.ts',
+    word: 'msg',
+    name: 'retMsg',
+    reason: 'retMsg is the literal text field of a Bybit answer {retCode, retMsg, result}',
+  },
+  {
     suffix: 'src/design-system/components/currency-field/currency-field.component.tsx',
     word: 'num',
     name: 'initialNumToRender',
