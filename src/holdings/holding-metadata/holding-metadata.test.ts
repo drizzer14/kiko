@@ -20,6 +20,7 @@ import {
   syncClosedFromOf,
   walletAddressOf,
   overwrittenRowIdsOf,
+  isOverwrittenRow,
   withCarriedMetadataKeys,
   BALANCE_READ_AT_FIELD,
   OVERWRITTEN_ROW_IDS_FIELD,
@@ -392,6 +393,32 @@ describe('overwrittenRowIdsOf', () => {
     ['text metadata', 'overwrittenRowIds'],
   ])('reads %s as empty', (_, metadata) => {
     expect(overwrittenRowIdsOf(metadata)).toEqual([]);
+  });
+});
+
+describe('isOverwrittenRow', () => {
+  it('is true for a listed id on a dated holding', () => {
+    expect(
+      isOverwrittenRow({ bybitAsset: 'BTC:unified', overwrittenRowIds: ['a', 'b'] }, 'b'),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['binanceAsset', 'BTC'],
+    ['walletAddress', 'bc1q'],
+    ['monobankId', 'card-1'],
+  ])('is false for %s, which is not on the list', (field, key) => {
+    expect(isOverwrittenRow({ [field]: key, overwrittenRowIds: ['a'] }, 'a')).toBe(false);
+  });
+
+  it.each([
+    ['an id off the list', { bybitAsset: 'BTC:unified', overwrittenRowIds: ['a'] }],
+    ['no list', { bybitAsset: 'BTC:unified' }],
+    ['a list it cannot read', { bybitAsset: 'BTC:unified', overwrittenRowIds: 'b' }],
+    ['a list of numbers', { bybitAsset: 'BTC:unified', overwrittenRowIds: [5] }],
+    ['null metadata', null],
+  ])('is false for %s', (_, metadata) => {
+    expect(isOverwrittenRow(metadata, 'b')).toBe(false);
   });
 });
 

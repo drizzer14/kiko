@@ -51,12 +51,12 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
-import type { DepositContribution } from '@kiko/holdings/holding-metadata';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { readAllRulesDatabaseTransaction } from '@kiko/categories/category-rules-repo';
+import { type DepositContribution, isOverwrittenRow } from '@kiko/holdings/holding-metadata';
 import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
 
 import type {
@@ -220,16 +220,25 @@ const readHoldingDatabaseTransaction = async (
   return rows.at(0);
 };
 
-/** Move a holding's stored balance by `delta`. A holding that is already gone
- * has no balance to move. */
-const moveBalanceDatabaseTransaction = async (
+/** Move the stored balance of the holding of an existing row by `delta`, the way a delete or an
+ * edit of that row does. A holding that is already gone has no balance to move. A row that a
+ * read overwrote moves none (`isOverwrittenRow`, the same gate as the net-worth line's): the
+ * read's figure does not hold it. This is the one way a delete or an edit reaches a balance, so
+ * no path can skip the check. */
+const moveBalanceOfRowDatabaseTransaction = async (
   databaseTransaction: typeof database,
-  holdingId: string,
+  row: Pick<TransactionRow, 'id' | 'holdingId'>,
   delta: number,
 ): Promise<void> => {
   await foldMap(
-    maybe(await readHoldingDatabaseTransaction(databaseTransaction, holdingId)),
-    (holding) => writeBalanceDeltaDatabaseTransaction(databaseTransaction, holding, delta),
+    maybe(await readHoldingDatabaseTransaction(databaseTransaction, row.holdingId)),
+    async (holding) => {
+      if (isOverwrittenRow(holding.metadata, row.id)) {
+        return;
+      }
+
+      await writeBalanceDeltaDatabaseTransaction(databaseTransaction, holding, delta);
+    },
   );
 };
 
@@ -328,7 +337,8 @@ const markExistingLegTransaction = async (
     .where(eq(transactions.id, existingTransactionId));
 };
 
-type NamedHolding = Pick<HoldingRow, 'id' | 'name' | 'type' | 'currency'>;
+// `metadata` is read for `balanceChangesOf`: a row on the mark moves no balance.
+type NamedHolding = Pick<HoldingRow, 'id' | 'name' | 'type' | 'currency' | 'metadata'>;
 
 const holdingIdsOf = (rows: TransactionRow[]): string[] => [
   ...new Set(
@@ -353,6 +363,7 @@ const readNamedHoldingsDatabaseTransaction = async (
       name: holdings.name,
       type: holdings.type,
       currency: holdings.currency,
+      metadata: holdings.metadata,
     })
     .from(holdings)
     .where(inArray(holdings.id, holdingIds));
@@ -483,15 +494,21 @@ const uniqueHoldingNamesOf = (
 ];
 
 // How far deleting `rows` moves each holding's balance, by holding name: the sum
-// of their full amounts taken back, in the holding's own currency. A holding
-// whose parts net to nothing has no entry, and none at all gives `undefined`.
+// of their full amounts taken back, in the holding's own currency. A row on the mark of a read
+// takes nothing back (`moveBalanceOfRowDatabaseTransaction`), so the confirm names only the move
+// that the delete makes. A holding whose parts net to nothing has no entry, and none at all gives
+// `undefined`.
 const balanceChangesOf = (
   rows: TransactionRow[],
   holdingsById: Map<string, NamedHolding>,
 ): BalanceChange[] | undefined => {
   const netByHoldingId = new Map<string, number>();
 
-  for (const row of rows) {
+  const movingRows = rows.filter(
+    (row) => !isOverwrittenRow(holdingsById.get(row.holdingId)?.metadata, row.id),
+  );
+
+  for (const row of movingRows) {
     netByHoldingId.set(
       row.holdingId,
       (netByHoldingId.get(row.holdingId) ?? 0) - row.amountMinorUnits,
@@ -764,7 +781,9 @@ const markerLegIsGone = (
 
 // Delete rows and give each one's full amount back to its OWN holding, in that
 // holding's currency, whatever the row's date or source: every row updated the
-// balance when it was written, so none can stay in it once the row is gone.
+// balance when it was written, so none can stay in it once the row is gone. The exception
+// is a row that a read of a dated balance overwrote (`isOverwrittenRow`, tested on the row's own
+// holding): that balance is the read's figure and never held the row, so nothing comes back.
 // Then take a deposit's contribution out with the leg that paid it. A bank-owned
 // row of the same movement (`kept`) stays. Its marker is cleared in the same write
 // only when the leg it names is gone with this delete (`markerLegIsGone`): a marker
@@ -786,7 +805,7 @@ const removeRowsDatabaseTransaction = async (
 
   for (const row of rows) {
     await databaseTransaction.delete(transactions).where(eq(transactions.id, row.id));
-    await moveBalanceDatabaseTransaction(databaseTransaction, row.holdingId, -row.amountMinorUnits);
+    await moveBalanceOfRowDatabaseTransaction(databaseTransaction, row, -row.amountMinorUnits);
     await removeContributionOfRowDatabaseTransaction(
       databaseTransaction,
       row,
@@ -872,7 +891,8 @@ const readLinksOfHoldingsDatabaseTransaction = async (
  * What deleting the holdings `holdingIds` must do to the rest of the ledger,
  * run on the caller's transaction BEFORE the holdings go (their rows are still
  * there to follow): delete the user's rows of the same movements on other
- * holdings, giving each row's full amount back to its holding, and take
+ * holdings, giving each row's full amount back to its holding unless a read of a dated balance
+ * overwrote the row (`removeRowsDatabaseTransaction`), and take
  * out of a deposit the contribution a deleted holding's leg made. A bank-owned
  * row of a movement stays, with its exchange marker cleared in the same write
  * when the marker names a deleted holding or a leg removed with it.
@@ -2607,7 +2627,9 @@ export const transactionsRepo = {
    * actually persisted, never a stale render snapshot. The balance moves by the
    * difference of the amounts, whatever the row's date or mark (a row that set
    * a balance included): every transaction updates the balance, so a row's date
-   * never decides whether its amount counts. A synced (monobank) transaction is
+   * never decides whether its amount counts. The one exception is a row that a read of a dated
+   * balance overwrote (`isOverwrittenRow`): the read's figure does not hold it, so its edit
+   * writes the row and moves no balance. A synced (monobank) transaction is
    * never mutated by this path — its amount is owned by the bank import — and a
    * missing id is a no-op rather than an error.
    */
@@ -2631,9 +2653,9 @@ export const transactionsRepo = {
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
-      await moveBalanceDatabaseTransaction(
+      await moveBalanceOfRowDatabaseTransaction(
         databaseTransaction,
-        existing.holdingId,
+        existing,
         amountMinorUnits - existing.amountMinorUnits,
       );
       await alongside?.(databaseTransaction);
@@ -2645,7 +2667,9 @@ export const transactionsRepo = {
    * row's full amount back (`balance -= amountMinorUnits`): every transaction
    * updates the balance, so none can stay in it without its row. That holds
    * whatever the row's source, its date against THE BOUNDARY (`importRows`), and
-   * whether it set a balance. Only the balance moves: `balanceSetAt` stays, and
+   * whether it set a balance, except for a row that a read of a dated balance overwrote
+   * (`isOverwrittenRow`), which the read's figure never held: it goes and moves no balance. Only
+   * the balance moves: `balanceSetAt` stays, and
    * no bank figure is stored, so deleting every row of an import ends on the
    * statement's opening balance. A deleted import row with a stored key also
    * leaves that key for its holding (`deleted_import_keys`), so a re-import can
@@ -2998,7 +3022,8 @@ export const transactionsRepo = {
    * balance, so a manual row moves it by its full amount whatever its date, a
    * back-dated one included, and so does its edit and its delete, a row that
    * set a balance (an opening balance or a hand edit, known by its stored
-   * `transactions.setsBalance` mark) included. Only this function's own
+   * `transactions.setsBalance` mark) included, except a row that a read of a dated balance
+   * overwrote (`isOverwrittenRow`). Only this function's own
    * closing balance sets a figure outright. The mark stays for good, so such a
    * row never counts in `postClosingNet`, which would count it twice. This
    * function's closing-balance write clears `holdings.balanceSetRowId`, since

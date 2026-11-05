@@ -5,8 +5,8 @@
 // metadata whole. The real export read, the real restore and the real tables run on a fully
 // migrated `node:sqlite` engine, through JSON text, as a file travels.
 //
-// The mark does not exist yet: `overwrittenRowIds` is seeded here as a plain metadata key, so
-// this proof passes on the code that has no mark and keeps passing when the mark lands.
+// `overwrittenRowIds` is seeded here as a plain metadata key, by raw SQL, so the proof rests on
+// the restore alone and not on the code that writes the mark.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -20,6 +20,7 @@ jest.mock('@kiko/db/client', () => {
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 
 import { EXPORT_VERSION } from '../crypto/envelope';
 
@@ -367,6 +368,29 @@ const rowIdsOutsideBybit = (holdingId: string): string[] =>
     holdingId,
   );
 
+// The net-worth line of the Bitcoin holding, as the Statistics screen draws it from what the
+// database holds, one point per local midnight over the days around the seed's dates.
+const lineOfBitcoinHolding = async (): Promise<number[]> => {
+  const { holdings, transactions } = await readDataSnapshot();
+  const holding = holdings.find(({ id }) => id === 'holding-btc');
+
+  if (holding === undefined) {
+    throw new Error('the seed should hold the Bitcoin holding');
+  }
+
+  const { points } = buildNetWorthSeries({
+    holdings: [holding],
+    transactionsByHolding: new Map([
+      [holding.id, transactions.filter((row) => row.holdingId === holding.id)],
+    ]),
+    historyRows: [],
+    baseCurrency: 'BTC',
+    range: { from: new Date(2026, 1, 27).getTime(), to: new Date(2026, 2, 12).getTime() },
+  });
+
+  return points.map(({ amount }) => amount);
+};
+
 const expectRowIdsSourcesAndMarksKept = (): void => {
   expect(rowIdsOf('SELECT id FROM transactions ORDER BY id')).toEqual(ALL_ROW_IDS);
   expect(sourceByRowId()).toEqual(SOURCE_BY_ROW_ID);
@@ -393,6 +417,19 @@ describe('restoring a Bybit holding whose metadata names its rows by id', () => 
     expectRowIdsSourcesAndMarksKept();
     expect(storedRows()).toEqual(rowsBeforeRestore);
     expect(storedHoldings()).toEqual(holdingsBeforeRestore);
+  });
+
+  it('a restored holding draws the same line', async () => {
+    const lineBeforeRestore = await lineOfBitcoinHolding();
+
+    // The mark leaves the five rows that are not Bybit's off the line, so it opens at the read's
+    // balance less the one Bybit fill, and a restore that lost the mark would draw another line.
+    expect(lineBeforeRestore.at(0)).toBe(0.95);
+    expect(lineBeforeRestore.at(-1)).toBe(1);
+
+    await restoredIntoNewDatabase(throughJson(await readDataSnapshot()), EXPORT_VERSION);
+
+    expect(await lineOfBitcoinHolding()).toEqual(lineBeforeRestore);
   });
 
   it('a file of an old version keeps them through every mirror', async () => {

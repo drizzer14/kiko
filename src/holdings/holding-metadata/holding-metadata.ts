@@ -288,6 +288,16 @@ export const datedBalanceSourceOf = (metadata: unknown): TransactionRow['source'
 };
 
 /**
+ * Whether the holding's stored balance already holds the row `rowId`, because a read overwrote it:
+ * a delete or an edit of such a row must not move the balance, and the confirm of a delete must not
+ * name a move. It is the gate of the net-worth valuer's `rowsHeldByBalance` (the dated source
+ * first, then the list), so Home and the line read one rule. A holding whose balance is not dated
+ * is never on it, whatever its metadata holds.
+ */
+export const isOverwrittenRow = (metadata: unknown, rowId: string): boolean =>
+  datedBalanceSourceOf(metadata) !== undefined && overwrittenRowIdsOf(metadata).includes(rowId);
+
+/**
  * Copies any `carriedMetadataKeys` present on `storedMetadata` onto
  * `target`, overwriting whatever (or nothing) `target` already has for that
  * key — the read-side counterpart of a sync's blanket metadata overwrite, so a

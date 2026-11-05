@@ -117,7 +117,8 @@ export const holdings = sqliteTable('holdings', {
   // opening balance, a balance edit, a closing import (which clears it) and the
   // snapshot restore (which backfills it for an older snapshot), and carried by
   // the snapshot export. Unread: every row's edit and delete moves the balance
-  // by its amount, so no write needs to find the setting row. Dropping it needs
+  // by its amount (but for a row a read of a dated balance overwrote, which moves
+  // none), so no write needs to find the setting row. Dropping it needs
   // a migration (open item). NULL when a closing-balance import set it (no row
   // is written at its as-of) or the balance was never hand-set. No foreign key:
   // a deleted row's id is never reused, so a stale id matches nothing.
@@ -275,7 +276,8 @@ export const transactions = sqliteTable(
     // balance import from counting the row again past its as-of
     // (`postClosingRowsWhere`) and keeps the row out of spending in the Statistics
     // charts (`balanceSetIdsOf`): the row's edit and delete move the balance by its
-    // amount like any row's.
+    // amount like any row's, unless a read of a dated balance overwrote it
+    // (`isOverwrittenRow`).
     setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' / 'bybit' double as `accounts.institution` values. The

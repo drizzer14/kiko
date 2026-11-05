@@ -352,6 +352,10 @@ describe('removeNotice', () => {
       );
     });
 
+    it('a plan with no balance change gives no balance sentence', () => {
+      expect(removeNotice({ split: false }, i18n.t)).toBeUndefined();
+    });
+
     it('says nothing for an empty list', () => {
       expect(removeNotice({ split: false, balanceChanges: [] }, i18n.t)).toBeUndefined();
     });

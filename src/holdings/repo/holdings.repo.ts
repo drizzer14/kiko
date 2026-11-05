@@ -858,7 +858,8 @@ export const holdingsRepo = {
    * `transactions.setsBalance`: this edit is now the holding's current set.
    * An older set's row keeps its mark, which only keeps a closing import from
    * counting it twice (`postClosingRowsWhere`): its edit and its delete move the
-   * balance by its amount, like any row's. The same non-zero delta also forgets
+   * balance by its amount, like any row's, unless a read of a dated balance overwrote
+   * the row (`isOverwrittenRow`). The same non-zero delta also forgets
    * every kept key of the holding's deleted import rows, in the same write: the
    * hand-set balance is the new anchor and already holds what was deleted, so an
    * older statement imported later must not bring a deleted row back on top of it.

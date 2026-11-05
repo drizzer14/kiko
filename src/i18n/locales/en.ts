@@ -1401,7 +1401,8 @@ export const en = {
     defaultDescriptionExpensePlain: 'Expense',
     defaultDescriptionIncomePlain: 'Income',
     // The delete confirm's body: a sentence per other part of the movement the
-    // transaction belongs to, then `balanceChange`, which every delete carries.
+    // transaction belongs to, then `balanceChange`, which a delete carries unless a read of a
+    // dated balance overwrote the row.
     // No plurals: the holding names are the only variable, joined by the caller
     // (Hermes has no `Intl.ListFormat`).
     deleteLinked: {

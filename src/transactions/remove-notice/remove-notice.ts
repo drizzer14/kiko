@@ -240,7 +240,8 @@ export const removeHoldingsNoticeOf = async (
 /**
  * The text the delete confirm shows under its title: one sentence per part of
  * the movement the row belongs to, then the balance each holding changes by. A
- * row that stands alone gets only its balance line. Holding names are joined
+ * row that stands alone gets only its balance line, and a row that a read of a dated balance
+ * overwrote adds none (the plan leaves it out). Holding names are joined
  * with a comma, never `Intl.ListFormat`, which Hermes may lack.
  */
 export const removeNotice = (plan: RemovePlan, t: TFunction): string | undefined =>

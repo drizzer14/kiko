@@ -36,6 +36,7 @@ import { accountsRepo } from './accounts.repo';
 
 const {
   run,
+  insertHolding,
   seedFixture,
   insertRow,
   balancesOf,
@@ -377,6 +378,41 @@ describe('deleting an account whose holdings kept the keys of deleted import row
     await accountsRepo.remove('account');
 
     expect(keptKeyCount()).toBe(0);
+    expect(accountExists('account')).toBe(false);
+  });
+});
+
+describe('deleting an account whose holding has a partner on the mark of a Bybit read', () => {
+  it('takes the partner with no move of the coin that the read overwrote', async () => {
+    keepOnly('uah');
+    run("INSERT INTO accounts (id, name, kind) VALUES ('bybit', 'Bybit', 'crypto')");
+    insertHolding('coin', 'crypto_asset', 'BTC', 100_000_000, {
+      accountId: 'bybit',
+      metadata: {
+        bybitAsset: 'BTC:unified',
+        balanceReadAt: MOVED,
+        overwrittenRowIds: ['coin-leg'],
+      },
+    });
+    insertRow({
+      id: 'uah-leg',
+      holdingId: 'uah',
+      amountMinorUnits: -40_000,
+      exchangeCounterpartHoldingId: 'coin',
+      exchangePairId: 'pair',
+    });
+    insertRow({
+      id: 'coin-leg',
+      holdingId: 'coin',
+      amountMinorUnits: 50_000_000,
+      exchangeCounterpartHoldingId: 'uah',
+      exchangePairId: 'pair',
+    });
+
+    await accountsRepo.remove('account');
+
+    expect(rowIds()).toEqual([]);
+    expect(balancesOf().coin).toBe(100_000_000);
     expect(accountExists('account')).toBe(false);
   });
 });
