@@ -1,1 +1,1 @@
-export { isRecurringCandidate, recurringExcludedIds } from './eligibility';
+export { isOfferedForMark, isRecurringCandidate, recurringExcludedIds } from './eligibility';

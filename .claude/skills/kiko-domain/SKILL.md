@@ -1050,6 +1050,22 @@ A NEW exclusion rule also goes in `recurringExcludedIds`
 there for the rules and thresholds; none is restated here. Eligibility reuses `ledgerRowsOf`,
 `ownIbansOf` and `accountKindByHoldingIdOf` from the spending-ledger barrel.
 
+A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
+`src/recurring/marked-series/marked-series.ts` (the chain and series rules),
+`src/recurring/recurring-periods/recurring-periods.ts` (the periods and their order) and
+`src/settings/recurring-merchant-choices.ts` (the one map). The rules, in words:
+- A mark stores the absolute stored amount and the currency of the marked row's holding, under the
+  merchant key. It covers one currency: the same amount in another currency never compares.
+- A mark's chain is the amount chain that holds its stored amount, cut by the same 1.25 step as
+  detection. The chain's charges are the series, with the mark's period; the stored amount joins
+  the cut like a charge, so it can bridge two charges. Pieces share no row, and a detected series
+  that shares a row with a marked one leaves whole.
+- The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
+- The accepted false stop: a subscription that goes on at a price outside the chain shows "No
+  charge since" until the user re-marks. This is the user's ruling, not a defect.
+- One choice map holds every key's hide flag and its list of marks, one entry per key; removing
+  a mark clears only that mark, and "Show again" clears only the hide.
+
 Which rows each step reads (`src/statistics/spending-ledger/`, one hook and one pure builder
 that the Statistics screen calls; `useStatisticsSources` in
 `src/statistics/statistics-sources/` supplies the reads, and the account filter's scope is in

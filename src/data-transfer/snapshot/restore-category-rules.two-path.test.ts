@@ -38,6 +38,7 @@ import {
   addAccountCurrencyColumn,
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -325,6 +326,7 @@ describe('restoring a .kiko file this build exported', () => {
     addTransactionOperationColumn(exported);
     addMccCategoriesBackfilledColumn(exported);
     addFundingMatchRowsTable(exported);
+    addRecurringMerchantChoicesColumn(exported);
 
     await restoreExportOf(exported);
 

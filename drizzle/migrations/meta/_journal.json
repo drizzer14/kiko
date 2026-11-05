@@ -470,6 +470,13 @@
       "when": 1793839162131,
       "tag": "0066_add_funding_match_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1793860693780,
+      "tag": "0067_add_recurring_merchant_choices",
+      "breakpoints": true
     }
   ]
 }

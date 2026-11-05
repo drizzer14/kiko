@@ -106,6 +106,14 @@ export const addFundingMatchRowsTable = (database: DatabaseSync): void => {
   database.exec(firstStatementOf('0066_add_funding_match_rows'));
 };
 
+/**
+ * Adds `settings.recurring_merchant_choices` to a database migrated below it, so a read through
+ * today's schema works on it. Only the column, empty: it is the migration's one statement.
+ */
+export const addRecurringMerchantChoicesColumn = (database: DatabaseSync): void => {
+  database.exec(firstStatementOf('0067_add_recurring_merchant_choices'));
+};
+
 const journalIndexOf = (entries: MigrationJournalEntry[], tag: string): number => {
   const index = entries.findIndex((entry) => entry.tag === tag);
 

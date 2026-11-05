@@ -133,6 +133,7 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     // rewrite either, so `true` skips that pass too.
     importTimesRezoned: true,
     reminderOfferDismissals: null,
+    recurringMerchantChoices: null,
     notificationsDeliverableSince: null,
     historyBackfillState: null,
     quoteQuota: null,

@@ -12,13 +12,19 @@ jest.mock('@kiko/holdings/interest', () => {
 });
 
 import maybe, { foldMap } from 'fnts/maybe';
+import {
+  at,
+  chargeOf,
+  holdingOf,
+  bankAccountOf,
+  type Currency,
+} from '@kiko/test-support/recurring-ledger';
 import { daysBetween } from '@kiko/holdings/interest';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { buildRulesPerformanceFixture } from '@kiko/categories/category-rules/__fixtures__/rules-performance-fixture';
 
 import { detectRecurringSeries } from './detection';
 import type { RecurringInput, RecurringLedgerRow } from './detection.types.d';
-import { at, chargeOf, holdingOf, bankAccountOf, type Currency } from './detection-test-helper';
 
 // The reads of `time` on the input rows may not pass `rows x (log2(rows) + K)`. K is the smallest
 // whole number under which the first run on this fixture passed: it read `time` twice per row

@@ -388,7 +388,7 @@ even when it has no rows now. No confirm is needed: no row changes and the undo 
 key and never touches a mark.** It affects detected series only: on a key that holds marks (a detected series beside a marked one,
 section 8.2), every marked chain stays, and "Show again" clears only the hide, so nothing the user marked is lost.
 
-**Store: one nullable JSON column on `settings`**, `recurringMerchantChoices: Record<key, Choice>`, where `Choice` is
+**Store: one nullable JSON column on `settings`**, `recurringMerchantChoices: Record<key, RecurringMerchantChoice>`, where `RecurringMerchantChoice` is
 `{ name, hidden: true }` and, from task 4/4, `{ name, hidden?: true, marks?: RecurringMark[] }`, and each mark is
 `{ currency, amountMinorUnits, period }`. One entry per key holds both: a hide flag for the detected series under that key, and
 `marks`. Each is read and cleared on its own, and an entry with neither drops. `name` is the last write's spelling. It is a JSON map
@@ -404,7 +404,7 @@ with no edit there.
 **Keys are user text, so readers use a `Map`.** `reminderOfferDismissals` is keyed by `accounts.id`. This map is keyed by a merchant
 name, and `normalizeTransactionName` only lowercases, so `constructor` and `__proto__` are real keys. On a plain object
 `choices['constructor']` is a function, and assigning `__proto__` loses the entry. So nothing reads or assigns the plain object:
-the one parser, `recurringMerchantChoicesOf`, returns a `ReadonlyMap<string, Choice>` from `Object.entries` of the stored value, and
+the one parser, `recurringMerchantChoicesOf`, returns a `ReadonlyMap<string, RecurringMerchantChoice>` from `Object.entries` of the stored value, and
 a write stores `Object.fromEntries(map)`, which defines an own key where an assignment would not. A `Map` over `Object.hasOwn`: one
 missed `hasOwn` is a silent wrong read, and a `Map` has no such read to miss. Worlds: the plan's "Marked flows".
 
@@ -438,7 +438,7 @@ It writes nothing on a transaction, and it predicts nothing.
 | Period | A picker: weekly, monthly, every 3 months, every 6 months, yearly, as the user approved. The last two are a mark's own and detection never returns them | Section 5.1 names both as false misses. They touch only the stopped cutoff (section 7) and the text (section 6). `addMonths` (`interest.ts:41`) already steps any count of months |
 | A mark on a merchant detection also finds | On its chain the mark wins: the user's period, on that chain's charges. Removing a mark clears only that mark, so the series return as detection finds them, unless the key is hidden: the hide stays until "Show again" | One map, one entry per key, which holds a hide flag and marks (section 8). Detection stores nothing (section 11), so nothing is lost |
 | One mark per chain (**the user's answer to Q6: "One per chain"**) | A key holds a list of marks, each its own chain. A pick on a row inside a marked chain rewrites that chain's period in place, on every mark of its piece, and moves no stored amount. A pick on a row of another piece adds that chain's mark at the row's amount, and marks on other chains stay; so a re-mark at a new price adds a chain. A stored amount whose chain the row left stays, as stated above. Two stored amounts that a later row bridges land in one piece: one series, with the period of the lowest stored amount, a tie going to the earlier period in the picker's order, order-free; removing that series removes every mark in the piece | The user's answer. One mark per key would have dropped Apple 99's mark on marking Apple 399, with nothing shown |
-| The form on a row of another chain | The field reads "Not marked". The value is the period of the marked chain whose amounts span the row's stored amount, so a folded twin reads as its kept row. A pick adds that chain's own mark; "Not marked" there writes nothing | Reading it takes the group's charges: section 9.6 |
+| The form on a row of another chain | The field reads "Not marked". The value is the period of the marked chain whose amounts span the row's stored amount, and a fold cannot change the chain: it keeps at least one row per amount, and the chain reads only the amounts. A pick adds that chain's own mark; "Not marked" there writes nothing | Reading it takes the group's charges: section 9.6 |
 | Text | Section 6, "A marked series". Stopped and quiet as any series, on section 7's table, on the chain. "Marked" shows only where the charges do not fit the period, the table gives no slot, or the period has no table row. The stored amount is never shown: a line shows an amount only as the last real charge's | `recurrenceLine` is a pure `.exhaustive()` match (plan), so `Recurrence` gains one kind |
 | Mark and hide together | One map, one entry per key, which holds both, and neither touches the other. A hide affects detected series only: a marked chain stays when its key is hidden (section 8.1). Marking a hidden merchant keeps the hide, and the "Hidden" line stays until "Show again". A marked series offers "Remove mark" in place of "Not a recurring charge"; a detected series, also one beside a marked series, offers hide | Section 8's store. `recordReminderOfferDismissal` shows the read-modify-write inside one `write()` |
 | Reversal | "Remove mark" on the series screen, on the "Marked, No Charges" row, and "Not marked" in the form's picker, each for that chain's marks: `removeRecurringMarks(key, marks)`, which compares inside its `write()`, clears only those marks, writes nothing on an entry holding none of them, and drops an entry left with neither marks nor a hide. "Show again" is `showRecurringMerchantAgain(key)`, which clears only the hide, by the same drop. So "Not marked" on a hidden key, whose field reads "Not marked", keeps the hide. A removed mark goes nowhere, and a new mark on any row restores it | As `selectLoanPayment`, where picking "None" on the field is the removal (`transaction-form.screen.tsx:966`). `SelectField` fires `onSelect` on the row already selected (`handleSelect`, `select-field.component.tsx:57-62,120`), so that tap does reach the handler |
@@ -567,7 +567,8 @@ one (two monthly Apple series: never guess), the screen shows `EmptyState` with 
 about the merchant: nothing on this path says a charge stopped repeating.
 
 The lookup reads the series before the hide filter, so between the hide write and `goBack` the screen keeps its series
-and never flashes that state (section 8; a pin).
+and never flashes that state (section 8; a pin). `goBack` runs only if the screen is still focused when the hide write
+resolves, so a late write never closes a form the user opened or pops the list.
 
 **With marks (task 4/4), the route gains an optional `markedAmountMinorUnits`, absent on a route opened on a detected series. It is
 the series' lowest stored amount, a lookup key never shown.** A route that holds it finds the marked series of the route's key and
@@ -596,7 +597,7 @@ default, so the focus-hook rule does not apply; they use `useIsScreenVisible` an
 | Read | Tables | Options |
 |---|---|---|
 | `transactionsRepo.recurringLedgerQuery()`, narrow columns, whole ledger, no order | `transactions` | `paused`, **not `cached`** |
-| `holdingsRepo.allQuery()`, `accountsRepo.listQuery()`, `settingsRepo.getQuery()` (the hook does not read settings until task 3/4) | their own | `paused` |
+| `holdingsRepo.allQuery()`, `accountsRepo.listQuery()`, `settingsRepo.recurringMerchantChoicesQuery()` (the one column, so a settings write elsewhere refreshes no detection; the hook does not read settings until task 3/4) | their own | `paused` |
 | Series screen: `listWithContextByIdsQuery(ids)`, plus categories and settings for the row | `transactions`, `holdings`, `accounts`, `categories`, `settings` | `paused` |
 
 `paused: !useIsScreenVisible()` on every read. Not `cached`: `cached` only makes a mount read the LRU, and a
@@ -828,7 +829,7 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `settings.recurringCharges` | Recurring charges | Регулярні платежі |
 | `recurringCharges.title` | Recurring Charges | Регулярні платежі |
 | `recurringCharges.emptyTitle` | No recurring charges yet | Регулярних платежів ще немає |
-| `recurringCharges.emptyMessage` | Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. Task 4/4 adds: You can also open a transaction and mark it as recurring. | Кіко шукає у ваших транзакціях платежі, що повторюються, як-от підписки й оренда, і показує ті, що вже відбулися. Щомісячний платіж зʼявиться після третього списання, а імпорт виписки може додати попередні. Task 4/4 adds: Також можна відкрити транзакцію й позначити її як регулярну. |
+| `recurringCharges.emptyMessage` | Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring. | Кіко шукає у ваших транзакціях платежі, що повторюються, як-от підписки й оренда, і показує ті, що вже відбулися. Щомісячний платіж зʼявиться після третього списання, а імпорт виписки може додати попередні. Також можна відкрити транзакцію й позначити її як регулярну. |
 | `recurringCharges.monthlyOnDay` | Charged monthly, on day {{day}} | Списувалося щомісяця, {{day}} числа |
 | `recurringCharges.monthlyAroundDay` | Charged monthly, around day {{day}} | Списувалося щомісяця, близько {{day}} числа |
 | `recurringCharges.monthlyLastDay` | Charged monthly, on the last day | Списувалося щомісяця, в останній день |
@@ -858,6 +859,10 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `forms.transaction.markRecurring` | Mark as recurring | Позначити як регулярний |
 | `forms.transaction.markRecurringSheetTitle` | Mark as Recurring | Позначити як регулярний |
 | `forms.transaction.notMarkedRecurring` | Not marked | Не позначено |
+
+`forms.transaction.markRecurringSheetTitle` and `recurringCharges.markedEmptyHeading` are
+`TITLE_KEYS` members (read `src/i18n/locales/title-keys.ts`), so their wording is title case.
+
 | `forms.transaction.recurringPeriod.weekly` ... `.yearly` | Weekly, Monthly, Every 3 months, Every 6 months, Yearly | Щотижня, Щомісяця, Раз на 3 місяці, Раз на 6 місяців, Щороку |
 
 `recurringCharges.title` and the section headings join `title-keys.ts`. Removed or renamed keys: none; no key here has shipped.

@@ -1,4 +1,5 @@
 import i18next from 'i18next';
+import { settingsRepo } from '@kiko/settings';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
@@ -107,7 +108,13 @@ jest.mock('@kiko/display-regions', () =>
 );
 
 jest.mock('@kiko/recurring/use-recurring-series', () => ({
-  useRecurringSeries: () => ({ series: [mockNetflix], isLoading: false }),
+  useRecurringSeries: () => ({
+    series: [mockNetflix],
+    markedSeries: [],
+    withoutCharges: [],
+    choices: new Map(),
+    isLoading: false,
+  }),
 }));
 
 // The series screen reads its charges by id and the form reads one row by id; every other read
@@ -369,6 +376,81 @@ describe('Settings stack, one pane: a recurring series and its charges', () => {
   });
 });
 
+describe('Settings stack: a hide write that lands after the user moved on', () => {
+  const HIDE_BUTTON = 'recurring-series-hide';
+  const ROUTES_TO_LIST = ['Settings', 'RecurringCharges'];
+
+  // The write the button starts, held open until the test settles it.
+  let settleWrite: () => void;
+
+  let hideSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    hideSpy = jest.spyOn(settingsRepo, 'hideRecurringMerchant').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          settleWrite = resolve;
+        }),
+    );
+  });
+
+  afterEach(() => {
+    hideSpy.mockRestore();
+  });
+
+  const settle = async (): Promise<void> => {
+    await act(async () => {
+      settleWrite();
+    });
+  };
+
+  it('keeps the form on top of the series when a charge was opened while the write was queued', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+
+    const seriesKey = keyOf('RecurringSeries');
+
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await openCharge(view, MANUAL_CHARGE);
+
+    expect(hideSpy).toHaveBeenCalledTimes(1);
+
+    await settle();
+
+    expect(routeNames()).toEqual(ROUTES_TO_FORM);
+    expect(keyOf('RecurringSeries')).toBe(seriesKey);
+    expect(paramsOf('TransactionForm')).toEqual({ transactionId: MANUAL_CHARGE });
+  });
+
+  it('leaves the list on top when the user went back while the write was queued', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await goBack();
+
+    expect(routeNames()).toEqual(ROUTES_TO_LIST);
+
+    await settle();
+
+    expect(routeNames()).toEqual(ROUTES_TO_LIST);
+  });
+
+  it('returns to the list once the write lands and the series is still the focused screen', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+
+    expect(routeNames()).toEqual(ROUTES_TO_SERIES);
+
+    await settle();
+
+    expect(routeNames()).toEqual(ROUTES_TO_LIST);
+  });
+});
+
 describe('Settings stack: a link to a row that was deleted after the series was read', () => {
   const LEDGER_AS_SEEDED = [...mockLedger];
 
@@ -397,6 +479,28 @@ describe('Settings stack: a link to a row that was deleted after the series was 
     expect(view.getByLabelText('Amount').props.value).toBe('');
     expect(view.getByLabelText('Description').props.value).toBe('');
     expect(view.queryByDisplayValue('Netflix')).toBeNull();
+
+    await pressSaveOnTopForm();
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(routeNames()).toEqual(ROUTES_TO_FORM);
+  });
+
+  it('writes nothing on Save either once the amount is filled', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+
+    const link = await view.findByTestId(`recurring-series-charge-${MANUAL_CHARGE}`);
+
+    mockLedger.splice(
+      mockLedger.findIndex(({ id }) => id === MANUAL_CHARGE),
+      1,
+    );
+    await fireEvent.press(link);
+    await fireEvent.changeText(await view.findByLabelText('Amount'), '150');
+
+    expect(view.getByLabelText('Amount').props.value).toBe('150');
 
     await pressSaveOnTopForm();
 

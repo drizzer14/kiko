@@ -27,6 +27,7 @@ jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
 import {
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   applyAllMigrations,
   applyMigrationsThrough,
 } from '@kiko/test-support/real-sqlite';
@@ -191,6 +192,7 @@ describe('the order of a restore: Travel first, back-fill second', () => {
     applyMigrationsThrough(source, '0063_add_transaction_operation');
     addMccCategoriesBackfilledColumn(source);
     addFundingMatchRowsTable(source);
+    addRecurringMerchantChoicesColumn(source);
     addLedger(source);
     insertRow(source, { id: 'hotel', mcc: 7011, category: 'other' });
     insertRow(source, { id: 'grocery', mcc: 5300, category: 'other' });

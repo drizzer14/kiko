@@ -28,6 +28,7 @@ jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
 import {
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   applyAllMigrations,
   applyMigrationsThrough,
 } from '@kiko/test-support/real-sqlite';
@@ -132,6 +133,7 @@ describe('restoring Travel', () => {
     applyMigrationsThrough(source, '0063_add_transaction_operation');
     addMccCategoriesBackfilledColumn(source);
     addFundingMatchRowsTable(source);
+    addRecurringMerchantChoicesColumn(source);
     source.exec('INSERT INTO settings (id) VALUES (1)');
     expect(travelRowsOf(source)).toEqual([]);
 

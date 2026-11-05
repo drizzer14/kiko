@@ -355,12 +355,15 @@ export type SettingsStackParamList = {
   RecurringCharges: undefined;
   // `seriesId` is the earliest charge's id; the key, currency and period find the series again
   // when an older import moves that charge. `name` is the merchant's own text, the screen's title.
+  // `markedAmountMinorUnits` is a marked series' lowest stored amount, the key that finds its
+  // piece again whatever its id or period became; a detected series has none.
   RecurringSeries: {
     seriesId: string;
     merchantKey: string;
     currency: Currency;
     period: RecurringPeriod;
     name: string;
+    markedAmountMinorUnits?: number;
   };
   // The template forms, and the create forms their empty holding picker's "Add holding" row
   // opens, sit in this stack for the reason they sit in Home's: a switch to the Accounts tab
