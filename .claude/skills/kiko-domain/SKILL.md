@@ -164,8 +164,10 @@ absent** — this skill states the shape and non-enum facts only:
   section) — a dedicated format still wins whenever it
   actually matches. `bankId` is deliberately **never read** by
   `isSyncedAccount`/`isSyncedHolding`
-  (`src/holdings/deletable/`) or any provider-registry lookup — those
-  stay keyed on `institution` alone, so tagging an account
+  (`src/holdings/deletable/deletable.ts`) or any provider-registry lookup.
+  `isSyncedAccount` reads `institution` alone; `isSyncedHolding` reads
+  `institution`, then the key that `syncedMetadataFieldOf` names for it.
+  So tagging an account
   `bankId: 'privatbank'` can never make it look connected. This is the
   Guideline 2.5.19 invariant (see `guidelines-compliance-is-architecture-rule`
   in memory): never wire a picker selection into a connected-ness
@@ -455,8 +457,11 @@ transaction form's split change-return picker offers only
 **A manual write also refuses a holding a sync owns.**
 `refuseSyncedHoldingDatabaseTransaction` (`src/transactions/repo/transactions.repo.ts`) throws
 `SYNCED_HOLDING_REFUSAL` (`src/holdings/deletable/deletable.ts`) when the holding carries a
-sync key (`hasSyncedKey`) and `isSyncedHolding` holds. The throw rolls back the whole write, an
-`alongside` write included. The transaction form shows `forms.transaction.syncedHoldingSaveError`
+sync key (`hasSyncedKey`) and `isSyncedHolding` holds. `hasSyncedKey` takes any key and is
+only a cheap test before the account read; `isSyncedHolding` wants the key of the account's
+CURRENT provider, so an earlier provider's key reads as manual. The throw rolls back the whole
+write, an `alongside` write included. The transaction form shows
+`forms.transaction.syncedHoldingSaveError`
 (`forms.transaction.syncedCounterpartSaveError` for the counterpart). Read the gate in
 `deletable.ts`; copy no rule from here.
 

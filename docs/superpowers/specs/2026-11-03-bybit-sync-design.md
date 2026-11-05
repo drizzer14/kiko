@@ -1918,7 +1918,7 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A152 | The holding detail, row 36 (O96) | `holding-detail.screen.test.tsx`: "a manual row on a holding with an earlier provider's key offers Duplicate"; "keeps the footer add action for a holding with an earlier provider's key" |
 | A153 | The pickers, row 36 (O96) | `transaction-form.screen.test.tsx`: "the primary picker offers a holding with an earlier provider's key" |
 | A154 | No false note (O96, PLANNER CALL 116) | `exchange-history-footer.component.test.tsx`: "renders nothing for %s", with the new row "a wallet holding on a Binance account" |
-| A155 | One key per provider (O96, PLANNER CALL 113) | `provider.test.ts` in `src/crypto-sync/provider/`: "names the key of each synced institution" (each `BalanceProvider`'s `metadataField`, and Monobank's `monobankId`) |
+| A155 | One key per provider (O96, PLANNER CALL 113) | `provider.test.ts` in `src/crypto-sync/provider/`: "names the key of each synced institution: %s" (an `it.each` of `balanceProviderIds`: each `BalanceProvider`'s `metadataField`), and "names the key that a Monobank sync writes" (`monobankId`) |
 
 ### Property suites
 
