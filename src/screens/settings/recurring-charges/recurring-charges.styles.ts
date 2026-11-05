@@ -15,12 +15,12 @@ export const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing(2),
   }),
   // The merchant's name on the left and the way back on the right, centered since the row is one
-  // line.
-  hiddenRow: {
+  // line. A hidden merchant and a marked chain without a charge are laid out alike.
+  entryRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  hiddenName: {
+  entryName: {
     flex: 1,
     marginRight: theme.spacing(3),
   },

@@ -52,7 +52,8 @@ const compareMarks = (left: RecurringMark, right: RecurringMark): number =>
   periodRankOf(left.period) - periodRankOf(right.period) ||
   compareText(left.currency, right.currency);
 
-const byKeyCurrencyAndAmount = (left: MarkedChain, right: MarkedChain): number =>
+/** The list's order for chains without a charge, which have no date to sort by. */
+export const byKeyCurrencyAndAmount = (left: MarkedChain, right: MarkedChain): number =>
   compareText(left.key, right.key) ||
   compareText(left.currency, right.currency) ||
   left.marks[0].amountMinorUnits - right.marks[0].amountMinorUnits;
