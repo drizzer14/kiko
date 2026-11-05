@@ -206,20 +206,89 @@ What the holding does (the "new holding" and "zero" rules of `appendWallet` stay
 | Held or none | First good read after the order closes | | Written by the usual rules (below dust with no holding: none); the line clears, because a wallet that read replaces its notes whole (`withBalanceNotes`). A pin holds this (A114) |
 | Held | The coin is no longer listed | Zero | Zero: the good read does not list it, and the line clears |
 | Any | UNIFIED read fails | Nothing written | The same: the sync fails, and the stored line stands until a good read |
-| Created at 0 by a walk's row (`walk.ts`, `balanceMinorUnits: 0`, from set 6 on Unified) | Set aside | B replaced | Stays 0, and the line shows. "With no earlier sync, this coin is not in your balance" stays true. A120 pins it |
+| Created at 0 by a walk's row (`walk.ts`, `balanceMinorUnits: 0`, from set 6 on Unified) | Set aside | B replaced | Stays 0, and the line shows. "With no earlier sync, this coin is not in your balance" stays true, on the net-worth line too: its rows do not count until a first good read (set 11; was: opening below zero). A120 pins it |
 
 Which readers a stale balance feeds (read on the code, 2026-11-05):
 
 | Reader | Effect during an open order |
 |---|---|
 | Holding balance, Home total, net worth now (`holdingsRepo.balanceOf`) | The earlier balance, or none. The line on the account detail says so. Home has no sign |
-| Past of the net-worth line (`createHoldingValuer`: opening = balance - sum of rows) | A row imported during the order moves the past against the old balance. Hold 1 X, sell 0.5 X by a limit order, and 0.2 X fills: truth 1, then 0.8; the line 1.2, then 1, until the first good read. On a first sync: balance 0, one earlier buy of 1 X, opening -1 until the first good read. The set 9 log is the walk this harms most: a partial fill is exactly such a row. Set 6's Unified leg can do it too. A fix is owed before set 6 (O78); this row is not an accepted residual |
-| Set 5 capital walk | None: every row is on FUND (rule 45) |
+| Past of the net-worth line (`createHoldingValuer`) | Was, until set 11: opening = balance - sum of all rows, so a row imported during the order moves the past against the old balance. Now: for a Bybit holding, only rows that the stored balance already holds count, so the past up to the read stays right, the line then holds the last read balance, and the last point stays the number Home shows. Numbers, causes and options: "The past line while a balance is old", below. The fix is set 11, before set 5 (O78). This row is not an accepted residual |
+| Set 5 capital walk | None for an open order or a loan: those are on UNIFIED, and every row of this walk is on FUND (rule 45). Yes for a FUND coin that is refused, and for a FUND wallet that is refused or not read: its balance stays old and the walk goes on. So set 11 runs before set 5 (was: "None", which held only for the order) |
 | Set 9 convert, set 10 ledger and reconcile | No balance is read: they read rows and the stored set |
 | Binance's `spotBalanceTexts` | Bybit's read returns none |
 | `conflictingExchangeHoldings`, `OversizedSaleNotice` | Keys only; `metal` only |
 
-Accepted residuals, told to the user with O76, and no "What stays wrong" row: if `locked` is inside `walletBalance`, the set-aside is more than needed; a long-open order keeps the coin old for that time, and a standing order keeps it old or absent for as long as it stands; if Bybit sends "" for `locked` or a loan field, the coin is set aside or refused. The past line in the table above is not an accepted residual: it moves during the order and heals at the first good read, and the user ruled "Design a fix" (O78). A fix is owed before set 6, designed by a planner, with a Binance regression test for `createHoldingValuer`. Re-review finding 2 goes into that brief (O83): `untrackedCoinsOf` counts the history list, so from set 6 an emptied account with a walked untracked coin keeps "Some balances not read".
+Accepted residuals, told to the user with O76, and no "What stays wrong" row: if `locked` is inside `walletBalance`, the set-aside is more than needed; a long-open order keeps the coin old for that time, and a standing order keeps it old or absent for as long as it stands; if Bybit sends "" for `locked` or a loan field, the coin is set aside or refused. The past line in the table above is not an accepted residual: the user ruled "Design a fix" (O78), and the design follows.
+
+### The past line while a balance is old (O78, O83, PLANNER CALLS 86 to 89)
+
+Read on the code, 2026-11-05. `createHoldingValuer` takes opening = balance - sum of all rows, and the value at a day = opening + the rows up to that day. COMPUTED by hand from those two lines; no run. X is any coin.
+
+| World | Stored balance | Rows stored | Was, before the row's day | Was, from the row's day | Truth |
+|---|---|---|---|---|---|
+| Hold 1 X, an order fills 0.2 X, the coin is set aside | 1 | -0.2 | 1.2 | 1 | 1, then 0.8 |
+| The same, with the earlier buy of 1 X also read | 1 | +1, -0.2 | 0.2 before the buy, 1.2 after it | 1 | 0, 1, then 0.8 |
+| First sync, the coin set aside, one earlier buy of 1 X, the walk makes the holding at 0 | 0 | +1 | -1 | 0 | 0, then 1 |
+| First sync, the same coin, and only a later sale of 0.2 X has arrived | 0 | -0.2 | 0.2 | 0 | Not known: the balance and the older rows are both missing |
+| 5 USDT on FUND, the wallet not read, a deposit of 3 arrives | 5 | +3 | 2 | 5 | 5, then 8 |
+
+The causes. A cause fits when a stored balance stays old while a walk can still import rows.
+
+| Cause | Fits | Why, on the code | First set that can do it |
+|---|---|---|---|
+| A coin set aside for `locked` | Yes | `appendWallet` leaves it out of the batch, so `upsertByMetadataKey` does not run | 6: Unified transfer leg; 9: the log, which is the worst |
+| A coin set aside for a loan | Yes | The same filter | 6, 9 |
+| A refused coin, UNIFIED | Yes | The same filter | 6, 9 |
+| A refused coin, FUND | Yes | The same filter, and rule 45 puts capital rows on FUND | 5 |
+| FUND wallet `notRead` or `refused` | Yes | `fetchBalances` skips `appendWallet` for it, and a refused balance route does not stop a walk | 5 |
+| A cooling account's silent skip | Yes, at an edge | No balance is written. On Binance's pattern each walk tests the cooldown first, so a row arrives only if the cooldown ends between the two legs. The date below covers it with no code of its own | 5 |
+| A holding that a walk's row creates at 0 (`resolveWalletHoldings`, PLANNER CALL 79) | Yes | It has a balance of 0 and no read behind it | 5 on FUND, 6 on Unified |
+| UNIFIED read fails | No | `runBalanceSync` throws, so the arm stops before its walks (`runBinanceSyncAndImport` is the pattern set 5 follows) | None |
+
+The options. "Right" means equal to the truth in the worlds above.
+
+| Option | Example 1 (hold 1 X, fill 0.2): before the next read | First sync | Past up to the read | After the read | Worst wrong value | Shared code touched | Binance, Monobank | Size (floors) |
+|---|---|---|---|---|---|---|---|---|
+| Was | 1.2, 1 | -1, 0 | Wrong by the rows that arrived | Equal to Home | The whole past moves by the rows after the read, below zero too, and has no bound in units | None | Unchanged | None |
+| A: date the balance by `syncedAt`; rows after the read still move the line | 1, 0.8: right | No date: forward from 0 gives 0, 1 here, and 0, -0.2 if the sale comes first: a guess (O62), or a special case | Right | Right only when every row since the read has arrived. The last point differs from Home, against the invariant in kiko-domain and `net-worth-series.test.ts` | Below zero when one series is behind another. A disconnect strips the stamp, so the past goes back to "Was", with no later read to heal it | Valuer, and the invariant | Gated: unchanged | 30 code lines, plus the first-sync case and a surviving date; 300 test lines |
+| B: hold the walk back for that coin | 1, 1 | 0, 0 | Right | Equal to Home | The account's other coins wait as well: a window and its marks cover every coin in the span, so a standing order stops the walk for as long as it stands. A store of held rows needs a second migration, which the plan forbids | Walk, marks, sets 5, 6, 9 | Walk touched | Over 300 code lines |
+| C: while set aside, the coin is flat over its whole past, or the line stops at the last good point, and a text says so | 1, 1, or no point after the read | 0, 0, or no point | Wrong, in the flat form: the real past is gone until a good read. The stop form hides every other holding's recent days too | Flat at Home, or absent | A standing order keeps the past wrong, or the line short, for as long as it stands | Statistics must read `sync_state` per account, new text | Gated: unchanged | 80 code lines; 300 test lines |
+| D, chosen by the planner: a date of its own, `balanceReadAt`, written with the balance and kept by a disconnect. A Bybit row counts only if its time is at or before that date | 1, 1 | 0, 0 | Right | The last read balance, which equals Home and the line on the account detail | The stretch after the read is off by what moved since the read. That is the error of the balance itself, which the user ruled in O76. Never below zero by this cause | One filter in the valuer, one optional field on the provider, one line in `runBalanceSyncInner` | Unchanged: the filter does not run, pinned by A121 | 45 code lines; 350 test lines |
+
+Said plainly: no option makes the line right while the balance is unknown. Option A comes closest in example 1, because the rows there are complete, but no code can tell that they are complete, and on a first sync it has no anchor at all. Option D shows no number that the app does not hold as a fact: a past rebuilt from a read balance and the rows that balance holds, then that read balance. It needs no new text to be true on the account detail. It says nothing on the Statistics screen, so the user rules on that (Q-i, section 13).
+
+Option D by order of arrival. T is the read, F a fill of 0.2 X after T, R the next good read with balance 0.8, and "was" is the line before this fix.
+
+| # | World and order | Was | Now | Truth |
+|---|---|---|---|---|
+| 1 | T, then F's row, no R yet | 1.2, 1 | 1, 1 | 1, 0.8 |
+| 2 | T, F's row, then R | 1, 0.8 | 1, 0.8 | 1, 0.8 |
+| 3 | T, R, then F's row: F is older than R, and it arrives late | 0.8, 0.8; at arrival 1, 0.8 | The same | 1, 0.8 |
+| 4 | T, then an older row of +1, from before T, arrives while set aside | 0, 1 | 0, 1 | 0, 1 |
+| 5 | No T, a walk makes the holding at 0, the buy of +1 arrives | -1, 0 | 0, 0 | 0, 1 |
+| 6 | No T, the sale of -0.2 arrives first | 0.2, 0 | 0, 0 | Not known |
+| 7 | Rows 5 and 6 have both arrived, then a first good read with balance 0.8 | 0, 1, 0.8 | 0, 1, 0.8 | 0, 1, 0.8 |
+| 8 | Row 1, then a disconnect, so no read can come | 1.2, 1, for good | 1, 1, for good: the holding is a kept snapshot, and Home shows 1 | 1, 0.8 |
+| 9 | Row 8, then the user adds a manual row of +0.5, which moves the balance to 1.5 | 1.2, 1, then 1.5 | 1, 1, then 1.5: a manual row always counts | 1, 0.8, then 1.3 |
+| 10 | Row 8, then a reconnect, a coin still set aside | 1.2, 1 | 1, 1: the date stays | 1, 0.8 |
+| 11 | Row 10, then a good read | 1, 0.8 | 1, 0.8 | 1, 0.8 |
+| 12 | FUND not read, stored 5, a deposit of 3 arrives after T, then a good read of 8 | 2, 5, then 5, 8 | 5, 5, then 5, 8 | 5, 8 |
+| 13 | A good read at T, and a fill between T and the walk of the same run | Past off by the fill until the next read | Past right; the fill counts from the next read | Fill counted |
+| 14 | A row within 5 seconds of T when the device clock is off | Past off by that row until the next read | The same row can land on the wrong side of T, until the next read. The window is `RECV_WINDOW_MS`: a signed read fails with 10002 past it | Row on its side |
+
+Why `balanceReadAt` and not `syncedAt` (PLANNER CALL 86). `syncedAt` means "a good read last wrote this holding": `runBalanceSyncInner` stamps only the written holdings, so a set-aside coin keeps it, and that part fits. But `disconnectDatabaseTransaction` strips it, so a disconnected holding could not tell "read, and the rows hold" from "never read". `balanceSyncedAt` in the state is the account's, it moves while a coin is set aside, and a failed state write leaves it behind. A mark in the holding's metadata goes in the same write as the balance, so the two cannot part. A good read's upsert replaces it, and `strippedOnDisconnect` does not list it. No migration: metadata is JSON. No Bybit holding has shipped, so no old holding lacks the mark.
+
+A Bybit row is one with `source: 'bybit'`. A manual row moved the balance when it was written, so it always counts (PLANNER CALL 87). A disconnected holding can have one: `updateWithBalanceDelta` and `recordManual` move its balance.
+
+Re-review finding 2 (O83), decided here (PLANNER CALL 88). The block "Some balances not read" is about balances. A coin on the history list has no balance claim behind it, and no balance read clears that list (`withCoinList` only grows it), so an emptied account would keep the block for good. The block reads the balance list only. The caption under Synchronization still reads the union, so nothing goes unsaid. Set 5, not set 6, is the first writer: `historyListWriterOf` is shared, and the capital walk counts untracked coins.
+
+| Account with no holding | Was (O80 F4) | Now |
+|---|---|---|
+| A coin on the balance list | "Some balances not read" | The same |
+| A coin on the history list only | "Some balances not read" | "No holdings yet", and the caption names the coin |
+| A coin on the history list only, and FUND not read | "Some balances not read" | The same: the wallet's note holds it |
+| A coin on the history list that Bybit tracks now | "No holdings yet" | The same |
 
 ### An account with every coin set aside (O76's condition, PLANNER CALLS 81, 82)
 
@@ -259,7 +328,7 @@ Rows do feed other money values, so "the row is one ledger line" was too short.
 | Surface | Fed by a row? | Code | Effect of a row with a wrong amount, a missing row, or a stale row |
 |---|---|---|---|
 | Holding balance, Home total, net worth now | No | `addManyDedup` ("never touches `holdings`"); `removeSyncedRows` | None |
-| Net-worth line, past points | Yes | `createHoldingValuer`: opening = balance - sum of rows | A wrong number in the past only; the point for now stays right |
+| Net-worth line, past points | Yes | `createHoldingValuer`: opening = balance - sum of rows; for a Bybit holding, of the rows at or before `balanceReadAt` (set 11) | A wrong number in the past only; the point for now stays right |
 | Holding detail, `earlierHistory` line | Yes | `ExchangeHistoryFooter`: balance - sum of rows | A wrong number: off for Bybit (PLANNER CALL 27) |
 | Holding detail and Home lists | Yes | the row itself | A wrong or missing line |
 | Date field, default range of Statistics | Yes | `spanStart` in `statistics.screen.tsx`: the earliest row sets it | The oldest row moves the start of the line and of the date picker |
@@ -269,7 +338,7 @@ Rows do feed other money values, so "the row is one ledger line" was too short.
 | 2-minute transfer matcher | Yes, unmarked rows only | `rowsForTransferMatch` drops a row with a pair id or a marker | Equal amounts inside 2 minutes pair, as for Binance. A trade or convert leg is never a partner |
 | Funding matcher | No | `fundingOf` needs a `p2p`, `card` or `bank` code; Bybit writes none | None |
 | Loan payment matcher | Yes, an unmarked debit | `isEligibleTransaction` refuses a counterpart holding and an untracked counterpart | An auto link a user can undo, as for Binance. A trade or convert leg is never a candidate |
-| A listed Funding ledger row (stage F) | Past line, lists, date field and bond start day: yes. Spending, 2-minute matcher, funding matcher, loan matcher: no | `createHoldingValuer` sums every row; `exchangeExcludedTransactionIds` and `rowsForTransferMatch` drop a row with an `untrackedCounterpart`; `fundingOf` needs a `p2p`, `card` or `bank` code; `isEligibleTransaction` refuses the marker; `reconcileBondFunding` has no marker test | Section 3, "Stage F". A debit in a bond's currency can shift that bond's start on the line by up to 7 days, as for Binance |
+| A listed Funding ledger row (stage F) | Past line, lists, date field and bond start day: yes. Spending, 2-minute matcher, funding matcher, loan matcher: no | `createHoldingValuer` sums every row up to the read (set 11); `exchangeExcludedTransactionIds` and `rowsForTransferMatch` drop a row with an `untrackedCounterpart`; `fundingOf` needs a `p2p`, `card` or `bank` code; `isEligibleTransaction` refuses the marker; `reconcileBondFunding` has no marker test | Section 3, "Stage F". A debit in a bond's currency can shift that bond's start on the line by up to 7 days, as for Binance |
 
 Statistics draws only the sum (`buildNetWorthSeries`), filtered by account (`buildFilterScope`); `buildHoldingValues` has no other
 consumer, and no per-holding past is drawn once `earlierHistory` is off (PLANNER CALL 27). So a holding's own past below zero is not
@@ -1737,6 +1806,12 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A118 | No empty look (PLANNER CALL 82) | `account-detail.screen` suite: "a Bybit account with no holding and a refused coin shows the not-read block, never No holdings yet", one row per note kind, a FUND refusal too; "an empty Bybit account with no note keeps No holdings yet"; "a Binance account with no holding keeps No holdings yet" |
 | A119 | Code 10024 (PLANNER CALL 83) | `bybit.client.test.ts`: the code rows; "keeps code 10024 as the compliance class after the stored date"; `bybit.failure-text.test.ts`: its row; `bybit.shipped-copy.test.ts`: "the 10024 text states the code, in en and uk, and offers no other step" |
 | A120 | A walk's row on a set-aside coin (PLANNER CALL 79) | `bybit.transfer-history` suite, real SQLite: "a Unified leg of a set-aside coin creates its holding at zero, the next read leaves it at zero with the line, and the first good read writes it" |
+| A121 | Binance and the other sources do not move (O78). Green on today's code, before the fix | `holding-value-at.test.ts`: "a Binance holding counts every row against its balance, with a row after its stamp", "a Binance holding at zero with no stamp opens below zero by its earlier buy", "a holding of any other source counts every row, whatever its metadata" |
+| A122 | The mark (PLANNER CALL 86) | `sync.test.ts`: "a provider that dates its balances writes the read time beside the stamp", "a provider that does not writes the stamp alone" |
+| A123 | The valuer, the rows of "Option D by order of arrival" that it can hold alone (PLANNER CALLS 86, 87) | `holding-value-at.bybit.test.ts`: one row per number, 1, 4, 5, 6, 7, 9 and 12; "a row exactly at the read counts, and a row one millisecond after it does not"; "a row dated later on the read's local day does not count"; the read-count guard of `holding-value-at.test.ts` stays green unchanged, so a holding that is not Bybit's gets no extra pass |
+| A124 | The wiring and the last point (PLANNER CALL 87) | `statistics.screen.test.tsx`: "hands each row's source to the net-worth line"; `net-worth-series.test.ts`: "ends on the net worth Home shows for a Bybit coin with a row after its read" |
+| A125 | The whole path on real SQLite (O78) | `bybit.past-line.set-aside.real-sqlite.test.ts`: rows 2, 3, 8, 10, 11 and 13 through `runBalanceSync` and `addManyDedup`; `disconnect.real-sqlite.test.ts`: "a disconnect keeps the read time of a Bybit holding and drops its stamp" |
+| A126 | The block reads the balance list (PLANNER CALL 88) | `account-detail.screen.test.tsx`: the table's four rows; `history-status.test.ts`: "the balance coins leave out the history list" |
 
 ### Property suites
 
@@ -1858,13 +1933,17 @@ stays 3, so "Enable Reading" holds; uk title), `en.uk.parity.test.ts`, `en.casin
 | PLANNER CALL 76 (new; O75) | Set 1 step 10/11 records "no reading". P2 and P3 rows stay docs only, with the empty shapes MEASURED, and they lose their UNPROBED mark | Their probe will not run, so O35's wait has no end. `git grep -c UNPROBED` now falls to P17, deferred rows under Backlog and the record rows of section 12 |
 | PLANNER CALL 77 (new; O76) | The rule is for UNIFIED only. FUND has no `locked`, and an untracked coin's `locked` is not read | QUOTE: the two FUND pages list `walletBalance`, `transferBalance`, `bonus`, with no `locked`. An untracked coin has no scale and no money value, the same as its loan fields. Cost: an untracked coin wholly on order can miss the "Not tracked" line, if its `walletBalance` reads zero |
 | PLANNER CALL 78 (new; O76) | One outcome per coin, tested in this order: two rows, refused; a loan above zero, borrowed; a loan field not decimal, refused; a balance unreadable, refused; `locked` above zero or not decimal, open order; else balance | The open-order text can promise too much only if a fault outlasts the order, so each fault that outlasts it wins. A loan above zero keeps today's rule that it beats an unreadable field (`bybit.balance-read.test.ts`). The brief's reading "follows the borrowed path" holds for the path, and needs this order for the text |
-| PLANNER CALL 79 (new; O76) | Its own list `openOrder` under the wallet's `balanceNotes` entry, on the `borrowed` path, and no second patch kind. A walk's zero holding stays at zero while the coin is set aside, and the text covers it. Was the brief's "absent": true until a row of that coin arrives, from set 6 on. A walk's row from set 6 creates a Unified holding at 0 and it stays 0 with the line (O77, O78); the past-line effect is a fix owed before set 6, not an accepted residual | Reusing `borrowed` would show a loan text for an order. Each place the path needs is in plan set 4 step 7/9. `withBalanceNotes` replaces a wallet's entry whole, so the first good read clears the mark with no new code. The past line moves during the order, and heals: section 3 |
+| PLANNER CALL 79 (new; O76) | Its own list `openOrder` under the wallet's `balanceNotes` entry, on the `borrowed` path, and no second patch kind. A walk's zero holding stays at zero while the coin is set aside, and the text covers it. Was the brief's "absent": true until a row of that coin arrives, from set 6 on. A walk's row from set 6 creates a Unified holding at 0 and it stays 0 with the line (O77, O78); the past-line effect is fixed by set 11 (PLANNER CALL 86), and is not an accepted residual | Reusing `borrowed` would show a loan text for an order. Each place the path needs is in plan set 4 step 7/9. `withBalanceNotes` replaces a wallet's entry whole, so the first good read clears the mark with no new code. The past line moves during the order, and heals: section 3 |
 | PLANNER CALL 80 (new; O76) | The older-build proof is a pin on this build's parser and writer (A116), with one code fact: `git show main:src/crypto-sync/exchange/walk-state/walk-state.ts` holds no `balanceNotes`, read 2026-11-05. No test can run an older build's code | A wallet entry holds named fields only (`walletNotesOf`), and a writer spreads the raw state. The real restore in an older build was not run (O10 stands by inference; the scratch test retired at set 3) |
 | PLANNER CALL 81 (new; reverses O73 (c)) | A Bybit balance read stops writing `oversizedBalance`. Refused coins go to `balanceNotes` as `refusedCoins`, with `bybitCoinRefused` | Section 3, "An account with every coin set aside". `oversizedCoinsOf` merges the balance and history lists, so a text per provider on `CoinLines` could not tell them apart, and a Bybit history row's oversized text is true. The notes already replace a wallet's entries wallet by wallet, as `complete` did for this list |
 | PLANNER CALL 82 (new; O76's condition) | With no holding and any balance note, on an account with `hasKeyLines`, the account detail shows `bybitBalancesNotRead`. It keeps "Add a holding" | The block "No holdings yet" says the opposite of the lines above it. Its text fits a coin refused, a loan, an open order and a refused wallet. While the Bybit state row loads, nothing renders (O79: either block would be a guess, and the old block would flash "No holdings yet" on an all-refused account); every other account keeps today's block at once. The gate counts `untrackedCoinsOf` and the notes (O80 F4), so an account that holds only an untracked coin does not read as empty. A small component holds the state read, so the screen's own complexity stays. Home and the accounts list are a user question (section 13) |
 | PLANNER CALL 83 (new; O75) | Code 10024 is a class of its own, `compliance`, with a fixed text and no cooldown. A FUND-only 10024 is logged like any FUND failure, and (O80 F1, replacing "tolerated and logged") it marks the wallet with `bybitWalletNotRead`; a good read clears it. `checkKey` throws on a rate refusal or a 403 (F3), and a UNIFIED or FUND `{list:[]}` is malformed (F2; the measured empty shape is `list:[{coin:[]}]`) | CODE: it falls to `unknown` today (`failureOfCode`, otherwise), so it shows "Bybit request failed: 10024", or the expired text past the stored date, which is false. The text states the fact and offers no step, by the user's order. A FUND-only 10024 is a world no read has shown, and `bybitWalletRefused` tells the user to check permissions, which does not fit |
 | PLANNER CALL 84 (new; O73, O76) | A test of the docs' sample row is added, in the client suite, whole | For the loan fields alone it adds nothing: `bybit.balance-read.test.ts`, "reads a loan of %s as no loan", covers "0" and "0.0" per field, and each field is read alone. It earns its place because the same row must now also pass with `locked`, from the page's bytes through the client's parse |
 | PLANNER CALL 85 (new; O75) | Set 3 step 7/7 writes no code. The Earn count leaves in set 4, with its key, parse, patch and line. Set 7 writes the clause. In `bybitKinds`, "other Earn products" goes too, and the Earn sentence follows the not-read list, not the balance list | "It does not read ... other Earn products" is false beside "Earn is not read", and "It does not read" after the Earn sentence would read as about Earn. O73 (c), "step 7/7 must add Earn to `complete`", falls. Set 7's connect is 10 calls. `BYBIT_SIGNED_PATHS` stays without `/v5/earn/position` |
+| PLANNER CALL 86 (new; O78) | A date of its own, `balanceReadAt`, in the holding's metadata, written with the balance through `runBalanceSyncInner` by a provider that asks for it (Bybit only), kept by a disconnect. Was the brief's option A: `syncedAt` | `disconnectDatabaseTransaction` strips `syncedAt`, so with it a disconnected holding either loses its past or goes back to the fault for good. The state's stamp moves while a coin is set aside. Section 3, "The past line while a balance is old" |
+| PLANNER CALL 87 (new; O78) | One filter before the valuer's existing body, only for a holding with a `bybitAsset` key: a row with `source: 'bybit'` counts only at or before `balanceReadAt`, and with no date it does not count. Every other row counts. So a holding with no read is at 0 with no special case. No other holding runs the filter | The rows a stored balance holds are exactly those, and the rest of the body stays as it is, so the local-day bucket rule and the last point do not move. The filter compares instants, because the read is an instant and a bucket is a day. O62: no opening is guessed |
+| PLANNER CALL 88 (new; O83) | The not-read block counts the untracked balance list, not the union, and set 11 carries it because set 5 is its first writer. Was: O83 "from set 6", and the set 6 planner | A row walk only proves a coin existed; it says nothing about a balance. No read clears the history list. Section 3 has the matrix |
+| PLANNER CALL 89 (new; O78) | Set 11 runs after set 4 and before set 5, and keeps the other sets' numbers (the pattern of PLANNER CALLS 43 and 59). Was: "before set 6" | A FUND coin refused, or a FUND wallet not read, takes capital rows from set 5 on |
 
 Changed by the rulings of the builder check, the re-check and the user's answers (was: and now, per ruling that
 reverses a row):
@@ -1985,6 +2064,8 @@ reverses a row):
 | O75 | The testnet run | set 1 step 9/11, the proof of `locked`, Earn and coin rows | closed at Part A; clause "E2 and E4"; `bybitEarnLeftOut` removed; one device build; a row for 10024 |
 | O76 | O73 (b), an empty loan field | UNVERIFIED, and it blocks the set 7 device build | "Keep refusal", and the block goes |
 | O76 | O73 (c), refused amounts | reuse `oversizedBalance` | `refusedCoins` and `bybitCoinRefused` (PLANNER CALL 81 reverses O73 (c)) |
+| O78 | The past line | moves against an old balance; a fix owed before set 6 | set 11, before set 5: `balanceReadAt` (PLANNER CALLS 86, 87, 89; Q-i is the user's) |
+| O83 | O80 F4, the not-read block | counts the history list | counts the balance list (PLANNER CALL 88) |
 | O68 | The pairing (F1) | nearest first alone; a double with no delay past W | nearest first, then repair (PLANNER CALL 70) |
 | O68 | Reconcile (F2, F8) | every verdict that left `listed` removed the row; every listed row upserted per run; no prune | `waiting` removes nothing; only the difference is written; a prune at the floor minus 2 W (PLANNER CALL 71) |
 | O68 | The migration (F3) | set 10 step 1/6, 0064 at that writing; "no removal row is needed" with a phone already on an unmerged migration | set 2 step 5/5, in `next` before any device build (PLANNER CALL 72) |
@@ -2042,12 +2123,26 @@ No free read tests it now (O75; was: P8 and P9 on testnet). A real row that show
 
 Q-h, OPEN, for the user through the coordinator: on an account where every coin is set aside, the account detail now says so (section 3). Home and the accounts list show no sign, as for any coin set aside. Default: they stay as they are. A mark on the card is new UI, and it would be the first of its kind.
 
+Q-i, OPEN, for the user through the coordinator (O78): what the net-worth line shows for a coin whose balance Kiko could not read. Example: hold 1 X, an order fills 0.2 X, and the truth is 1, then 0.8. No option is right in every case while the balance is unknown (section 3, "The past line while a balance is old"). Set 11 step 3/5 waits for this answer.
+
+| Option | The line | Consequence | Recommended |
+|---|---|---|---|
+| A: hold at the last read | 1, then 1. On a first sync the coin is not on the line | The past up to the read is right. The last point always equals Home. A sold part stays on the line until the first good read, as it does on Home. Never below zero by this cause | Yes |
+| B: rows keep moving the line after the read | 1, then 0.8. On a first sync the coin is still not on the line | Right here, but only when every row since the read has arrived. It can go below zero when one list is behind another. The last point differs from Home while the coin is set aside, and the invariant "the line ends on Home's number" gets an exception. Costs about 15 more code lines and 60 more test lines | |
+| C: the coin is flat while set aside, with a text | 1, then 1, and flat for the whole past | Nothing below zero, but a standing order wipes the coin's real past from the line for as long as it stands. Costs about 35 more code lines | |
+
+A second part of Q-i: a line on the Statistics screen. Default: none, as Q-h keeps such signs to the account detail, and the plan builds no text. The planner recommends adding it, because the Statistics screen is where the flat stretch shows, and `statistics.bybitPastLimits` is already there. DRAFT, not in the catalogue, for the user's review, added to the end of clause L1S:
+
+| en | uk |
+|---|---|
+| A coin Kiko could not read stays on this line at its last read balance, or stays off it with no earlier sync. | Монета, яку Кіко не зміг прочитати, лишається на цій лінії з останнім прочитаним балансом, а без попередньої синхронізації її на лінії немає. |
+
 Accepted residuals told to the user, with no question (O68):
 
 - Q-a (O68 (a); was: a question, with a split to 1 minute): a burst of over 1,000 log rows, or over 2,000 ledger rows, inside a span of a second or less holds that lane. Later spot trades or Funding moves stay out until that burst passes the floor, and `bybitHistoryDense` says so in en and uk. The 1-second split costs about 5 to 10 more runs on a burst, and no run on an even day.
 - Q-c (O68 (c), under O56): the server repeats a page in the middle of the convert list. The rows behind it are missing, with no sign. It heals if the repeat is transient, and it is outside the pages.
 - M32 and M35 (O68, F1, F5): section 3, "What stays wrong".
-- O76: section 3, "The `locked` set-aside", accepted residuals. The past-line effect during an open order is new, and the report names it to the user.
+- O76: section 3, "The `locked` set-aside", accepted residuals. The past-line effect during an open order is not one of them: it is set 11 and Q-i (O78).
 
 The user's words on the order, the same date: "Spend no money and ask for no account step before the terms verdict."
 (O38, section 10.)
