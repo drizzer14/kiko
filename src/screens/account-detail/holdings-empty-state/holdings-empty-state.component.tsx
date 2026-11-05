@@ -6,18 +6,18 @@ import { isBalanceProviderId } from '@kiko/crypto-sync/provider';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
-import { balanceNotesOf } from '@kiko/crypto-sync/exchange/history-status';
+import { balanceNotesOf, untrackedCoinsOf } from '@kiko/crypto-sync/exchange/history-status';
 
-import { hasKeyLines } from '../crypto-sync-section/binance-history-status';
+import { hasKeyLines, isTrackedAssetOf } from '../crypto-sync-section/binance-history-status';
 
 import type { HoldingsEmptyStateProps } from './holdings-empty-state.props';
 
 // The block under the Holdings heading when the account has no active holding. A Bybit account
-// whose last balance read set a coin aside or was refused a wallet is not empty, so it says so
-// instead of "No holdings yet" under lines that name the coins. It reads the account's own
-// `sync_state` row, gated on its own isLoading: while that read is on its first load a Bybit
-// account shows nothing, because either block would be a guess. Every other account has no notes
-// to read, so its read stays off and its block shows at once.
+// whose last balance read set a coin aside, was refused a wallet, or listed only coins Kiko does
+// not track is not empty, so it says so instead of "No holdings yet" under lines that name the
+// coins. It reads the account's own `sync_state` row, gated on its own isLoading: while that read
+// is on its first load a Bybit account shows nothing, because either block would be a guess. Every
+// other account has no notes to read, so its read stays off and its block shows at once.
 const HoldingsEmptyState: FC<HoldingsEmptyStateProps> = ({
   accountId,
   institution,
@@ -32,15 +32,19 @@ const HoldingsEmptyState: FC<HoldingsEmptyStateProps> = ({
     readsBalanceNotes,
   );
 
-  if (readsBalanceNotes && isLoading) {
+  if (isLoading) {
     return null;
   }
 
-  const balanceNotes = balanceNotesOf(
-    parseExchangeState(syncStateRows.at(0)?.exchangeState ?? null),
-  );
+  const state = parseExchangeState(syncStateRows.at(0)?.exchangeState ?? null);
+  // The provider is named again for its own tracked-coin rule: a disabled read gives no rows, so
+  // an account of any other provider reaches neither list.
+  const untrackedCoins = isBalanceProviderId(exchange)
+    ? untrackedCoinsOf(state, isTrackedAssetOf(exchange))
+    : [];
   const hasBalanceNotes =
-    readsBalanceNotes && Object.values(balanceNotes).some((list) => list.length > 0);
+    untrackedCoins.length > 0 ||
+    Object.values(balanceNotesOf(state)).some((list) => list.length > 0);
 
   return (
     <EmptyState

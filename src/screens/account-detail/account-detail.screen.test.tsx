@@ -2859,6 +2859,49 @@ describe('AccountDetailScreen — a Bybit account with no holding and a balance 
     expect(queryByText(EMPTY_MESSAGE)).toBeNull();
   });
 
+  it.each([
+    ['a coin on the balance list', { balance: ['PEPE'], history: [] }],
+    ['a coin on the history list', { balance: [], history: ['PEPE'] }],
+  ])(
+    'shows the not-read block, never No holdings yet, for an account that holds only %s Bybit does not track',
+    async (_title, untrackedCoins) => {
+      setLiveData({
+        accounts: [bybitAccount],
+        holdings: [],
+        syncState: [{ exchangeState: JSON.stringify({ version: 1, walks: {}, untrackedCoins }) }],
+      });
+
+      const { getByTestId, getByText, queryByText } = await renderScreen();
+
+      expect(
+        within(getByTestId('account-detail-holdings-empty')).getByText(NOT_READ_TITLE),
+      ).toBeTruthy();
+      expect(getByText(NOT_READ_MESSAGE)).toBeTruthy();
+      expect(queryByText(EMPTY_TITLE)).toBeNull();
+    },
+  );
+
+  it('keeps No holdings yet when the stored untracked coin is one Bybit tracks now', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: [
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            untrackedCoins: { balance: ['BTC'], history: [] },
+          }),
+        },
+      ],
+    });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText(EMPTY_TITLE)).toBeTruthy();
+    expect(queryByText(NOT_READ_TITLE)).toBeNull();
+  });
+
   it('keeps the block testID, the generic holding glyph and the Add holding action', async () => {
     setLiveData({ accounts: [bybitAccount], holdings: [], syncState: refusedCoinNotes });
 
