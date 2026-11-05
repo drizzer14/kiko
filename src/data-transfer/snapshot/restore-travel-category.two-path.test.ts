@@ -244,14 +244,17 @@ describe('a file this build wrote, into release 1.3', () => {
     );
   });
 
-  it('the only settings key release 1.3 drops is the mark', async () => {
+  it('the settings keys release 1.3 drops are the mark and the recurring merchant choices', async () => {
     const tables = await thisBuildFile();
     const fileColumns = Object.keys(tables.settings[0] ?? {}).map((key) =>
       columnNameOf(settings, key),
     );
     const kept = new Set(columnNamesOf(releaseThirteenTarget(), 'settings'));
 
-    expect(fileColumns.filter((column) => !kept.has(column))).toEqual([MARK_COLUMN]);
+    expect(fileColumns.filter((column) => !kept.has(column))).toEqual([
+      MARK_COLUMN,
+      'recurring_merchant_choices',
+    ]);
     expect([...kept].filter((column) => !fileColumns.includes(column))).toEqual([]);
   });
 });

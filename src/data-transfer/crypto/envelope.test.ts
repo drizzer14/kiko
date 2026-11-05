@@ -169,7 +169,11 @@ describe('the export version against the migration journal', () => {
     // Through 0066_add_funding_match_rows, a new table the file carries as an optional key
     // (`fundingMatchRows`), like 0054: an older build restoring such a file drops the key, and
     // this build restores an older file with the table empty, so it needed no bump.
-    migrationCount: 67,
+    // Through 0067_add_recurring_merchant_choices, a nullable column riding inside the settings
+    // row (`recurringMerchantChoices`): NULL reads as nothing hidden. An older build restoring a
+    // file that carries it drops the key, and this build restores an older file without it as
+    // null, so it needed no bump (a bump would make an older build refuse every new file).
+    migrationCount: 68,
   };
 
   it('has a version decision for every migration', () => {
