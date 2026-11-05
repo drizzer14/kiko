@@ -186,8 +186,8 @@ const insertSyncedHolding = async (
 
 // The mark of a read on a dated balance (`datedBalanceSourceOf`): the ids of the holding's rows
 // that are not of the syncing source, read in the upsert's own transaction, so the list and the
-// balance it describes are written together. A balance the sync reads holds the move of a row the
-// user typed, so such a row is no part of the line above it (`rowsHeldByBalance`). A holding off
+// balance it describes are written together. The read's figure replaces the balance, so a row the
+// user typed before it has no part in the line above it (`rowsHeldByBalance`). A holding off
 // the dated list returns before any read, and a read with no such row returns no key.
 const overwrittenRowsPatch = async (
   databaseTransaction: typeof database,
@@ -825,7 +825,7 @@ export const holdingsRepo = {
    * from its transactions. `createHoldingValuer`
    * (statistics/holding-value-at/holding-value-at.ts) back-derives each
    * holding's opening balance as
-   * `currentBalance - sum(allTransactions)`, so a bare `set({ balanceMinorUnits })`
+   * `currentBalance - sum(rows that count)`, so a bare `set({ balanceMinorUnits })`
    * retroactively shifted the ENTIRE historical net-worth series by the delta,
    * with no ledger row to explain it, and left the holding-detail transaction
    * list unable to reconcile with its own displayed Value.

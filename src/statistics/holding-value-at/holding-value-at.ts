@@ -36,13 +36,15 @@ export type SeriesTransaction = {
   source?: TransactionRow['source'];
 };
 
-// The rows a holding's stored balance already holds. A dated balance is as old as its last read,
-// so a row of the syncing source that is dated after the read is not in it: counting it would move
-// the whole past against the old balance. With no read date no such row counts, so a holding that
-// was never read opens at its stored balance and no opening is guessed. Any other row counts too,
-// unless the read overwrote it: that balance already holds the move of a row the user typed
-// before the read, whatever the row's date, and the holding's list of overwritten ids names it. A
-// row with no id is on no list. Every row of a holding whose balance is not dated counts as it is.
+// The rows the line counts, so the opening is the stored balance minus them. "Held" means counted
+// and nothing more. A dated balance is as old as its last read, so a row of the syncing source
+// that is dated after the read is not counted: counting it would move the whole past against the
+// old balance. With no read date no such row counts, so a holding that was never read opens at
+// its stored balance and no opening is guessed. Any other row counts too, unless the read
+// overwrote it: the read's figure replaced the balance, so a row the user typed before the read
+// has no part in it, whatever the row's date, and the holding's list of overwritten ids names it.
+// Whether the figure contains that row's amount depends on the world. A row with no id is on no
+// list. Every row of a holding whose balance is not dated counts as it is.
 const rowsHeldByBalance = (
   holding: SeriesHolding,
   transactions: SeriesTransaction[],
@@ -103,13 +105,14 @@ const lastIndexAtOrBefore = (days: number[], targetDay: number): number => {
  *   mid-day debit and a same-local-day bond purchase (the bond's cost turns
  *   on by local day) then land in the SAME bucket, so a card->bond move stays
  *   net-worth neutral instead of spiking or dipping across the midnight
- *   boundary. Opening balance = current balance - sum(all transactions),
+ *   boundary. Opening balance = current balance - sum(the rows that count),
  *   since the stored `balanceMinorUnits` is the CURRENT balance, not the
- *   range-start balance. A holding whose balance is dated (`datedBalanceSourceOf`) sums only
- *   the rows its balance already holds (`rowsHeldByBalance`), so the line past the last read is
- *   flat at that balance, which is the number Home shows, instead of moving by rows the balance
- *   does not contain. A row that the read overwrote, which the holding's list names, is left out
- *   as well, since that balance holds its move. The per-holding one-time setup groups transactions
+ *   range-start balance. Every row counts, except for a holding whose balance is dated
+ *   (`datedBalanceSourceOf`): it sums only the rows that count (`rowsHeldByBalance`), so the
+ *   line past the last read is flat at that balance, which is the number Home shows, instead of
+ *   moving by rows the balance does not contain. A row that the read overwrote, which the
+ *   holding's list names, is left out as well, since the read's figure replaced the balance and
+ *   the row has no part in it. The per-holding one-time setup groups transactions
  *   by local-day key and builds a running (prefix) sum per distinct day;
  *   each call then binary searches that sorted day list instead of
  *   re-filtering/re-reducing the whole transaction list per bucket.

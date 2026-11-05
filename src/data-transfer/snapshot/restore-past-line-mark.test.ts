@@ -1,6 +1,6 @@
 // src/data-transfer/snapshot/restore-past-line-mark.test.ts
 //
-// A Bybit holding's metadata will name ledger rows by id (the mark of the past line), so a `.kiko`
+// A Bybit holding's metadata names ledger rows by id (the mark of the past line), so a `.kiko`
 // restore must give back every row with the id it was exported under, and the holding with its
 // metadata whole. The real export read, the real restore and the real tables run on a fully
 // migrated `node:sqlite` engine, through JSON text, as a file travels.
@@ -161,7 +161,7 @@ const insertHolding = (holding: SeedHolding): void => {
 // app writes on a Bybit holding while it is disconnected (a typed row, a balance edit, an
 // Exchange leg whose other leg is on a cash holding, a split's return), the account's own
 // Bybit rows, and an import row, which the app never writes there and only a hand-made file can
-// hold. The marks name the rows that are not Bybit's, as the seed of the mark will.
+// hold. The marks name the rows that are not Bybit's, as the read's write does.
 const seedBybitLedger = (): void => {
   run(
     `INSERT INTO accounts (id, name, kind, institution, currency)

@@ -132,7 +132,7 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(mockClearCredentials).not.toHaveBeenCalled();
   });
 
-  // The read time is what lets the line tell "read, and its rows hold" from "never read" once the
+  // The read time is what lets the line tell "read, and its rows count" from "never read" once the
   // stamp is gone, so a disconnect must leave it with the key.
   it('a disconnect keeps the read time of a Bybit holding and drops its stamp', async () => {
     mockDatabase.exec('PRAGMA foreign_keys = ON;');

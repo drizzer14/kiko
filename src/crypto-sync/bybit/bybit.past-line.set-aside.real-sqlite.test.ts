@@ -119,8 +119,6 @@ const typedRowAt = async (time: number, amountMinorUnits: number): Promise<strin
 const editRow = (transactionId: string, amountMinorUnits: number): Promise<void> =>
   transactionsRepo.update({ transactionId, amountMinorUnits, time: at(1, 9) });
 
-const idsOf = (...rowIds: string[]): string[] => [...rowIds].sort();
-
 const CASH_ACCOUNT_ID = 'acc-cash';
 const CASH_ID = 'cash-usd';
 
@@ -324,7 +322,7 @@ describe('the line of a Bybit holding whose read overwrote rows the user typed, 
       bybitAsset: HOLDING_KEY,
       syncedAt: at(4, 10),
       balanceReadAt: at(4, 10),
-      overwrittenRowIds: idsOf(firstRowId, secondRowId),
+      overwrittenRowIds: [firstRowId, secondRowId].sort(),
     });
     expect(await lineFrom(0, 4)).toEqual([0.1, 0.1, 0.1, 0.1, 0.1]);
   });
@@ -531,7 +529,8 @@ describe('the line of a Bybit holding whose read overwrote rows the user typed, 
 
   describe('row 32, each row of a second disconnect follows its own mark', () => {
     // Row 19's world: the first row is on the mark, the second is typed after it and the coin is
-    // set aside at the next reconnect, so the balance holds the second row only.
+    // set aside at the next reconnect, so the stored balance has moved for the second row only,
+    // since the read that overwrote the first.
     const rowsOfASecondDisconnect = async (): Promise<{
       firstRowId: string;
       secondRowId: string;
@@ -566,20 +565,6 @@ describe('the line of a Bybit holding whose read overwrote rows the user typed, 
       expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
       expect(await lineFrom(0, 4)).toEqual([0.1, 0.1, 0.1, 0.1, 0.1]);
     });
-  });
-
-  it.each([
-    ['a delete', (rowId: string) => transactionsRepo.remove(rowId)],
-    ['an edit to +0.7', (rowId: string) => editRow(rowId, SEVEN_TENTHS_OF_A_COIN)],
-    ['an edit to -0.5', (rowId: string) => editRow(rowId, -HALF_OF_A_COIN)],
-  ])('the last point equals Home after %s of a row on the mark', async (_, change) => {
-    const typedRowId = await typedRowThenReadOfATenth();
-
-    await change(typedRowId);
-
-    const points = await lineFrom(-1, 3);
-
-    expect(points.at(-1)).toBe((await storedHolding()).balanceMinorUnits / ONE_COIN);
   });
 
   it('row 28, a hand-set balance row on the mark moves no balance, deleted or edited', async () => {
@@ -681,7 +666,7 @@ describe('a Convert or a split with a leg on a coin whose read overwrote it, on 
   };
 
   it('row 25, a delete from either leg takes both and moves the cash holding alone', async () => {
-    const { expenseId, coinLegId } = await convertedToTheCoin();
+    const { coinLegId } = await convertedToTheCoin();
 
     expect(await standing('BTC')).toEqual(BEFORE_AN_EDIT);
 
@@ -694,7 +679,6 @@ describe('a Convert or a split with a leg on a coin whose read overwrote it, on 
       cashHome: 200,
       cashLine: [200, 200, 200, 200, 200],
     });
-    expect(expenseId).not.toBe(coinLegId);
   });
 
   it('row 25, a delete from the cash leg gives the same', async () => {

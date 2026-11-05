@@ -1,5 +1,6 @@
 // A row that a Bybit read overwrote is named in its holding's metadata, and a delete or an edit of
-// that row moves no balance, because the read's figure does not hold it. This file runs the real
+// that row moves no balance, because the read's figure replaced the balance and the row has no
+// part in it. This file runs the real
 // repo on a migrated engine: each case reads back the balances, the rows and the confirm's plan.
 // A holding that is not Bybit's takes the same delete and edit as ever, with a mark in its
 // metadata or none, and sends the same statements.

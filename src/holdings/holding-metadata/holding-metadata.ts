@@ -135,17 +135,17 @@ export const SYNCED_AT_FIELD = 'syncedAt';
  * that held a given coin's balance, and a row inside that stretch can fall on the wrong side of
  * it. It is in neither `carriedMetadataKeys` nor the disconnect's stripped list: a carried key
  * would overwrite the new read's time with the stored one, and a stripped one would leave a
- * disconnected holding unable to tell "read, and its rows hold" from "never read".
+ * disconnected holding unable to tell "read, and its rows count" from "never read".
  */
 export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
 
 /**
  * The ids of the rows that the last balance read overwrote, written beside the balance by a
- * provider on the dated list: every row of the holding that is not of the syncing source, so a row
- * the user typed before that read is held by the balance already. It is in neither
- * `carriedMetadataKeys` nor the disconnect's stripped list: a carried key would join the new
- * read's list to the stored one, so the id of a row that is gone would never leave it, and a
- * stripped one would put a disconnected holding's typed rows back on its line.
+ * provider on the dated list: every row of the holding that is not of the syncing source. The
+ * read's figure replaced the balance, so a row the user typed before that read has no part in it.
+ * It is in neither `carriedMetadataKeys` nor the disconnect's stripped list: a carried key would
+ * join the new read's list to the stored one, so the id of a row that is gone would never leave
+ * it, and a stripped one would put a disconnected holding's typed rows back on its line.
  */
 export const OVERWRITTEN_ROW_IDS_FIELD = 'overwrittenRowIds';
 
@@ -288,11 +288,13 @@ export const datedBalanceSourceOf = (metadata: unknown): TransactionRow['source'
 };
 
 /**
- * Whether the holding's stored balance already holds the row `rowId`, because a read overwrote it:
- * a delete or an edit of such a row must not move the balance, and the confirm of a delete must not
- * name a move. It is the gate of the net-worth valuer's `rowsHeldByBalance` (the dated source
- * first, then the list), so Home and the line read one rule. A holding whose balance is not dated
- * is never on it, whatever its metadata holds.
+ * Whether a read overwrote the row `rowId`: the read's figure replaced the holding's balance, so
+ * the row has no part in it. A delete or an edit of such a row must not move the balance, and the
+ * confirm of a delete must not name a move. It is the gate of the net-worth valuer's
+ * `rowsHeldByBalance` (the dated source first, then the list), which counts the rows that are not
+ * overwritten, so Home and the line read one rule. Whether the figure also contains the row's
+ * amount depends on the world (the move reached the exchange or not), and this gate does not ask.
+ * A holding whose balance is not dated is never on it, whatever its metadata holds.
  */
 export const isOverwrittenRow = (metadata: unknown, rowId: string): boolean =>
   datedBalanceSourceOf(metadata) !== undefined && overwrittenRowIdsOf(metadata).includes(rowId);

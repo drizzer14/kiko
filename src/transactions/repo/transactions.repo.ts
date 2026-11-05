@@ -223,8 +223,8 @@ const readHoldingDatabaseTransaction = async (
 /** Move the stored balance of the holding of an existing row by `delta`, the way a delete or an
  * edit of that row does. A holding that is already gone has no balance to move. A row that a
  * read overwrote moves none (`isOverwrittenRow`, the same gate as the net-worth line's): the
- * read's figure does not hold it. This is the one way a delete or an edit reaches a balance, so
- * no path can skip the check. */
+ * read's figure replaced the balance, so the row has no part in it. This is the one way a delete
+ * or an edit reaches a balance, so no path can skip the check. */
 const moveBalanceOfRowDatabaseTransaction = async (
   databaseTransaction: typeof database,
   row: Pick<TransactionRow, 'id' | 'holdingId'>,
@@ -783,7 +783,8 @@ const markerLegIsGone = (
 // holding's currency, whatever the row's date or source: every row updated the
 // balance when it was written, so none can stay in it once the row is gone. The exception
 // is a row that a read of a dated balance overwrote (`isOverwrittenRow`, tested on the row's own
-// holding): that balance is the read's figure and never held the row, so nothing comes back.
+// holding): the read's figure replaced the balance, so the row has no part in it and nothing
+// comes back.
 // Then take a deposit's contribution out with the leg that paid it. A bank-owned
 // row of the same movement (`kept`) stays. Its marker is cleared in the same write
 // only when the leg it names is gone with this delete (`markerLegIsGone`): a marker
@@ -2628,9 +2629,9 @@ export const transactionsRepo = {
    * difference of the amounts, whatever the row's date or mark (a row that set
    * a balance included): every transaction updates the balance, so a row's date
    * never decides whether its amount counts. The one exception is a row that a read of a dated
-   * balance overwrote (`isOverwrittenRow`): the read's figure does not hold it, so its edit
-   * writes the row and moves no balance. A synced (monobank) transaction is
-   * never mutated by this path — its amount is owned by the bank import — and a
+   * balance overwrote (`isOverwrittenRow`): the read's figure replaced the balance, so the row
+   * has no part in it, and its edit writes the row and moves no balance. A synced (monobank)
+   * transaction is never mutated by this path — its amount is owned by the bank import — and a
    * missing id is a no-op rather than an error.
    */
   update: (
@@ -2668,11 +2669,10 @@ export const transactionsRepo = {
    * updates the balance, so none can stay in it without its row. That holds
    * whatever the row's source, its date against THE BOUNDARY (`importRows`), and
    * whether it set a balance, except for a row that a read of a dated balance overwrote
-   * (`isOverwrittenRow`), which the read's figure never held: it goes and moves no balance. Only
-   * the balance moves: `balanceSetAt` stays, and
-   * no bank figure is stored, so deleting every row of an import ends on the
-   * statement's opening balance. A deleted import row with a stored key also
-   * leaves that key for its holding (`deleted_import_keys`), so a re-import can
+   * (`isOverwrittenRow`), which has no part in the read's figure: it goes and moves no balance.
+   * Only the balance moves: `balanceSetAt` stays, and no bank figure is stored, so deleting
+   * every row of an import ends on the statement's opening balance. A deleted import row with a
+   * stored key also leaves that key for its holding (`deleted_import_keys`), so a re-import can
    * tell it from a row the holding never had; every row
    * `removeRowsDatabaseTransaction` deletes does the same, a cascaded partner
    * included. A synced (monobank) transaction is owned by the
