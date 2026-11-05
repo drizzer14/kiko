@@ -8,6 +8,11 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (id: string, creds: unknown) => mockSaveCredentials(id, creds),
 }));
 
+const mockSaveBybitCredentials = jest.fn();
+jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
+  saveBybitCredentials: (id: string, creds: unknown) => mockSaveBybitCredentials(id, creds),
+}));
+
 // Mocked defensively even though `restore-secrets.ts` must never import this
 // module at all — if a future edit adds a `storeDbKey(...)` call, THIS mock
 // is what makes the "never restores the DB key" test below able to fail.
@@ -24,6 +29,7 @@ describe('restoreExportSecrets', () => {
   beforeEach(() => {
     mockSaveToken.mockReset().mockResolvedValue(undefined);
     mockSaveCredentials.mockReset().mockResolvedValue(undefined);
+    mockSaveBybitCredentials.mockReset().mockResolvedValue(undefined);
     mockStoreDbKey.mockReset();
     jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
@@ -44,6 +50,55 @@ describe('restoreExportSecrets', () => {
     expect(mockSaveToken).toHaveBeenCalledWith('a1', 'mono-token');
     expect(mockSaveCredentials).toHaveBeenCalledWith('a2', { apiKey: 'k', secret: 's' });
     expect(unrestored).toEqual([]);
+  });
+
+  it('restores a Bybit pair to its own account', async () => {
+    const unrestored = await restoreExportSecrets(
+      {
+        monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
+        binanceCredentials: [{ accountId: 'a1', apiKey: 'binance-k', secret: 'binance-s' }],
+        bybitCredentials: [{ accountId: 'a2', apiKey: 'bybit-k', secret: 'bybit-s' }],
+      },
+      ACCOUNT_IDS,
+    );
+
+    expect(mockSaveBybitCredentials).toHaveBeenCalledTimes(1);
+    expect(mockSaveBybitCredentials).toHaveBeenCalledWith('a2', {
+      apiKey: 'bybit-k',
+      secret: 'bybit-s',
+    });
+    expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
+    expect(mockSaveCredentials).toHaveBeenCalledWith('a1', {
+      apiKey: 'binance-k',
+      secret: 'binance-s',
+    });
+    expect(unrestored).toEqual([]);
+  });
+
+  it('writes a Bybit pair only to the Bybit service, never to the Binance or Monobank one', async () => {
+    await restoreExportSecrets(
+      { bybitCredentials: [{ accountId: 'a1', apiKey: 'bybit-k', secret: 'bybit-s' }] },
+      ACCOUNT_IDS,
+    );
+
+    expect(mockSaveBybitCredentials).toHaveBeenCalledTimes(1);
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockSaveToken).not.toHaveBeenCalled();
+  });
+
+  it('writes a Binance pair and a Monobank token only to their own services, with a Bybit list beside them', async () => {
+    await restoreExportSecrets(
+      {
+        monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
+        binanceCredentials: [{ accountId: 'a2', apiKey: 'k', secret: 's' }],
+        bybitCredentials: [],
+      },
+      ACCOUNT_IDS,
+    );
+
+    expect(mockSaveBybitCredentials).not.toHaveBeenCalled();
+    expect(mockSaveToken).toHaveBeenCalledWith('a1', 'mono-token');
+    expect(mockSaveCredentials).toHaveBeenCalledWith('a2', { apiKey: 'k', secret: 's' });
   });
 
   it('NEVER writes the exported DB key to the Keychain, even for an old export that still carries one', async () => {
@@ -87,11 +142,31 @@ describe('restoreExportSecrets', () => {
     ['both arrays missing', {}],
     ['both arrays empty', { monobankTokens: [], binanceCredentials: [] }],
     ['a missing Binance array', { monobankTokens: [] }],
+    [
+      'all three arrays empty',
+      { monobankTokens: [], binanceCredentials: [], bybitCredentials: [] },
+    ],
   ])('writes nothing for %s', async (_name, secrets) => {
     await expect(restoreExportSecrets(secrets, ACCOUNT_IDS)).resolves.toEqual([]);
 
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockSaveBybitCredentials).not.toHaveBeenCalled();
+  });
+
+  it('restores a file from a build that has no Bybit list exactly as before', async () => {
+    const unrestored = await restoreExportSecrets(
+      {
+        monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
+        binanceCredentials: [{ accountId: 'a2', apiKey: 'k', secret: 's' }],
+      },
+      ACCOUNT_IDS,
+    );
+
+    expect(mockSaveToken).toHaveBeenCalledWith('a1', 'mono-token');
+    expect(mockSaveCredentials).toHaveBeenCalledWith('a2', { apiKey: 'k', secret: 's' });
+    expect(mockSaveBybitCredentials).not.toHaveBeenCalled();
+    expect(unrestored).toEqual([]);
   });
 
   it('drops a secret whose account the file does not carry, and restores the rest', async () => {
@@ -102,6 +177,10 @@ describe('restoreExportSecrets', () => {
           { accountId: 'a1', token: 'mono-token' },
         ],
         binanceCredentials: [{ accountId: 'ghost', apiKey: 'k', secret: 's' }],
+        bybitCredentials: [
+          { accountId: 'ghost', apiKey: 'k', secret: 's' },
+          { accountId: 'a2', apiKey: 'bybit-k', secret: 'bybit-s' },
+        ],
       },
       ACCOUNT_IDS,
     );
@@ -109,6 +188,11 @@ describe('restoreExportSecrets', () => {
     expect(mockSaveToken).toHaveBeenCalledTimes(1);
     expect(mockSaveToken).toHaveBeenCalledWith('a1', 'mono-token');
     expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockSaveBybitCredentials).toHaveBeenCalledTimes(1);
+    expect(mockSaveBybitCredentials).toHaveBeenCalledWith('a2', {
+      apiKey: 'bybit-k',
+      secret: 'bybit-s',
+    });
     expect(unrestored).toEqual([]);
   });
 
@@ -132,9 +216,10 @@ describe('restoreExportSecrets', () => {
       expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
     });
 
-    it('names every failed connection once, in the order Monobank, Binance', async () => {
+    it('names every failed connection once, in the order Monobank, Binance, Bybit', async () => {
       mockSaveToken.mockRejectedValue(new Error('keychain write failed'));
       mockSaveCredentials.mockRejectedValue(new Error('keychain write failed'));
+      mockSaveBybitCredentials.mockRejectedValue(new Error('keychain write failed'));
 
       const unrestored = await restoreExportSecrets(
         {
@@ -143,11 +228,43 @@ describe('restoreExportSecrets', () => {
             { accountId: 'a2', token: 'second' },
           ],
           binanceCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 's' }],
+          bybitCredentials: [
+            { accountId: 'a1', apiKey: 'k', secret: 's' },
+            { accountId: 'a2', apiKey: 'k', secret: 's' },
+          ],
         },
         ACCOUNT_IDS,
       );
 
-      expect(unrestored).toEqual(['monobank', 'binance']);
+      expect(unrestored).toEqual(['monobank', 'binance', 'bybit']);
+    });
+
+    it('names Bybit alone when only its write fails, and the other pairs are written', async () => {
+      mockSaveBybitCredentials.mockRejectedValue(new Error('keychain write failed'));
+
+      const unrestored = await restoreExportSecrets(
+        {
+          binanceCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 's' }],
+          bybitCredentials: [{ accountId: 'a2', apiKey: 'k', secret: 's' }],
+        },
+        ACCOUNT_IDS,
+      );
+
+      expect(unrestored).toEqual(['bybit']);
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
+    });
+
+    it('never logs a Bybit secret', async () => {
+      mockSaveBybitCredentials.mockRejectedValue(new Error('secret bybit-s leaked'));
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      await restoreExportSecrets(
+        { bybitCredentials: [{ accountId: 'a1', apiKey: 'bybit-k', secret: 'bybit-s' }] },
+        ACCOUNT_IDS,
+      );
+
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('bybit-k');
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('bybit-s');
     });
 
     it('treats a write that throws before it returns a promise the same way', async () => {

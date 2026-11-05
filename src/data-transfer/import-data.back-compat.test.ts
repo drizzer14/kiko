@@ -23,6 +23,12 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (id: string, credentials: unknown) => mockSaveCredentials(id, credentials),
 }));
 
+const mockSaveBybitCredentials = jest.fn();
+jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
+  saveBybitCredentials: (id: string, credentials: unknown) =>
+    mockSaveBybitCredentials(id, credentials),
+}));
+
 jest.mock('@kiko/sync/refresh-market-data', () => ({
   refreshMarketData: jest.fn().mockResolvedValue(undefined),
 }));
@@ -62,6 +68,14 @@ type CategoryRow = {
 
 const DEMO_FIXTURES = join(__dirname, '..', '..', 'e2e', 'screenshot', 'fixtures');
 
+const institutionOf = (accountId: string): string => {
+  if (accountId.startsWith('mono')) {
+    return 'monobank';
+  }
+
+  return accountId.startsWith('byb') ? 'bybit' : 'binance';
+};
+
 const openDatabase = (accountIds: readonly string[] = []): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
 
@@ -72,7 +86,7 @@ const openDatabase = (accountIds: readonly string[] = []): DatabaseSync => {
   for (const id of accountIds) {
     database
       .prepare("INSERT INTO accounts (id, name, kind, institution) VALUES (?, ?, 'bank', ?)")
-      .run(id, id, id.startsWith('mono') ? 'monobank' : 'binance');
+      .run(id, id, institutionOf(id));
   }
 
   return database;
@@ -106,6 +120,14 @@ const insertLegacyImportRow = (database: DatabaseSync): void => {
       "INSERT INTO transactions (id, holding_id, amount_minor_units, time, source) VALUES ('t1', 'h1', -100, ?, 'import')",
     )
     .run(LEGACY_IMPORT_TIME);
+};
+
+const insertBybitAccount = (database: DatabaseSync): void => {
+  database
+    .prepare(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('byb1', 'byb1', 'bank', ?)",
+    )
+    .run('bybit');
 };
 
 const earlierBuildPayload = async (
@@ -209,6 +231,7 @@ describe('importing a version 1 file an earlier build wrote', () => {
   beforeEach(() => {
     mockSaveToken.mockReset().mockResolvedValue(undefined);
     mockSaveCredentials.mockReset().mockResolvedValue(undefined);
+    mockSaveBybitCredentials.mockReset().mockResolvedValue(undefined);
   });
 
   describe('exported without keys', () => {
@@ -227,6 +250,7 @@ describe('importing a version 1 file an earlier build wrote', () => {
       expect(summary.unrestoredCredentials).toEqual([]);
       expect(mockSaveToken).not.toHaveBeenCalled();
       expect(mockSaveCredentials).not.toHaveBeenCalled();
+      expect(mockSaveBybitCredentials).not.toHaveBeenCalled();
     });
   });
 
@@ -246,7 +270,57 @@ describe('importing a version 1 file an earlier build wrote', () => {
         apiKey: 'api-key',
         secret: 'api-secret',
       });
+      expect(mockSaveBybitCredentials).not.toHaveBeenCalled();
       expect(summary.unrestoredCredentials).toEqual([]);
+    });
+
+    // O10: the entry needs no version bump, so this build reads the file a Bybit user's build
+    // writes through the same two steps, and each list goes to its own service.
+    it('restores a Bybit pair to its own account, beside the other keys', async () => {
+      const payload = await earlierBuildPayload(
+        {
+          monobankTokens: [{ accountId: 'mono1', token: 'mono-token' }],
+          binanceCredentials: [{ accountId: 'bin1', apiKey: 'api-key', secret: 'api-secret' }],
+          bybitCredentials: [{ accountId: 'byb1', apiKey: 'bybit-key', secret: 'bybit-secret' }],
+        },
+        insertBybitAccount,
+      );
+      mockDatabase = openDatabase();
+
+      const summary = await importVersionOne(payload);
+
+      expect(storedAccountIds()).toEqual(['bin1', 'byb1', 'mono1']);
+      expect(mockSaveBybitCredentials).toHaveBeenCalledTimes(1);
+      expect(mockSaveBybitCredentials).toHaveBeenCalledWith('byb1', {
+        apiKey: 'bybit-key',
+        secret: 'bybit-secret',
+      });
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
+      expect(mockSaveCredentials).toHaveBeenCalledWith('bin1', {
+        apiKey: 'api-key',
+        secret: 'api-secret',
+      });
+      expect(mockSaveToken).toHaveBeenCalledTimes(1);
+      expect(summary.unrestoredCredentials).toEqual([]);
+    });
+
+    it('names Bybit when only its key cannot be written, and the data and the other keys stay', async () => {
+      const payload = await earlierBuildPayload(
+        {
+          binanceCredentials: [{ accountId: 'bin1', apiKey: 'api-key', secret: 'api-secret' }],
+          bybitCredentials: [{ accountId: 'byb1', apiKey: 'bybit-key', secret: 'bybit-secret' }],
+        },
+        insertBybitAccount,
+      );
+      mockDatabase = openDatabase();
+      mockSaveBybitCredentials.mockRejectedValue(new Error('keychain write failed'));
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const summary = await importVersionOne(payload);
+
+      expect(storedAccountIds()).toEqual(['bin1', 'byb1', 'mono1']);
+      expect(summary.unrestoredCredentials).toEqual(['bybit']);
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
     });
 
     // The share prices key was removed before any build with it shipped; an

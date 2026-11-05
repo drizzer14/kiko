@@ -99,6 +99,7 @@ describe('exportData', () => {
     mockReadExportSecrets.mockResolvedValue({
       monobankTokens: [{ accountId: 'a1', token: 'fake-mono-token-0000' }],
       binanceCredentials: [],
+      bybitCredentials: [{ accountId: 'a2', apiKey: 'fake-bybit-key', secret: 'fake-bybit-0000' }],
     });
 
     const withSecrets = await exportData({ includeSecrets: true });
@@ -106,6 +107,11 @@ describe('exportData', () => {
     expect(writtenPayload(withSecrets.keyBase64).secrets?.monobankTokens).toEqual([
       { accountId: 'a1', token: 'fake-mono-token-0000' },
     ]);
+    expect(writtenPayload(withSecrets.keyBase64).secrets?.bybitCredentials).toEqual([
+      { accountId: 'a2', apiKey: 'fake-bybit-key', secret: 'fake-bybit-0000' },
+    ]);
+    // O10: the new list must not bump the version, or every earlier build refuses the file.
+    expect((JSON.parse(mockWriteFile.mock.calls[0][1]) as { version: number }).version).toBe(5);
 
     mockWriteFile.mockClear();
     const withoutSecrets = await exportData({ includeSecrets: false });

@@ -160,6 +160,9 @@ const fixturePayload = (): ExportPayload => ({
   secrets: {
     monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
     binanceCredentials: [],
+    bybitCredentials: [
+      { accountId: 'a1', apiKey: 'fake-bybit-key-0000', secret: 'fake-bybit-0000' },
+    ],
   },
 });
 

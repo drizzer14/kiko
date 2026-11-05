@@ -1,11 +1,12 @@
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { saveCredentials } from '@kiko/crypto-sync/binance';
+import { saveBybitCredentials } from '@kiko/crypto-sync/bybit';
 
 import type { ExportSecrets } from '../payload';
 
 /** The connection a secret belongs to, for telling the user which one to set up again. */
-export type ExportSecretKind = 'monobank' | 'binance';
+export type ExportSecretKind = 'monobank' | 'binance' | 'bybit';
 
 const onlyRestoredAccounts = <Entry extends { accountId: string }>(
   entries: readonly Entry[] | undefined,
@@ -13,14 +14,15 @@ const onlyRestoredAccounts = <Entry extends { accountId: string }>(
 ): readonly Entry[] => (entries ?? []).filter(({ accountId }) => accountIds.has(accountId));
 
 /**
- * Restores ONLY the Monobank tokens and the Binance credentials (each absent
- * from a file that did not carry it) from an imported archive, each secret to
- * the SAME account id it was exported under —
+ * Restores ONLY the Monobank tokens, the Binance credentials and the Bybit
+ * credentials (each absent from a file that did not carry it) from an
+ * imported archive, each secret to the SAME account id it was exported under,
+ * in the service its list names —
  * `import-data.ts` calls `restoreDataSnapshot` (which preserves original ids)
  * BEFORE this, so `serviceFor(accountId)` (`src/monobank/token/token.ts` /
- * `binance.credentials.ts`) resolves to exactly the Keychain item the
- * freshly-restored account row expects, letting a restored connection resume
- * syncing immediately. A secret whose account `accountIds` does not hold is
+ * `binance.credentials.ts` / `bybit.credentials.ts`) resolves to exactly the
+ * Keychain item the freshly-restored account row expects, letting a restored
+ * connection resume syncing immediately. A secret whose account `accountIds` does not hold is
  * dropped: it belongs to an account deleted before the export, and a Keychain
  * item with no account row would stay on the device with nothing to remove it.
  *
@@ -71,6 +73,13 @@ export const restoreExportSecrets = async (
     accountIds,
   )) {
     await write('binance', () => saveCredentials(accountId, { apiKey, secret }));
+  }
+
+  for (const { accountId, apiKey, secret } of onlyRestoredAccounts(
+    secrets.bybitCredentials,
+    accountIds,
+  )) {
+    await write('bybit', () => saveBybitCredentials(accountId, { apiKey, secret }));
   }
 
   return [...failed];
