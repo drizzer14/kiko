@@ -2,6 +2,7 @@ import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import { transactions } from '@kiko/db';
 import {
+  type ReviewEvidence,
   type ReviewGroup,
   parseRuleMatchers,
   planReviewGroups,
@@ -29,6 +30,7 @@ import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colo
 import { parseUntrackedCounterpart } from '@kiko/transactions/untracked-counterpart';
 import { draftReferences, isTemplateDraft } from '@kiko/transaction-templates/draft';
 
+import { demoText } from '../seed/demo-text';
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
 
 import { buildDemoSnapshot } from './build-demo-snapshot';
@@ -729,13 +731,46 @@ describe.each(['en', 'uk'] as const)('the review list of the %s demo file', (lan
     currency: holdingById.get(transaction.holdingId)?.currency ?? null,
     accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
   }));
+  // The rows the evidence read counts, as that read counts them: per description and category.
+  const evidence = [
+    ...candidates
+      .filter(
+        (row) =>
+          row.description !== '' &&
+          row.category !== null &&
+          !row.setsBalance &&
+          row.changeGroupId === null &&
+          row.exchangeCounterpartHoldingId === null &&
+          row.untrackedCounterpart === null,
+      )
+      .reduce((counts, row) => {
+        const categoryKey = (row.category ?? '').toLowerCase();
+        const pair = JSON.stringify([row.description, categoryKey]);
+
+        return counts.set(pair, {
+          description: row.description,
+          categoryKey,
+          rowCount: (counts.get(pair)?.rowCount ?? 0) + 1,
+        });
+      }, new Map<string, ReviewEvidence>())
+      .values(),
+  ];
   const groupOf = (key: string): ReviewGroup | undefined =>
     planReviewGroups(
       prepareRules(demo.categoryRules),
       candidates,
       new Set(demo.categories.map((category) => category.key.toLowerCase())),
-      [],
+      evidence,
     ).find((group) => group.key === key);
+
+  it('the review list shows a suggestion on a line', () => {
+    expect(groupOf(merchantNameOf(demoText[language].mokkoCoffee).key)?.suggestion).toEqual({
+      category: 'dining',
+      agreeing: 3,
+      total: 3,
+    });
+    expect(groupOf('varus')?.suggestion).toBeNull();
+  });
 
   it('the review list offers a starts-with line on the store-number rows', () => {
     expect(groupOf('varus')?.names).toEqual(['Varus 0212', 'Varus 0340']);
