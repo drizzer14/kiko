@@ -797,6 +797,7 @@ export const en = {
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
     binanceMissingRowsArray: 'Binance simple-earn response did not contain a rows array',
     binanceRequestFailed: 'Binance request failed: {{status}}{{detail}}',
+    binanceSyncStillRunning: 'Kiko is still finishing the last Binance sync. Try again later.',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',

@@ -705,6 +705,7 @@ export const uk: typeof en = {
     binanceMissingBalancesArray: 'Відповідь рахунку Binance не містила масиву балансів',
     binanceMissingRowsArray: 'Відповідь Binance simple-earn не містила масиву rows',
     binanceRequestFailed: 'Запит до Binance не вдався: {{status}}{{detail}}',
+    binanceSyncStillRunning: 'Кіко ще завершує останню синхронізацію Binance. Спробуйте пізніше.',
     blockExplorerRequestFailed: 'Запит до оглядача блокчейну не вдався: {{status}}',
     btcAddressPlaceholder: 'BTC-адреса',
     changeBankAction: 'Змінити банк',

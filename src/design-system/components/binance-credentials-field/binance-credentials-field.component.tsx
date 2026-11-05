@@ -11,6 +11,7 @@ import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import { type FC, useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { useIsMounted } from '@kiko/design-system/use-is-mounted';
+import { isBinanceSyncRunning } from '@kiko/crypto-sync/run-crypto-sync';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
@@ -155,6 +156,14 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
     // connection it never read.
     if (isBinanceCoolingDown(accountId, Date.now())) {
       setStatus({ kind: 'saveError', message: t('accountDetail.binanceCoolingDown') });
+
+      return;
+    }
+
+    // A running sync of this account holds the pair of an earlier connection, and the sync's join
+    // would hand this Connect that run: it would report a connection it never read.
+    if (isBinanceSyncRunning(accountId)) {
+      setStatus({ kind: 'saveError', message: t('accountDetail.binanceSyncStillRunning') });
 
       return;
     }

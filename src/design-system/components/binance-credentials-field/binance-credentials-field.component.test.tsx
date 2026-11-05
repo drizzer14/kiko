@@ -12,7 +12,13 @@ const mockFetchAccount = jest.fn();
 const mockSaveCredentials = jest.fn();
 const mockOpenURL = jest.fn();
 const mockGetString = jest.fn<Promise<string>, []>();
+const mockIsBinanceSyncRunning = jest.fn<boolean, [string]>();
 
+// The real run pulls the repos, and so op-sqlite, into the graph; the join itself is pinned in
+// binance-credentials-field.component.running-sync.test.tsx.
+jest.mock('@kiko/crypto-sync/run-crypto-sync', () => ({
+  isBinanceSyncRunning: (accountId: string) => mockIsBinanceSyncRunning(accountId),
+}));
 jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
@@ -102,6 +108,7 @@ describe('BinanceCredentialsField', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsBinanceSyncRunning.mockReturnValue(false);
     mockFetchAccount.mockResolvedValue({ balances: [] });
     mockSaveCredentials.mockResolvedValue(savedToken);
     onConnect.mockResolvedValue(true);
@@ -260,6 +267,59 @@ describe('BinanceCredentialsField', () => {
       expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
 
       setBinanceCooldownUntil('cooling-field-retry', Date.now() - 1);
+      await pressConnect(view);
+
+      expect(await view.findByText('Binance connected')).toBeTruthy();
+      expect(mockFetchAccount).toHaveBeenCalledWith('api-key-fixture', 'secret-fixture');
+    });
+  });
+
+  describe('while a Binance sync of the account is running', () => {
+    const RUNNING_TEXT = 'Kiko is still finishing the last Binance sync. Try again later.';
+
+    const renderForAccount = (accountId: string): Promise<View> =>
+      render(<BinanceCredentialsField accountId={accountId} onConnect={onConnect} />);
+
+    it('shows the running text and makes no request, write or sync', async () => {
+      mockIsBinanceSyncRunning.mockImplementation(
+        (accountId: string) => accountId === 'run-blocked',
+      );
+      const view = await renderForAccount('run-blocked');
+
+      await fillBoth(view.getByPlaceholderText);
+      await pressConnect(view);
+
+      expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
+      expect(mockFetchAccount).not.toHaveBeenCalled();
+      expect(mockSaveCredentials).not.toHaveBeenCalled();
+      expect(onConnect).not.toHaveBeenCalled();
+      expect(view.queryByText('Binance connected')).toBeNull();
+    });
+
+    it('runs the whole Connect when another account is the one running', async () => {
+      mockIsBinanceSyncRunning.mockImplementation((accountId: string) => accountId === 'run-other');
+      const view = await renderForAccount('run-free');
+
+      await fillBoth(view.getByPlaceholderText);
+      await pressConnect(view);
+
+      expect(await view.findByText('Binance connected')).toBeTruthy();
+      expect(view.queryByText(RUNNING_TEXT)).toBeNull();
+      expect(mockFetchAccount).toHaveBeenCalledTimes(1);
+      expect(mockSaveCredentials).toHaveBeenCalledWith('run-free', typedPair);
+      expect(onConnect).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the typed pair, so a later press connects once the run has ended', async () => {
+      let running = true;
+      mockIsBinanceSyncRunning.mockImplementation(() => running);
+      const view = await renderForAccount('run-retry');
+
+      await fillBoth(view.getByPlaceholderText);
+      await pressConnect(view);
+      expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
+
+      running = false;
       await pressConnect(view);
 
       expect(await view.findByText('Binance connected')).toBeTruthy();
