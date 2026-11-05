@@ -1,3 +1,4 @@
+import type { HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
@@ -25,6 +26,13 @@ export const partsOfHoldingKey = (key: string): HoldingKeyParts | undefined => {
   }
 
   return { code, wallet };
+};
+
+/** The `metadata.bybitAsset` key stored on a holding, if any. */
+export const bybitKeyOf = (holding: Pick<HoldingRow, 'metadata'>): string | undefined => {
+  const key = (holding.metadata as { bybitAsset?: unknown } | null)?.bybitAsset;
+
+  return typeof key === 'string' ? key : undefined;
 };
 
 const WALLET_LABELS: Record<BybitWallet, string> = {

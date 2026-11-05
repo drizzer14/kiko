@@ -302,7 +302,7 @@ export const fetchKeyInfo = async (
  * string, as Bybit sends), for the provider to read and to refuse one coin alone; no price and no
  * value of the account is read.
  */
-type BybitUnifiedCoin = {
+export type BybitUnifiedCoin = {
   coin: string;
   walletBalance: unknown;
   spotBorrow: unknown;
@@ -361,7 +361,7 @@ export const fetchUnifiedBalance = async (
 };
 
 /** One coin of the FUND account, as `BybitUnifiedCoin` is. `transferBalance` is never read. */
-type BybitFundCoin = { coin: string; walletBalance: unknown };
+export type BybitFundCoin = { coin: string; walletBalance: unknown };
 
 const fundCoinOf = (row: unknown): BybitFundCoin => {
   const { fields, coin } = coinRowOf(row);

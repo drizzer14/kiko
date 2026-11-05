@@ -1,7 +1,7 @@
 import { CURATED_COIN_CODES } from '@kiko/currency/coins';
 
 import { BYBIT_FIAT_CODES } from './bybit.tracked-coin';
-import { coinHoldingName, holdingKeyOf, partsOfHoldingKey } from './bybit.holding-keys';
+import { bybitKeyOf, coinHoldingName, holdingKeyOf, partsOfHoldingKey } from './bybit.holding-keys';
 
 describe('holdingKeyOf', () => {
   it('writes <COIN>:<wallet> for each wallet, BTC too', () => {
@@ -35,6 +35,23 @@ describe('partsOfHoldingKey', () => {
     ['the empty key', ''],
   ])('names no coin and wallet for %s', (_title, key) => {
     expect(partsOfHoldingKey(key)).toBeUndefined();
+  });
+});
+
+describe('bybitKeyOf', () => {
+  it('reads the key stored under metadata.bybitAsset', () => {
+    const metadata = { bybitAsset: 'BTC:unified', syncedAt: 0 };
+
+    expect(bybitKeyOf({ metadata })).toBe('BTC:unified');
+  });
+
+  it.each([
+    ['no metadata', null],
+    ['a Binance key', { binanceAsset: 'BTC' }],
+    ['a key that is no text', { bybitAsset: 5 }],
+    ['metadata that is no record', 'BTC:unified'],
+  ])('reads no key from %s', (_title, metadata) => {
+    expect(bybitKeyOf({ metadata })).toBeUndefined();
   });
 });
 
