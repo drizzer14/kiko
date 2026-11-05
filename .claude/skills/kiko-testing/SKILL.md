@@ -287,6 +287,8 @@ test from being decorative.
   midnight after 23:00 local. Use calendar arithmetic (`localDaysFrom` from
   `src/test-support/local-days-from.ts`, or the next local day plus a fixed hour of day), as
   production does. `kiko-no-fixed-day-offset-on-real-clock-in-test` denies the fixed-ms form.
+- A fixture name with a store number needs at least 2 digits: `merchantNameOf` cuts only 2 to 6
+  digits, so a one-digit number stays in the name and never reaches the merchant key.
 - A test never depends on a hand-edited `.env`: `jest.config.js` points `react-native-dotenv` at
   the tracked, public-only `.env.test` (`process.env.ENVFILE || '.env.test'`; an explicit `ENVFILE`
   wins). A new tracked env file is recorded in `docs/harness/documented-exceptions.md`.
