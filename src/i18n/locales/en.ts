@@ -132,6 +132,7 @@ export const en = {
       privacyPolicy: 'Privacy policy',
     },
     language: 'Language',
+    recurringCharges: 'Recurring charges',
     system: 'System',
     title: 'Settings',
     transactionTemplates: 'Transaction templates',
@@ -1073,6 +1074,7 @@ export const en = {
       openCategories: 'Open categories',
       openExportData: 'Open data export',
       openImportData: 'Open data import',
+      openRecurringCharges: 'Open recurring charges',
       openReminders: 'Open reminders',
       openStatistics: 'Open statistics',
       openSystem: 'Open system settings',
@@ -1271,6 +1273,14 @@ export const en = {
           '4': 'In "Transaction templates", tap a template to edit it, or touch and hold it to delete it.',
         },
         title: 'Use Transaction Templates',
+      },
+      viewRecurringCharges: {
+        rowLabel: 'View recurring charges',
+        steps: {
+          '1': 'Open the "Settings" tab and tap "Recurring charges".',
+          '2': 'Kiko finds charges that repeat in your transactions and shows the day they were charged and the last charge. It shows only what already happened, never a future charge.',
+        },
+        title: 'View Recurring Charges',
       },
       viewStatistics: {
         rowLabel: 'Read your statistics',
@@ -1663,6 +1673,32 @@ export const en = {
     savedApplied: 'Your saved column mapping is applied. Check the result before importing.',
     xlsNotSupported:
       'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
+  },
+  recurringCharges: {
+    emptyMessage:
+      'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones.',
+    emptyTitle: 'No recurring charges yet',
+    holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
+    lastCharge: 'Last charge {{date}}',
+    monthly: 'Charged monthly',
+    monthlyAroundDay: 'Charged monthly, around day {{day}}',
+    monthlyLastDay: 'Charged monthly, on the last day',
+    monthlyOnDay: 'Charged monthly, on day {{day}}',
+    noChargeSince: 'No charge since {{date}}',
+    stoppedHeading: 'No Recent Charge',
+    title: 'Recurring Charges',
+    weekly: 'Charged weekly',
+    weeklyOn: {
+      friday: 'Charged weekly, on Fridays',
+      monday: 'Charged weekly, on Mondays',
+      saturday: 'Charged weekly, on Saturdays',
+      sunday: 'Charged weekly, on Sundays',
+      thursday: 'Charged weekly, on Thursdays',
+      tuesday: 'Charged weekly, on Tuesdays',
+      wednesday: 'Charged weekly, on Wednesdays',
+    },
+    yearly: 'Charged yearly',
+    yearlyOn: 'Charged yearly, on {{date}}',
   },
   reminders: {
     rowLabel: 'Reminders',

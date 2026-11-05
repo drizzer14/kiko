@@ -350,6 +350,7 @@ export type SettingsStackParamList = {
   Help: undefined;
   HelpTopic: { topicId: HelpTopicId };
   TransactionTemplates: undefined;
+  RecurringCharges: undefined;
   // The template forms, and the create forms their empty holding picker's "Add holding" row
   // opens, sit in this stack for the reason they sit in Home's: a switch to the Accounts tab
   // would reset this stack and drop the form's draft.

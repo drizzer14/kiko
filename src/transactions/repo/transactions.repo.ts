@@ -2087,6 +2087,30 @@ export const transactionsRepo = {
   // over time. `listWithContextBetweenQuery` is a display projection joined to
   // the holding and account for their names, which this read has no use for.
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
+  // The recurring detection's whole ledger in the columns its matchers read. No `where`: the
+  // transfer and funding matchers need credits, crypto rows and blank rows, so no predicate
+  // narrows it. No `orderBy`: the detection sorts by itself, and an order would only add a sort
+  // step or a time-index walk, the plan a real-engine test pins to a plain scan.
+  recurringLedgerQuery: () =>
+    database
+      .select({
+        id: transactions.id,
+        holdingId: transactions.holdingId,
+        amountMinorUnits: transactions.amountMinorUnits,
+        time: transactions.time,
+        description: transactions.description,
+        mcc: transactions.mcc,
+        counterIban: transactions.counterIban,
+        categorySetByHand: transactions.categorySetByHand,
+        setsBalance: transactions.setsBalance,
+        changeGroupId: transactions.changeGroupId,
+        exchangePairId: transactions.exchangePairId,
+        exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+        untrackedCounterpart: transactions.untrackedCounterpart,
+        loanHoldingId: transactions.loanHoldingId,
+        source: transactions.source,
+      })
+      .from(transactions),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
   /**

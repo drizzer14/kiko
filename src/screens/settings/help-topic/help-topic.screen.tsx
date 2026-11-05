@@ -92,6 +92,11 @@ const footerActionFor = (
       // The charts are the Home tab's companion on a merged Home, which has no Statistics tab.
       onPress: () => navigation.navigate(isMergedHome ? 'HomeTab' : 'StatisticsTab'),
     }))
+    .with('openRecurringCharges', () => ({
+      label: t('help.actions.openRecurringCharges'),
+      icon: entrySymbol.recurringCharges,
+      onPress: () => navigation.navigate('RecurringCharges'),
+    }))
     .with('openExportData', () => ({
       label: t('help.actions.openExportData'),
       icon: entrySymbol.exportData,

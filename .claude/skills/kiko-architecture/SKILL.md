@@ -1242,6 +1242,12 @@ See `kiko-domain`'s "Spending-exclusion pipeline" section for the
 module pointers (the section lists them) — read it there rather than a
 duplicated list here.
 
+The recurring-charge detection reads the whole ledger live through
+`transactionsRepo.recurringLedgerQuery` in `useRecurringSeries`
+(`src/recurring/use-recurring-series/`). Its memo is gated on `useDataReady` over all three
+reads (rows, holdings, accounts), so it never detects over a half-loaded set: the
+`useDataReady` rule in the `useLiveQuery` consumer rule section of this file applies.
+
 For the crypto re-sync request (`resyncRequest`) and the Binance exchange sync (balance reads,
 history walks, walk marks) see `kiko-exchange-sync`.
 

@@ -43,6 +43,10 @@ const BASE_CURRENCY: Currency = 'UAH';
 // category pie, and the per-category trend chart.
 const LEDGER_MONTHS = 6;
 const MONTH_DAYS = 30;
+const MIDDLE_OF_MONTH_DAY = 15;
+// How far a shop's day moves in an odd month, so its rhythm is not a monthly one. It stays
+// inside the 30-day month, so that month's total is unchanged.
+const SHOP_DAY_SHIFT = 10;
 
 // ---------------------------------------------------------------------------
 // Dataset shape (pure data — no DB). Kept separate from the writer so the whole
@@ -393,6 +397,8 @@ type MonthlyExpense = {
   monthlyDriftMinorUnits: number;
   dayOfMonth: number;
   everyNthMonth?: number;
+  // A steady bill keeps its day every month; the other merchants drift within the month.
+  isSteadyBill: boolean;
 };
 
 // An irregular big-ticket spend that lands in only ONE of the ledger months.
@@ -441,6 +447,14 @@ const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => {
     ['other', text.ukrposhta, 18_000, 0, 28],
   ];
 
+  const steadyBills = new Set([
+    'Netflix',
+    text.kyivstar,
+    text.kyivteploenergo,
+    'YASNO',
+    text.kyivvodokanal,
+  ]);
+
   return rows.map(
     ([
       category,
@@ -456,6 +470,7 @@ const buildMonthlyExpenses = (text: DemoText): MonthlyExpense[] => {
       monthlyDriftMinorUnits,
       dayOfMonth,
       everyNthMonth,
+      isSteadyBill: steadyBills.has(description),
     }),
   );
 };
@@ -635,6 +650,17 @@ const buildExchangeFundingDebits = (calendar: DemoCalendar): SeedTransaction[] =
   },
 ];
 
+// Month 0 never moves: the default 30-day window and the newest-rows pins read it.
+const shopDayOf = (expense: MonthlyExpense, month: number): number => {
+  if (expense.isSteadyBill || month % 2 === 0) {
+    return expense.dayOfMonth;
+  }
+
+  return expense.dayOfMonth < MIDDLE_OF_MONTH_DAY
+    ? expense.dayOfMonth + SHOP_DAY_SHIFT
+    : expense.dayOfMonth - SHOP_DAY_SHIFT;
+};
+
 /** The main UAH card ledger: an opening deposit, then a monthly salary + spends. */
 const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] => {
   const monthlyExpenses = buildMonthlyExpenses(text);
@@ -669,7 +695,7 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
 
       list.push({
         amountMinorUnits: -(expense.baseMinorUnits + month * expense.monthlyDriftMinorUnits),
-        time: calendar.at(monthStart + expense.dayOfMonth),
+        time: calendar.at(monthStart + shopDayOf(expense, month)),
         category: expense.category,
         description: expense.description,
       });

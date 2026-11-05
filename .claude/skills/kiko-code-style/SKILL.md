@@ -1037,6 +1037,10 @@ effect stays `.ts` even if most of its content is types — for example
 `src/statistics/holding-value-at/holding-value-at.ts` and
 `src/design-system/unistyles/unistyles.ts`.
 
+A types file beside a same-named `.ts` takes a `.types.d.ts` name, such as
+`detection.types.d.ts` beside `detection.ts`, because Knip resolves a `./detection.d` import to
+`detection.ts` and reports the `.d.ts` as unused.
+
 The repo-wide rename of existing type-only files to `.d.ts` is DONE —
 every type-only props file under `src/design-system/components/` and
 elsewhere is now `.props.d.ts`, not `.props.ts`. Don't trust that as

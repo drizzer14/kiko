@@ -125,6 +125,11 @@ describe('SettingsStack', () => {
     expect(titleByScreen().TransactionTemplates).toBe('Transaction Templates');
   });
 
+  it('registers the recurring charges list with its title', () => {
+    expect(screenElements().map((screen) => screen.props.name)).toContain('RecurringCharges');
+    expect(titleByScreen().RecurringCharges).toBe('Recurring Charges');
+  });
+
   // The list opens the Transaction form, and an empty picker's "Add holding" row opens the
   // account and holding forms, so all three live in this stack, with Home's options.
   it('registers the Transaction, Account and Holding forms the way the Home stack does', () => {

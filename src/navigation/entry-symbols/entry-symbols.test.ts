@@ -8,6 +8,7 @@ describe('entrySymbol', () => {
       importData: 'square.and.arrow.down',
       exportData: 'square.and.arrow.up',
       statistics: 'chart.xyaxis.line',
+      recurringCharges: 'repeat',
     });
   });
 });
