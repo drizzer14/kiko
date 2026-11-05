@@ -261,6 +261,17 @@ describe('CategoryRuleFormScreen — a new rule', () => {
 
     expect(screen.getByLabelText('Name').props.value).toBe('Silpo');
   });
+
+  it('keeps a typed merchant code when the type of the row is changed and changed back', async () => {
+    const screen = await renderCreate();
+
+    await pickType(screen, 0, 'mcc');
+    await fireEvent.changeText(screen.getByLabelText('Merchant code (MCC)'), '5411');
+    await pickType(screen, 0, 'direction');
+    await pickType(screen, 0, 'mcc');
+
+    expect(screen.getByLabelText('Merchant code (MCC)').props.value).toBe('5411');
+  });
 });
 
 describe('CategoryRuleFormScreen — the rules read again after a Save', () => {

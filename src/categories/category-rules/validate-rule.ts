@@ -99,15 +99,11 @@ const namesCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean => {
   const prefixes = normalizedTextsOf(matchers, 'nameStartsWith');
   const containedTexts = normalizedTextsOf(matchers, 'nameContains');
   const reference = exactNames[0] ?? longestOf(prefixes);
-  const exactNameHoldsEvery =
-    foldMap(maybe(exactNames[0]), (exactName) =>
-      containedTexts.every((text) => exactName.includes(text)),
-    ) ?? true;
 
   return (
     new Set(exactNames).size <= 1 &&
     prefixes.every((prefix) => reference.startsWith(prefix)) &&
-    exactNameHoldsEvery
+    exactNames.every((name) => containedTexts.every((text) => name.includes(text)))
   );
 };
 

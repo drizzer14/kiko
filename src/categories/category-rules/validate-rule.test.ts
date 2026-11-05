@@ -5,6 +5,8 @@ import type { AmountOperator, CategoryRuleMatcher, PreparedRule } from './catego
 
 const nameIs = (text: string): CategoryRuleMatcher => ({ type: 'nameIs', text });
 const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
+const contains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+const code = (value: number): CategoryRuleMatcher => ({ type: 'mcc', code: value });
 const direction = (value: 'expense' | 'income'): CategoryRuleMatcher => ({
   type: 'direction',
   direction: value,
@@ -94,9 +96,6 @@ describe('canEverMatch', () => {
 });
 
 describe('the nameContains and mcc conditions', () => {
-  const contains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
-  const code = (value: number): CategoryRuleMatcher => ({ type: 'mcc', code: value });
-
   it('two mcc codes can never match', () => {
     expect(validateRule([code(5411), code(5412)], [], null)).toEqual({
       kind: 'neverMatches',
@@ -136,10 +135,19 @@ describe('matcherSetKey', () => {
   it('normalizes names', () => {
     expect(matcherSetKey([nameIs('  SILPO  ')])).toBe(matcherSetKey([nameIs('silpo')]));
     expect(matcherSetKey([startsWith('Сільпо')])).toBe(matcherSetKey([startsWith('СІЛЬПО')]));
+    expect(matcherSetKey([contains('  MARKET ')])).toBe(matcherSetKey([contains('market')]));
+  });
+
+  it('reads one merchant code as one key', () => {
+    expect(matcherSetKey([code(5411)])).toBe(matcherSetKey([code(5411)]));
   });
 
   it.each([
     ['nameIs against nameStartsWith', [nameIs('silpo')], [startsWith('silpo')]],
+    ['nameContains against nameIs', [contains('silpo')], [nameIs('silpo')]],
+    ['nameContains against nameStartsWith', [contains('silpo')], [startsWith('silpo')]],
+    ['different contained text', [contains('silpo')], [contains('atb')]],
+    ['different merchant codes', [code(5411)], [code(5412)]],
     ['different name text', [nameIs('silpo')], [nameIs('atb')]],
     ['different operators', [amount('gt', 5)], [amount('gte', 5)]],
     ['different amounts', [amount('gt', 5)], [amount('gt', 6)]],
