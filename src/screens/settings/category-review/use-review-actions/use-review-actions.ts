@@ -84,6 +84,11 @@ export const useReviewActions = () => {
     setPickFor(null);
   };
 
+  // A tap on a suggestion has no options sheet to wait for, so the job starts at once.
+  const accept = (group: ReviewGroup, category: string): void => {
+    start({ group, category, confirmed: false });
+  };
+
   const onOptionsClosed = (): void => {
     const picked = pickedRef.current;
 
@@ -109,6 +114,7 @@ export const useReviewActions = () => {
     choose: setPickFor,
     closeOptions: () => setPickFor(null),
     pick,
+    accept,
     onOptionsClosed,
     confirm,
     // A write that has started cannot be taken back, so a Cancel or scrim dismiss that lands

@@ -17,8 +17,8 @@ import { addToNameTally, compareByCodeUnit, rankedNames, type NameTally } from '
 
 // One row is a lone pick, not a pattern; from four rows one stray row passes, from two or three
 // any dissent stops the suggestion.
-export const SUGGESTION_MIN_AGREEING_ROWS = 2;
-export const SUGGESTION_MIN_SHARE = 0.75;
+const SUGGESTION_MIN_AGREEING_ROWS = 2;
+const SUGGESTION_MIN_SHARE = 0.75;
 
 type DescribedName = {
   key: string;

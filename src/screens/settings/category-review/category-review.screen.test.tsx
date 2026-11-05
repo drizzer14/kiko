@@ -17,7 +17,7 @@ import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support
 import CategoryReviewScreen from './category-review.screen';
 
 type ReviewScreenProps = NativeStackScreenProps<SettingsStackParamList, 'CategoryReview'>;
-type ReadKind = 'candidates' | 'rules' | 'categories';
+type ReadKind = 'candidates' | 'rules' | 'categories' | 'evidence';
 type EvidenceData = { description: string; categoryKey: string; rowCount: number };
 type CategoryData = { key: string; title: string; icon: string; color: string | null };
 type Preview = { count: number; names: string[] };
@@ -42,7 +42,12 @@ let mockCandidates: ReviewCandidate[] = [];
 let mockRules: StoredCategoryRule[] = [];
 let mockCategories: CategoryData[] = [];
 let mockEvidence: EvidenceData[] = [];
-let mockLoading: Record<ReadKind, boolean> = { candidates: false, rules: false, categories: false };
+let mockLoading: Record<ReadKind, boolean> = {
+  candidates: false,
+  rules: false,
+  categories: false,
+  evidence: false,
+};
 
 // The shared Modal double drops a hidden sheet from the tree, and a test needs the one handler
 // the native Modal calls once a sheet has finished closing, so this one keeps the latest props.
@@ -153,7 +158,7 @@ const ATB_ROWS = 5;
 const SILPO_ROWS = 2;
 const NAMES = ['Name 1', 'Name 2', 'Name 3', 'Name 4', 'Name 5', 'Name 6', 'Name 7'];
 
-const dataOf = (kind: ReadKind | 'evidence'): unknown[] =>
+const dataOf = (kind: ReadKind): unknown[] =>
   ({
     candidates: mockCandidates,
     rules: mockRules,
@@ -223,7 +228,7 @@ beforeEach(() => {
   mockRules = [];
   mockCategories = SEEDED_CATEGORIES.map((category) => ({ ...category, color: null }));
   mockEvidence = [];
-  mockLoading = { candidates: false, rules: false, categories: false };
+  mockLoading = { candidates: false, rules: false, categories: false, evidence: false };
   mockApply.mockResolvedValue(0);
   previewReturns(ATB_ROWS);
   mockUseLiveQuery.mockImplementation((query: { __kind: ReadKind }) => ({
@@ -235,7 +240,7 @@ beforeEach(() => {
 
 describe('CategoryReviewScreen', () => {
   describe('loading and the empty state', () => {
-    const READS: ReadKind[] = ['candidates', 'rules', 'categories'];
+    const READS: ReadKind[] = ['candidates', 'rules', 'categories', 'evidence'];
 
     it.each(READS)(
       'shows the loading state while the %s read is on its first load',
@@ -670,6 +675,7 @@ describe('CategoryReviewScreen', () => {
       expect(calls.map(([query]) => query.__kind).sort()).toEqual([
         'candidates',
         'categories',
+        'evidence',
         'rules',
       ]);
 
@@ -691,7 +697,7 @@ describe('CategoryReviewScreen', () => {
     it('plans once every read has landed, never on a half-loaded set', async () => {
       const unread: unknown[] = [];
 
-      mockLoading = { candidates: true, rules: true, categories: true };
+      mockLoading = { candidates: true, rules: true, categories: true, evidence: true };
       mockUseLiveQuery.mockImplementation((query: { __kind: ReadKind }) => ({
         data: mockLoading[query.__kind] ? unread : dataOf(query.__kind),
         isLoading: mockLoading[query.__kind],
@@ -702,7 +708,7 @@ describe('CategoryReviewScreen', () => {
 
       expect(mockPlanCalls).not.toHaveBeenCalled();
 
-      for (const read of ['candidates', 'rules'] as const) {
+      for (const read of ['candidates', 'rules', 'evidence'] as const) {
         mockLoading = { ...mockLoading, [read]: false };
         await screen.rerender(reviewElement());
 
@@ -728,18 +734,13 @@ describe('CategoryReviewScreen', () => {
   });
 
   describe('the suggestion chip', () => {
-    // The catalogue key has no type yet, so the red run reads it through a cast.
     const suggestionText = (category: string, agreeing: number, total: number): string =>
-      (i18n.t as unknown as (key: string, options: object) => string)('categoryReview.suggestion', {
-        category,
-        agreeing,
-        total,
-      });
+      i18n.t('categoryReview.suggestion', { category, agreeing, total });
 
     const GROCERIES_CHIP = suggestionText('Groceries', 3, 3);
 
     const silpoSuggested = (): void => {
-      mockEvidence = [{ description: 'Silpo 7', categoryKey: 'groceries', rowCount: 3 }];
+      mockEvidence = [{ description: 'Silpo 0712', categoryKey: 'groceries', rowCount: 3 }];
     };
 
     const pressChip = async (screen: Screen, lineIndex: number, text: string): Promise<void> => {
@@ -759,7 +760,7 @@ describe('CategoryReviewScreen', () => {
     });
 
     it('shows no chip when there is no suggestion', async () => {
-      mockEvidence = [{ description: 'Silpo 7', categoryKey: 'groceries', rowCount: 1 }];
+      mockEvidence = [{ description: 'Silpo 0712', categoryKey: 'groceries', rowCount: 1 }];
 
       const screen = await renderReview();
       const [, silpo] = linesOf(screen);

@@ -345,6 +345,7 @@ export const en = {
     rowCount_many: '{{count}} transactions',
     rowCount_other: '{{count}} transactions',
     startsWith: 'Starts with "{{name}}"',
+    suggestion: '{{category}}, {{agreeing}} of {{total}}',
     title: 'Sort Uncategorized',
   },
   forms: {

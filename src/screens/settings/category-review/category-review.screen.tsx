@@ -37,10 +37,26 @@ import ReviewLine from './review-line';
 import { styles } from './category-review.styles';
 import { useReviewActions } from './use-review-actions';
 import CategoryOptionsSheet from './category-options-sheet';
+import type { ReviewLineSuggestion } from './review-line/review-line.props';
 
 type CategoryReviewScreenProps = NativeStackScreenProps<SettingsStackParamList, 'CategoryReview'>;
 
+type SuggestedOption = { key: string; title: string; icon: string };
+
 const groupKeyOf = (group: ReviewGroup): string => group.key;
+
+// The group's suggestion with its category as the options sheet lists it. Both come from the same
+// categories read, so a suggestion names a listed category; one that is not listed shows no chip.
+const lineSuggestionOf = (
+  group: ReviewGroup,
+  options: readonly SuggestedOption[],
+): ReviewLineSuggestion | null =>
+  foldMap(maybe(group.suggestion), ({ category, agreeing, total }) =>
+    foldMap(
+      maybe(options.find(({ key }) => isSameCategory(key, category))),
+      ({ key, title, icon }) => ({ key, title, icon, agreeing, total }),
+    ),
+  ) ?? null;
 
 // The transactions with no category, grouped by name, a line each. The list stays mounted while
 // the reads are queued, so the large title tracks it from the first render, and shows the loading
@@ -70,8 +86,14 @@ const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
     true,
     readOptions,
   );
-  const isReady = useDataReady(candidatesLoading, rulesLoading, categoriesLoading);
-  // Planned only once all three reads have landed: each lands on its own render, and a plan over a
+  const { data: evidence, isLoading: evidenceLoading } = useLiveQuery(
+    categoryRulesRepo.reviewEvidenceQuery(),
+    ['transactions', 'category_rules', 'categories'],
+    true,
+    readOptions,
+  );
+  const isReady = useDataReady(candidatesLoading, rulesLoading, categoriesLoading, evidenceLoading);
+  // Planned only once all four reads have landed: each lands on its own render, and a plan over a
   // half-loaded set is thrown away at once.
   const groups = useMemo(
     () =>
@@ -80,10 +102,10 @@ const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
             prepareRules(rules),
             candidates,
             new Set(categories.map(({ key }) => categoryKeyOf(key))),
-            [],
+            evidence,
           )
         : [],
-    [isReady, candidates, rules, categories],
+    [isReady, candidates, rules, categories, evidence],
   );
   // Every listed row moves into the picked category, and one already in `other` would not, so
   // `other` is not offered.
@@ -112,7 +134,13 @@ const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
         data={groups}
         keyExtractor={groupKeyOf}
         renderItem={({ item }) => (
-          <ReviewLine group={item} disabled={actions.isBusy} onChoose={actions.choose} />
+          <ReviewLine
+            group={item}
+            disabled={actions.isBusy}
+            suggestion={lineSuggestionOf(item, categoryOptions)}
+            onChoose={actions.choose}
+            onAccept={actions.accept}
+          />
         )}
         ListHeaderComponent={<LargeTitleHeading />}
         ListEmptyComponent={
