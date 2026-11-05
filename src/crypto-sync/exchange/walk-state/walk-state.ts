@@ -141,9 +141,15 @@ export type ParsedKeyExpiry = { expiredAtMs?: number; deadlineDay?: number; read
 
 /**
  * What one wallet's last balance read left to show: the coins it set aside for a loan, the coins
- * it set aside for an open order, and whether the exchange refused the key for it.
+ * it set aside for an open order, the coins it could not read, and whether the exchange refused
+ * the key for it.
  */
-export type ParsedWalletNotes = { borrowed: string[]; openOrder: string[]; refused: boolean };
+export type ParsedWalletNotes = {
+  borrowed: string[];
+  openOrder: string[];
+  refusedCoins: string[];
+  refused: boolean;
+};
 
 /** The JSON stored in `sync_state.exchange_state`. */
 export type ExchangeState = {
@@ -484,6 +490,7 @@ const walletNotesOf = (stored: unknown): ParsedWalletNotes | undefined =>
   foldMap(maybe(recordOrUndefined(stored)), (entry) => ({
     borrowed: stringListOrUndefined(entry.borrowed) ?? [],
     openOrder: stringListOrUndefined(entry.openOrder) ?? [],
+    refusedCoins: stringListOrUndefined(entry.refusedCoins) ?? [],
     refused: entry.refused === true,
   }));
 

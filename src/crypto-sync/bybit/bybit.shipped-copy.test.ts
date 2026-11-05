@@ -54,7 +54,19 @@ describe('the Bybit copy', () => {
     expect(ukrainian).toMatch(/може тримати частину цієї монети/);
   });
 
-  it.each(['bybitCoinBorrowed', 'bybitCoinOpenOrder'] as const)(
+  it('the refused-coin line fits every reason: it claims no import, no amount and no last balance', () => {
+    const { bybitCoinRefused: english } = en.accountDetail;
+    const { bybitCoinRefused: ukrainian } = uk.accountDetail;
+
+    expect(english).toMatch(/could not read this coin's amounts from Bybit/);
+    expect(english).toMatch(/A balance shown here is from an earlier sync/);
+    expect(english).not.toMatch(/import|exactly|last balance|\d/i);
+    expect(ukrainian).toMatch(/не зміг прочитати суми цієї монети з Bybit/);
+    expect(ukrainian).toMatch(/Баланс, показаний тут, узято з попередньої/);
+    expect(ukrainian).not.toMatch(/імпорт|точно|останн\S* баланс|\d/i);
+  });
+
+  it.each(['bybitCoinBorrowed', 'bybitCoinOpenOrder', 'bybitCoinRefused'] as const)(
     'the %s line says that a coin with no earlier sync is not in the balance',
     (key) => {
       expect(en.accountDetail[key]).toMatch(

@@ -412,7 +412,58 @@ describe('bybitProvider', () => {
       expect(keysOf(read)).toEqual(['USDT:unified']);
       expect(read.exchangeState).toContainEqual({
         kind: 'balanceNotes',
-        wallets: { unified: { borrowed: ['BTC', 'ETH'], openOrder: [] }, fund: { borrowed: [] } },
+        wallets: {
+          unified: { borrowed: ['BTC', 'ETH'], openOrder: [], refusedCoins: [] },
+          fund: { borrowed: [], refusedCoins: [] },
+        },
+        refused: [],
+      });
+    });
+  });
+
+  describe('a coin that is refused', () => {
+    it('keeps its last balance and lists itself under its wallet, in no oversized patch', async () => {
+      const deps = makeDeps(
+        [
+          unifiedCoin('BTC', 'lots'),
+          unifiedCoin('ETH', '2', { spotBorrow: '' }),
+          unifiedCoin('SOL', '1', { borrowAmount: '0.5' }),
+          unifiedCoin('USDT', '3'),
+        ],
+        [fundCoin('XRP', '1'), fundCoin('XRP', '1'), fundCoin('LTC', '4')],
+      );
+      const target = freshTarget([
+        heldHolding('BTC:unified', 5),
+        heldHolding('ETH:unified', 6, 'ETH'),
+        heldHolding('XRP:fund', 7, 'XRP'),
+      ]);
+
+      const read = await bybitProvider.fetchBalances(deps, target);
+
+      expect(pairsOf(read.balances)).toEqual([
+        ['USDT:unified', 300000000],
+        ['LTC:fund', 400000000],
+      ]);
+      expect(read.exchangeState).toContainEqual({
+        kind: 'balanceNotes',
+        wallets: {
+          unified: { borrowed: ['SOL'], openOrder: [], refusedCoins: ['BTC', 'ETH'] },
+          fund: { borrowed: [], refusedCoins: ['XRP'] },
+        },
+        refused: [],
+      });
+      expect(read.exchangeState?.map(({ kind }) => kind)).not.toContain('oversizedBalance');
+    });
+
+    it('with FUND failed lists the UNIFIED coin alone and names no FUND list', async () => {
+      const deps = makeDeps([unifiedCoin('BTC', 'lots')]);
+      deps.fetchFundBalance.mockRejectedValue(new TypeError('Network request failed'));
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(read.exchangeState).toContainEqual({
+        kind: 'balanceNotes',
+        wallets: { unified: { borrowed: [], openOrder: [], refusedCoins: ['BTC'] } },
         refused: [],
       });
     });
@@ -438,8 +489,8 @@ describe('bybitProvider', () => {
       expect(read.exchangeState).toContainEqual({
         kind: 'balanceNotes',
         wallets: {
-          unified: { borrowed: [], openOrder: ['BTC', 'ETH', 'SOL'] },
-          fund: { borrowed: [] },
+          unified: { borrowed: [], openOrder: ['BTC', 'ETH', 'SOL'], refusedCoins: [] },
+          fund: { borrowed: [], refusedCoins: [] },
         },
         refused: [],
       });
@@ -456,7 +507,10 @@ describe('bybitProvider', () => {
       expect(read.balances).toEqual([]);
       expect(read.exchangeState).toContainEqual({
         kind: 'balanceNotes',
-        wallets: { unified: { borrowed: [], openOrder: ['BTC', 'USD'] }, fund: { borrowed: [] } },
+        wallets: {
+          unified: { borrowed: [], openOrder: ['BTC', 'USD'], refusedCoins: [] },
+          fund: { borrowed: [], refusedCoins: [] },
+        },
         refused: [],
       });
     });

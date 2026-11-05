@@ -5,7 +5,7 @@ import {
 } from './exchange-state-patch';
 import { parseExchangeState } from './walk-state';
 
-type Notes = { borrowed: string[]; openOrder?: string[] };
+type Notes = { borrowed: string[]; openOrder?: string[]; refusedCoins?: string[] };
 
 const notesPatch = (
   wallets: Record<string, Notes>,
@@ -70,6 +70,53 @@ describe('the balance notes patch', () => {
     expect(
       patched({ fund: { openOrder: ['BTC'] } }, notesPatch({ fund: { borrowed: [] } })),
     ).toEqual({ fund: {} });
+  });
+
+  it('writes the refused coins of a wallet once and sorted, beside its other lists', () => {
+    const notes = { borrowed: ['ETH'], openOrder: ['BTC'], refusedCoins: ['USDT', 'SOL', 'USDT'] };
+
+    expect(patched(undefined, notesPatch({ unified: notes }))).toEqual({
+      unified: { borrowed: ['ETH'], openOrder: ['BTC'], refusedCoins: ['SOL', 'USDT'] },
+    });
+  });
+
+  it('writes no refused-coin list for a wallet with no refused coin', () => {
+    const none = { borrowed: [], refusedCoins: [] };
+
+    expect(patched(undefined, notesPatch({ unified: none }))).toEqual({ unified: {} });
+  });
+
+  it('clears the stored refused coins of a wallet whose read lists none, and no other', () => {
+    const seed = { unified: { refusedCoins: ['BTC'] }, fund: { refusedCoins: ['SOL'] } };
+
+    expect(patched(seed, notesPatch({ unified: { borrowed: [], refusedCoins: [] } }))).toEqual({
+      unified: {},
+      fund: { refusedCoins: ['SOL'] },
+    });
+  });
+
+  it('clears the stored refused coins of a wallet whose patch has no such list', () => {
+    expect(
+      patched({ fund: { refusedCoins: ['BTC'] } }, notesPatch({ fund: { borrowed: [] } })),
+    ).toEqual({ fund: {} });
+  });
+
+  it('keeps the refused coins of a wallet that failed when another wallet read', () => {
+    const seed = { unified: { refusedCoins: ['BTC'] }, fund: { refusedCoins: ['SOL'] } };
+    const read = { unified: { borrowed: [], refusedCoins: ['ETH'] } };
+
+    expect(patched(seed, notesPatch(read))).toEqual({
+      unified: { refusedCoins: ['ETH'] },
+      fund: { refusedCoins: ['SOL'] },
+    });
+  });
+
+  it('marks a refused wallet and keeps its stored refused coins', () => {
+    const seed = { fund: { refusedCoins: ['SOL'] } };
+
+    expect(patched(seed, notesPatch({}, ['fund']))).toEqual({
+      fund: { refusedCoins: ['SOL'], refused: true },
+    });
   });
 
   it('marks a refused wallet and keeps its stored open-order coins', () => {

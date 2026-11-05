@@ -210,10 +210,8 @@ describe('the state a Bybit balance read returns', () => {
 
       const state = stateAfter(await bybitProvider.fetchBalances(deps, freshTarget()));
 
-      expect(state.oversizedCoins).toEqual({
-        balance: [],
-        balanceByWallet: { unified: [], fund: [] },
-      });
+      expect(state.balanceNotes).toEqual({ unified: { borrowed: ['BTC'] }, fund: {} });
+      expect(state).not.toHaveProperty('oversizedCoins');
       expect(state.untrackedCoins).toEqual({ balance: [] });
     });
   });
@@ -228,10 +226,7 @@ describe('the state a Bybit balance read returns', () => {
       const state = stateAfter(await bybitProvider.fetchBalances(deps, freshTarget()));
 
       expect(state.balanceNotes).toEqual({ unified: { openOrder: ['BTC', 'ETH'] }, fund: {} });
-      expect(state.oversizedCoins).toEqual({
-        balance: [],
-        balanceByWallet: { unified: [], fund: [] },
-      });
+      expect(state).not.toHaveProperty('oversizedCoins');
       expect(state.untrackedCoins).toEqual({ balance: [] });
     });
 
@@ -333,33 +328,106 @@ describe('the state a Bybit balance read returns', () => {
     });
   });
 
-  describe('the coin lists', () => {
-    const storedFund = { oversizedCoins: { balance: ['SOL'], balanceByWallet: { fund: ['SOL'] } } };
+  // O76, PLANNER CALL 81: a refused coin is a note of its wallet, never an entry of the oversized
+  // list, so the same wallet-by-wallet replace and keep that `complete` gave the list holds here.
+  describe('a coin that is refused', () => {
+    const stored = { oversizedCoins: { balance: ['SOL'], balanceByWallet: { fund: ['SOL'] } } };
 
-    it('lists a coin whose amount was refused under the wallet that read it', async () => {
-      const deps = makeDeps([unifiedCoin('BTC', 'lots'), unifiedCoin('ETH', '2')]);
+    it('goes to the notes and writes no oversized list', async () => {
+      const deps = makeDeps([
+        unifiedCoin('BTC', 'lots'),
+        unifiedCoin('ETH', '2', { spotBorrow: '' }),
+        unifiedCoin('USDT', '3'),
+      ]);
 
       const read = await bybitProvider.fetchBalances(deps, freshTarget());
+      const state = stateAfter(read);
 
-      expect(keysOf(read)).toEqual(['ETH:unified']);
-      expect(stateAfter(read, storedFund).oversizedCoins).toEqual({
-        balance: ['BTC'],
-        balanceByWallet: { unified: ['BTC'], fund: [] },
+      expect(keysOf(read)).toEqual(['USDT:unified']);
+      expect(state.balanceNotes).toEqual({ unified: { refusedCoins: ['BTC', 'ETH'] }, fund: {} });
+      expect(state).not.toHaveProperty('oversizedCoins');
+    });
+
+    it('lists itself under the wallet that read it, FUND too', async () => {
+      const deps = makeDeps(
+        [unifiedCoin('BTC', 'lots')],
+        [fundCoin('ETH', '1'), fundCoin('ETH', '1')],
+      );
+
+      const state = stateAfter(await bybitProvider.fetchBalances(deps, freshTarget()));
+
+      expect(state.balanceNotes).toEqual({
+        unified: { refusedCoins: ['BTC'] },
+        fund: { refusedCoins: ['ETH'] },
       });
     });
 
-    it('keeps the refused coins of a wallet that failed', async () => {
+    it('leaves a stored oversized list as stored, since no Bybit balance read writes one', async () => {
       const deps = makeDeps([unifiedCoin('BTC', 'lots')]);
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(stateAfter(read, stored).oversizedCoins).toEqual(stored.oversizedCoins);
+    });
+
+    it('is cleared by the first good read of its wallet', async () => {
+      const seed = {
+        balanceNotes: { unified: { refusedCoins: ['BTC'] }, fund: { refusedCoins: ['ETH'] } },
+      };
+      const deps = makeDeps([unifiedCoin('BTC', '1')], [fundCoin('ETH', '2')]);
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(keysOf(read)).toEqual(['BTC:unified', 'ETH:fund']);
+      expect(stateAfter(read, seed).balanceNotes).toEqual({ unified: {}, fund: {} });
+    });
+
+    it('is replaced for a wallet that read and kept for a wallet that failed', async () => {
+      const seed = {
+        balanceNotes: { unified: { refusedCoins: ['BTC'] }, fund: { refusedCoins: ['SOL'] } },
+      };
+      const deps = makeDeps([unifiedCoin('ETH', 'lots')]);
       deps.fetchFundBalance.mockRejectedValue(new TypeError('Network request failed'));
 
       const read = await bybitProvider.fetchBalances(deps, freshTarget());
 
-      expect(stateAfter(read, storedFund).oversizedCoins).toEqual({
-        balance: ['BTC', 'SOL'],
-        balanceByWallet: { unified: ['BTC'], fund: ['SOL'] },
+      expect(stateAfter(read, seed).balanceNotes).toEqual({
+        unified: { refusedCoins: ['ETH'] },
+        fund: { refusedCoins: ['SOL'] },
       });
     });
 
+    it('is kept, with the refused mark added, when FUND is refused the key', async () => {
+      const seed = { balanceNotes: { fund: { refusedCoins: ['SOL'] } } };
+      const deps = makeDeps();
+      deps.fetchFundBalance.mockRejectedValue(new BybitRefusalError('permission', 10005));
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(stateAfter(read, seed).balanceNotes).toEqual({
+        unified: {},
+        fund: { refusedCoins: ['SOL'], refused: true },
+      });
+    });
+
+    it('lists each coin the read refuses, one a later read finds good dropped, none lost', async () => {
+      const seed = { balanceNotes: { unified: { refusedCoins: ['BTC', 'ETH'] } } };
+      const deps = makeDeps([
+        unifiedCoin('BTC', 'lots'),
+        unifiedCoin('ETH', '1'),
+        unifiedCoin('SOL', 'x'),
+      ]);
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(stateAfter(read, seed).balanceNotes).toEqual({
+        unified: { refusedCoins: ['BTC', 'SOL'] },
+        fund: {},
+      });
+    });
+  });
+
+  describe('the coin lists', () => {
     it('lists the coins the app does not track once, on a read of both wallets', async () => {
       const deps = makeDeps(
         [unifiedCoin('PEPE', '5'), unifiedCoin('UAH', '1')],
@@ -398,7 +466,6 @@ describe('the state a Bybit balance read returns', () => {
         'balanceNotes',
         'balanceSyncedAt',
         'keyExpiry',
-        'oversizedCoins',
         'untrackedCoins',
         'version',
         'walks',

@@ -800,6 +800,8 @@ export const en = {
       '{{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
     bybitCoinOpenOrder:
       '{{coin}}: Bybit may hold part of this coin for an open order, so Kiko does not read its balance now. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
+    bybitCoinRefused:
+      "{{coin}}: Kiko could not read this coin's amounts from Bybit, so it left the coin out. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.",
     bybitComplianceRefused:
       'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
     bybitForbidden:

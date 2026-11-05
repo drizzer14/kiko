@@ -25,10 +25,11 @@ export type WalkMarkPatch = {
 type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 
 /**
- * What one wallet's balance read leaves to show: the coins it set aside for a loan, and the coins
- * it set aside for an open order (a wallet with no such coin names none).
+ * What one wallet's balance read leaves to show: the coins it set aside for a loan, the coins it
+ * set aside for an open order, and the coins the exchange sent in a shape that could not be read
+ * (a wallet with no such coin names none).
  */
-type WalletNotes = { borrowed: string[]; openOrder?: string[] };
+type WalletNotes = { borrowed: string[]; openOrder?: string[]; refusedCoins?: string[] };
 
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
@@ -170,9 +171,10 @@ const withOversizedBalance = (
 const coinListOf = (field: string, coins: readonly string[]): Metadata =>
   coins.length > 0 ? { [field]: sortedUnique(coins) } : {};
 
-const notesOfWallet = ({ borrowed, openOrder = [] }: WalletNotes): Metadata => ({
+const notesOfWallet = ({ borrowed, openOrder = [], refusedCoins = [] }: WalletNotes): Metadata => ({
   ...coinListOf('borrowed', borrowed),
   ...coinListOf('openOrder', openOrder),
+  ...coinListOf('refusedCoins', refusedCoins),
 });
 
 /**

@@ -214,10 +214,11 @@ type ReadWallets = {
 };
 
 /**
- * The state writes of one read. Every list is written wallet by wallet: a wallet that read
- * replaces its own entries, and one that failed keeps its stored ones, plus the refused mark
- * when Bybit refused the key for it. The not-tracked list is replaced only by a read of both
- * wallets, since a failed wallet knows nothing of its coins.
+ * The state writes of one read. Every note is written wallet by wallet: a wallet that read
+ * replaces its own entry, the coins it could not read too, and one that failed keeps its stored
+ * one, plus the refused mark when Bybit refused the key for it. No oversized list is written: a
+ * refused coin is a note, so the text can say why. The not-tracked list is replaced only by a
+ * read of both wallets, since a failed wallet knows nothing of its coins.
  */
 const statePatchesOf = ({
   unified,
@@ -239,18 +240,16 @@ const statePatchesOf = ({
   return [
     ...untracked,
     {
-      kind: 'oversizedBalance',
-      wallets: {
-        unified: [...unified.refused],
-        ...foldMap(maybe(fund), (read) => ({ fund: [...read.refused] })),
-      },
-      complete: fund !== undefined,
-    },
-    {
       kind: 'balanceNotes',
       wallets: {
-        unified: { borrowed: [...unified.borrowed], openOrder: [...unified.openOrder] },
-        ...foldMap(maybe(fund), (read) => ({ fund: { borrowed: [...read.borrowed] } })),
+        unified: {
+          borrowed: [...unified.borrowed],
+          openOrder: [...unified.openOrder],
+          refusedCoins: [...unified.refused],
+        },
+        ...foldMap(maybe(fund), (read) => ({
+          fund: { borrowed: [...read.borrowed], refusedCoins: [...read.refused] },
+        })),
       },
       refused,
     },
