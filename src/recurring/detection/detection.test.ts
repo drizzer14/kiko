@@ -34,19 +34,12 @@ import {
   type LedgerRow,
   type ExpectedSeries,
   type RecurrenceView,
-  type RecurringSeries,
 } from './detection-test-helper';
+import { detectRecurringSeries } from './detection';
+import type { RecurringSeries } from './detection.d';
 
-type Detect = (input: Ledger, now: number) => RecurringSeries[];
 type MatrixRow = [title: string, world: () => Ledger, expected: ExpectedSeries[]];
 type ExclusionWorld = [title: string, build: (excluded: boolean) => Ledger];
-
-// Read at run time so the file type-checks while the module is absent.
-const detect: Detect = (input, now) => {
-  const detection = jest.requireActual('./detection') as { detectRecurringSeries: Detect };
-
-  return detection.detectRecurringSeries(input, now);
-};
 
 const SEED_SPREAD = 104_729;
 const MINUTE_MS = 60_000;
@@ -710,18 +703,18 @@ const MATRIX: readonly MatrixRow[] = [
 describe('detectRecurringSeries', () => {
   describe('the world matrix', () => {
     it.each(MATRIX)('%s: gives the expected series', (_title, world, expected) => {
-      expect(viewsOf(detect(world(), nowOf()))).toEqual(expectedViewsOf(expected));
+      expect(viewsOf(detectRecurringSeries(world(), nowOf()))).toEqual(expectedViewsOf(expected));
     });
 
     it.each(MATRIX)(
       '%s: gives the same result with the rows shuffled',
       (_title, world, expected) => {
         const ledger = world();
-        const original = detect(ledger, nowOf());
+        const original = detectRecurringSeries(ledger, nowOf());
         const random = seededRandom(SEED_SPREAD);
 
         for (const rows of [[...ledger.rows].reverse(), shuffled(ledger.rows, random)]) {
-          const reordered = detect({ ...ledger, rows }, nowOf());
+          const reordered = detectRecurringSeries({ ...ledger, rows }, nowOf());
 
           expect(reordered).toEqual(original);
           expect(viewsOf(reordered)).toEqual(expectedViewsOf(expected));
@@ -732,8 +725,8 @@ describe('detectRecurringSeries', () => {
     it.each(MATRIX)(
       '%s: gives the same result on a device in a fixed-offset zone',
       (_title, world, expected) => {
-        const kyiv = detect(world(), nowOf());
-        const fixedOffset = withDeviceZoneOffset(2, () => detect(world(), nowOf()));
+        const kyiv = detectRecurringSeries(world(), nowOf());
+        const fixedOffset = withDeviceZoneOffset(2, () => detectRecurringSeries(world(), nowOf()));
 
         expect(dayViewsOf(fixedOffset)).toEqual(dayViewsOf(kyiv));
         expect(fixedOffset.map(({ chargeIds }) => chargeIds.length).sort()).toEqual(
@@ -752,7 +745,7 @@ describe('detectRecurringSeries', () => {
         FRIDAY_EXPECTED,
       ],
     ])('reads %s as it reads in Kyiv', (_title, world, expected) => {
-      const fixedOffset = withDeviceZoneOffset(2, () => detect(world(), nowOf()));
+      const fixedOffset = withDeviceZoneOffset(2, () => detectRecurringSeries(world(), nowOf()));
 
       expect(viewsOf(fixedOffset)).toEqual(expectedViewsOf(expected));
     });
@@ -784,7 +777,9 @@ describe('detectRecurringSeries', () => {
         ...(isStopped ? { quiet: quietAt(lastTimeOf(rows)) } : {}),
       };
 
-      expect(viewsOf(detect(ledgerOf(rows), nowOf()))).toEqual(expectedViewsOf([expected]));
+      expect(viewsOf(detectRecurringSeries(ledgerOf(rows), nowOf()))).toEqual(
+        expectedViewsOf([expected]),
+      );
     });
   });
 
@@ -853,7 +848,7 @@ describe('detectRecurringSeries', () => {
         ...(isQuiet ? { quiet: quietAt(other.time) } : {}),
       };
 
-      expect(viewsOf(detect(ledgerOf([...rows, other]), nowOf()))).toEqual(
+      expect(viewsOf(detectRecurringSeries(ledgerOf([...rows, other]), nowOf()))).toEqual(
         expectedViewsOf([expected]),
       );
     });
@@ -863,9 +858,19 @@ describe('detectRecurringSeries', () => {
     it('keeps a series whose last charge is a day inside the bound', () => {
       const rows = monthly(3, 4, 150, { newest: [2024, 11], prefix: 'bill' });
 
-      expect(viewsOf(detect(ledgerOf(rows), nowOf()))).toEqual(
+      expect(viewsOf(detectRecurringSeries(ledgerOf(rows), nowOf()))).toEqual(
         expectedViewsOf([
           monthlySeries(3, 4, { isStopped: true, quiet: quietAt(at(2024, 11, 4)) }),
+        ]),
+      );
+    });
+
+    it('keeps a series on the exact day its last charge reaches the bound', () => {
+      const rows = monthly(3, 3, 150, { newest: [2024, 11], prefix: 'bill' });
+
+      expect(viewsOf(detectRecurringSeries(ledgerOf(rows), nowOf()))).toEqual(
+        expectedViewsOf([
+          monthlySeries(3, 3, { isStopped: true, quiet: quietAt(at(2024, 11, 3)) }),
         ]),
       );
     });
@@ -873,7 +878,7 @@ describe('detectRecurringSeries', () => {
     it('drops a series whose last charge is a day outside the bound', () => {
       const rows = monthly(3, 2, 150, { newest: [2024, 11], prefix: 'bill' });
 
-      expect(detect(ledgerOf(rows), nowOf())).toEqual([]);
+      expect(detectRecurringSeries(ledgerOf(rows), nowOf())).toEqual([]);
     });
   });
 
@@ -888,7 +893,7 @@ describe('detectRecurringSeries', () => {
       ['synced over import', ['import', 'monobank'], 'monobank'],
       ['the source name between two synced sources', ['monobank', 'btc_wallet'], 'btc_wallet'],
     ])('keeps %s, newest first, and leaves the folded rows out', (_title, sources, kept) => {
-      const result = detect(ledgerOf(sourceRows(sources)), nowOf());
+      const result = detectRecurringSeries(ledgerOf(sourceRows(sources)), nowOf());
 
       expect(result.map(({ chargeIds }) => chargeIds)).toEqual([
         rangeOf(0, 6).map((index) => `${kept}-${index}`),
@@ -900,7 +905,7 @@ describe('detectRecurringSeries', () => {
         ...monthly(6, 2, 250, { prefix: 'bill' }),
         chargeOf('bill-double', at(2026, 10, 2, 10, 31), 250),
       ];
-      const result = detect(ledgerOf(rows), nowOf());
+      const result = detectRecurringSeries(ledgerOf(rows), nowOf());
 
       expect(result.map(({ chargeIds }) => chargeIds.length)).toEqual([7]);
       expect(result[0]?.chargeIds.slice(0, 2)).toEqual(['bill-double', 'bill-0']);
@@ -928,7 +933,7 @@ describe('detectRecurringSeries', () => {
       expect(rows.map(({ description }) => tidiedNameOf(description))).toContain(name);
 
       for (const ordered of [rows, [...rows].reverse()]) {
-        const result = detect(ledgerOf(ordered), nowOf());
+        const result = detectRecurringSeries(ledgerOf(ordered), nowOf());
 
         expect(result).toHaveLength(1);
         expect(result[0]).toMatchObject({ name, merchantKey: [...keys][0] });
@@ -947,7 +952,7 @@ describe('detectRecurringSeries', () => {
         prefix: 'shop',
         descriptionOf: (index) => (index % 2 === 0 ? first : second),
       });
-      const result = detect(ledgerOf(rows), nowOf());
+      const result = detectRecurringSeries(ledgerOf(rows), nowOf());
 
       expect(merchantNameOf(first).key).toBe(key);
       expect(merchantNameOf(second).key).toBe(key);
@@ -956,7 +961,10 @@ describe('detectRecurringSeries', () => {
     });
 
     it('lists the charges of a series newest first', () => {
-      const result = detect(ledgerOf(monthly(6, 5, 199, { prefix: 'netflix' })), nowOf());
+      const result = detectRecurringSeries(
+        ledgerOf(monthly(6, 5, 199, { prefix: 'netflix' })),
+        nowOf(),
+      );
 
       expect(result.map(({ chargeIds }) => chargeIds)).toEqual([
         rangeOf(0, 6).map((index) => `netflix-${index}`),
@@ -975,7 +983,7 @@ describe('detectRecurringSeries', () => {
       ledger: randomLedgerOf(seededRandom(seed * SEED_SPREAD)),
     }));
     const resultsOf = (): RecurringSeries[][] =>
-      worlds.map(({ ledger }) => detect(ledger, nowOf()));
+      worlds.map(({ ledger }) => detectRecurringSeries(ledger, nowOf()));
     const todayKey = dayKeyOf(nowOf());
 
     it('finds series in worlds that differ', () => {
@@ -991,7 +999,7 @@ describe('detectRecurringSeries', () => {
           [...ledger.rows].reverse(),
           shuffled(ledger.rows, seededRandom(seed * SEED_SPREAD)),
         ]) {
-          expect(detect({ ...ledger, rows }, nowOf())).toEqual(results[index]);
+          expect(detectRecurringSeries({ ...ledger, rows }, nowOf())).toEqual(results[index]);
         }
       }
     });
@@ -1014,7 +1022,7 @@ describe('detectRecurringSeries', () => {
 
       for (const [index, { ledger }] of worlds.entries()) {
         for (const now of [at(2026, 11, 3, 0, 0), lastInstant]) {
-          expect(detect(ledger, now)).toEqual(results[index]);
+          expect(detectRecurringSeries(ledger, now)).toEqual(results[index]);
         }
       }
     });

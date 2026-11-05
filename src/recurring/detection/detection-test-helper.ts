@@ -1,56 +1,23 @@
 import { match, P } from 'ts-pattern';
 import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
-import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 
-export type Random = () => number;
-export type LedgerRow = Pick<
-  TransactionRow,
-  | 'id'
-  | 'holdingId'
-  | 'amountMinorUnits'
-  | 'time'
-  | 'description'
-  | 'mcc'
-  | 'counterIban'
-  | 'categorySetByHand'
-  | 'setsBalance'
-  | 'changeGroupId'
-  | 'exchangePairId'
-  | 'exchangeCounterpartHoldingId'
-  | 'untrackedCounterpart'
-  | 'loanHoldingId'
-  | 'source'
->;
+import type {
+  Recurrence,
+  RecurringPeriod,
+  RecurringSeries,
+  RecurringLedgerRow,
+} from './detection.d';
+
+type Random = () => number;
+export type LedgerRow = RecurringLedgerRow;
 export type Holding = Pick<HoldingRow, 'id' | 'accountId' | 'name' | 'currency' | 'metadata'>;
 export type Account = Pick<AccountRow, 'id' | 'kind' | 'archivedAt'>;
 export type Currency = HoldingRow['currency'];
 export type Ledger = { rows: LedgerRow[]; holdings: Holding[]; accounts: Account[] };
-export type LedgerExtras = { holdings?: readonly Holding[]; accounts?: readonly Account[] };
-
-export type RecurringPeriod = 'weekly' | 'monthly' | 'yearly';
-export type Recurrence =
-  | { kind: 'onDay'; day: number }
-  | { kind: 'aroundDay'; day: number }
-  | { kind: 'lastDay' }
-  | { kind: 'onWeekday'; weekday: number }
-  | { kind: 'onDate'; time: number }
-  | { kind: 'none' };
-export type RecurringSeries = {
-  id: string;
-  merchantKey: string;
-  name: string;
-  currency: Currency;
-  period: RecurringPeriod;
-  recurrence: Recurrence;
-  chargeIds: string[];
-  lastChargeTime: number;
-  lastChargeAmountMinorUnits: number;
-  lastChargeHoldingId: string;
-  isStopped: boolean;
-  quiet: { since: number; holdingName: string } | null;
-};
+type LedgerExtras = { holdings?: readonly Holding[]; accounts?: readonly Account[] };
 
 export type RecurrenceView =
   | Exclude<Recurrence, { kind: 'onDate' }>
@@ -67,13 +34,13 @@ export type ExpectedSeries = {
   name?: string;
 };
 
-export type ChargeShape = {
+type ChargeShape = {
   description?: string | undefined;
   holdingId?: string | undefined;
   source?: LedgerRow['source'] | undefined;
   overrides?: Partial<LedgerRow> | undefined;
 };
-export type MonthlyShape = ChargeShape & {
+type MonthlyShape = ChargeShape & {
   prefix?: string;
   // The newest month as [year, 1-based month]; Oct 2026 when absent.
   newest?: readonly [year: number, month: number];
@@ -85,7 +52,7 @@ export type MonthlyShape = ChargeShape & {
   hour?: number;
   minute?: number;
 };
-export type WeeklyShape = ChargeShape & {
+type WeeklyShape = ChargeShape & {
   prefix?: string;
   weeksBackOf?: (index: number) => number;
   hour?: number;
@@ -318,7 +285,7 @@ export const expectedViewsOf = (expected: readonly ExpectedSeries[]) =>
       name: entry.name ?? expect.anything(),
     }));
 
-export const groupedBy = <Entry>(
+const groupedBy = <Entry>(
   entries: readonly Entry[],
   keyOf: (entry: Entry) => string,
 ): Map<string, Entry[]> =>
@@ -400,7 +367,7 @@ const DOUBLE_SHARE = 0.1;
 const JITTER_SHARE = 0.2;
 const CREDIT_SHARE = 0.15;
 
-export const RANDOM_EXTRAS: LedgerExtras = { holdings: [holdingOf('usd', 'USD')] };
+const RANDOM_EXTRAS: LedgerExtras = { holdings: [holdingOf('usd', 'USD')] };
 
 const localNoonOf = (time: number): number => {
   const date = new Date(time);
