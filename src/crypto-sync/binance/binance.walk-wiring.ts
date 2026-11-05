@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 import {
+  type CommitDeps,
   commitExchangeSpan,
-  type ExchangeStateDeps,
   type OwedWindow,
   placeWalletRows,
   runExchangeWalkPlan,
@@ -35,10 +35,6 @@ export type BinanceWalkContext<Deps> = {
   marks: WalkMarks;
   plan: WalkPlan;
   write: WalkMarkWriter;
-};
-
-type CommitDeps<Row> = Pick<ExchangeStateDeps, 'patchExchangeState'> & {
-  addTransactions: (rows: Row[]) => Promise<number>;
 };
 
 type SpanCommitContext<Row> = Pick<

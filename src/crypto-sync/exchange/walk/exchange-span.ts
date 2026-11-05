@@ -15,7 +15,7 @@ import {
 } from './records';
 import type { ExchangeStateDeps, WalkMarkWriter } from './exchange-state-deps';
 
-type CommitDeps<Row> = Pick<ExchangeStateDeps, 'patchExchangeState'> & {
+export type CommitDeps<Row> = Pick<ExchangeStateDeps, 'patchExchangeState'> & {
   addTransactions: (rows: Row[]) => Promise<number>;
 };
 
