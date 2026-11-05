@@ -581,7 +581,11 @@ The established patterns grouped under this heading:
   `BinanceCredentialsField` checks `isBinanceCoolingDown` after the blank-field check and
   before `fetchAccount`. On a cooling account it shows the localized
   `accountDetail.binanceCoolingDown` text, makes no request or write, and keeps the typed
-  pair, so a later press connects once the cooldown ends.
+  pair, so a later press connects once the cooldown ends. After that check it also checks
+  `isBinanceSyncRunning` and shows `accountDetail.binanceSyncStillRunning`.
+  `MonobankConnectField` takes a required `accountId` prop; after the blank check it checks
+  `isMonobankSyncRunning(accountId)` and shows `accountDetail.monobankSyncStillRunning`,
+  with no request.
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
