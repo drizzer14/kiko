@@ -939,7 +939,7 @@ row dated two or more days from its bank row. A price rise over 25 percent cuts 
 ## 17. Visual round 1 (2026-11-05)
 
 The user's device reading of task 4/4, relayed by the coordinator: items 1 to 12 and 14 (HANDOFF "Item 1"). The answers to the round's questions A to L
-are binding; words in quotes are the user's. A total states money already paid, never a forecast (A: "show total", "show
+are binding, with answer F's no-category group replaced by ruling P1 (17.9); words in quotes are the user's. A total states money already paid, never a forecast (A: "show total", "show
 total of all recurring charges"; B, C: "Total = sum of all charges"; J: "All paid so far"). This section overrides sections
 9.2, 9.3, 9.5, 13 and 15 where they differ. Detection, marks, the store, the routes and the help topic do not change.
 
@@ -955,7 +955,7 @@ total of all recurring charges"; B, C: "Total = sum of all charges"; J: "All pai
 | Row layout (9.2) | name; recurrence line; last-charge line; amount beside the lines | line 1: name, amount; line 2: recurrence line, last-charge line under the amount (17.2) |
 | Series screen button (9.3) | in `ListFooterComponent`, variant `secondary` | the `Screen` footer, as other detail screens (17.5) |
 | Transaction form, "Convert to exchange" (9.6 placement) | a `small` inline button in `ModeAndActions`, between the loan field and the mark field | the form's `Screen` footer (17.6) |
-| Transaction form, Type and Amount (item 14) | Type full width under the Holding field, Amount full width under it | one row, as `DateTimeRow`; stacked at accessibility text sizes (17.6) |
+| Transaction form, Type and Amount (item 14) | Type full width under the Holding field, Amount full width under it | one row, as `DateTimeRow`; in Exchange mode Type shares a row with "Value Out"; stacked at accessibility text sizes (17.6) |
 
 ### 17.2 The list
 
@@ -964,16 +964,19 @@ Accounts screen puts before a section) stands before every group and section tha
 gets it as the other groups do). With no series, the empty state as today and no total row.
 
 - **A series' category** (F) is the stored `category` of its newest charge: the first id of `chargeIds` (newest first) found
-  in the charges read (17.5). It resolves through `resolveCategoryKey` (`src/categories/category-display/`), so an unknown or
-  deleted slug folds to the default category, as everywhere. A null or empty stored category, or a series none of whose rows
-  is in the read, goes in the **Uncategorized group**: title and icon from `neutralCategory()` (existing key
-  `categories.uncategorized`, symbol `creditcard`), color `resolveCategoryColor(null, <its group id>)`. Open point P1 (17.9).
-- **Group order** (G): the Categories screen's order, `categoriesRepo.allQuery()` (`sortOrder`, then `key`); the
-  Uncategorized group last. A group shows only when it holds a shown series.
+  in the charges read (17.5). It resolves through `resolveCategoryKey` (`src/categories/category-display/`) with
+  `settings.defaultCategoryKey`, so a null, empty, unknown or deleted category folds into the **default category's group**,
+  as everywhere (kiko-domain, the one category fold; P1, 17.9). A series none of whose rows is in the read takes the same
+  fold (a null category). The heading's title and icon come from `resolveCategoryDisplay` with the same default key, its
+  color from `resolveCategoryColor(<display color>, <resolved key>)`. There is no "Uncategorized" group: the list and the series screen
+  name a charge with no category the same way.
+- **Group order** (G): the Categories screen's order, `categoriesRepo.allQuery()` (`sortOrder`, then `key`). If the
+  default key is not in the categories read (before the seed runs), its group goes last with `neutralCategory()`'s title
+  and icon, as `resolveCategoryDisplay` resolves it. A group shows only when it holds a shown series.
 - **Inside a group** (E, the planner's proposal, the smallest change): the active series by today's order
   (`newestChargeFirst`), then the group's stopped series in the same order. A stopped row keeps its "No charge since" or quiet
   line, which tells it apart; the "No Recent Charge" heading goes. Stopped series count in the totals ("their charges were
-  paid"). Open point P2 (17.9).
+  paid"). P2 ruled A (17.9).
 - **Which series:** today's shown set: detected series not hidden, plus every marked series with charges (`itemsOf`).
   "Marked, No Charges" and "Hidden" stay their own sections with no totals (I).
 - **Group heading** (items 2, 3): the Accounts section heading's composition, built from the shared parts:
@@ -989,9 +992,9 @@ gets it as the other groups do). With no series, the empty state as today and no
 - **Row** (items 4, 5): line 1 holds the name (`flex: 1`) and the last charge's amount (`flexShrink: 0`); line 2 holds the
   recurrence line (`flex: 1`) and `lastChargeLine` right-aligned under the amount, allowed to wrap (the quiet line is long).
   The amount stays the last real charge's, in its own currency.
-- testIDs: `recurring-charges-total`, `recurring-charges-group-category-<key>`, `recurring-charges-group-uncategorized`,
-  each total `recurring-charges-group-total-<group id>`, each divider `recurring-charges-divider-<item key>`. A user category
-  keyed `uncategorized` cannot collide: the group id has a kind.
+- testIDs: `recurring-charges-total`, `recurring-charges-group-<resolved key>`, each total
+  `recurring-charges-group-total-<resolved key>`, each divider `recurring-charges-divider-<item key>`. A group is keyed by the
+  resolved category key alone, so one category never shows as two groups.
 
 ### 17.3 Removed key
 
@@ -1059,8 +1062,10 @@ id set.
 - **Type and Amount in one row (item 14, USER: "Display 'Type' and 'Amount' in a single row of a transaction form"):** the
   income/expense branch of `FieldGroup` lays the Type field (`typeSelectField`, the `ModeSelectField` the screen builds) and
   the Amount `TextField` side by side, as `DateTimeRow` lays Date and Time: `Box direction="row" gap={3}`, each field in a
-  `View` with `flex: 1`. The screen passes `typeSelectField` to `FieldGroup` instead of rendering it above. The exchange
-  branch keeps Type full width above "Value Out", and convert has no Type (`visible={!converting}`). Open point P3.
+  `View` with `flex: 1`. The screen passes `typeSelectField` to `FieldGroup` instead of rendering it above. In Exchange mode
+  Type pairs with "Value Out" the same way (P3 ruled B), so Type never moves on a mode switch: `ExchangeFields`
+  (`src/screens/forms/exchange-fields/`, its component and props files) gains an optional leading slot, laid out in the same
+  row as "Value Out" and stacked by the same fallback. Convert has no Type (`visible={!converting}`), so Amount stays alone.
   **Fallback:** at an accessibility text size (`useWindowDimensions().fontScale` at or above a named constant for iOS's
   first accessibility size, AX1; the developer reads the value on the device and names its source) the two stack full width
   in today's order. The Duo folded window (386pt wide in Device Hub, finding `20261018T0952-kiko-duo-adaptive/1`) leaves each
@@ -1092,19 +1097,15 @@ These replace the matching rows of section 13.
 | `recurringCharges.stoppedHeading` (removed) | was: No Recent Charge | was: Без нових списань |
 
 Section 13's note on the uk past frame no longer holds: with "Charged" gone, the uk lines drop «Списувалося» as en drops the
-verb. The Uncategorized group reads the existing `categories.uncategorized` through `neutralCategory()`; no key is added for it.
+verb. No key is added for a charge with no category: it folds into the default category's group (17.2).
 
-### 17.9 Open points for the user
+### 17.9 Rulings on the open points (USER 2026-11-05, on plan de3d659b0)
 
-- **P1, the group of a charge with no category.** The coordinator's answer F gives an "Uncategorized" group, last; kiko-domain
-  says a null, empty or unknown category folds onto the default category, "never a separate 'uncategorized' bucket", and the
-  series screen's rows already show such a charge as the default category. A: fold into the default category's group at its
-  Categories place (one fold, the list and the series screen agree, no exception). B (written above, as answered): a separate
-  "Uncategorized" group last for a null or empty category; the list then says "Uncategorized" where the series screen says
-  "Other", and kiko-domain needs a documented exception. Switching to A drops one branch and one pin world.
-- **P2, stopped series:** in their category group after the active ones (written above). The other way keeps a
-  "No Recent Charge" section after the groups with its own category groups, so a category can show twice with two totals.
-- **P3, Type and Amount in Exchange mode:** A (written above): the row in income/expense only, as the user's words name
-  "Amount"; on a switch to Exchange the Type field widens to full width over "Value Out". B: Type pairs with "Value Out" in
-  Exchange too, so it never moves; `ExchangeFields` (`src/screens/forms/exchange-fields/`) gains a leading slot, two more
-  files. Recommendation A unless the reflow reads wrong on the device.
+| Point | was: (de3d659b0) | now (ruling) |
+|---|---|---|
+| P1, a series with no category | answer F: an "Uncategorized" group, last, from `neutralCategory()` | "A: Default category": it folds into the default category's group through `resolveCategoryKey` / `resolveCategoryDisplay` (`settings.defaultCategoryKey`), as kiko-domain says; no "Uncategorized" group and no kiko-domain exception (17.2) |
+| P2, stopped series | proposal A: in their group, after the active ones | "A: In their group", as proposed; `recurringCharges.stoppedHeading` goes (17.3) |
+| P3, Type in Exchange mode | proposal A: Type full width above "Value Out" | "B: Pair with Value Out": Type shares a row with "Value Out"; AX1 and above stack (17.6) |
+
+Texts: "Texts lgtm" for `.superpowers/sdd/1.4-recurring/texts-visual-1.md` (2026-11-05), so 17.8's rows are approved.
+Item 13 ("Not marked" on a detected row) is ruled design (9.6) and goes to the user as options before any code; no rule here.

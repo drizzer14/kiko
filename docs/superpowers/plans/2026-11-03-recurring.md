@@ -448,12 +448,13 @@ Order: the text steps come first, because the commit that adds `{ kind: 'marked'
 
 ## 1.4-recurring visual round 1
 
-**Spec:** section 17 (rules, reads, conversion, texts, open points P1 to P3). **Branch:** `1.4-recurring-visual-1`, base `next`
-14f997ad7. Two change sets, so the transaction-form set can be merged in its own order against `1.4-bybit`, which edits
-`transaction-form.screen.tsx` and `transaction-form.screen.test.tsx` (`git diff --stat next...1.4-bybit`). Every count is a
-floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base. The texts of spec 17.8 wait for
-the user's review of `.superpowers/sdd/1.4-recurring/texts-visual-1.md`: no step copies a text before the coordinator relays
-"texts lgtm". Item 13 ("Not marked" on a detected row) goes to kiko:debugger first and is not in these sets.
+**Spec:** section 17 (rules, reads, conversion, texts, the rulings on P1 to P3 in 17.9). **Branch:** `1.4-recurring-visual-1`,
+base `next` 14f997ad7. Two change sets, so the transaction-form set can be merged in its own order against `1.4-bybit`, which
+edits `transaction-form.screen.tsx` and `transaction-form.screen.test.tsx` (`git diff --stat next...1.4-bybit`). Every count is
+a floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base. Rulings (USER 2026-11-05):
+P1 "A: Default category" (no "Uncategorized" group), P2 "A: In their group", P3 "B: Pair with Value Out", and "Texts lgtm" for
+`.superpowers/sdd/1.4-recurring/texts-visual-1.md`, so spec 17.8's rows may be copied. Item 13 ("Not marked" on a detected
+row) is ruled design (spec 9.6); its options go to the user before any code, and it is not in these sets.
 
 **Run-log gaps:** these sets close none and leave all open; none names the recurring screens. Nearest, left open:
 `20261018T0952-kiko-duo-adaptive/1` (the Duo outer window shape, read for item 14's width) and
@@ -491,7 +492,7 @@ set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's t
 - [ ] **step 1/9 (kiko:qa): text pins.** `recurrence-text.test.ts`, per language, every recurrence kind reads spec 17.8's
   text (red on the base: it reads "Charged ..." / «Списувалося ...»); the "Marked:" and "Last charge" lines unchanged (guards).
   `paidSoFar` resolves in both catalogues (red: key absent). Commit `test(recurring): the recurrence text without "Charged"`.
-- [ ] **step 2/9 (kiko:developer): catalogue.** After "texts lgtm" only. Spec 17.8's rows in `en.ts` and `uk.ts` together;
+- [ ] **step 2/9 (kiko:developer): catalogue.** "Texts lgtm" is relayed (2026-11-05). Spec 17.8's rows in `en.ts` and `uk.ts` together;
   `paidSoFar` is a label (sentence case, no full stop, not a title key). Named edits in the same commit: the old texts in
   `recurring-series-row.component.test.tsx` and `recurring-series.screen.test.tsx` (grep `Charged ` and «Списувалося» in `src`
   and `docs/superpowers/specs` on the base). `stoppedHeading` stays until step 6. Run `npx jest src/recurring/recurrence-text
@@ -500,9 +501,12 @@ set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's t
 - [ ] **step 3/9 (kiko:qa): groups and totals pins.** Red by a runtime lookup of the missing modules (Global Constraints).
   `recurring-groups.test.ts` over `recurringGroupsOf({ shown, rows, categories, defaultCategoryKey, baseCurrency, rateTable })`
   and `paidSoFarOf(series, rows)`: the category is the newest charge's (two charges, two categories, the newest wins; a
-  newest row missing from `rows` takes the next id found); an unknown slug folds to the default (`resolveCategoryKey`); null
-  and empty go to the Uncategorized group, last (P1 B; with P1 A this world joins the default group); groups in
-  `categories` order, not by total or name (a world where the two disagree); a group holds only shown series (a hidden
+  newest row missing from `rows` takes the next id found); an unknown slug folds to the default (`resolveCategoryKey`); P1:
+  a series whose newest charge has a null category, one with an empty category and one with none of its rows in `rows` all
+  sit in the default category's group, at the default's place in `categories` order, beside a series stored under the
+  default key itself (one group, one total, its heading the default's title and icon; red on a mutant that keys null apart),
+  and no group carries an "Uncategorized" title or key; with the default key absent from `categories`, its group goes last
+  with `neutralCategory()`'s display; groups in `categories` order, not by total or name (a world where the two disagree); a group holds only shown series (a hidden
   detected series beside it adds nothing); inside a group active by `newestChargeFirst`, then stopped by the same order;
   a series sum is `-amountMinorUnits` over its rows in its currency, a row of another currency skipped; a UAH and a USD series
   in one group: the USD sum goes through `convert` at `buildRateTable(rates)` once per series, the group total is the `Money`
@@ -525,7 +529,8 @@ set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's t
   `isReady` (`useDataReady`). Run the named files and `src/recurring`. Commit `feat(recurring): category groups and totals`.
 - [ ] **step 5/9 (kiko:qa): screen pins.** `recurring-charges.screen.groups.test.tsx` (mocks both hooks): item order of spec
   17.2 (total row, groups in the given order, "Marked, No Charges", "Hidden"); each group heading shows the category title,
-  its icon tile and its total under the testIDs of 17.2; a `Divider` before every group and section after the first item,
+  its icon tile and its total under the testIDs of 17.2; a series with a null category shows under the default category's
+  heading and no "Uncategorized" / «Без категорії» text renders (P1); a `Divider` before every group and section after the first item,
   "Hidden" included (item 10, red: no divider today); no total in "Marked, No Charges" or "Hidden"; no
   `recurring-charges-heading-stopped` and a stopped series inside its group after the active ones; the list shows
   `LoadingState` while either hook loads; the empty state and no total row with no series. `recurring-group-heading.component.test.tsx`:
@@ -539,7 +544,8 @@ set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's t
   `test(settings): category groups, totals and the footer button`.
 - [ ] **step 6/9 (kiko:developer): screens.** Spec 17.2, 17.3, 17.6. The list: items from `recurringGroupsOf`, the group
   heading component of shared parts (`EntityIconTile` `compact`, `Text`, `MoneyText`), `Divider spacing={2}`, the total row, the
-  row's two lines; theme tokens only. Remove `recurringCharges.stoppedHeading` from `en.ts`, `uk.ts`, `title-keys.ts`, its
+  row's two lines; theme tokens only. P2 ("A: In their group"): remove the "No Recent Charge" section and
+  `recurringCharges.stoppedHeading` from `en.ts`, `uk.ts`, `title-keys.ts`, its
   two test reads and the `STOPPED_HEADING` testID pins (`recurring-charges.screen.test.tsx`,
   `recurring-charges.screen.marked.test.tsx`: those become the in-group order of 17.2), spec 13's row marked removed, all in
   this commit (harness-workflow "Removing or renaming a catalogue key"; re-grep help topics, pin suites and uk first). The
@@ -557,16 +563,19 @@ set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's t
   kiko-pricing (a named past-row conversion rule, `buildCategoryBreakdown`'s, now with a second reader). Report the sha or "no
   drift found"; `make doc-suites` after the last doc commit.
 - [ ] **step 9/9 Device and Ready.** Device, both languages: groups, icons, totals and the total of all against a hand sum;
-  a UAH and a USD series; a stopped series in its group; "Hidden" with its divider; the row's second line with a long quiet
+  a UAH and a USD series; a series with no category in the default category's group; a stopped series in its group; "Hidden" with its divider; the row's second line with a long quiet
   line; the series footer button and "All paid so far"; iPad two panes and the Duo fold. READY FOR VERIFY, label
   `1.4-recurring-visual-1-task-1`.
 
 ### 1.4-recurring-visual-1 task 2/2: the transaction form (items 11, 12, 14)
 
-**Base:** task 1/2's tip. **Files (floor 12; mutable floor 4: `select-field.component.tsx`, `field-group.component.tsx`,
-`mode-and-actions.component.tsx`, `transaction-form.screen.tsx`).**
-- Modify: `src/design-system/components/select-field/{select-field.component.tsx,select-field.component.test.tsx}` (its props type
-  lives in the component file at 14f997ad7; re-grep);
+**Base:** task 1/2's tip. **Files (floor 15; mutable floor 5: `select-field.component.tsx`, `field-group.component.tsx`,
+`mode-and-actions.component.tsx`, `exchange-fields.component.tsx`, `transaction-form.screen.tsx`).**
+- Modify: `src/design-system/components/select-field/{select-field.component.tsx,select-field.props.d.ts,select-field.component.test.tsx}`
+  (the props type is in `select-field.props.d.ts` at de3d659b0; re-grep);
+  `src/screens/forms/exchange-fields/{exchange-fields.component.tsx,exchange-fields.props.d.ts}` (P3 B: an optional leading
+  slot that shares the "Value Out" row; `exchange-fields.component.test.tsx` by measure only; `ExchangeFields` has one
+  caller, `field-group.component.tsx`);
   `src/screens/forms/transaction-form/recurring-mark-field/{recurring-mark-field.component.tsx,recurring-mark-field.component.test.tsx}`;
   `src/screens/forms/transaction-form/mode-and-actions/{mode-and-actions.component.tsx,mode-and-actions.props.d.ts}`;
   `src/screens/forms/transaction-form/field-group/{field-group.component.tsx,field-group.props.d.ts}`;
@@ -589,16 +598,22 @@ set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's t
   footer still holds "Create transaction" (the two never meet: a world with `editTemplateId` and a stored row id asserts one
   button); its press enters convert mode. Type and Amount: at `fontScale` 1 the Type trigger and the Amount field share one
   row parent with `flexDirection: 'row'` and each sits in a `flex: 1` box (red today: separate rows); at `fontScale` 3 (set
-  through `Dimensions.set` in the suite) they stack in today's order with no row parent; Exchange mode keeps Type above
-  "Value Out" (P3 A); convert shows Amount alone; the invalid-amount scroll still reaches `amountFieldRef` (rerun the existing
-  pin). Code: spec 17.6 items 12 and 14; the threshold a named constant with its source in a comment; theme spacing only.
-  Run `npx jest src/screens/forms/transaction-form src/design-system/components/select-field --maxWorkers=2`. Commits
+  through `Dimensions.set` in the suite) they stack in today's order with no row parent; P3 B: in Exchange mode the Type
+  trigger and "Value Out" share one `flexDirection: 'row'` parent, each in a `flex: 1` box (red today: Type above it), and
+  at `fontScale` 3 they stack with Type first; a switch between Expense and Exchange leaves Type the first child of a row
+  in both (it never widens); convert shows Amount alone with no Type; the invalid-amount and invalid-"Value Out" scrolls still
+  reach `amountFieldRef` and `valueOutFieldRef` (rerun the existing pins). Code: spec 17.6 items 12 and 14, the
+  `ExchangeFields` leading slot fed by `FieldGroup`; one named threshold constant with its source in a comment, shared by
+  both rows; theme spacing only. Run `npx jest src/screens/forms/transaction-form src/screens/forms/exchange-fields
+  src/design-system/components/select-field --maxWorkers=2`. Commits
   `test(forms): the convert button in the footer, type and amount in one row`, then `feat(forms): ...` the same words.
 - [ ] **step 4/5 Review, Drift and Scribe (kiko:reviewer, kiko:retrospect, kiko:scribe).** Top question: does any field move
-  besides Type, Amount and the convert button, and does a read-only synced row still lock both? Drift: kiko-design-system
-  (`SelectField`, the two-field row and its accessibility fallback, the footer), spec 9.6's placement text.
+  besides Type, Amount, "Value Out" and the convert button, and does a read-only synced row still lock them? Drift:
+  kiko-design-system (`SelectField`, the two-field row in both modes and its accessibility fallback, the footer), spec 9.6's
+  placement text.
 - [ ] **step 5/5 Device and Ready.** Device: the mark field beside the loan field (both empty); the convert button in the
-  footer and the fields with no button between them; Type and Amount on an iPhone, the Duo folded window, the largest
+  footer and the fields with no button between them; Type and Amount, and Type and "Value Out" in Exchange mode (a mode
+  switch moves no field), on an iPhone, the Duo folded window, the largest
   non-accessibility size and AX1 and above (stacked, nothing clipped). READY FOR VERIFY, label `1.4-recurring-visual-1-task-2`,
   with the files of this set listed for the merge order against `1.4-bybit`.
 
@@ -613,7 +628,7 @@ set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's t
 | 3/4 | 6 |
 | 4/4 | 12 (was 11): `marked-series.ts`, `use-row-mark.ts`, `recurring-mark-field.component.tsx`, `detection.ts`, `eligibility.ts`, `recurrence-text.ts`, `use-recurring-series.ts`, `settings.repo.ts`, both Settings screens, `transaction-form.screen.tsx`, `help-topics.ts` |
 | visual-1 task 1/2 | 6 (listed in its Files) |
-| visual-1 task 2/2 | 4 (listed in its Files) |
+| visual-1 task 2/2 | 5 (was 4; `exchange-fields.component.tsx` joins, P3 B; listed in its Files) |
 
 Mutation gates are paused by the user; this table is for a lift.
 
