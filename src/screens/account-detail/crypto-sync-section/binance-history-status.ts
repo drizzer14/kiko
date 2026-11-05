@@ -5,34 +5,70 @@ import type {
   ParsedExchangeState,
   WalkId,
 } from '@kiko/crypto-sync/exchange/walk-state';
-import { RESYNC_OVERLAP_MS } from '@kiko/crypto-sync/binance';
+import { isTrackedBybitAsset } from '@kiko/crypto-sync/bybit';
+import type { BalanceProviderId } from '@kiko/crypto-sync/provider';
+import { isTrackedBinanceAsset, RESYNC_OVERLAP_MS } from '@kiko/crypto-sync/binance';
+
+// Each table below is typed by the provider id, so a new id does not compile until its decision
+// is made.
 
 /**
- * The walks whose forward cursor the caption compares: capital, Pay, Transfer, Earn, Convert,
- * P2P, fiat orders, fiat payments. A P2P page that cannot be read holds its cursor on every run,
- * which this caption shows once the cursor lags a day; the failure itself has its own, immediate
- * caption (`p2pReadFailed`).
+ * Whether a provider imports a history behind its balance, which the account detail then states:
+ * the coin lines, the paused and the behind captions. A wallet's balance IS the whole synced
+ * picture, so it has none.
  */
-const CAPTION_WALKS: readonly WalkId[] = [
-  'capital',
-  'pay',
-  'transfer',
-  'earn',
-  'convert',
-  'p2p',
-  'fiatOrders',
-  'fiatPayments',
-];
+const EXCHANGE_HISTORY: Record<BalanceProviderId, boolean> = {
+  btc_wallet: false,
+  binance: true,
+  bybit: true,
+};
+
+export const hasExchangeHistory = (provider: BalanceProviderId): boolean =>
+  EXCHANGE_HISTORY[provider];
+
+// A wallet lists no coin at all, so nothing it holds reads as not tracked.
+const TRACKED_ASSET: Record<BalanceProviderId, (asset: string) => boolean> = {
+  btc_wallet: () => true,
+  binance: isTrackedBinanceAsset,
+  bybit: isTrackedBybitAsset,
+};
+
+/**
+ * The rule the exchange's own balance read uses to tell a coin it tracks from one it lists as not
+ * tracked, so the account detail shows each exchange by its own list.
+ */
+export const isTrackedAssetOf = (provider: BalanceProviderId): ((asset: string) => boolean) =>
+  TRACKED_ASSET[provider];
+
+/**
+ * The walks whose forward cursor the caption compares. Binance: capital, Pay, Transfer, Earn,
+ * Convert, P2P, fiat orders, fiat payments. A P2P page that cannot be read holds its cursor on
+ * every run, which this caption shows once the cursor lags a day; the failure itself has its own,
+ * immediate caption (`p2pReadFailed`). An empty list never shows the caption: Bybit has no walk
+ * yet, and a wallet has no history.
+ */
+const CAPTION_WALKS: Record<BalanceProviderId, readonly WalkId[]> = {
+  btc_wallet: [],
+  binance: ['capital', 'pay', 'transfer', 'earn', 'convert', 'p2p', 'fiatOrders', 'fiatPayments'],
+  bybit: [],
+};
+
+const captionWalksOf = (provider: BalanceProviderId): readonly WalkId[] => CAPTION_WALKS[provider];
 
 /**
  * The caption walks' forward watermarks in the account's walk state. A walk that has not written
  * its cursor yet reads as null, and so does every walk of a state that is not readable.
  */
-export const walkCursorsOf = (state: ParsedExchangeState): (number | null)[] =>
+export const walkCursorsOf = (
+  state: ParsedExchangeState,
+  provider: BalanceProviderId,
+): (number | null)[] =>
   match(state)
     .returnType<(number | null)[]>()
-    .with({ kind: 'parsed' }, ({ walks }) => CAPTION_WALKS.map((walkId) => walks[walkId].cursor))
-    .with({ kind: 'malformed' }, () => CAPTION_WALKS.map(() => null))
+    .with({ kind: 'parsed' }, ({ walks }) =>
+      captionWalksOf(provider).map((walkId) => walks[walkId].cursor),
+    )
+    .with({ kind: 'malformed' }, () => captionWalksOf(provider).map(() => null))
     .exhaustive();
 
 const isRange = (ground: { kind?: 'point' }): boolean => ground.kind !== 'point';
@@ -87,11 +123,12 @@ const isPlannedOverlapDay = (ground: BinancePendingRange, cursor: number | null)
 export const historyOwesRange = (
   state: ParsedExchangeState,
   lastBalanceSyncAt: number | null,
+  provider: BalanceProviderId,
 ): boolean =>
   match(state)
     .returnType<boolean>()
     .with({ kind: 'parsed' }, ({ walks }) =>
-      CAPTION_WALKS.some(
+      captionWalksOf(provider).some(
         (walkId) =>
           walks[walkId].pending?.some(
             (ground) =>

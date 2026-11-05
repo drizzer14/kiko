@@ -789,7 +789,7 @@ export const uk: typeof en = {
     tryAgainMessage: 'Спробуйте ще раз.',
     unsupportedCurrencyCode: 'Непідтримуваний код валюти Monobank: {{code}}.',
     untrackedCoins:
-      'Не відстежуються: {{tickers}}. Кіко не імпортує валюту, яку не підтримує синхронізація Binance.',
+      'Не відстежуються: {{tickers}}. Кіко не імпортує валюту, яку не підтримує синхронізація {{exchange}}.',
     wallet: 'Гаманець',
     walletAddressRequiredError: 'Введіть адресу гаманця.',
     walletConnected: 'Гаманець підключено',

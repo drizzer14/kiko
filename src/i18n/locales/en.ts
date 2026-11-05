@@ -883,7 +883,7 @@ export const en = {
     tryAgainMessage: 'Please try again.',
     unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}.',
     untrackedCoins:
-      'Not tracked: {{tickers}}. Kiko does not import a currency its Binance sync does not support.',
+      'Not tracked: {{tickers}}. Kiko does not import a currency its {{exchange}} sync does not support.',
     wallet: 'Wallet',
     walletAddressRequiredError: 'Enter a wallet address.',
     walletConnected: 'Wallet connected',

@@ -29,7 +29,6 @@ import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
-import { isTrackedBinanceAsset } from '@kiko/crypto-sync/binance';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
@@ -45,9 +44,11 @@ import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestBalanceSyncAt } from '../format-last-sync';
 
 import {
+  hasExchangeHistory,
   historyOwesRange,
   historyOwesTrades,
   isBinanceHistoryBehind,
+  isTrackedAssetOf,
   p2pReadFailed,
   walkCursorsOf,
 } from './binance-history-status';
@@ -61,17 +62,17 @@ type CryptoSyncSectionProps = {
 const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string | undefined =>
   foldMap(maybe(exchangeProviderRegistry[providerId]), (entry) => t(entry.disconnectMessageKey));
 
-type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[] };
+type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[]; exchange: string };
 
 // Split out of the section so its own branches stay under the complexity budget.
-const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins }) => {
+const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins, exchange }) => {
   const { t } = useTranslation();
 
   return (
     <>
       {untrackedCoins.length > 0 && (
         <Text variant="caption" tone="textSecondary">
-          {t('accountDetail.untrackedCoins', { tickers: untrackedCoins.join(', ') })}
+          {t('accountDetail.untrackedCoins', { tickers: untrackedCoins.join(', '), exchange })}
         </Text>
       )}
 
@@ -266,21 +267,21 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   };
 
   if (connectedProvider !== undefined) {
-    // Only Binance imports a separate transaction history behind the balance —
+    // Only an exchange imports a separate transaction history behind the balance —
     // a wallet's balance IS the whole synced picture, so it never lags. Hidden
     // while a sync is in flight: `syncedAt` moves the instant the balance leg
     // commits, but the history walk's own cursor only catches up a few seconds
     // later (a SEPARATE, slower step), so the caption would otherwise flash on
     // every sync after more than a day away.
+    const exchangeHistory = hasExchangeHistory(connectedProvider);
     const walkState = parseExchangeState(syncStateRows.at(0)?.exchangeState ?? null);
     // A state this build cannot read pauses the history (the run starts no walk on it), and its
     // caption replaces the "behind" one: a null cursor of such a state would read as behind. It is
     // a standing fact of the stored state, not a lag a sync closes, so a sync in flight keeps it.
-    const historyPaused =
-      !syncStateLoading && connectedProvider === 'binance' && walkState.kind === 'malformed';
+    const historyPaused = !syncStateLoading && exchangeHistory && walkState.kind === 'malformed';
     // The coin lines state what the last read found, so a sync in flight keeps them; a state that
     // is malformed holds no list, and a wallet has none.
-    const coinLinesShown = !syncStateLoading && connectedProvider === 'binance';
+    const coinLinesShown = !syncStateLoading && exchangeHistory;
     // An account with no tracked holding has no holding stamp, so the state's stamp is its sync
     // time; a wallet's state holds none, so it reads its holdings alone.
     const lastBalanceSyncAt = latestBalanceSyncAt(holdings, balanceSyncedAtOf(walkState));
@@ -288,11 +289,11 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       !isSyncing &&
       !syncStateLoading &&
       !historyPaused &&
-      connectedProvider === 'binance' &&
+      exchangeHistory &&
       isBinanceHistoryBehind({
-        cursors: walkCursorsOf(walkState),
+        cursors: walkCursorsOf(walkState, connectedProvider),
         lastBalanceSyncAt,
-        owesRange: historyOwesRange(walkState, lastBalanceSyncAt),
+        owesRange: historyOwesRange(walkState, lastBalanceSyncAt, connectedProvider),
         tradesUnread: historyOwesTrades(walkState),
       });
 
@@ -317,8 +318,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
           {coinLinesShown && (
             <CoinLines
-              untrackedCoins={untrackedCoinsOf(walkState, isTrackedBinanceAsset)}
+              untrackedCoins={untrackedCoinsOf(walkState, isTrackedAssetOf(connectedProvider))}
               oversizedCoins={oversizedCoinsOf(walkState)}
+              exchange={providerDisplayName(connectedProvider, t)}
             />
           )}
 

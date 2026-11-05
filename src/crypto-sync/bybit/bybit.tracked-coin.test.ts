@@ -1,6 +1,8 @@
 import { CURATED_COIN_CODES } from '@kiko/currency/coins';
 import { fiatCurrencyOptions, isCrypto, isCurrency } from '@kiko/currency/currency';
 
+import { unifiedReadOf } from './bybit.balance-read';
+import { unifiedCoin } from './bybit.balance-test-fixtures';
 import { BYBIT_FIAT_CODES, isTrackedBybitAsset } from './bybit.tracked-coin';
 
 // The app's fiat codes that are quote coins of Bybit's public spot rows, read from
@@ -46,7 +48,7 @@ describe('isTrackedBybitAsset', () => {
     }
   });
 
-  it('a fiat code outside the list lists as not tracked', () => {
+  it('a fiat code outside the list lists as not tracked with no amount', () => {
     // Binance quotes GBP, JPY and others; Bybit's list is its own, not Binance's.
     const outside = fiatCurrencyOptions.filter(
       (code) => !(BYBIT_FIAT_CODES as readonly string[]).includes(code),
@@ -57,5 +59,11 @@ describe('isTrackedBybitAsset', () => {
     for (const code of outside) {
       expect(isTrackedBybitAsset(code)).toBe(false);
     }
+
+    // With a balance of 5 each, the read lists the code and keeps no amount for it.
+    const read = unifiedReadOf(outside.map((code) => unifiedCoin(code, '5')));
+
+    expect(read.untracked).toEqual(outside);
+    expect(read.balances.size).toBe(0);
   });
 });
