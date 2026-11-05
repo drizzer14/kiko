@@ -361,7 +361,7 @@ export const pointOf = (time: number, series: EarnRecordKind, reach = 1) => ({
   since: NOW,
 });
 
-const STOP_TAG = '[binance sync] history window stopped';
+const STOP_TAG = '[exchange sync] history window stopped';
 
 export const stopCodes = (spy: jest.SpyInstance): string[] =>
   spy.mock.calls

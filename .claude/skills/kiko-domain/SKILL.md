@@ -849,7 +849,9 @@ why this is the deliberate exception to functional-first). It holds
   point.
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
-  or float column. Convert to/from `Money` at the repository
+  or float column. Exception: `funding_match_rows` `amount`, `fee`, `tax`
+  are TEXT, because rule 51 compares `normalizeDecimal` text and no scale
+  is known per coin (O70). Convert to/from `Money` at the repository
   boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
   through `holdingsRepo.balanceOf(row): Money`, never a direct
   member read outside a repository (mechanized, Class B:

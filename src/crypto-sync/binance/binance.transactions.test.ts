@@ -743,7 +743,7 @@ describe('wallet placement by walletType (C-matrix)', () => {
 // A SETTLED row the walk cannot place or trust stops its window: nothing of the
 // window commits and the cursor stays. A skipped row would be silent loss.
 describe('a settled capital row the walk cannot trust stops its window', () => {
-  const STOP_TAG = '[binance sync] history window stopped';
+  const STOP_TAG = '[exchange sync] history window stopped';
   let warn: jest.SpyInstance;
 
   beforeEach(() => {
@@ -1923,7 +1923,7 @@ describe('the pending overlap days of the capital walk', () => {
       await runOver(state, []);
 
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn).toHaveBeenCalledWith('[binance sync] pending overlap ranges unreadable', {
+      expect(warn).toHaveBeenCalledWith('[exchange sync] pending overlap ranges unreadable', {
         name: 'BinanceWalkStop',
         code: 'pending-malformed',
       });
@@ -2249,7 +2249,7 @@ describe('the pending overlap days of the capital walk', () => {
     });
 
     describe('with a row the client could not read', () => {
-      const STOP_TAG = '[binance sync] history window stopped';
+      const STOP_TAG = '[exchange sync] history window stopped';
       const UNREADABLE_CODE = 'capital-row-unreadable';
       const goodDeposit = () => deposit({ id: 'good', insertTime: stuckAt });
       const goodWithdrawal = () => withdrawal({ id: 'good-w', applyTime: stuckAt + 5_000 });
@@ -2476,7 +2476,7 @@ describe('the pending overlap days of the capital walk', () => {
 
         expect(pointStartsOf(deps)).toEqual(points.map((point) => point.start));
         expect(warn.mock.calls).toContainEqual([
-          '[binance sync] point cursor unreadable',
+          '[exchange sync] point cursor unreadable',
           { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
         ]);
       });
@@ -2530,7 +2530,7 @@ describe('the pending overlap days of the capital walk', () => {
 
       expect(dayStartsOf(deps)).toEqual(days.map((day) => day.start));
       expect(warn.mock.calls).toContainEqual([
-        '[binance sync] range cursor unreadable',
+        '[exchange sync] range cursor unreadable',
         { name: 'BinanceWalkStop', code: 'range-cursor-malformed' },
       ]);
     });
@@ -2579,7 +2579,7 @@ describe('the pending overlap days of the capital walk', () => {
       const { deps } = await runOver(state, []);
 
       expect(warn.mock.calls).toContainEqual([
-        '[binance sync] span hints unreadable',
+        '[exchange sync] span hints unreadable',
         { name: 'BinanceWalkStop', code: 'span-hints-malformed' },
       ]);
       expect(state.account.hints()).toEqual({ forward: [], pending: [], rescan: [], point: [] });

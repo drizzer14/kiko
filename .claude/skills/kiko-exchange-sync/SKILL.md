@@ -274,7 +274,9 @@ than restated here:
   hints of the passes a turn did not read, and `rescanStuck` holds the
   ranges the re-scan cannot clear.
   `binance.walk-wiring.ts` holds the wiring every Binance walk shares; read
-  it there.
+  it there. The shared code is in `src/crypto-sync/exchange/walk/exchange-walk-plan.ts`
+  and `src/crypto-sync/exchange/walk/exchange-span.ts`; `runBinanceWalkPlan` and
+  `commitBinanceSpan` stay in `binance.walk-wiring.ts` as thin callers.
 - **A failed read.** `isUnreadableWindowError` (`binance.walk-config.ts`):
   the pending and points passes read on past an unreadable owed window and
   the first such error is rethrown after; a rate limit, rejected key, clock

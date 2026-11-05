@@ -20,7 +20,7 @@ describe('logWalkStop', () => {
     logWalkStop('capital-amount-invalid');
 
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('[binance sync] history window stopped', {
+    expect(warn).toHaveBeenCalledWith('[exchange sync] history window stopped', {
       name: 'BinanceWalkStop',
       code: 'capital-amount-invalid',
     });

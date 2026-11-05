@@ -1104,7 +1104,7 @@ describe('a record the walk cannot trust', () => {
     ).resolves.toMatchObject({ result: { complete: false } });
     expect(warn.mock.calls).toEqual([
       [
-        '[binance sync] history window stopped',
+        '[exchange sync] history window stopped',
         { name: 'BinanceWalkStop', code: 'earn-row-unreadable' },
       ],
     ]);
@@ -1864,7 +1864,7 @@ describe('the owed list a point window leaves, which the next run must be able t
 
     expect(stopCodes(warn)).not.toContain('pending-malformed');
     expect(warn.mock.calls.map((call) => call[0])).not.toContain(
-      '[binance sync] pending overlap ranges unreadable',
+      '[exchange sync] pending overlap ranges unreadable',
     );
     expect(heldBy(world)).toBe(true);
   });

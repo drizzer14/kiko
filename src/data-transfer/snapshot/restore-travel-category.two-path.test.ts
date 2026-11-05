@@ -31,6 +31,7 @@ jest.mock('@kiko/reminders/use-reminder-scheduler', () => ({
 
 import { i18n } from '@kiko/i18n/init';
 import {
+  addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -186,6 +187,7 @@ const releaseThirteenWorld = (): DatabaseSync => {
 
   applyMigrationsThrough(target, RELEASE_1_3_TAIL);
   addMccCategoriesBackfilledColumn(target);
+  addFundingMatchRowsTable(target);
   addLedger(target);
 
   return target;
