@@ -7,7 +7,7 @@ import type { RecurringLedgerRow, RecurringMark, RecurringPeriod } from '@kiko/r
 // hands each query its kind through `taggedQuery` and routes the live-query mock through `answer`.
 
 type MarkRead = { rows: unknown[]; isLoading: boolean; error: Error | undefined };
-export type LiveQueryCall = { kind: string | undefined; tables: string[]; enabled: boolean };
+type LiveQueryCall = { kind: string | undefined; tables: string[]; enabled: boolean };
 type MarkReadKind = 'settings' | 'recurringLedger';
 export type SettingsRows = { recurringMerchantChoices: unknown }[];
 type Holding = Pick<HoldingRow, 'id' | 'accountId' | 'name' | 'currency' | 'metadata'>;
