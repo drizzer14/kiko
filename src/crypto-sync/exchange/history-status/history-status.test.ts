@@ -2,6 +2,7 @@ import { notImportedEntry, parseExchangeState } from '../walk-state';
 
 import {
   balanceSyncedAtOf,
+  keyExpiryOf,
   notImportedCountsOf,
   oversizedCoinsOf,
   untrackedCoinsOf,
@@ -85,6 +86,24 @@ describe('balanceSyncedAtOf', () => {
     expect(balanceSyncedAtOf(stateWith({}))).toBeUndefined();
     expect(balanceSyncedAtOf(stateWith({ balanceSyncedAt: 'x' }))).toBeUndefined();
     expect(balanceSyncedAtOf(parseExchangeState('not json'))).toBeUndefined();
+  });
+});
+
+describe('keyExpiryOf', () => {
+  it('reads the end of the key the last good key read stored', () => {
+    const keyExpiry = {
+      expiredAtMs: 1_800_000_000_000,
+      deadlineDay: 90,
+      readAtMs: 1_700_000_000_000,
+    };
+
+    expect(keyExpiryOf(stateWith({ keyExpiry }))).toEqual(keyExpiry);
+  });
+
+  it('reads nothing for a state with no entry, an unreadable entry or a state that is lost', () => {
+    expect(keyExpiryOf(stateWith({}))).toBeUndefined();
+    expect(keyExpiryOf(stateWith({ keyExpiry: 'x' }))).toBeUndefined();
+    expect(keyExpiryOf(parseExchangeState('not json'))).toBeUndefined();
   });
 });
 

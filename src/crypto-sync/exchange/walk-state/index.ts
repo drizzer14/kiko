@@ -12,6 +12,7 @@ export {
   notImportedEntry,
   notImportedKindOf,
   type ParsedExchangeState,
+  type ParsedKeyExpiry,
   type ParsedWalkMarks,
   parseExchangeState,
   type WalkId,

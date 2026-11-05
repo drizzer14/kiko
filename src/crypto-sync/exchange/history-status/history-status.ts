@@ -5,6 +5,7 @@ import {
   type NotImportedKind,
   notImportedKindOf,
   type ParsedExchangeState,
+  type ParsedKeyExpiry,
 } from '../walk-state';
 
 type CoinKind = 'untrackedCoins' | 'oversizedCoins';
@@ -36,6 +37,14 @@ export const untrackedCoinsOf = (
 /** The tickers the account detail lists as too large to store: the sorted union of both lists. */
 export const oversizedCoinsOf = (state: ParsedExchangeState): string[] =>
   unionOfKind(state, 'oversizedCoins');
+
+/** The end of the key the last good key read stored, or `undefined`: none stored, or state lost. */
+export const keyExpiryOf = (state: ParsedExchangeState): ParsedKeyExpiry | undefined =>
+  match(state)
+    .returnType<ParsedKeyExpiry | undefined>()
+    .with({ kind: 'parsed' }, ({ keyExpiry }) => keyExpiry)
+    .with({ kind: 'malformed' }, () => undefined)
+    .exhaustive();
 
 export type NotImportedCount = { kind: NotImportedKind; count: number };
 

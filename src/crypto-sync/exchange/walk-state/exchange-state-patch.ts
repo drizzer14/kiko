@@ -65,6 +65,14 @@ export type ExchangeStatePatch =
       refused: string[];
     }
   | { kind: 'balanceSyncedAt'; value: number }
+  | {
+      kind: 'keyExpiry';
+      /** The end of the key, absent when the key read gave none (or the epoch). */
+      expiredAtMs?: number;
+      /** The days left the key read reported, absent when it gave none. */
+      deadlineDay?: number;
+      readAtMs: number;
+    }
   | { kind: 'notImported'; entries: string[] };
 
 const withWalkField = (
@@ -189,6 +197,24 @@ const withBalanceNotes = (
   };
 };
 
+/**
+ * A good read of the key replaces the stored entry whole: a renewed key moves the date, and a read
+ * with no date drops the old one, so a stale date cannot keep a line standing. A failed read
+ * writes no patch, so it keeps the stored entry. Like the notes, the entry sits under its own
+ * top-level key, which a build that does not read it leaves untouched.
+ */
+const withKeyExpiry = (
+  stored: StoredExchangeState,
+  { expiredAtMs, deadlineDay, readAtMs }: Extract<ExchangeStatePatch, { kind: 'keyExpiry' }>,
+): StoredExchangeState => ({
+  ...stored,
+  keyExpiry: {
+    ...foldMap(maybe(expiredAtMs), (value) => ({ expiredAtMs: value })),
+    ...foldMap(maybe(deadlineDay), (value) => ({ deadlineDay: value })),
+    readAtMs,
+  },
+});
+
 const isText = (value: unknown): value is string => typeof value === 'string';
 
 /**
@@ -228,6 +254,7 @@ const patchedState = (
     )
     .with({ kind: 'balanceNotes' }, (notesPatch) => withBalanceNotes(stored, notesPatch))
     .with({ kind: 'balanceSyncedAt' }, ({ value }) => ({ ...stored, balanceSyncedAt: value }))
+    .with({ kind: 'keyExpiry' }, (keyExpiryPatch) => withKeyExpiry(stored, keyExpiryPatch))
     .with({ kind: 'notImported' }, (notImportedPatch) => withNotImported(stored, notImportedPatch))
     .exhaustive();
 

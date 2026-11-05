@@ -133,6 +133,12 @@ export type ExchangeTrades = {
   unreadSymbols?: string[];
 };
 
+/**
+ * The end of an API key as the last good key read stored it: the end in milliseconds, the days
+ * left at that read and the read time. A field that is not stored or not readable is absent.
+ */
+export type ParsedKeyExpiry = { expiredAtMs?: number; deadlineDay?: number; readAtMs?: number };
+
 /** The JSON stored in `sync_state.exchange_state`. */
 export type ExchangeState = {
   version: 1;
@@ -142,6 +148,8 @@ export type ExchangeState = {
   oversizedCoins?: OversizedCoinLists;
   /** When the last good balance read ran (epoch ms), for an account with no holding to stamp. */
   balanceSyncedAt?: number;
+  /** The end of the connected key, replaced by each good read of the key; Bybit only. */
+  keyExpiry?: ParsedKeyExpiry;
   /** Each record a rule refused for good, once; only a disconnect clears it. */
   notImported?: string[];
 };
@@ -191,6 +199,7 @@ export type ParsedExchangeState =
       untrackedCoins: Required<CoinLists>;
       oversizedCoins: Required<CoinLists>;
       balanceSyncedAt: number | undefined;
+      keyExpiry: ParsedKeyExpiry | undefined;
       notImported: string[];
       unreadable: string[];
     };
@@ -436,6 +445,28 @@ const notImportedOf = (stored: unknown): ReadEntry<string[]> => {
   };
 };
 
+/** An end of a key is an instant after the epoch; the epoch itself is Bybit's "no date". */
+const instantOrUndefined = (value: unknown): number | undefined =>
+  isNumber(value) && value > 0 ? value : undefined;
+
+const keyExpiryFieldsOf = (entry: Metadata): ParsedKeyExpiry => ({
+  ...foldMap(maybe(instantOrUndefined(entry.expiredAtMs)), (expiredAtMs) => ({ expiredAtMs })),
+  ...foldMap(maybe(numberOrUndefined(entry.deadlineDay)), (deadlineDay) => ({ deadlineDay })),
+  ...foldMap(maybe(timeOrUndefined(entry.readAtMs)), (readAtMs) => ({ readAtMs })),
+});
+
+/**
+ * Each field of the entry parses alone and reads as absent when it is unreadable, since the state
+ * rule treats an absent field as unknown, the safe side. An entry that is no record reads as none.
+ */
+const keyExpiryEntryOf = (stored: unknown): ReadEntry<ParsedKeyExpiry | undefined> =>
+  entryOf<ParsedKeyExpiry | undefined>(
+    'keyExpiry',
+    stored,
+    (entry) => foldMap(maybe(recordOrUndefined(entry)), keyExpiryFieldsOf),
+    nothing,
+  );
+
 /** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */
 export type StoredExchangeState = Metadata & { walks: Metadata };
 
@@ -464,6 +495,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     numberOrUndefined,
     nothing,
   );
+  const keyExpiry = keyExpiryEntryOf(stored.keyExpiry);
   const notImported = notImportedOf(stored.notImported);
 
   return {
@@ -476,6 +508,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     untrackedCoins: untrackedCoins.value,
     oversizedCoins: oversizedCoins.value,
     balanceSyncedAt: balanceSyncedAt.value,
+    keyExpiry: keyExpiry.value,
     notImported: notImported.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
@@ -484,6 +517,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...oversizedCoins.unreadable,
       ...oversizedByWallet.unreadable,
       ...balanceSyncedAt.unreadable,
+      ...keyExpiry.unreadable,
       ...notImported.unreadable,
     ],
   };

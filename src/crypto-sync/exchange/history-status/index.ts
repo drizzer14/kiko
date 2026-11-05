@@ -1,5 +1,6 @@
 export {
   balanceSyncedAtOf,
+  keyExpiryOf,
   type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,
