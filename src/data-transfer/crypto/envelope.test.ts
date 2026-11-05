@@ -166,7 +166,10 @@ describe('the export version against the migration journal', () => {
     // and its own later upgrade runs the back-fill; this build restores an older file without it
     // as the default `false`, so the back-fill runs on it, and it needed no bump (a bump would
     // make an older build refuse every new file).
-    migrationCount: 66,
+    // Through 0066_add_funding_match_rows, a new table the file carries as an optional key
+    // (`fundingMatchRows`), like 0054: an older build restoring such a file drops the key, and
+    // this build restores an older file with the table empty, so it needed no bump.
+    migrationCount: 67,
   };
 
   it('has a version decision for every migration', () => {

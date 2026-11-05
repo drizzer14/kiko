@@ -2437,7 +2437,7 @@ describe('readPendingMark', () => {
       await readMark({ [FIELD]: 'x' }).ranges;
 
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn).toHaveBeenCalledWith('[binance sync] pending overlap ranges unreadable', {
+      expect(warn).toHaveBeenCalledWith('[exchange sync] pending overlap ranges unreadable', {
         name: 'BinanceWalkStop',
         code: 'pending-malformed',
       });
@@ -2481,7 +2481,7 @@ describe('readPendingMark', () => {
 
       expect(await ranges).toEqual([owedBefore]);
       expect(write).toHaveBeenCalledWith([{ field: FIELD, value: [owedBefore] }]);
-      expect(warn).toHaveBeenCalledWith('[binance sync] pending overlap ranges unreadable', {
+      expect(warn).toHaveBeenCalledWith('[exchange sync] pending overlap ranges unreadable', {
         name: 'BinanceWalkStop',
         code: 'pending-malformed',
       });
@@ -2549,7 +2549,7 @@ describe('readPointCursor', () => {
         expect(await cursor).toBe(Number.MIN_SAFE_INTEGER);
         expect(warn.mock.calls).toEqual([
           [
-            '[binance sync] point cursor unreadable',
+            '[exchange sync] point cursor unreadable',
             { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
           ],
         ]);
@@ -2664,7 +2664,7 @@ describe('readRangeCursor', () => {
       expect(await cursor).toBe(Number.MIN_SAFE_INTEGER);
       expect(warn.mock.calls).toEqual([
         [
-          '[binance sync] range cursor unreadable',
+          '[exchange sync] range cursor unreadable',
           { name: 'BinanceWalkStop', code: 'range-cursor-malformed' },
         ],
       ]);
@@ -2764,7 +2764,7 @@ describe('readSpanHints', () => {
       expect(await hints).toEqual(NO_HINTS);
       expect(warn.mock.calls).toEqual([
         [
-          '[binance sync] span hints unreadable',
+          '[exchange sync] span hints unreadable',
           { name: 'BinanceWalkStop', code: 'span-hints-malformed' },
         ],
       ]);

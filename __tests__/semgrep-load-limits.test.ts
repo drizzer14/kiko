@@ -170,6 +170,116 @@ describe('scripts/checks/verify.sh stage 2', () => {
   }, 120_000);
 });
 
+describe('scripts/checks/verify.sh stage order', () => {
+  type StageRun = {
+    calls: string[];
+    gatePath: string;
+    gateSweep: string;
+    jestSweeps: string[];
+    status: number | null;
+    stderr: string;
+    stdout: string;
+  };
+
+  // One log for npm and npx keeps the order of their calls across the two stubs.
+  const runStages = (gateExit = 0): StageRun => {
+    const stubs = createTemporaryDirectory('kiko-verify-order-');
+    const calls = join(stubs, 'calls.log');
+    const gatePath = join(stubs, 'gate-path.log');
+    const gateSweep = join(stubs, 'gate-sweep.log');
+    const jestSweeps = join(stubs, 'jest-sweeps.log');
+    const record = [
+      '#!/usr/bin/env bash',
+      'if [ "$1" = jest ]; then',
+      `  printf 'jest\\n' >> "${calls}"`,
+      `  printf '%s\\n' "\${KIKO_PROPERTY_SWEEP-unset}" >> "${jestSweeps}"`,
+      '  exit 0',
+      'fi',
+      `printf '%s\\n' "$1 $2" >> "${calls}"`,
+      `printf '%s\\n' "$PATH" >> "${gatePath}"`,
+      `printf '%s\\n' "\${KIKO_PROPERTY_SWEEP-unset}" >> "${gateSweep}"`,
+      `exit ${gateExit}`,
+      '',
+    ].join('\n');
+
+    for (const name of ['npm', 'npx']) {
+      writeFileSync(join(stubs, name), record);
+      chmodSync(join(stubs, name), 0o755);
+    }
+
+    for (const log of [calls, gatePath, gateSweep, jestSweeps]) writeFileSync(log, '');
+
+    // `make jest-affected` runs this suite with the tripwire already on PATH, so the start PATH
+    // drops it: only verify.sh itself may put it there.
+    const startPath = (process.env.PATH ?? '')
+      .split(':')
+      .filter((entry) => !entry.endsWith('semgrep-tripwire'))
+      .join(':');
+    const result = spawnSync('bash', [VERIFY_SCRIPT], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: { ...process.env, KIKO_PROPERTY_SWEEP: undefined, PATH: `${stubs}:${startPath}` },
+    });
+    const lines = (path: string): string[] =>
+      readTextFile(path)
+        .split('\n')
+        .filter((line) => line !== '');
+
+    return {
+      calls: lines(calls),
+      gatePath: lines(gatePath)[0] ?? '',
+      gateSweep: lines(gateSweep)[0] ?? '',
+      jestSweeps: lines(jestSweeps),
+      status: result.status,
+      stderr: result.stderr,
+      stdout: result.stdout,
+    };
+  };
+
+  it('runs the gate, then jest for 2a, then jest for 2b, with no separate lint call', () => {
+    expect(runStages().calls).toEqual(['run check:all', 'jest', 'jest']);
+  });
+
+  it('stops at a failing gate with its exit code and runs no jest', () => {
+    const run = runStages(5);
+
+    expect({ calls: run.calls, status: run.status }).toEqual({
+      calls: ['run check:all'],
+      status: 5,
+    });
+    expect(run.stderr).toContain('stage 1 (gate)');
+  });
+
+  it('runs the gate without the semgrep tripwire on PATH', () => {
+    const { gatePath } = runStages();
+
+    expect(gatePath).not.toBe('');
+    expect(gatePath.split(':').filter((entry) => entry.endsWith('semgrep-tripwire'))).toEqual([]);
+  });
+
+  it('leaves KIKO_PROPERTY_SWEEP out of the gate and sets it for 2a', () => {
+    const run = runStages();
+
+    expect({ gate: run.gateSweep, jest: run.jestSweeps[0] }).toEqual({
+      gate: 'unset',
+      jest: 'full',
+    });
+  });
+
+  it('prints the stage headers in order, and the pass line naming the gate and jest', () => {
+    const headers = runStages()
+      .stdout.split('\n')
+      .filter((line) => /^── make verify: stage \S+ \(|^✔/.test(line));
+
+    expect(headers).toEqual([
+      '── make verify: stage 1 (gate) ──',
+      expect.stringMatching(/^── make verify: stage 2a \(/),
+      expect.stringMatching(/^── make verify: stage 2b \(/),
+      '✔ make verify: gate and jest all passed',
+    ]);
+  });
+});
+
 describe('scripts/checks/verify.sh stage 2a semgrep tripwire', () => {
   const jestPathsOfVerify = (): { paths: string[]; startPath: string } => {
     const stubs = createTemporaryDirectory('kiko-verify-paths-');
@@ -236,16 +346,22 @@ describe('scripts/checks/verify.sh with an unusable suite list', () => {
 
     if (listText !== undefined) writeFileSync(join(checks, 'semgrep-jest-suites.txt'), listText);
 
+    const npmCalls = join(root, 'npm-calls.log');
+
     for (const name of ['npm', 'npx', 'node']) {
-      writeFileSync(join(stubs, name), '#!/bin/sh\nexit 0\n');
+      writeFileSync(join(stubs, name), `#!/bin/sh\necho "${name} $*" >> "${npmCalls}"\nexit 0\n`);
       chmodSync(join(stubs, name), 0o755);
     }
 
-    return spawnSync('/bin/bash', [join(checks, 'verify.sh')], {
+    writeFileSync(npmCalls, '');
+
+    const result = spawnSync('/bin/bash', [join(checks, 'verify.sh')], {
       cwd: root,
       encoding: 'utf8',
       env: { ...process.env, PATH: `${stubs}:${process.env.PATH}` },
     });
+
+    return { ...result, calls: readTextFile(npmCalls) };
   };
 
   it.each([
@@ -260,5 +376,18 @@ describe('scripts/checks/verify.sh with an unusable suite list', () => {
       hasBlock: true,
     });
     expect(result.stderr).not.toContain('unbound variable');
+  });
+
+  it.each([
+    ['empty', ''],
+    ['comments only', '# nothing listed\n'],
+    ['missing', undefined],
+  ])('fails before the gate when the list is %s', (_name, listText) => {
+    const result = verifyWithList(listText);
+
+    expect({ calls: result.calls, stderr: result.stderr }).toEqual({
+      calls: '',
+      stderr: expect.stringContaining('FAILED before the gate'),
+    });
   });
 });

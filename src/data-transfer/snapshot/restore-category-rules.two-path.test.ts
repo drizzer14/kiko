@@ -36,6 +36,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
@@ -323,6 +324,7 @@ describe('restoring a .kiko file this build exported', () => {
     addAccountCurrencyColumn(exported);
     addTransactionOperationColumn(exported);
     addMccCategoriesBackfilledColumn(exported);
+    addFundingMatchRowsTable(exported);
 
     await restoreExportOf(exported);
 

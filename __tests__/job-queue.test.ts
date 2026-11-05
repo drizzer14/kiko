@@ -311,7 +311,7 @@ describe('scripts/job-queue.sh a single job', () => {
     expect(isPresent(join(sandbox.queue, 'claim'))).toBe(false);
     const finished = readLines(join(sandbox.queue, 'done.log'));
     expect(finished).toHaveLength(1);
-    expect(finished[0]).toMatch(/^verify one 3 \S+ \S+ (?:[0-9a-f]{40}|unknown)$/);
+    expect(finished[0]).toMatch(/^verify one 3 \S+ \S+ (?:[0-9a-f]{40}|unknown) (?:full|partial)$/);
   });
 
   it('prints the head sha and the load average on the START line', () => {
@@ -2419,7 +2419,7 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     expect(finishedLine(sandbox).split(' ')[5]).toBe(namesHead ? head : 'unknown');
   });
 
-  it('reads the tree status of a clean verify four times without taking the index lock', () => {
+  it('reads the tree status of a clean verify twice without taking the index lock', () => {
     const sandbox = createSandbox();
     const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
     const calls = logGitCalls(sandbox);
@@ -2427,8 +2427,8 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     runQueue(sandbox, 'verify', worktree, 'one');
 
     const statusCalls = readLines(calls).filter((call) => call.includes(' status'));
-    // Enqueue refusal, START refusal, the START head, and the end of the job.
-    expect(statusCalls).toHaveLength(4);
+    // The enqueue refusal, and the end of the job.
+    expect(statusCalls).toHaveLength(2);
     expect(statusCalls.every((call) => call.startsWith('--no-optional-locks '))).toBe(true);
   });
 
@@ -2472,7 +2472,7 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     expect(finishedLine(sandbox).split(' ').slice(0, 5).join(' ')).toMatch(
       /^verify one 4 \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/,
     );
-    expect(finishedLine(sandbox).split(' ')).toHaveLength(6);
+    expect(finishedLine(sandbox).split(' ')).toHaveLength(7);
     expect(result.stdout).toMatch(
       /^START one at \d\d:\d\d head [0-9a-f]{12} \(load: 1\.50 2\.50 3\.50\)$/m,
     );
@@ -2519,6 +2519,18 @@ describe.each(['verify', 'gate'] as const)('scripts/job-queue.sh a %s on a dirty
     expect(startedWorktrees(sandbox)).toEqual([]);
     expect(doneLogPresent(sandbox)).toBe(false);
   });
+});
+
+// A verify reads no tree at START (it tests the commit named at enqueue), so only a gate refuses
+// there.
+describe('scripts/job-queue.sh a gate on a tree that changes while queued', () => {
+  const queueArguments = (worktree: string, head: string, label = 'one'): string[] => [
+    'gate',
+    worktree,
+    label,
+    'main',
+    head,
+  ];
 
   it('refuses at START when the tree changed while queued, leaving no lock or ticket', async () => {
     const sandbox = createSandbox();
@@ -2552,12 +2564,7 @@ describe.each(['verify', 'gate'] as const)('scripts/job-queue.sh a %s on a dirty
 
     const refused = startQueue(sandbox, ...queueArguments(first.worktree, first.head));
     await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
-    const next = startQueue(
-      sandbox,
-      ...(kind === 'gate'
-        ? ['gate', second.worktree, 'two', 'main', second.head]
-        : ['verify', second.worktree, 'two']),
-    );
+    const next = startQueue(sandbox, ...queueArguments(second.worktree, second.head, 'two'));
     await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 2);
     writeFile(first.worktree, 'new.txt', 'new\n');
     rmSync(lock);
@@ -2617,7 +2624,7 @@ describe('scripts/job-queue.sh a job that changes the tree', () => {
       '── make verify: stage 2a (jest) ──',
       tests,
       ...Array.from({ length: 500 }, (_, index) => `noise ${index}`),
-      '✔ make verify: lint, jest, and gate all passed',
+      '✔ make verify: gate and jest all passed',
     ].join('\n');
 
     const result = runQueue(sandbox, 'verify', worktree, 'one');

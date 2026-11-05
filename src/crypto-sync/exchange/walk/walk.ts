@@ -362,7 +362,7 @@ export const readPendingMark = async (input: {
   }
 
   logFailure(
-    '[binance sync] pending overlap ranges unreadable',
+    '[exchange sync] pending overlap ranges unreadable',
     new BinanceWalkStop('pending-malformed'),
   );
   const owed = owedIfUnreadable.start < owedIfUnreadable.end ? [owedIfUnreadable] : [];
@@ -448,7 +448,7 @@ export const readPointCursor = (input: {
     stored: input.stored,
     field: 'pointCursor',
     unreadable: {
-      message: '[binance sync] point cursor unreadable',
+      message: '[exchange sync] point cursor unreadable',
       code: 'point-cursor-malformed',
     },
     write: input.write,
@@ -463,7 +463,7 @@ export const readRangeCursor = (input: {
     stored: input.stored,
     field: 'rangeCursor',
     unreadable: {
-      message: '[binance sync] range cursor unreadable',
+      message: '[exchange sync] range cursor unreadable',
       code: 'range-cursor-malformed',
     },
     write: input.write,
@@ -543,7 +543,7 @@ export const readSpanHints = async (input: {
     return stored;
   }
 
-  logFailure('[binance sync] span hints unreadable', new BinanceWalkStop('span-hints-malformed'));
+  logFailure('[exchange sync] span hints unreadable', new BinanceWalkStop('span-hints-malformed'));
   await write([{ field: 'spanHints', value: NO_HINTS }]);
 
   return NO_HINTS;
@@ -1708,7 +1708,7 @@ export class BinanceWalkStop extends Error {
 }
 
 export const logWalkStop = (code: string): void => {
-  logFailure('[binance sync] history window stopped', new BinanceWalkStop(code));
+  logFailure('[exchange sync] history window stopped', new BinanceWalkStop(code));
 };
 
 /** What one span read gave: the page that fits it, or the half to read instead. */

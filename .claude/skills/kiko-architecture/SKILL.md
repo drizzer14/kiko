@@ -1401,9 +1401,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   deletes are unknowable, so there is no data step and no derived mirror. Its
   foreign key to `holdings` is NO ACTION, so the order carries it: a holding
   or account delete removes the keys first (`removeHoldingDatabaseTransaction`,
-  `accountsRepo.remove`); a table with no FK (`transaction_templates`) has no
-  delete-order constraint. A write that moves a holding's balance anchor (a
-  closing balance that applies, a hand-set balance, the bank figure of a sync)
+  `accountsRepo.remove`); `funding_match_rows` (`account_id`, NO ACTION) is
+  deleted child-first the same way, in `accountsRepo.remove`
+  (`src/accounts/accounts.repo.ts`) and in `disconnectExchange`; a table with no FK
+  (`transaction_templates`) has no delete-order constraint. A write that moves a holding's
+  balance anchor (a closing balance that applies, a hand-set balance, the bank figure of a sync)
   clears all its keys in the same write
   (`clearDeletedImportKeysDatabaseTransaction`): the sync clears but never
   reads them, so it never revives a row. A restore (`restoreDataSnapshot`) deletes the
@@ -1601,6 +1603,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `VERSION_DECISIONS` comment and bump `migrationCount` in
   `src/data-transfer/crypto/envelope.test.ts`; the scoped jest run must include
   `e2e/screenshot` and `src/data-transfer/crypto`.
+  Exemption: a table behind an optional `.kiko` key that holds no demo rows
+  needs no regeneration, because a regeneration changes only dates
+  (`funding_match_rows`, 0066, O70).
   Migration 0061 (`exchange_state`) has a restore mirror,
   `withWalkStateMoved` (`snapshot/with-walk-state-moved.ts`, keys in
   `legacy-walk-keys.ts`), called in `restore-snapshot.ts`: a stored string

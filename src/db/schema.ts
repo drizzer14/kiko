@@ -767,3 +767,46 @@ export const reminders = sqliteTable(
 );
 
 export type ReminderRow = typeof reminders.$inferSelect;
+
+/**
+ * The stored set of ledger rows and sources of an exchange account: one row per ledger row and
+ * per source (`side`), so the pairing of a ledger row with its source is decided again on the
+ * whole set at the end of each run and never once, at arrival. No pair is stored. Empty until a
+ * writer exists: nothing writes it yet, and only the backup path (`readDataSnapshot`,
+ * `restoreDataSnapshot`) and the child-first deletes (`accountsRepo.remove`,
+ * `accountsRepo.disconnectExchange`) touch it.
+ *
+ * The final columns are fixed with the table, because a column added later is a second
+ * migration. `amount`, `fee` and `tax` are decimal text, as the reading gives them. The times
+ * are milliseconds: `time_start` is the time of a row or the start of its extent, `time_end` the
+ * end of the extent, which a prune below the history floor reads. `earn_principal` is a boolean
+ * set at the parse (0 on a source), so the words it stands for are never stored.
+ *
+ * The composite primary key is the only index: its leading `account_id` serves the read, the
+ * prune and the clear of one account's rows. The foreign key is NO ACTION like every other: the
+ * account delete clears these rows first (`accountsRepo.remove`).
+ */
+export const fundingMatchRows = sqliteTable(
+  'funding_match_rows',
+  {
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    side: text('side').notNull(),
+    recordKey: text('record_key').notNull(),
+    series: text('series'),
+    coin: text('coin').notNull(),
+    direction: text('direction').notNull(),
+    amount: text('amount').notNull(),
+    fee: text('fee'),
+    tax: text('tax'),
+    timeStart: integer('time_start').notNull(),
+    timeEnd: integer('time_end').notNull(),
+    earnPrincipal: integer('earn_principal', { mode: 'boolean' }).notNull().default(false),
+  },
+  (table) => ({
+    accountSideRecordKey: primaryKey({ columns: [table.accountId, table.side, table.recordKey] }),
+  }),
+);
+
+export type FundingMatchRow = typeof fundingMatchRows.$inferSelect;

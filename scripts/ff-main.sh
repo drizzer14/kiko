@@ -13,10 +13,14 @@
 #   2. The sha is resolved to its full 40 characters in that repository, and the full commit must
 #      start with the argument (a branch named like a short sha cannot redirect it).
 #   3. done.log (scripts/job-queue.sh writes it) must hold a `verify` line whose 6th field, the
-#      HEAD the queue tested (a clean tree at START and at the end, HEAD unmoved), equals the full
-#      commit. The LAST such line decides, so a red verify after a green one at the same commit
-#      blocks. A `check-all` or `gate` line, a line whose head is `unknown`, and an old 5-field
-#      line never count; neither does a LOST line (`lost <label> ...` or `<kind> <label> lost ...`,
+#      HEAD the queue tested (the commit its shared verify checkout was at, clean and unmoved at the
+#      end), equals the full commit. The LAST such line decides, so a red verify after a green one
+#      at the same commit blocks. The exit check comes first. A line with exit 0 must then have no
+#      7th field or a 7th field `full`: a scoped verify wrote `partial` because stage 2b did not
+#      run, and that line refuses with a text that asks for a full verify (no --scoped). A 6-field
+#      line counts as full, because every verify before the field ran stage 2b. A `check-all` or
+#      `gate` line, a line whose head is `unknown`, and an old 5-field line never count; neither
+#      does a LOST line (`lost <label> ...` or `<kind> <label> lost ...`,
 #      written by job-queue.sh for a job whose result was never recorded). A line with fewer than
 #      6 fields is ignored: those before the first 6-field line print ONE WARNING on stderr
 #      (count and the last such line), each one after it prints its own with its line number.
@@ -129,7 +133,18 @@ if [ -z "$verified_line" ] || [ "$verified_exit" != 0 ]; then
     'No successful queued verify at this commit' \
     "$DONE_LOG, last verify line for it: ${verified_line:-none}" \
     'Main moves only to a commit a queued verify passed on, so an unverified commit never reaches it.' \
-    "Queue: bash scripts/job-queue.sh verify <clean worktree at $full_commit> <label>, wait for exit 0 (a verify of a changed tree is refused with exit 3, at enqueue and at START; a tree the job changed, or a moved HEAD, is recorded as unknown and does not count), then re-run bash scripts/ff-main.sh $requested"
+    "Queue: bash scripts/job-queue.sh verify <worktree> <label> --sha $full_commit, wait for exit 0 (with no --sha the worktree must be clean, else exit 3 at enqueue; a checkout the job changed, or a moved HEAD, is recorded as unknown and does not count), then re-run bash scripts/ff-main.sh $requested"
+fi
+
+# The exit check above comes first, so the scope of a failed line never matters. A 6-field line has
+# no scope and counts as full: every verify before the field ran stage 2b.
+verified_scope="$(printf '%s\n' "$verified_line" | awk '{ print $7 }')"
+if [ -n "$verified_scope" ] && [ "$verified_scope" != full ]; then
+  fail \
+    'The last verify at this commit did not run stage 2b' \
+    "$DONE_LOG, last verify line for it: $verified_line" \
+    'A scoped verify skips the real-semgrep suites when no trigger path changed; main moves only to a commit a full verify passed on.' \
+    "Queue a full verify, with no --scoped: bash scripts/job-queue.sh verify <worktree> <label> --sha $full_commit, wait for exit 0, then re-run bash scripts/ff-main.sh $requested"
 fi
 
 if ! git -C "$main_checkout" merge-base --is-ancestor HEAD "$full_commit" 2> /dev/null; then

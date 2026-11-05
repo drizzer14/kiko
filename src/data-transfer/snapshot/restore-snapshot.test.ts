@@ -14,6 +14,7 @@ import {
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
+  fundingMatchRows,
   holdings,
   pricePoints,
   reminders,
@@ -62,6 +63,8 @@ const tableNameOf = (table: unknown): string => {
   if (table === reminders) return 'reminders';
 
   if (table === deletedImportKeys) return 'deletedImportKeys';
+
+  if (table === fundingMatchRows) return 'fundingMatchRows';
 
   if (table === transactionTemplates) return 'transactionTemplates';
   throw new Error('unknown table');
@@ -166,6 +169,7 @@ describe('restoreDataSnapshot', () => {
       'transactions',
       'syncState',
       'reminders',
+      'fundingMatchRows',
       'holdings',
       'accounts',
       'categoryRules',
@@ -742,6 +746,7 @@ describe('restoreDataSnapshot', () => {
       'transactions',
       'syncState',
       'reminders',
+      'fundingMatchRows',
       'holdings',
       'accounts',
       'categoryRules',

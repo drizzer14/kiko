@@ -9,6 +9,7 @@ import {
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
+  fundingMatchRows,
   type HoldingRow,
   holdings,
   pricePoints,
@@ -814,7 +815,7 @@ export const withCryptoCashHoldingsMoved = (
  * `PRAGMA foreign_keys = ON` (set once per connection in `db/client.ts`)
  * rejects a delete/insert that violates a `holdings.accountId`,
  * `transactions.holdingId`, `deletedImportKeys.holdingId`, `syncState.accountId`,
- * or `reminders.accountId` reference otherwise
+ * `fundingMatchRows.accountId`, or `reminders.accountId` reference otherwise
  * (the same ordering `accountsRepo.remove` hand-codes for one account).
  *
  * `snapshot.pricePoints` is read defensively with `?? []`: `price_points`
@@ -898,6 +899,7 @@ export const restoreDataSnapshot = (
       await databaseTransaction.delete(transactions);
       await databaseTransaction.delete(syncState);
       await databaseTransaction.delete(reminders);
+      await databaseTransaction.delete(fundingMatchRows);
       await databaseTransaction.delete(holdings);
       await databaseTransaction.delete(accounts);
       await databaseTransaction.delete(categoryRules);
@@ -1019,6 +1021,20 @@ export const restoreDataSnapshot = (
       }
     };
 
+    // After the accounts insert, which a row's `accountId` references. A row whose account this
+    // restore did not insert (a hand-built file) is skipped, so one such row never fails the
+    // restore. `?? []`: an export from before the table carries no `fundingMatchRows` key.
+    const insertFundingMatchRows = async (): Promise<void> => {
+      const insertedAccountIds = new Set(accountsToInsert.map((account) => account.id));
+      const rowsToInsert = (snapshot.fundingMatchRows ?? []).filter((row) =>
+        insertedAccountIds.has(row.accountId),
+      );
+
+      for (const part of chunkForTable(fundingMatchRows, rowsToInsert)) {
+        await databaseTransaction.insert(fundingMatchRows).values(part);
+      }
+    };
+
     // A file with no settings row would otherwise leave the row to the next
     // launch's `ensure()`, which creates it with the defaults: the live lock
     // is carried by a row of its own.
@@ -1101,6 +1117,7 @@ export const restoreDataSnapshot = (
 
     await deleteAllTables();
     await insertAccountsHoldingsCategories();
+    await insertFundingMatchRows();
     await insertDeletedImportKeys();
     await insertRulesTransactionsSyncState();
     await insertRatesAndSettings();

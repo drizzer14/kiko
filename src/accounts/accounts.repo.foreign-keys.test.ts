@@ -110,10 +110,11 @@ const rowCountFor = (
 /**
  * Mirrors `accountsRepo.remove`'s own delete sequence (`accounts.repo.ts`) as
  * raw SQL, in the SAME order: each holding's transactions, then the
- * account's `sync_state` row and reminders, then holdings, then the account
- * itself. Loan-link clearing (an UPDATE, not a DELETE) is intentionally not
- * mirrored — it never touches a row this FK invariant cares about. Keep this
- * in sync by hand when `remove`'s delete order changes, the same way
+ * account's stored funding match rows, its `sync_state` row and reminders,
+ * then holdings, then the account itself. Loan-link clearing (an UPDATE, not
+ * a DELETE) is intentionally not mirrored — it never touches a row this FK
+ * invariant cares about. Keep this in sync by hand when `remove`'s delete
+ * order changes, the same way
  * `sync.test.ts`'s in-memory repo doubles are kept in sync with the real
  * repos they stand for.
  */
@@ -127,6 +128,7 @@ const removeAccountLikeTheRepoDoes = (database: DatabaseSync, accountId: string)
   for (const holdingId of holdingIds) {
     database.prepare('DELETE FROM transactions WHERE holding_id = ?').run(holdingId);
   }
+  database.prepare('DELETE FROM funding_match_rows WHERE account_id = ?').run(accountId);
   database.prepare('DELETE FROM sync_state WHERE account_id = ?').run(accountId);
   database.prepare('DELETE FROM reminders WHERE account_id = ?').run(accountId);
   database.prepare('DELETE FROM holdings WHERE account_id = ?').run(accountId);
@@ -145,9 +147,10 @@ describe('accountsRepo.remove — real-SQLite foreign key invariant', () => {
     const referencingTables = tablesReferencingAccounts(database);
     // A schema change that stopped referencing `accounts` entirely would make
     // every later assertion here vacuous (trivially true over zero tables),
-    // so pin the three known today as a floor — a future migration only grows
+    // so pin the four known today as a floor — a future migration only grows
     // this list.
     expect(referencingTables.map((entry) => entry.table).sort()).toEqual([
+      'funding_match_rows',
       'holdings',
       'reminders',
       'sync_state',
