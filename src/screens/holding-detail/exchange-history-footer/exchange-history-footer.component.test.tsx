@@ -104,6 +104,7 @@ describe('ExchangeHistoryFooter', () => {
     ['a holding of a disconnected account', { institution: null }, { binanceAsset: 'BTC' }],
     ['a holding with no account', undefined, { binanceAsset: 'BTC' }],
     ['a holding of no sync key', binanceAccount, {}],
+    ['a wallet holding on a Binance account', binanceAccount, { walletAddress: 'bc1q' }],
   ])('renders nothing for %s', async (_state, account, metadata) => {
     const { toJSON } = await render(
       <ExchangeHistoryFooter

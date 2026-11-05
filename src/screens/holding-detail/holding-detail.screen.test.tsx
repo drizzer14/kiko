@@ -1793,6 +1793,16 @@ describe('HoldingDetailScreen', () => {
       expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
     });
 
+    it('a manual row on a holding with an earlier provider’s key offers Duplicate', async () => {
+      seedKeyed('binanceAsset', 'btc_wallet');
+
+      const { getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+    });
+
     it('a manual row of a holding with no synced key, on a connected account, offers Duplicate', async () => {
       seed({ ...bankCardHolding, metadata: { iban: 'UA00' } }, [manualRow], [], [], [], undefined, {
         ...bankAccount,
@@ -3571,6 +3581,29 @@ describe('HoldingDetailScreen', () => {
       [],
       [{ baseCurrency: 'UAH' }],
       { id: 'acc-1', institution: null },
+    );
+
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add transaction')).toBeTruthy();
+  });
+
+  it('keeps the footer add action for a holding with an earlier provider’s key', async () => {
+    // The account is connected, but to a wallet: the `binanceAsset` key is Binance's, which the
+    // wallet's sync never writes, so the holding is manual.
+    seed(
+      {
+        ...cardHolding,
+        accountId: 'acc-1',
+        metadata: { binanceAsset: 'BTC' },
+      },
+      [],
+      [],
+      [],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      { id: 'acc-1', institution: 'btc_wallet' },
     );
 
     const { getByTestId } = await renderScreen();

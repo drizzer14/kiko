@@ -101,9 +101,10 @@ const isNumber = (value: unknown): value is number =>
  * The metadata fields that mark a holding as owned by a sync, one per
  * source: `monobankId` (a Monobank card/jar), `walletAddress` (a BTC
  * public-address wallet), `binanceAsset` (a Binance spot balance), `bybitAsset`
- * (a Bybit wallet balance, keyed `<COIN>:<wallet>`). The
- * single source of truth for `isSyncedHolding` and for the metadata-key
- * upserts in the holdings repo.
+ * (a Bybit wallet balance, keyed `<COIN>:<wallet>`). The list of keys,
+ * for the metadata-key upserts in the holdings repo and for the test of
+ * "any key" (`hasSyncedKey`). `syncedMetadataFieldOf` in `deletable.ts`
+ * names the key of each provider, which `isSyncedHolding` reads.
  *
  * Guideline 2.3.1(a) remediation: `privatbankId`, `bunqId`, and `starlingId` were
  * removed — those bank-CONNECT providers were deleted entirely, and no user

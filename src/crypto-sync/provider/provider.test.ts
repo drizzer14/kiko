@@ -1,6 +1,31 @@
 import { i18n } from '@kiko/i18n/init';
+import { syncedMetadataFieldOf } from '@kiko/holdings/deletable';
+
+import { bybitProvider } from '../bybit';
+import { binanceProvider } from '../binance';
+import { bitcoinWalletProvider } from '../btc-wallet';
 
 import { balanceProviderIds, isBalanceProviderId, providerDisplayName } from './provider';
+
+// The credentials modules import react-native-keychain, whose native binding is absent under
+// Jest; this test reads only the provider ids and keys, so the stub needs the ACCESSIBLE enum
+// that their module-scope constants read at load.
+jest.mock('react-native-keychain', () => ({
+  ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
+}));
+
+describe('syncedMetadataFieldOf', () => {
+  it.each([binanceProvider, bybitProvider, bitcoinWalletProvider])(
+    'names the key of each synced institution: $id',
+    (provider) => {
+      expect(syncedMetadataFieldOf[provider.id]).toBe(provider.metadataField);
+    },
+  );
+
+  it('names the key that a Monobank sync writes', () => {
+    expect(syncedMetadataFieldOf.monobank).toBe('monobankId');
+  });
+});
 
 describe('balance provider ids', () => {
   it('lists the wallet, Binance and Bybit providers, in ship order', () => {

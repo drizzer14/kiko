@@ -139,6 +139,23 @@ describe('recordManual on a holding a sync owns', () => {
     },
   );
 
+  // The key of a provider that the account used before: a disconnect keeps it, and no sync writes
+  // the holding while the account is connected to another provider.
+  it.each([
+    ['binanceAsset', 'btc_wallet'],
+    ['walletAddress', 'binance'],
+  ] as const)(
+    '%s takes a manual row while the account is connected to %s, and the balance moves',
+    async (key, institution) => {
+      seedConnected(key, institution, 'crypto_asset', 'BTC');
+
+      await typedRow(SYNCED);
+
+      expect(balancesOf()[SYNCED]).toBe(OPENING + AMOUNT);
+      expect(rowIds()).toHaveLength(1);
+    },
+  );
+
   it('a holding with no synced key on a connected account takes the row, with no read of the account', async () => {
     seedConnected('iban', 'monobank', 'card', 'UAH', { iban: 'UA00' });
 
@@ -229,6 +246,17 @@ describe('recordExchangeCounterpart on a connected holding', () => {
       expect(pairIdOfExisting()).toBeNull();
     },
   );
+
+  it("a Convert leg onto a holding with an earlier provider's key saves", async () => {
+    seedConnected('binanceAsset', 'btc_wallet', 'crypto_asset', 'BTC');
+    insertRow({ id: 'existing', holdingId: CASH, amountMinorUnits: -AMOUNT });
+
+    await convertOnto(SYNCED);
+
+    expect(rowIds()).toHaveLength(2);
+    expect(balancesOf()[SYNCED]).toBe(OPENING + 1);
+    expect(pairIdOfExisting()).not.toBeNull();
+  });
 
   it("a Convert from a row on a connected holding still saves: one new row on the other holding, and the connected holding's balance stays", async () => {
     seedConnected('monobankId', 'monobank', 'card', 'UAH');

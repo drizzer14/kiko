@@ -98,6 +98,43 @@ describe('isSyncedHolding', () => {
     ).toBe(true);
   });
 
+  // Each pair is a synced key and the institution that owns it: a connect writes both.
+  const OWN_PAIRS = [
+    ['monobankId', 'monobank'],
+    ['walletAddress', 'btc_wallet'],
+    ['binanceAsset', 'binance'],
+    ['bybitAsset', 'bybit'],
+  ] as const;
+  const EARLIER_PROVIDER_PAIRS = OWN_PAIRS.flatMap(([key, owner]) =>
+    OWN_PAIRS.filter(([, institution]) => institution !== owner).map(
+      ([, institution]) => [key, institution] as const,
+    ),
+  );
+
+  it.each(OWN_PAIRS)('a %s key is synced on an account connected to %s', (key, institution) => {
+    expect(isSyncedHolding({ metadata: { [key]: 'key-1' } }, { institution })).toBe(true);
+  });
+
+  it.each(EARLIER_PROVIDER_PAIRS)(
+    '%s is not synced on an account connected to %s',
+    (key, institution) => {
+      expect(isSyncedHolding({ metadata: { [key]: 'key-1' } }, { institution })).toBe(false);
+    },
+  );
+
+  it('a holding with two keys is synced when one is the current provider’s', () => {
+    const metadata = { walletAddress: 'bc1q', binanceAsset: 'BTC' };
+
+    expect(isSyncedHolding({ metadata }, { institution: 'binance' })).toBe(true);
+    expect(isSyncedHolding({ metadata }, { institution: 'btc_wallet' })).toBe(true);
+  });
+
+  it('an institution that names no provider makes no holding synced', () => {
+    expect(
+      isSyncedHolding({ metadata: { bybitAsset: 'BTC:unified' } }, { institution: 'kraken' }),
+    ).toBe(false);
+  });
+
   it('does not flag a non-string sync key', () => {
     expect(isSyncedHolding({ metadata: { walletAddress: 1 } }, { institution: 'btc_wallet' })).toBe(
       false,
@@ -139,5 +176,23 @@ describe('syncedHoldingIds', () => {
     ];
 
     expect(syncedHoldingIds(holdings, accountById)).toEqual(new Set(['keyed']));
+  });
+
+  it('leaves out no holding with an earlier provider’s key', () => {
+    const accountById = new Map([
+      ['binance-account', { institution: 'binance' }],
+      ['wallet-account', { institution: 'btc_wallet' }],
+    ]);
+    const holdings = [
+      {
+        id: 'wallet-on-binance',
+        accountId: 'binance-account',
+        metadata: { walletAddress: 'bc1q' },
+      },
+      { id: 'binance-on-wallet', accountId: 'wallet-account', metadata: { binanceAsset: 'BTC' } },
+      { id: 'binance-on-binance', accountId: 'binance-account', metadata: { binanceAsset: 'ETH' } },
+    ];
+
+    expect(syncedHoldingIds(holdings, accountById)).toEqual(new Set(['binance-on-binance']));
   });
 });

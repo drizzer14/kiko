@@ -1393,6 +1393,34 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     expect(queryByLabelText('Flat, Cash')).toBeNull();
   });
 
+  it('the primary picker offers a holding with an earlier provider’s key', async () => {
+    // The account is connected to a wallet, and the holding keeps Binance's key from before: no
+    // sync writes it, so it takes a manual row.
+    const earlierKeyHolding = {
+      ...HOLDINGS[0],
+      id: 'h-earlier',
+      name: 'Former Binance coin',
+      accountId: 'a-wallet',
+      metadata: { binanceAsset: 'BTC' },
+    };
+    setLiveData(
+      [...HOLDINGS, earlierKeyHolding],
+      undefined,
+      CATEGORIES,
+      [...ACCOUNTS, { id: 'a-wallet', name: 'Crypto', institution: 'btc_wallet' }],
+      [],
+      [],
+      [],
+      'h1',
+    );
+
+    const { getByLabelText } = await renderEmptyCreate();
+
+    await fireEvent.press(getByLabelText('Holding'));
+
+    expect(getByLabelText('Former Binance coin, Crypto')).toBeTruthy();
+  });
+
   it('writes a create against the PICKED holding via recordManual', async () => {
     setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
 

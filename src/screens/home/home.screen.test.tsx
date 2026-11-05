@@ -1919,6 +1919,15 @@ describe('HomeScreen', () => {
       expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
     });
 
+    it('a manual row on a holding with an earlier provider’s key offers Duplicate', async () => {
+      const { getByTestId } = await holdRowOf(
+        { source: 'manual' },
+        worldOf('binanceAsset', 'btc_wallet'),
+      );
+
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+    });
+
     it('a manual row of a holding with no synced key, on a connected account, offers Duplicate', async () => {
       const { getByTestId } = await holdRowOf(
         { source: 'manual' },
