@@ -478,4 +478,53 @@ describe('listing the review groups of 50 000 rows', () => {
     expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
     expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
   });
+
+  // The read has no definition yet, so the red run reaches it through a runtime lookup.
+  const evidenceQuery = () =>
+    (
+      categoryRulesRepo as unknown as {
+        reviewEvidenceQuery: () => PromiseLike<
+          { description: string; categoryKey: string; rowCount: number }[]
+        > & { toSQL: () => { sql: string; params: unknown[] } };
+      }
+    ).reviewEvidenceQuery();
+
+  it(
+    'reviewEvidenceQuery scans with a temp B-tree for the group, and returns one row per pair',
+    async () => {
+      seedLedger();
+
+      const known = knownCategoryKeys();
+      const query = evidenceQuery();
+      const { sql: statement, params } = query.toSQL();
+      const plan = (
+        mockDatabase
+          .prepare(`EXPLAIN QUERY PLAN ${statement}`)
+          .all(...(params as (string | number)[])) as { detail: string }[]
+      ).map((step) => step.detail);
+      const expected = new Map<string, number>();
+
+      for (const row of candidateRows) {
+        if (row.description !== '' && row.category !== null && !hasNoRealCategory(row, known)) {
+          const pair = JSON.stringify([row.description, row.category.toLowerCase()]);
+
+          expected.set(pair, (expected.get(pair) ?? 0) + 1);
+        }
+      }
+
+      const read = await query;
+
+      expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
+      expect(plan.join('\n')).toMatch(/USE TEMP B-TREE FOR GROUP BY/);
+      expect(expected.size).toBeGreaterThan(0);
+      expect(expected.size).toBeLessThan(rows.length);
+      expect(read).toHaveLength(expected.size);
+      expect(
+        new Map(
+          read.map((row) => [JSON.stringify([row.description, row.categoryKey]), row.rowCount]),
+        ),
+      ).toEqual(expected);
+    },
+    TEST_TIMEOUT,
+  );
 });

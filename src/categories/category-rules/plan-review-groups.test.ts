@@ -313,3 +313,167 @@ describe('every listed row matches its group rule', () => {
     expect(new Set(worlds).size).toBe(SEEDS.length);
   });
 });
+
+type Evidence = { description: string; categoryKey: string; rowCount: number };
+type Suggestion = { category: string; agreeing: number; total: number };
+type SuggestedGroup = ReviewGroup & { suggestion?: Suggestion | null };
+type PlanWithEvidence = (
+  prepared: ReturnType<typeof prepareRules>,
+  rows: readonly ReviewCandidate[],
+  knownCategoryKeys: ReadonlySet<string>,
+  evidence: readonly Evidence[],
+) => SuggestedGroup[];
+
+// The evidence argument has no type yet, so the red run reaches it through a cast.
+const planWithEvidence = (
+  rows: readonly ReviewCandidate[],
+  evidence: readonly Evidence[],
+  rules: readonly StoredCategoryRule[] = [],
+): SuggestedGroup[] =>
+  (planReviewGroups as unknown as PlanWithEvidence)(
+    prepareRules(rules),
+    rows,
+    KNOWN_CATEGORY_KEYS,
+    evidence,
+  );
+
+const votes = (description: string, categoryKey: string, rowCount: number): Evidence => ({
+  description,
+  categoryKey,
+  rowCount,
+});
+
+const suggestionOf = (rows: readonly ReviewCandidate[], evidence: readonly Evidence[]) =>
+  planWithEvidence(rows, evidence)[0]?.suggestion;
+
+describe('suggestions', () => {
+  const atbRows = rowsOf(['ATB 0212']);
+
+  it.each<[string, number, number, Suggestion | null]>([
+    ['3 of 4 (exactly the share) suggests', 3, 4, { category: 'groceries', agreeing: 3, total: 4 }],
+    ['1 of 1 suggests nothing', 1, 1, null],
+    ['2 of 2 suggests', 2, 2, { category: 'groceries', agreeing: 2, total: 2 }],
+    ['2 of 3 suggests nothing', 2, 3, null],
+    ['4 of 5 suggests', 4, 5, { category: 'groceries', agreeing: 4, total: 5 }],
+    ['3 of 5 suggests nothing', 3, 5, null],
+  ])('%s', (_title, agreeing, total, expected) => {
+    const evidence = [
+      votes('ATB', 'groceries', agreeing),
+      ...(total > agreeing ? [votes('ATB', 'food', total - agreeing)] : []),
+    ];
+
+    expect(suggestionOf(atbRows, evidence)).toEqual(expected);
+  });
+
+  it('a hand-set, a rule-set and an MCC-set row each vote one', () => {
+    const evidence = [
+      votes('ATB 1', 'groceries', 1),
+      votes('ATB 2', 'groceries', 1),
+      votes('ATB', 'groceries', 1),
+    ];
+
+    expect(suggestionOf(atbRows, evidence)).toEqual({
+      category: 'groceries',
+      agreeing: 3,
+      total: 3,
+    });
+  });
+
+  it.each<[string, Evidence[]]>([
+    ['other', [votes('ATB', 'groceries', 2), votes('ATB', 'other', 5)]],
+    ['an orphan key', [votes('ATB', 'groceries', 2), votes('ATB', 'ghost', 5)]],
+    ['an empty key', [votes('ATB', 'groceries', 2), votes('ATB', '', 5)]],
+  ])('a row with no real category has no vote: %s', (_title, evidence) => {
+    expect(suggestionOf(atbRows, evidence)).toEqual({
+      category: 'groceries',
+      agreeing: 2,
+      total: 2,
+    });
+  });
+
+  it('never suggests other', () => {
+    expect(suggestionOf(atbRows, [votes('ATB', 'other', 6)])).toBeNull();
+    expect(
+      suggestionOf(atbRows, [votes('ATB', 'other', 6), votes('ATB', 'groceries', 1)]),
+    ).toBeNull();
+  });
+
+  it('never suggests a key not in the table', () => {
+    expect(suggestionOf(atbRows, [votes('ATB', 'ghost', 6)])).toBeNull();
+    expect(suggestionOf(atbRows, [votes('ATB', 'ghost', 6), votes('ATB', 'food', 1)])).toBeNull();
+  });
+
+  it('a candidate row of a structural or exchange kind adds no vote', () => {
+    const rows = [
+      rowOf('listed', 'ATB 0212'),
+      rowOf('balance', 'ATB 0212', { setsBalance: true }),
+      rowOf('split', 'ATB 0212', { changeGroupId: 'change-group' }),
+      rowOf('exchange', 'ATB 0212', { exchangeCounterpartHoldingId: 'other-holding' }),
+    ];
+
+    expect(suggestionOf(rows, [votes('ATB', 'groceries', 2)])).toEqual({
+      category: 'groceries',
+      agreeing: 2,
+      total: 2,
+    });
+  });
+
+  it("a PrivatBank row with no code gets the suggestion from the same merchant's Monobank rows", () => {
+    const rows = [rowOf('privat', 'ATB 0212', { mcc: null })];
+    const evidence = [votes('ATB', 'groceries', 3)];
+
+    expect(suggestionOf(rows, evidence)).toEqual({ category: 'groceries', agreeing: 3, total: 3 });
+  });
+
+  it('counts votes under the merchant key, so another store number agrees', () => {
+    const evidence = [
+      votes('ATB 0340', 'groceries', 2),
+      votes('ATB 0212', 'groceries', 1),
+      votes('ATBANK', 'shopping', 5),
+    ];
+
+    expect(suggestionOf(atbRows, evidence)).toEqual({
+      category: 'groceries',
+      agreeing: 3,
+      total: 3,
+    });
+  });
+
+  it('is the same for shuffled rows and shuffled evidence', () => {
+    const rows = orderWorldRows();
+    const evidence = [
+      votes('Alpha', 'groceries', 3),
+      votes('alpha 7', 'groceries', 1),
+      votes('Bravo', 'food', 2),
+      votes('Bravo', 'shopping', 1),
+      votes('Charlie 1', 'travel', 2),
+      votes('Delta', 'transport', 1),
+    ];
+    const expected = planWithEvidence(rows, evidence);
+
+    expect(expected.filter((group) => group.suggestion?.category !== undefined)).not.toHaveLength(
+      0,
+    );
+
+    for (const [, shuffle] of SHUFFLES) {
+      expect(planWithEvidence(shuffle(rows), [...evidence].reverse())).toEqual(expected);
+      expect(planWithEvidence(rows, [...evidence.slice(3), ...evidence.slice(0, 3)])).toEqual(
+        expected,
+      );
+    }
+  });
+
+  it("keeps the line's order whatever the suggestions", () => {
+    const evidence = [
+      votes('Alpha', 'groceries', 3),
+      votes('Charlie', 'food', 2),
+      votes('Echo', 'travel', 4),
+    ];
+    const suggested = planWithEvidence(orderWorldRows(), evidence);
+
+    expect(suggested.filter((group) => group.suggestion?.category === 'groceries')).toHaveLength(1);
+    expect(suggested.map((group) => group.key)).toEqual(
+      plan(orderWorldRows()).map((group) => group.key),
+    );
+  });
+});

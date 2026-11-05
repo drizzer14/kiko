@@ -365,3 +365,126 @@ describe('reviewCandidateRowsQuery', () => {
     expect(ids.filter((id) => id.startsWith('blank') || id === 'balance')).toEqual([]);
   });
 });
+
+type EvidenceRow = { description: string; categoryKey: string; rowCount: number };
+type EvidenceQuery = PromiseLike<EvidenceRow[]> & { toSQL: () => { sql: string } };
+
+// The read has no definition yet, so the red run reaches it through a runtime lookup.
+const reviewEvidenceQuery = (): EvidenceQuery =>
+  (
+    categoryRulesRepo as unknown as { reviewEvidenceQuery: () => EvidenceQuery }
+  ).reviewEvidenceQuery();
+
+// The fourth argument has no type yet either.
+const planWithEvidence = planReviewGroups as unknown as (
+  prepared: PreparedRules,
+  rows: Awaited<ReturnType<typeof categoryRulesRepo.reviewCandidateRowsQuery>>,
+  known: ReadonlySet<string>,
+  evidence: EvidenceRow[],
+) => (ReviewGroup & {
+  suggestion?: { category: string; agreeing: number; total: number } | null;
+})[];
+
+const evidenceSorted = async (): Promise<EvidenceRow[]> =>
+  [...(await reviewEvidenceQuery())].sort((first, second) =>
+    `${first.description}|${first.categoryKey}`.localeCompare(
+      `${second.description}|${second.categoryKey}`,
+    ),
+  );
+
+const insertSplitChangeRow = (id: string, description: string, category: string): void => {
+  insertRow({ id, description, category });
+  mockDatabase
+    .prepare("UPDATE transactions SET change_group_id = 'change-group' WHERE id = ?")
+    .run(id);
+};
+
+describe('reviewEvidenceQuery', () => {
+  const NOT_AROUND_THE_THREE_ARMS =
+    /not \(("\w+"\.)?"category" is null or lower\(("\w+"\.)?"category"\) = 'other' or lower\(("\w+"\.)?"category"\) not in \(select lower\(("\w+"\.)?"key"\) from "categories"\)\)/;
+
+  it('reads real categories grouped by description and key', async () => {
+    insertRows('cafe-lower', 2, { description: 'Cafe Roma', category: 'dining' });
+    insertRow({ id: 'cafe-cased', description: 'Cafe Roma', category: 'Dining' });
+    insertRow({
+      id: 'cafe-hand',
+      description: 'Cafe Roma',
+      category: 'dining',
+      categorySetByHand: true,
+    });
+    insertRow({ id: 'cafe-mcc', description: 'Cafe Roma', category: 'dining', mcc: 5812 });
+    insertRow({ id: 'cafe-other-store', description: 'Cafe Roma 7', category: 'dining' });
+
+    expect(await evidenceSorted()).toEqual([
+      { description: 'ATB 0212', categoryKey: 'groceries', rowCount: 3 },
+      { description: 'ATB Market', categoryKey: 'shopping', rowCount: 1 },
+      { description: 'ATBANK', categoryKey: 'shopping', rowCount: 1 },
+      { description: 'Cafe Roma', categoryKey: 'dining', rowCount: 5 },
+      { description: 'Cafe Roma 7', categoryKey: 'dining', rowCount: 1 },
+    ]);
+  });
+
+  it('reads no balance, split, exchange or blank row', async () => {
+    insertRow({ id: 'e-balance', description: 'Edge Shop', category: 'dining', setsBalance: true });
+    insertSplitChangeRow('e-split', 'Edge Shop', 'dining');
+    insertRow({
+      id: 'e-paired',
+      description: 'Edge Shop',
+      category: 'dining',
+      exchangeCounterpartHoldingId: 'card',
+    });
+    insertRow({
+      id: 'e-untracked',
+      description: 'Edge Shop',
+      category: 'dining',
+      untrackedCounterpart: 'untracked',
+    });
+    insertRow({ id: 'e-blank', description: '', category: 'dining' });
+    insertRow({ id: 'e-real', description: 'Edge Shop', category: 'dining' });
+
+    const read = await evidenceSorted();
+
+    expect(read.filter((row) => row.description === '')).toEqual([]);
+    expect(read.filter((row) => row.description === 'Edge Shop')).toEqual([
+      { description: 'Edge Shop', categoryKey: 'dining', rowCount: 1 },
+    ]);
+  });
+
+  it('NOT noRealCategorySql negates the whole fragment', async () => {
+    insertRow({ id: 'n-other', description: 'Neg Shop', category: 'other' });
+    insertRow({ id: 'n-null', description: 'Neg Shop', category: null });
+    insertRow({ id: 'n-orphan', description: 'Neg Shop', category: 'ghost' });
+    insertRow({ id: 'n-real', description: 'Neg Shop', category: 'transport' });
+
+    const query = reviewEvidenceQuery();
+    const read = await query;
+
+    expect(query.toSQL().sql.toLowerCase()).toMatch(NOT_AROUND_THE_THREE_ARMS);
+    expect(read.filter((row) => row.description === 'Neg Shop')).toEqual([
+      { description: 'Neg Shop', categoryKey: 'transport', rowCount: 1 },
+    ]);
+    expect(read.filter((row) => ['other', 'ghost', ''].includes(row.categoryKey))).toEqual([]);
+  });
+
+  it('accepting a suggestion writes through applyNameRule and the count matches', async () => {
+    insertRows('silpo-sorted', 3, { description: 'Silpo 7', category: 'groceries' });
+
+    const group = await groupOf('silpo');
+    const [suggested] = planWithEvidence(
+      await preparedRules(),
+      await categoryRulesRepo.reviewCandidateRowsQuery(),
+      knownCategoryKeys(),
+      await reviewEvidenceQuery(),
+    );
+    const suggestion = suggested?.suggestion;
+
+    expect(suggestion).toEqual({ category: 'groceries', agreeing: 3, total: 3 });
+
+    const preview = await previewOf(group.rule, suggestion?.category);
+    const changed = await changedBy(() => applyOf(group.rule, suggestion?.category));
+
+    expect(preview.count).toBe(group.rowCount);
+    expect(changed).toHaveLength(group.rowCount);
+    expect(await listedIdsOf(group)).toEqual([]);
+  });
+});
