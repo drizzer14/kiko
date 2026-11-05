@@ -352,7 +352,8 @@ const unifiedCoinOf = (row: unknown): BybitUnifiedCoin => {
 
 /**
  * `GET /v5/account/wallet-balance`, the UNIFIED account: every coin it holds. An answer with no
- * list, an entry with no coin list, or a coin row with no name, is malformed and throws: it is
+ * list, a list with no entry (Bybit sends one entry, with an empty coin list, for an account of no
+ * coin), an entry with no coin list, or a coin row with no name, is malformed and throws: it is
  * never an account of no coin, which the provider would write as a zero for each coin held.
  */
 export const fetchUnifiedBalance = async (
@@ -370,9 +371,13 @@ export const fetchUnifiedBalance = async (
     ),
   );
 
-  return listOf(result.list).flatMap((entry) =>
-    listOf(recordOf(entry).coin).map((row) => unifiedCoinOf(row)),
-  );
+  const entries = listOf(result.list);
+
+  if (entries.length === 0) {
+    throw new BybitRefusalError('malformed');
+  }
+
+  return entries.flatMap((entry) => listOf(recordOf(entry).coin).map((row) => unifiedCoinOf(row)));
 };
 
 /** One coin of the FUND account, as `BybitUnifiedCoin` is. `transferBalance` is never read. */

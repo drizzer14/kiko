@@ -54,7 +54,9 @@ describe('the closed list of Bybit reads', () => {
   });
 
   it('every read the client exports goes through the listed paths with GET', async () => {
-    const { fetchImpl, sent } = answerWith({ body: envelopeOf(0, { list: [], balance: [] }) });
+    const { fetchImpl, sent } = answerWith({
+      body: envelopeOf(0, { list: [{ coin: [] }], balance: [] }),
+    });
     const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(fetchImpl);
 
     await fetchKeyInfo(API_KEY, SECRET);
@@ -81,7 +83,9 @@ describe('the host of a Bybit key', () => {
   });
 
   it('sends every request to the host of the environment value', async () => {
-    const { fetchImpl, sent } = answerWith({ body: envelopeOf(0, { list: [], balance: [] }) });
+    const { fetchImpl, sent } = answerWith({
+      body: envelopeOf(0, { list: [{ coin: [] }], balance: [] }),
+    });
 
     await fetchKeyInfo(API_KEY, SECRET, { fetchImpl });
     await fetchUnifiedBalance(API_KEY, SECRET, { fetchImpl });

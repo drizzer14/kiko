@@ -248,6 +248,7 @@ describe('bybitProvider', () => {
 
     it.each([
       ['no result list', okAnswer({ accountType: 'UNIFIED' })],
+      ['a result list with no entry', okAnswer({ list: [] })],
       ['an entry with no coin list', okAnswer({ list: [{ accountType: 'UNIFIED' }] })],
       ['a coin row with no name', okAnswer({ list: [{ coin: [{ walletBalance: '1' }] }] })],
       ['a coin row that is no object', okAnswer({ list: [{ coin: ['BTC'] }] })],
@@ -345,7 +346,6 @@ describe('bybitProvider', () => {
     it.each([
       ['an empty result list', unifiedResult([]), fundResult([])],
       ['a wallet entry that lists no coin', { list: [{ coin: [] }] }, { balance: [] }],
-      ['no wallet entry at all', { list: [] }, { balance: [] }],
     ])('clears a held coin when the answers are %s', async (_title, unified, fund) => {
       const { deps } = routedDeps({
         [KEY_INFO_PATH]: okAnswer({}),

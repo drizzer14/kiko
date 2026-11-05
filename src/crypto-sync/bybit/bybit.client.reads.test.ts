@@ -226,9 +226,8 @@ describe('fetchUnifiedBalance', () => {
     expect(coins.map((row) => row.coin)).toEqual(['AAA', 'BBB']);
   });
 
-  it('reads an account with no coin as an empty list', async () => {
+  it('reads an account with no coin, the entry Bybit sends for it, as an empty list', async () => {
     await expect(unifiedFrom({ list: [{ coin: [] }] }).coins).resolves.toEqual([]);
-    await expect(unifiedFrom({ list: [] }).coins).resolves.toEqual([]);
   });
 
   it.each<[string, unknown]>([
@@ -251,6 +250,7 @@ describe('fetchUnifiedBalance', () => {
     ['no result', undefined],
     ['a result with no list', {}],
     ['a list that is not an array', { list: {} }],
+    ['a list with no entry', { list: [] }],
     ['an entry that is not an object', { list: ['text'] }],
     ['an entry with no coin array', { list: [{}] }],
     ['an entry whose coin is not an array', { list: [{ coin: {} }] }],
