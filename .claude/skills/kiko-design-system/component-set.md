@@ -9,15 +9,16 @@ real set — enumerated at `src/design-system/components/`; read that
 directory listing directly rather than trusting a copy of it here, a
 new component can land between reviews of this skill:
 
-- **TwoPaneLayout** — props `{ companion, primary, mode?, expandedPane? }` (`mode` pins
-  the mode the caller has settled on; the default is `useLayoutMode`). `expandedPane` gives that
-  pane the window below the top-bar band (`wholeWindowFrame` in `pane-geometry.ts`), with a null
-  `PaneContext` / `PaneWidthContext` and no divider; the other pane keeps its frame, at
-  `opacity: 0`, `pointerEvents: 'none'`, hidden from accessibility. Both pane Views carry
-  `collapsable={false}`, because a flattened View would re-parent the hidden native stack (the
-  device effect is NOT measured). It still positions pane frames only. Single
-  mode renders only `primary`; columns/rows position two pane frames via
-  `resolvePaneGeometry` (`src/design-system/pane-geometry/pane-geometry.ts`).
+- **TwoPaneLayout** — props are in
+  `src/design-system/components/two-pane-layout/two-pane-layout.props.d.ts`; read them there
+  (`mode` pins the mode the caller has settled on; the default is `useLayoutMode`). `layer` is a
+  stack drawn over both panes in `wholeWindowFrame` (`pane-geometry.ts`, the window below the
+  top-bar band); it moves neither pane, and its screens are told they are in no pane. It is always
+  mounted, because a stack made afresh pushes its first screen instead of starting on it;
+  `isLayerShown` alone gives it touches, the screen reader and `accessibilityViewIsModal`. Both
+  panes keep their frames while it shows. Single mode draws no layer and renders only `primary`;
+  columns/rows position two pane frames via `resolvePaneGeometry`
+  (`src/design-system/pane-geometry/pane-geometry.ts`).
   Flat = a hairline divider; folded = the fold region is the gap. Each pane
   child is given a `PaneContext` (`src/design-system/pane-context/`): the
   window edges the pane touches, which a `Screen` inside it reads.

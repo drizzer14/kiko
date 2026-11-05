@@ -34,7 +34,7 @@ the base:
 | Source claim | Finding |
 |---|---|
 | "Landscape and the unfolded Duo show more" | iPhone is portrait only; iPad has all four orientations (`ios/Kiko/Info.plist:133-143`). No iPhone landscape in this track. Unlocking it would change the whole app. |
-| Duo and wide windows | The Duo inner screen is 669 wide and is `single` mode, never "large" (`layout-mode.ts:8-25`). Panes cap content at `paneMaxWidth` 600 (`use-pane-screen.ts`), and `useContentCap` caps any `regular` window. Tables is `Screen uncapped` and a whole-window route, so it fills the window or the pane (section 12, ruling 11). |
+| Duo and wide windows | The Duo inner screen is 669 wide and is `single` mode, never "large" (`layout-mode.ts:8-25`). Panes cap content at `paneMaxWidth` 600 (`use-pane-screen.ts`), and `useContentCap` caps any `regular` window. Tables is `Screen uncapped` and a whole-window route shown in a layer over both panes, so it fills the window below the top-bar band (section 12, ruling 11). |
 | C1 data: "Yes: category-breakdown, buckets" | Partly. Buckets are 1 or 7 days only (`buckets.ts:5-13`); no month helper exists in `src/`. |
 | C2: "mostly, new calculation" | Correct. No income code exists; every builder skips `amountMinorUnits >= 0` (`category-breakdown.ts:180`). |
 | C3: "Yes: net-worth-series, holding-value-at" | Partly. The series sums inside its reduce (`net-worth-series.ts:230-236`). No per-account series exists. |
@@ -341,10 +341,12 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 - Performance: Tables reads the same queries as S, through the shared hook. Compute only the selected table, inside a memo. What S does
   while Tables shows depends on the window:
   - One pane: S stays mounted under Tables, paused, and keeps its rows.
-  - Statistics tab with two panes: Tables takes the whole window in the pane of the route below it, and S stays mounted
-    under it, hidden and paused (`visibleKeys` holds only Tables), with its scroll kept.
+  - Statistics tab with two panes: Tables shows in a layer over both panes, and S stays mounted
+    in its pane, not hidden: both panes keep their frames, the layer covers them and they are paused
+    (`visibleKeys` holds only Tables), with its scroll kept. The opener (a form or Home) stays a route below.
   - Home tab with two panes: S is the companion's default and stays the stand-in, same key, never remounted
     (`realizeStaticDefault` is skipped for a whole-window route). No second S mounts, so no mount reads run; only Tables reads.
+    The opener (form or Home) stays a route below.
     Back returns S as it was.
   Measure these on the device. Unknown: cell count and per-account memory. Measure on the device with the real data.
 - Tests: `kiko-testing`; acceptance pins in section 4; AX and long uk labels in the component's render tests; device check per the
@@ -370,7 +372,7 @@ Rulings of 2026-11-04 (user, relayed by the coordinator):
 
 | # | Decision | Ruling |
 |---|---|---|
-| 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`); the tab bar stays, Back returns to the two panes |
+| 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`) shown in a layer over both panes; the tab bar stays, Back returns to the two panes. User ruling (relayed by the coordinator, 2026-11-04): "A: It stays (Recommended)": with a form or Home open beside Statistics, the Monthly tables press keeps it open (`openFrom` keeps all routes), and Back returns to it as it was. Implementation note, not a user ruling: the layer root has a shown, transparent, empty header only while a page is in the layer, and no header at rest, because a hidden root header hides the shared bar when a swipe starts (fault A); its native effect is a device point, not yet seen. Back after fold and unfold is open, with no found cause |
 | 12 | Tables title | "A: Small title (Recommended)": a normal small title in an opaque bar, content below it, Tables only |
 | 13 | Button size | "As it is now": 44 pt, full width (`size="compact"`) |
 | 14 | Button chevron | "Remove it (Recommended)" |

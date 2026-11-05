@@ -1666,9 +1666,14 @@ are built with `createPaneStackNavigator`.
   or a plain `navigate` from a screen; both become `PANE_OPEN`). `openFrom` in
   `pane-assignment.ts` first pops every route above the opener, so a tap in the list replaces
   the detail stack and a tap in the detail pane goes one step deeper there. The exception is a
-  route named in `PaneConfig.wholeWindowRoutes`: it sits in the pane of the route below it
-  (`resolvePanes`, `openFrom`; Back stays in that slice) and the other pane keeps its screen
-  hidden.
+  route named in `PaneConfig.wholeWindowRoutes` sits in no pane. It and every route above it show
+  in a layer over both panes; both panes keep every route and frame (`layerStartOf`,
+  `layerRoutesOf`, `pane-assignment.types.d.ts`). The layer is a third stack with a placeholder
+  root, `pane-layer-root`, and rests with `pointerEvents` off. Back in the layer closes down to
+  floor 0 (`dismiss` in `pane-router.ts`). The root has a shown, transparent, empty header only
+  while a page is above it, and no header at rest, because a hidden root header hides the shared
+  bar when a swipe starts (implementation note, not a user ruling; its native effect is a
+  device point, not yet seen). Back after a fold and unfold is an open fault with no found cause.
 - **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` decides
   by position alone: index 0 takes `rootPane`, every other route, a default included, takes the
   detail pane (so a route pushed while folded, or a reminder rebuild, never lands in the list
@@ -1694,15 +1699,17 @@ are built with `createPaneStackNavigator`.
   An opener that is a static default is made a real route below the opened page by
   `realizeStaticDefault` (`src/navigation/pane-stack/pane-router/pane-router.ts`); `openFrom`'s
   static-key branch is only the fallback. A whole-window route opened from a static default skips
-  it (`isWholeWindow`): the stand-in stays, under the same key, and is never remounted. Two tests
+  it (`isWholeWindow`): the stand-in stays, under the same key, and is never remounted. The opener,
+  a form or Home beside Statistics, also stays a route, because `openFrom` keeps all routes (user
+  ruling, relayed 2026-11-04: "A: It stays (Recommended)"). Two tests
   pin React Navigation assumptions (the two `PINS React Navigation` cases in
   `src/navigation/root-navigator/default-pane-navigation.test.tsx`); re-check them on every React
   Navigation upgrade.
 - **Screen rule for anything that can be a default** (Home, Statistics, Settings Categories and
   the Accounts list, as the rule's path globs say). In a default `useIsFocused()` is false and
   `useFocusEffect` never runs, so such a screen uses `useIsScreenVisible()` (two panes: the top
-  route of either pane while the tab is focused, but only the expanded pane's top route while a
-  pane is expanded, see `visibleKeys` in
+  route of either pane while the tab is focused, but while the layer holds a page `visibleKeys`
+  is that page alone and the panes are paused, see `visibleKeys` in
   `src/navigation/pane-stack/pane-stack-view/use-pane-visibility-value.ts`; one pane:
   `useIsFocused`) and passes
   `paused: !isVisible` to its live queries (the "paused vs enabled" rule above). Semgrep rule
