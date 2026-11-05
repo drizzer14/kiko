@@ -135,6 +135,43 @@ describe('ruleRows', () => {
   });
 });
 
+describe('the account and counterIban rows', () => {
+  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
+  const asOptions = (raw: unknown) => raw as Parameters<typeof ruleRows>[1];
+
+  const NAMES = new Map([['account-1', 'Main card']]);
+  const IBAN = 'UA733220010000026201112223334';
+
+  const accountRowsOf = (matchers: CategoryRuleMatcher[]) =>
+    ruleRows(
+      matchers,
+      asOptions({
+        t: i18n.t,
+        clock: CLOCK_24,
+        formatAmount,
+        accountNameOf: (accountId: string) => NAMES.get(accountId) ?? null,
+      }),
+    ).map(({ label, value }) => ({ label, value }));
+
+  it('shows the live account name', () => {
+    expect(accountRowsOf([asMatcher({ type: 'account', accountId: 'account-1' })])).toEqual([
+      { label: 'Account', value: 'Main card' },
+    ]);
+  });
+
+  it('shows Deleted account for an id in no row', () => {
+    expect(accountRowsOf([asMatcher({ type: 'account', accountId: 'gone' })])).toEqual([
+      { label: 'Account', value: 'Deleted account' },
+    ]);
+  });
+
+  it('shows the IBAN in full', () => {
+    expect(accountRowsOf([asMatcher({ type: 'counterIban', iban: IBAN })])).toEqual([
+      { label: 'Counterparty IBAN', value: IBAN },
+    ]);
+  });
+});
+
 describe('ruleSummary', () => {
   it('reads the rows it is given, so the line can not differ from the table', () => {
     expect(

@@ -236,6 +236,60 @@ describe('rule priority of the new conditions', () => {
   });
 });
 
+describe('rule priority of the account and counterIban conditions', () => {
+  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
+  const asStoredRow = (raw: unknown) => raw as Parameters<typeof subjectOfStoredRow>[0];
+
+  const accountRule = (accountId: string) => asMatcher({ type: 'account', accountId });
+  const ibanRule = (iban: string) => asMatcher({ type: 'counterIban', iban });
+
+  const IBAN = 'UA733220010000026201112223334';
+
+  const winnerIdOfTransfer = (rows: readonly StoredCategoryRule[]) => {
+    const row = {
+      description: 'Silpo',
+      amountMinorUnits: -10000,
+      time: new Date(2026, 5, 1, 12, 0).getTime(),
+      currency: 'UAH',
+      mcc: null,
+      accountId: 'account-1',
+      counterIban: IBAN,
+    };
+
+    return winningRule(prepareRules(rows), subjectOfStoredRow(asStoredRow(row)))?.id;
+  };
+
+  it('each new condition counts one', () => {
+    const rows = [
+      ruleRow({ id: 'account', matchers: [accountRule('account-1')], updatedAt: 100 }),
+      ruleRow({ id: 'iban', matchers: [ibanRule(IBAN)], updatedAt: 200 }),
+      ruleRow({
+        id: 'both',
+        matchers: [accountRule('account-1'), ibanRule(IBAN)],
+        updatedAt: 50,
+      }),
+    ];
+
+    expect(winnerIdOfTransfer(rows)).toBe('both');
+    expect(winnerIdOfTransfer(rows.slice(0, 2))).toBe('iban');
+    expect(winnerIdOfTransfer([...rows.slice(0, 2)].reverse())).toBe('iban');
+  });
+
+  it('one IBAN written in two spellings counts once', () => {
+    const rows = [
+      ruleRow({
+        id: 'repeated',
+        matchers: [ibanRule(IBAN), ibanRule('ua73 3220 0100 0002 6201 1122 2333 4')],
+        updatedAt: 100,
+      }),
+      ruleRow({ id: 'single', matchers: [nameStartsWith('sil')], updatedAt: 200 }),
+    ];
+
+    expect(winnerIdOfTransfer(rows)).toBe('single');
+    expect(winnerIdOfTransfer([...rows].reverse())).toBe('single');
+  });
+});
+
 describe('unreadable rules', () => {
   const broken: StoredCategoryRule = {
     ...ruleRow({ id: 'zzz', matchers: [nameIs('silpo')] }),

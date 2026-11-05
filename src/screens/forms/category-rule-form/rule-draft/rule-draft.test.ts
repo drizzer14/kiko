@@ -152,6 +152,110 @@ describe('the nameContains and mcc rows', () => {
   });
 });
 
+describe('the account and counterIban rows', () => {
+  const asDraft = (raw: unknown) => raw as MatcherDraft;
+  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
+  const asSeeder = (raw: unknown) =>
+    raw as (
+      matchers: readonly CategoryRuleMatcher[],
+      baseCurrency: 'UAH',
+      liveAccountIds: ReadonlySet<string>,
+    ) => MatcherDraft[];
+
+  const seedWithAccounts = asSeeder(toMatcherDrafts);
+
+  const accountDraft = (accountId: string | null): MatcherDraft =>
+    asDraft({ ...emptyMatcherDraft('UAH'), type: 'account', accountId });
+  const ibanDraft = (ibanText: string): MatcherDraft =>
+    asDraft({ ...emptyMatcherDraft('UAH'), type: 'counterIban', ibanText });
+
+  const accountIdOf = (draft: MatcherDraft | undefined): unknown =>
+    (draft as unknown as { accountId: unknown } | undefined)?.accountId;
+
+  it('no account picked gives errorAccount', () => {
+    expect(fromMatcherDrafts([accountDraft(null)])).toEqual({
+      kind: 'invalid',
+      errors: new Map([[0, 'errorAccount']]),
+    });
+  });
+
+  it('a picked account becomes a matcher', () => {
+    expect(fromMatcherDrafts([accountDraft('account-1')])).toEqual({
+      kind: 'valid',
+      matchers: [asMatcher({ type: 'account', accountId: 'account-1' })],
+    });
+  });
+
+  it('an id no longer listed seeds as none', () => {
+    const [draft] = seedWithAccounts(
+      [asMatcher({ type: 'account', accountId: 'gone' })],
+      'UAH',
+      new Set(['account-1']),
+    );
+
+    expect(draft).toMatchObject({ type: 'account' });
+    expect(accountIdOf(draft)).toBeNull();
+  });
+
+  it('a live id seeds as itself', () => {
+    const [draft] = seedWithAccounts(
+      [asMatcher({ type: 'account', accountId: 'account-1' })],
+      'UAH',
+      new Set(['account-1', 'account-2']),
+    );
+
+    expect(draft).toMatchObject({ type: 'account' });
+    expect(accountIdOf(draft)).toBe('account-1');
+  });
+
+  it('a typed IBAN is stored normalized', () => {
+    expect(fromMatcherDrafts([ibanDraft(' ua73 3220 0100 0002 6201 1122 2333 4 ')])).toEqual({
+      kind: 'valid',
+      matchers: [asMatcher({ type: 'counterIban', iban: 'UA733220010000026201112223334' })],
+    });
+  });
+
+  it('an IBAN rule seeds the text it was stored with', () => {
+    const [draft] = seedWithAccounts(
+      [asMatcher({ type: 'counterIban', iban: 'UA733220010000026201112223334' })],
+      'UAH',
+      new Set(),
+    );
+
+    expect(draft).toMatchObject({ type: 'counterIban' });
+    expect((draft as unknown as { ibanText: unknown }).ibanText).toBe(
+      'UA733220010000026201112223334',
+    );
+  });
+
+  it.each([
+    ['a blank text', ''],
+    ['spaces only', '   '],
+    ['text that is no IBAN', 'ATB Market'],
+    ['a short body', 'UA7332200100'],
+  ])('a bad IBAN gives errorIban: %s', (_label, ibanText) => {
+    expect(fromMatcherDrafts([ibanDraft(ibanText)])).toEqual({
+      kind: 'invalid',
+      errors: new Map([[0, 'errorIban']]),
+    });
+  });
+
+  it('judges only the fields of the type a row has', () => {
+    expect(
+      fromMatcherDrafts([
+        asDraft({ ...accountDraft('account-1'), ibanText: 'junk' }),
+        asDraft({ ...ibanDraft('UA733220010000026201112223334'), accountId: null }),
+      ]),
+    ).toEqual({
+      kind: 'valid',
+      matchers: [
+        asMatcher({ type: 'account', accountId: 'account-1' }),
+        asMatcher({ type: 'counterIban', iban: 'UA733220010000026201112223334' }),
+      ],
+    });
+  });
+});
+
 describe('fromMatcherDrafts', () => {
   const amountDraft = (amountText: string, currency: 'UAH' | 'BTC' | 'BHD' | 'BIF' = 'UAH') => ({
     ...emptyMatcherDraft('UAH'),

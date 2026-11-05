@@ -125,6 +125,59 @@ describe('the nameContains and mcc conditions', () => {
   });
 });
 
+describe('the account and counterIban conditions', () => {
+  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
+  const account = (accountId: string) => asMatcher({ type: 'account', accountId });
+  const iban = (value: string) => asMatcher({ type: 'counterIban', iban: value });
+
+  const SPACED_LOWER_CASE_IBAN = 'ua73 3220 0100 0002 6201 1122 2333 4';
+  const IBAN_KEY = 'UA733220010000026201112223334';
+  const OTHER_IBAN_KEY = 'UA213223130000026007233566001';
+
+  it('two accounts can never match', () => {
+    expect(canEverMatch([account('account-1'), account('account-2')])).toBe(false);
+    expect(validateRule([account('account-1'), account('account-2')], [], null)).toEqual({
+      kind: 'neverMatches',
+      conflict: 'other',
+    });
+  });
+
+  it('one account written twice can match', () => {
+    expect(canEverMatch([account('account-1'), account('account-1')])).toBe(true);
+  });
+
+  it('two IBANs can never match', () => {
+    expect(canEverMatch([iban(IBAN_KEY), iban(OTHER_IBAN_KEY)])).toBe(false);
+    expect(validateRule([iban(IBAN_KEY), iban(OTHER_IBAN_KEY)], [], null)).toEqual({
+      kind: 'neverMatches',
+      conflict: 'other',
+    });
+  });
+
+  it('one IBAN in two spellings can match', () => {
+    expect(canEverMatch([iban(IBAN_KEY), iban(SPACED_LOWER_CASE_IBAN)])).toBe(true);
+  });
+
+  it('an account beside an IBAN can match', () => {
+    expect(canEverMatch([account('account-1'), iban(IBAN_KEY)])).toBe(true);
+  });
+
+  it('matcherSetKey treats two spellings of one IBAN as one', () => {
+    expect(matcherSetKey([iban(SPACED_LOWER_CASE_IBAN)])).toBe(matcherSetKey([iban(IBAN_KEY)]));
+    expect(matcherSetKey([iban(IBAN_KEY), iban(SPACED_LOWER_CASE_IBAN)])).toBe(
+      matcherSetKey([iban(IBAN_KEY)]),
+    );
+  });
+
+  it.each([
+    ['two accounts', [account('account-1')], [account('account-2')]],
+    ['two IBANs', [iban(IBAN_KEY)], [iban(OTHER_IBAN_KEY)]],
+    ['an account against an IBAN of the same text', [account(IBAN_KEY)], [iban(IBAN_KEY)]],
+  ])('matcherSetKey tells %s apart', (_label, first, second) => {
+    expect(matcherSetKey(first)).not.toBe(matcherSetKey(second));
+  });
+});
+
 describe('matcherSetKey', () => {
   it('ignores matcher order', () => {
     expect(matcherSetKey([nameIs('silpo'), direction('expense'), clockAfter(6)])).toBe(

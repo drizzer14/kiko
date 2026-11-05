@@ -152,4 +152,90 @@ describe('parseRuleMatchers', () => {
       ).toBeNull();
     });
   });
+
+  describe('the account and counterIban conditions', () => {
+    const SPACED_LOWER_CASE_IBAN = 'ua73 3220 0100 0002 6201 1122 2333 4';
+    const IBAN_KEY = 'UA733220010000026201112223334';
+    const BAD_CHECKSUM_IBAN = 'UA11111111111111111111111111';
+
+    it('reads an account matcher', () => {
+      const matcher = { type: 'account', accountId: 'account-1' };
+
+      expect(parseRuleMatchers(json([matcher]))).toEqual([matcher]);
+    });
+
+    it.each([
+      ['an empty string', { type: 'account', accountId: '' }],
+      ['a missing id', { type: 'account' }],
+      ['a number', { type: 'account', accountId: 7 }],
+      ['null', { type: 'account', accountId: null }],
+    ])('refuses an empty account id: %s', (_label, matcher) => {
+      expect(parseRuleMatchers(json([matcher]))).toBeNull();
+    });
+
+    it('reads an IBAN typed with spaces in lower case', () => {
+      expect(
+        parseRuleMatchers(json([{ type: 'counterIban', iban: SPACED_LOWER_CASE_IBAN }])),
+      ).toEqual([{ type: 'counterIban', iban: IBAN_KEY }]);
+    });
+
+    it('reads an IBAN already in its key form unchanged', () => {
+      const matcher = { type: 'counterIban', iban: IBAN_KEY };
+
+      expect(parseRuleMatchers(json([matcher]))).toEqual([matcher]);
+    });
+
+    it.each([
+      ['an empty string', ''],
+      ['spaces only', '    '],
+      ['a country code with no check digits', 'UA'],
+      ['a text that is no IBAN', 'ATB Market'],
+      ['too short a body', 'UA7332200100'],
+      ['a number in the country code', '7A733220010000026201112223334'],
+      ['a letter in the check digits', 'UAX3322001000002620111222333'],
+      ['a symbol inside', 'UA73-3220-0100-0002-6201-1122-2333-4'],
+      ['36 characters in all', `UA73${'1'.repeat(32)}`],
+    ])('refuses a malformed IBAN: %s', (_label, iban) => {
+      expect(parseRuleMatchers(json([{ type: 'counterIban', iban }]))).toBeNull();
+    });
+
+    it.each([
+      ['a number', 4],
+      ['null', null],
+      ['a missing value', undefined],
+    ])('refuses an IBAN that is %s', (_label, iban) => {
+      expect(parseRuleMatchers(json([{ type: 'counterIban', iban }]))).toBeNull();
+    });
+
+    it('a fixture IBAN with a bad checksum still reads', () => {
+      const matcher = { type: 'counterIban', iban: BAD_CHECKSUM_IBAN };
+
+      expect(parseRuleMatchers(json([matcher]))).toEqual([matcher]);
+    });
+
+    it('makes the whole rule unreadable when the IBAN is bad beside a good account', () => {
+      expect(
+        parseRuleMatchers(
+          json([
+            { type: 'account', accountId: 'account-1' },
+            { type: 'counterIban', iban: 'nope' },
+          ]),
+        ),
+      ).toBeNull();
+    });
+
+    it('drops an unknown field and keeps the known ones of a new type', () => {
+      expect(
+        parseRuleMatchers(
+          json([
+            { type: 'account', accountId: 'account-1', note: 'junk' },
+            { type: 'counterIban', iban: IBAN_KEY, extra: true },
+          ]),
+        ),
+      ).toStrictEqual([
+        { type: 'account', accountId: 'account-1' },
+        { type: 'counterIban', iban: IBAN_KEY },
+      ]);
+    });
+  });
 });

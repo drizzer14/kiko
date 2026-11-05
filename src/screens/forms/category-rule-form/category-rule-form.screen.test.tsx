@@ -19,6 +19,12 @@ import { emptyMatcherDraft } from './rule-draft';
 import CategoryRuleFormScreen from './category-rule-form.screen';
 
 type CategoryData = { key: string; title: string; icon: string; color: string | null };
+type AccountData = {
+  id: string;
+  name: string;
+  kind: 'bank' | 'cash' | 'property' | 'debt';
+  archivedAt: number | null;
+};
 type RuleData = {
   id: string;
   category: string;
@@ -34,7 +40,14 @@ let mockCategories: CategoryData[] = [];
 let mockSettingsRows: Array<{ baseCurrency: string }> = [];
 let mockRulesLoading = false;
 let mockSettingsLoading = false;
+let mockAccounts: AccountData[] = [];
+let mockAccountsLoading = false;
 
+jest.mock('@kiko/accounts', () => ({
+  accountsRepo: {
+    listQuery: () => ({ __kind: 'accounts', toSQL: () => ({ sql: '', params: [] }) }),
+  },
+}));
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
@@ -54,7 +67,11 @@ jest.mock(
 );
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (_query: unknown, keys: string[]) => {
+  useLiveQuery: (query: { __kind?: string }, keys: string[]) => {
+    if (query.__kind === 'accounts') {
+      return { data: mockAccounts, isLoading: mockAccountsLoading, isFresh: true };
+    }
+
     if (keys?.[0] === 'settings') {
       return { data: mockSettingsRows, isLoading: mockSettingsLoading, isFresh: true };
     }
@@ -122,6 +139,8 @@ beforeEach(() => {
   mockSettingsRows = [{ baseCurrency: 'UAH' }];
   mockRulesLoading = false;
   mockSettingsLoading = false;
+  mockAccounts = [];
+  mockAccountsLoading = false;
   holdCurrencies([]);
   mockCountRuleRewrite.mockResolvedValue(0);
   mockSaveRule.mockResolvedValue({ id: 'saved', changed: 0 });
@@ -861,6 +880,128 @@ describe('CategoryRuleFormScreen — the draft kept over a remount', () => {
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
     expect(navigation.setParams).not.toHaveBeenCalled();
+  });
+});
+
+describe('CategoryRuleFormScreen — an account condition', () => {
+  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
+
+  const accountRuleOf = (accountId: string): RuleData =>
+    ruleOf('mine', 'food', [asMatcher({ type: 'account', accountId })]);
+
+  const MAIN_CARD: AccountData = {
+    id: 'account-1',
+    name: 'Main card',
+    kind: 'bank',
+    archivedAt: null,
+  };
+  const OLD_CARD: AccountData = {
+    id: 'account-2',
+    name: 'Old card',
+    kind: 'bank',
+    archivedAt: 1000,
+  };
+  const CASH_WALLET: AccountData = {
+    id: 'account-3',
+    name: 'Cash wallet',
+    kind: 'cash',
+    archivedAt: null,
+  };
+
+  const openAccountPicker = async (screen: Screen, label = 'Account'): Promise<void> => {
+    await fireEvent.press(screen.getByLabelText(label));
+  };
+
+  it('keeps a live account id when the accounts read lands after the rules read', async () => {
+    mockRules = [accountRuleOf('account-1')];
+    mockAccountsLoading = true;
+
+    const screen = await renderEdit('mine');
+
+    mockAccounts = [MAIN_CARD];
+    mockAccountsLoading = false;
+    await act(async () => {
+      await screen.rerender(formElement({ categoryKey: 'food', ruleId: 'mine' }));
+    });
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(mockSaveRule).toHaveBeenCalledWith({
+        id: 'mine',
+        category: 'food',
+        matchers: [{ type: 'account', accountId: 'account-1' }],
+        applyToExisting: false,
+      }),
+    );
+    expect(screen.queryByText('Choose an account.')).toBeNull();
+  });
+
+  it('a rule on a deleted account asks for a pick on Save', async () => {
+    mockRules = [accountRuleOf('gone')];
+    mockAccounts = [MAIN_CARD];
+
+    const screen = await renderEdit('mine');
+
+    await pressSave(navigation.setOptions);
+
+    expect(screen.getByText('Choose an account.')).toBeTruthy();
+    expect(mockSaveRule).not.toHaveBeenCalled();
+  });
+
+  it('leaves an archived account out unless it is the row’s own', async () => {
+    mockRules = [accountRuleOf('account-1')];
+    mockAccounts = [MAIN_CARD, OLD_CARD, CASH_WALLET];
+
+    const screen = await renderEdit('mine');
+
+    await openAccountPicker(screen);
+
+    expect(screen.getAllByText('Cash wallet').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Old card')).toBeNull();
+  });
+
+  it('lists an archived account when it is the row’s own', async () => {
+    mockRules = [accountRuleOf('account-2')];
+    mockAccounts = [MAIN_CARD, OLD_CARD, CASH_WALLET];
+
+    const screen = await renderEdit('mine');
+
+    await openAccountPicker(screen);
+
+    expect(screen.getAllByText('Cash wallet').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Old card').length).toBeGreaterThan(1);
+  });
+
+  describe('under the uk language', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('lists the accounts by accountDisplayName, the implicit ones translated', async () => {
+      mockRules = [accountRuleOf('account-1')];
+      mockAccounts = [
+        MAIN_CARD,
+        { id: 'account-4', name: 'Properties', kind: 'property', archivedAt: null },
+      ];
+
+      const screen = await renderEdit('mine');
+
+      await openAccountPicker(screen, 'Рахунок');
+
+      expect(screen.getAllByText(i18n.t('accounts.implicitName.property')).length).toBeGreaterThan(
+        0,
+      );
+      expect(screen.queryByText('Properties')).toBeNull();
+      expect(screen.getAllByText('Main card').length).toBeGreaterThan(0);
+    });
   });
 });
 
