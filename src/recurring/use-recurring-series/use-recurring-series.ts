@@ -14,7 +14,9 @@ type UseRecurringSeriesResult = { series: RecurringSeries[]; isLoading: boolean 
  * The recurring series of the whole ledger, shared by the list and the series screen. Each read is
  * `paused` while the screen is hidden (a write elsewhere shows once it is back) and never
  * `cached`: a second copy of a whole ledger for a screen opened rarely. `isLoading` is true until
- * every read has settled, so a first read still queued never reads as an empty list.
+ * every read has settled, so a first read still queued never reads as an empty list. Detection
+ * waits for that too: reads land one at a time, and a half-landed ledger (rows, no accounts)
+ * would run every matcher on a world that rejects each row, only to run them again.
  *
  * Detection keys on the local day of `now`, not on `now`: each return to the screen refreshes
  * `now` with no row change, and must run nothing.
@@ -43,8 +45,8 @@ export const useRecurringSeries = (): UseRecurringSeriesResult => {
   const today = startOfLocalDay(useVisibleRefreshedNow(isVisible));
   const isReady = useDataReady(rowsLoading, holdingsLoading, accountsLoading);
   const series = useMemo(
-    () => detectRecurringSeries({ rows, holdings, accounts }, today),
-    [rows, holdings, accounts, today],
+    () => (isReady ? detectRecurringSeries({ rows, holdings, accounts }, today) : []),
+    [isReady, rows, holdings, accounts, today],
   );
 
   return { series, isLoading: !isReady };

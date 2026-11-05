@@ -5,7 +5,14 @@ jest.mock('@kiko/transactions/merchant-name', () => {
 
   return { ...actual, merchantNameOf: jest.fn(actual.merchantNameOf) };
 });
+jest.mock('@kiko/holdings/interest', () => {
+  const actual = jest.requireActual('@kiko/holdings/interest');
 
+  return { ...actual, daysBetween: jest.fn(actual.daysBetween) };
+});
+
+import maybe, { foldMap } from 'fnts/maybe';
+import { daysBetween } from '@kiko/holdings/interest';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { buildRulesPerformanceFixture } from '@kiko/categories/category-rules/__fixtures__/rules-performance-fixture';
 
@@ -13,11 +20,21 @@ import { detectRecurringSeries } from './detection';
 import type { RecurringInput, RecurringLedgerRow } from './detection.types.d';
 import { at, chargeOf, holdingOf, bankAccountOf, type Currency } from './detection-test-helper';
 
-// The reads of `time` may not pass `rows x (log2(rows) + K)`, the cost of sorting by time. K is
-// the smallest whole number under which the first run on this fixture passed: it read `time` twice
-// per row (100 000 reads), so rows x (log2(rows) + K) needed K of -13.6 or more. It is never
-// raised, so a pass over the rows that grows past two reads of each fails.
+// The reads of `time` on the input rows may not pass `rows x (log2(rows) + K)`. K is the smallest
+// whole number under which the first run on this fixture passed: it read `time` twice per row
+// (100 000 reads), so K of -13.6 or more was needed. It is never raised. The pin sees only the
+// input objects: `datedRowsOf` and the row spread in eligibility copy `time`, so every comparator
+// reads a copy. What it fails on is one more pass over the input rows, past 2.61 reads per row;
+// a second sort or a scan over the charges is seen by the two pins below.
 const LOGARITHM_OFFSET = -13;
+// The comparator calls of every sort in one detection, over `rows x (log2(rows) + K)`, the cost of
+// one sort of the ledger. The first run made 1 062 843 calls, 21.26 per row, so K needed 5.65
+// or more. It is never raised, so a second sort over the charges fails it.
+const SORT_COMPARISON_OFFSET = 6;
+// Calls of `daysBetween` per row, the work of the fit evaluations (7 calls for each pair of
+// charges in a group). The first run made 1 812 081 calls, 36.24 per row. It is never raised, so
+// a scan that compares every charge of a group with every other fails it.
+const DAY_GAP_CALLS_PER_ROW = 37;
 const HOLDINGS_PER_CURRENCY = { UAH: 8, USD: 4, EUR: 3, GBP: 3, BTC: 2 } as const;
 const PLANTED_ROW_COUNT = 3;
 const PLANTED_DESCRIPTION = 'Planted Gym Club';
@@ -86,9 +103,36 @@ const withCountedTimeReads = (
   return { rows: counted, reads: () => reads };
 };
 
+const countedSortComparisons = (run: () => void): number => {
+  const sortOfArrays = Array.prototype.sort;
+  let comparisons = 0;
+  const spy = jest.spyOn(Array.prototype, 'sort').mockImplementation(function (
+    this: unknown[],
+    compare?: (left: unknown, right: unknown) => number,
+  ) {
+    return sortOfArrays.call(
+      this,
+      foldMap(maybe(compare), (compareItems) => (left: unknown, right: unknown) => {
+        comparisons += 1;
+
+        return compareItems(left, right);
+      }),
+    );
+  });
+
+  try {
+    run();
+  } finally {
+    spy.mockRestore();
+  }
+
+  return comparisons;
+};
+
 describe('detectRecurringSeries on a large ledger', () => {
   beforeEach(() => {
     jest.mocked(merchantNameOf).mockClear();
+    jest.mocked(daysBetween).mockClear();
   });
 
   it('reads the fixture at the size the spec budgets for', () => {
@@ -118,6 +162,27 @@ describe('detectRecurringSeries on a large ledger', () => {
 
     expect(reads()).toBeGreaterThan(0);
     expect(reads()).toBeLessThanOrEqual(bound);
+  });
+
+  it('compares within rows x (log2(rows) + K) over every sort of one detection', () => {
+    const rows = ledgerRowsFrom();
+    const comparisons = countedSortComparisons(() => detectRecurringSeries(inputOf(rows), NOW));
+
+    expect(comparisons).toBeGreaterThan(0);
+    expect(comparisons).toBeLessThanOrEqual(
+      rows.length * (Math.log2(rows.length) + SORT_COMPARISON_OFFSET),
+    );
+  });
+
+  it('measures day gaps within DAY_GAP_CALLS_PER_ROW of each row', () => {
+    const rows = ledgerRowsFrom();
+
+    detectRecurringSeries(inputOf(rows), NOW);
+
+    const calls = jest.mocked(daysBetween).mock.calls.length;
+
+    expect(calls).toBeGreaterThan(0);
+    expect(calls).toBeLessThanOrEqual(rows.length * DAY_GAP_CALLS_PER_ROW);
   });
 
   it('finds three fixture rows planted monthly', () => {

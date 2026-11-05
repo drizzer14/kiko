@@ -248,6 +248,49 @@ describe('useRecurringSeries', () => {
       });
     });
 
+    it('not at all while a read is still queued, then once when the last one settles', async () => {
+      queued = new Set<Table>(['transactions', 'holdings', 'accounts']);
+      committed = { transactions: [], holdings: [], accounts: [] };
+
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+
+      const settle = async (table: Table, rows: World[Table]): Promise<void> => {
+        queued.delete(table);
+        committed = { ...committed, [table]: rows };
+        await setVisible(rerender, true);
+      };
+      const fullWorld = worldOf(monthlyCharges('Netflix', -41_900));
+
+      await settle('transactions', fullWorld.transactions);
+      await settle('holdings', fullWorld.holdings);
+
+      expect(mockDetectRecurringSeries).not.toHaveBeenCalled();
+      expect(result.current.series).toEqual([]);
+
+      await settle('accounts', fullWorld.accounts);
+
+      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(names(result.current.series)).toEqual(['Netflix']);
+    });
+
+    it('keeps the last rows over a pause: no empty frame, no detection', async () => {
+      const shown: string[][] = [];
+
+      const { rerender } = await renderHook(() => {
+        const hook = useRecurringSeries();
+
+        shown.push(names(hook.series));
+
+        return hook;
+      });
+
+      await setVisible(rerender, false);
+      await setVisible(rerender, true);
+
+      expect(shown.every((frame) => frame.join() === 'Netflix')).toBe(true);
+      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+    });
+
     it('once for one fire of the ledger read, and for no re-render after it', async () => {
       const { rerender } = await renderHook(() => useRecurringSeries());
 
