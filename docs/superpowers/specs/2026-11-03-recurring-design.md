@@ -84,8 +84,8 @@ section 4, `{ key, prefix }`, and `normalizeTransactionName` is unchanged, so th
 order-free, "ATB" for `ATB 0212` and `ATB 0340`. Those two names are in that plan's interface, not in its spec
 section 4: re-grep them. `mostUsedSpelling`, which an earlier tip of that plan held, is gone. That plan says of the
 prefix spelling "used for nothing else" and marks `merchantSpellingOf` as `nameStartsWith` text only. This track is
-a second reader of the same function, so its task 1/4 widens that one comment; no rule changes. `key` alone still
-decides the group.
+a second reader of the same function and edits nothing there: no such comment exists on this base, and
+`merchant-name.ts` stays untouched; no rule changes. `key` alone still decides the group.
 
 **Order, and what moves it.**
 - `1.4-recurring task 1/4` needs that set merged into `next`. Its plan stacks its tasks (`S16`), so task 2/6's
@@ -289,7 +289,8 @@ there links that one row and next month's row stays out (section 8.2).
 ## 6. The recurrence date
 
 Text states what the past charges show. It is written so it cannot read as a promise ("Charged monthly"), no output
-date has a local day later than today, and no code path steps a date forward from the last charge (section 7).
+date has a local day later than today, and no date is ever stepped forward into any output; the only forward step is a boolean test against the
+leave bound (section 7).
 
 | Period | Rule, over which charges | en draft |
 |---|---|---|
@@ -593,12 +594,12 @@ default, so the focus-hook rule does not apply; they use `useIsScreenVisible` an
 | Read | Tables | Options |
 |---|---|---|
 | `transactionsRepo.recurringLedgerQuery()`, narrow columns, whole ledger, no order | `transactions` | `paused`, **not `cached`** |
-| `holdingsRepo.allQuery()`, `accountsRepo.listQuery()`, `settingsRepo.getQuery()` | their own | `paused` |
+| `holdingsRepo.allQuery()`, `accountsRepo.listQuery()`, `settingsRepo.getQuery()` (the hook does not read settings until task 3/4) | their own | `paused` |
 | Series screen: `listWithContextByIdsQuery(ids)`, plus categories and settings for the row | `transactions`, `holdings`, `accounts`, `categories`, `settings` | `paused` |
 
 `paused: !useIsScreenVisible()` on every read. Not `cached`: a second LRU copy of a whole ledger for a screen opened
 rarely, and the hide control acts on its result. `write()` flushes once per commit, so a sync fires one re-read.
-Detection runs in a `useMemo` on rows, holdings, accounts and the **local day of `now`** (`startOfLocalDay`), not on `now`:
+Detection runs only when `useDataReady` over all the reads is true, and `isLoading = !isReady`. It runs in a `useMemo` on rows, holdings, accounts and the **local day of `now`** (`startOfLocalDay`), not on `now`:
 each Back refreshes `now` with no row change and must run nothing. Hidden keys are not in the memo: the list filters on
 them after detection, so a hide runs no detection, and the hook hands the series screen the unfiltered result.
 
@@ -748,6 +749,8 @@ Counted work, never wall clock (`transactions.repo.category-rules.performance.te
 - `merchantNameOf` runs at most once per distinct description, over the 50,000-row `rules-performance-fixture`.
 - Reads of a row's `time`, by instrumented rows, stay under a bound of the form `rows x (log2(rows) + K)`; the developer
   sets K from the first measured run, and it is never raised after.
+- Sort comparisons of one detection stay under `rows x (log2(rows) + 6)`, and `daysBetween` calls under 37 per row
+  (constants in `src/recurring/detection/detection.performance.test.ts`; never raised).
 - One statement per ledger fire; EXPLAIN QUERY PLAN of the narrow read is `SCAN transactions` with no temp b-tree.
 
 If a count pin fails, the fix is in the algorithm (a memo, no second sort), never a weaker bound. If the device check's numbers
@@ -802,8 +805,8 @@ still fail by `no such column` when read through today's schema; the plan lists 
   Metro, OKKO, Kyivteploenergo, YASNO, Kyivvodokanal, Kyivstar, Planeta Kino, Netflix, Multiplex, Rozetka, Epicentr, Avrora, Nova
   Poshta, Ukrposhta. All come from `buildMonthlyExpenses`, one row every 30 days at a fixed offset; its three every-second-month
   health rows do not show. So a reviewer would read shops, taxis and a cinema as subscriptions, and moving only the grocery store
-  leaves 23, ATB and Fora among them. So each monthly merchant but the five real bills moves: in months 1, 3 and 5 its one row sits
-  10 days nearer the middle of its 30-day month, at the same amount, and month 0 stays. Month totals and the default 30-day window
+  leaves 23, ATB and Fora among them. So each monthly merchant but the five real bills moves: in months 1, 3 and 5 its one row moves
+  ten days: a `dayOfMonth` under 15 adds ten, otherwise it subtracts ten (odd months only), at the same amount, and month 0 stays. Month totals and the default 30-day window
   do not change. A reference run with that edit applied in memory finds exactly Netflix, Kyivstar, Kyivteploenergo, YASNO and
   Kyivvodokanal, none stopped, on all 731 daily anchors from 2026-11-03 (en, shifts of 6 to 12 days); as merged it finds 24 on all of
   them. That reference has no exclusion matchers; the plan's pin runs the real detection. The series shown depend on the file's

@@ -200,6 +200,14 @@ test from being decorative.
   exercising it: pick a distinct value. A one-frame paint bug (a stale value shown for one render)
   needs a render-log pin that records every render and asserts none shows the stale value; a
   final-state assertion misses it.
+- A counted-work pin counts the work itself (sort comparisons, calls of the inner function), not
+  reads on input rows: a copy of a field hides later reads. See
+  `src/recurring/detection/detection.performance.test.ts`.
+- A hook memo over several live reads is gated on readiness, and its pin settles the reads one
+  at a time, so a half-loaded set is seen to run nothing. See
+  `src/recurring/use-recurring-series/use-recurring-series.test.tsx`.
+- A `*-test-helper.ts` beside a test counts as production for feature-imports and the pre-write
+  rules, so it holds no `@kiko/test-support` import.
 
 ## Property tests
 

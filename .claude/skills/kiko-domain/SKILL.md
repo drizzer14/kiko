@@ -1023,6 +1023,15 @@ purchase row with its funding bank debit)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
+A NEW exclusion rule also goes in `recurringExcludedIds`
+(`src/recurring/eligibility/eligibility.ts`), so a recurring series never counts the row.
+
+### Recurring detection
+
+`src/recurring/` holds the recurring-charge detection: read `detection.ts` and `eligibility.ts`
+there for the rules and thresholds; none is restated here. Eligibility reuses `ledgerRowsOf`,
+`ownIbansOf` and `accountKindByHoldingIdOf` from the spending-ledger barrel.
+
 Which rows each step reads (`src/statistics/spending-ledger/`, one hook and one pure builder
 that the Statistics screen calls; `useStatisticsSources` in
 `src/statistics/statistics-sources/` supplies the reads, and the account filter's scope is in
