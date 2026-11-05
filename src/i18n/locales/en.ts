@@ -328,6 +328,7 @@ export const en = {
   },
   categoryReview: {
     choose: 'Select category',
+    chooseFor: 'Select category for {{name}}',
     emptyMessage:
       'Transactions without a category appear here, grouped by name. Select a category once, and Kiko adds a rule for it.',
     emptyTitle: 'Nothing to sort',

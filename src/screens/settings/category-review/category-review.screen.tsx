@@ -71,14 +71,18 @@ const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
     readOptions,
   );
   const isReady = useDataReady(candidatesLoading, rulesLoading, categoriesLoading);
+  // Planned only once all three reads have landed: each lands on its own render, and a plan over a
+  // half-loaded set is thrown away at once.
   const groups = useMemo(
     () =>
-      planReviewGroups(
-        prepareRules(rules),
-        candidates,
-        new Set(categories.map(({ key }) => categoryKeyOf(key))),
-      ),
-    [candidates, rules, categories],
+      isReady
+        ? planReviewGroups(
+            prepareRules(rules),
+            candidates,
+            new Set(categories.map(({ key }) => categoryKeyOf(key))),
+          )
+        : [],
+    [isReady, candidates, rules, categories],
   );
   // Every listed row moves into the picked category, and one already in `other` would not, so
   // `other` is not offered.
@@ -104,9 +108,11 @@ const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
   return (
     <Screen bleedTop>
       <FlatList
-        data={isReady ? groups : []}
+        data={groups}
         keyExtractor={groupKeyOf}
-        renderItem={({ item }) => <ReviewLine group={item} onChoose={actions.choose} />}
+        renderItem={({ item }) => (
+          <ReviewLine group={item} disabled={actions.isBusy} onChoose={actions.choose} />
+        )}
         ListHeaderComponent={<LargeTitleHeading />}
         ListEmptyComponent={
           isReady ? (

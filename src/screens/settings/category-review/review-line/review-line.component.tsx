@@ -13,7 +13,7 @@ const SEPARATOR = ' · ';
 // One group of transactions without a category: its name, or the start of its names, with the
 // counts under it, and the button that opens the category options. A one-name group carries no
 // name count, which would only say "1 name" under that name.
-const ReviewLine: FC<ReviewLineProps> = ({ group, onChoose }) => {
+const ReviewLine: FC<ReviewLineProps> = ({ group, disabled, onChoose }) => {
   const { t } = useTranslation();
   const isPrefix = group.rule.kind === 'nameStartsWith';
   const rowCount = t('categoryReview.rowCount', { count: group.rowCount });
@@ -40,6 +40,8 @@ const ReviewLine: FC<ReviewLineProps> = ({ group, onChoose }) => {
             variant="secondary"
             size="small"
             fullWidth={false}
+            disabled={disabled}
+            accessibilityLabel={t('categoryReview.chooseFor', { name: group.rule.text })}
             onPress={() => onChoose(group)}
           >
             {t('categoryReview.choose')}

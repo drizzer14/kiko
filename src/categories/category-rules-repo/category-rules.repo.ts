@@ -16,6 +16,7 @@ import {
   type CategoryRuleMatcher,
   type NameRuleKind,
   type PreparedRule,
+  type NameTally,
   isSameCategory,
   matcherSetKey,
   matchesRule,
@@ -25,11 +26,13 @@ import {
   subjectOfStoredRow,
   validateRule,
   winningRule,
+  addToNameTally,
+  rankedNames,
 } from '@kiko/categories/category-rules';
+import { tidiedNameOf } from '@kiko/transactions/merchant-name';
 import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { ruleDescriptionOf } from '@kiko/transactions/row-description';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
-import { smallestSpelling, tidiedNameOf } from '@kiko/transactions/merchant-name';
 
 const REWRITE_PAGE_SIZE = 2000;
 
@@ -362,37 +365,16 @@ const rowIdsRewrittenBy = async (
 const preparedRuleOf = (prepared: PreparedRules, ruleId: string): PreparedRule | undefined =>
   prepared.ordered.find((rule) => rule.id === ruleId);
 
-// By code unit, never by locale: the order must not depend on the device.
-const compareByCodeUnit = (left: string, right: string): number => {
-  if (left === right) {
-    return 0;
-  }
-
-  return left < right ? -1 : 1;
-};
-
 // Every distinct normalized name once, spelled in full (never as the cut prefix, which would read
-// "ATB, ATB" for two store numbers), the name with the most rows first, then by normalized text.
+// "ATB, ATB" for two store numbers), in the order the review list shows them.
 const listedNamesOf = (rows: readonly RewrittenRow[]): string[] => {
-  const groups = new Map<string, { spelling: string; rowCount: number }>();
+  const tallies = new Map<string, NameTally>();
 
   for (const { name } of rows) {
-    const key = normalizeTransactionName(name);
-    const spelling = tidiedNameOf(name);
-    const group = groups.get(key);
-
-    groups.set(key, {
-      spelling: smallestSpelling([group?.spelling ?? spelling, spelling]),
-      rowCount: (group?.rowCount ?? 0) + 1,
-    });
+    addToNameTally(tallies, normalizeTransactionName(name), tidiedNameOf(name));
   }
 
-  return [...groups.entries()]
-    .sort(
-      ([leftKey, left], [rightKey, right]) =>
-        right.rowCount - left.rowCount || compareByCodeUnit(leftKey, rightKey),
-    )
-    .map(([, group]) => group.spelling);
+  return rankedNames(tallies);
 };
 
 // Writes the saved rule's category onto every row that rule wins, planned from the rows as they

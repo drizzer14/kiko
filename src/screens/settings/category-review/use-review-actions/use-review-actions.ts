@@ -104,6 +104,8 @@ export const useReviewActions = () => {
   };
 
   return {
+    // A preview or a write is running: a pick on another line would be dropped without a word.
+    isBusy: isSubmitting,
     isOptionsOpen: pickFor !== null,
     pendingConfirm,
     isConfirmOpen,

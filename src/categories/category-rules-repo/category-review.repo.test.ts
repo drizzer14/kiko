@@ -305,6 +305,25 @@ describe('the review list against the rows a tap writes', () => {
     expect(ids).toEqual(expect.arrayContaining(['leg-paired', 'leg-untracked']));
     expect((await currentGroups()).map((group) => group.key)).not.toContain('leg shop');
   });
+
+  it('an exchange leg of the same name is not listed, but the rule counts and writes it', async () => {
+    insertRow({
+      id: 'leg-silpo',
+      description: 'Silpo 12',
+      category: 'other',
+      exchangeCounterpartHoldingId: 'card',
+    });
+
+    const group = await groupOf('silpo');
+    const preview = await previewOf(group.rule);
+    const changed = await changedBy(() => applyOf(group.rule));
+
+    expect(group.rowCount).toBe(4);
+    expect(await listedIdsOf(group)).not.toContain('leg-silpo');
+    expect(preview.count).toBeGreaterThan(group.rowCount);
+    expect(preview.count).toBe(changed.length);
+    expect(changed).toContain('leg-silpo');
+  });
 });
 
 describe('a manual row that a tap gives a category', () => {

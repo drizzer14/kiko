@@ -3,11 +3,15 @@ import type { ReactElement } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import type {
+  planReviewGroups,
+  ReviewCandidate,
+  StoredCategoryRule,
+} from '@kiko/categories/category-rules';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
-import type { ReviewCandidate, StoredCategoryRule } from '@kiko/categories/category-rules';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoryReviewScreen from './category-review.screen';
@@ -31,6 +35,7 @@ const mockPreview = jest.fn<Promise<Preview>, [object]>();
 const mockApply = jest.fn<Promise<number>, [object]>();
 const mockUseIsScreenVisible = jest.fn(() => true);
 const mockUseLiveQuery = jest.fn();
+const mockPlanCalls = jest.fn();
 const mockModalProps = new Map<string, ModalProps>();
 let mockCandidates: ReviewCandidate[] = [];
 let mockRules: StoredCategoryRule[] = [];
@@ -63,6 +68,20 @@ jest.mock('react-native/Libraries/Modal/Modal', () => {
 jest.mock('@kiko/navigation/pane-stack', () => ({
   useIsScreenVisible: () => mockUseIsScreenVisible(),
 }));
+jest.mock('@kiko/categories/category-rules', () => {
+  const actual = jest.requireActual('@kiko/categories/category-rules') as {
+    planReviewGroups: typeof planReviewGroups;
+  };
+
+  return {
+    ...actual,
+    planReviewGroups: (...args: Parameters<typeof planReviewGroups>) => {
+      mockPlanCalls();
+
+      return actual.planReviewGroups(...args);
+    },
+  };
+});
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ __kind: 'categories' }) },
 }));
@@ -80,13 +99,14 @@ jest.mock('@kiko/db/use-live-query', () => ({
 
 const navigation = navigationSpy();
 
-const renderReview = () =>
-  render(
-    <CategoryReviewScreen
-      navigation={asNavigationProp<ReviewScreenProps['navigation']>(navigation)}
-      route={asRouteProp<ReviewScreenProps['route']>('CategoryReview')}
-    />,
-  );
+const reviewElement = () => (
+  <CategoryReviewScreen
+    navigation={asNavigationProp<ReviewScreenProps['navigation']>(navigation)}
+    route={asRouteProp<ReviewScreenProps['route']>('CategoryReview')}
+  />
+);
+
+const renderReview = () => render(reviewElement());
 
 type Screen = Awaited<ReturnType<typeof renderReview>>;
 
@@ -271,19 +291,28 @@ describe('CategoryReviewScreen', () => {
       const screen = await renderReview();
       const [atb, silpo] = linesOf(screen);
 
-      expect(linesOf(screen)).toHaveLength(2);
-      const contains = { exact: false };
-
-      expect(atb).toHaveTextContent(i18n.t('categoryReview.nameCount', { count: 2 }), contains);
-      expect(atb).toHaveTextContent(
+      const atbCounts = [
+        i18n.t('categoryReview.nameCount', { count: 2 }),
         i18n.t('categoryReview.rowCount', { count: ATB_ROWS }),
-        contains,
-      );
-      expect(silpo).toHaveTextContent('Silpo', contains);
-      expect(silpo).toHaveTextContent(
-        i18n.t('categoryReview.rowCount', { count: SILPO_ROWS }),
-        contains,
-      );
+      ].join(' · ');
+
+      expect(linesOf(screen)).toHaveLength(2);
+      expect(within(atb).getByText(atbCounts)).toBeTruthy();
+      expect(within(silpo).getByText('Silpo')).toBeTruthy();
+      expect(
+        within(silpo).getByText(i18n.t('categoryReview.rowCount', { count: SILPO_ROWS })),
+      ).toBeTruthy();
+    });
+
+    it('names each line on its button, so VoiceOver tells the buttons apart', async () => {
+      const screen = await renderReview();
+      const [atb, silpo] = linesOf(screen);
+      const labelOf = (name: string) => i18n.t('categoryReview.chooseFor', { name });
+
+      expect(labelOf('ATB')).not.toBe('categoryReview.chooseFor');
+      expect(within(atb).getByLabelText(labelOf('ATB'))).toBeTruthy();
+      expect(within(silpo).getByLabelText(labelOf('Silpo'))).toBeTruthy();
+      expect(within(atb).queryByLabelText(labelOf('Silpo'))).toBeNull();
     });
 
     it('gives a one-name line its row count and no name count', async () => {
@@ -502,20 +531,32 @@ describe('CategoryReviewScreen', () => {
       expect(mockApply).not.toHaveBeenCalled();
     });
 
-    it('blocks a second tap while a write runs', async () => {
+    it('disables every line button while a write runs, and frees them after', async () => {
       const write = deferredWrite();
       mockApply.mockReturnValueOnce(write.promise);
 
       const screen = await renderReview();
       await pick(screen, FIRST_LINE);
-      previewReturns(SILPO_ROWS);
-      await pick(screen, SECOND_LINE);
+      const buttons = ['ATB', 'Silpo'].map((name) =>
+        screen.getByLabelText(i18n.t('categoryReview.chooseFor', { name })),
+      );
 
+      for (const button of buttons) {
+        expect(button).toBeDisabled();
+      }
+
+      previewReturns(SILPO_ROWS);
+      await fireEvent.press(buttons[SECOND_LINE]);
+
+      expect(screen.queryByTestId(OPTIONS_SHEET)).toBeNull();
       expect(mockPreview).toHaveBeenCalledTimes(1);
-      expect(mockApply).toHaveBeenCalledTimes(1);
-      expect(screen.queryByTestId(CONFIRM_SHEET)).toBeNull();
 
       await act(async () => write.resolve(ATB_ROWS));
+
+      for (const button of buttons) {
+        expect(button).not.toBeDisabled();
+      }
+
       await pick(screen, SECOND_LINE);
 
       expect(mockApply).toHaveBeenCalledTimes(2);
@@ -636,6 +677,34 @@ describe('CategoryReviewScreen', () => {
         expect(options).toMatchObject({ paused: false });
         expect(options.cached).toBeFalsy();
       }
+    });
+
+    it('plans once every read has landed, never on a half-loaded set', async () => {
+      const unread: unknown[] = [];
+
+      mockLoading = { candidates: true, rules: true, categories: true };
+      mockUseLiveQuery.mockImplementation((query: { __kind: ReadKind }) => ({
+        data: mockLoading[query.__kind] ? unread : dataOf(query.__kind),
+        isLoading: mockLoading[query.__kind],
+        isFresh: true,
+      }));
+
+      const screen = await renderReview();
+
+      expect(mockPlanCalls).not.toHaveBeenCalled();
+
+      for (const read of ['candidates', 'rules'] as const) {
+        mockLoading = { ...mockLoading, [read]: false };
+        await screen.rerender(reviewElement());
+
+        expect(mockPlanCalls).not.toHaveBeenCalled();
+      }
+
+      mockLoading = { ...mockLoading, categories: false };
+      await screen.rerender(reviewElement());
+
+      expect(mockPlanCalls).toHaveBeenCalledTimes(1);
+      expect(linesOf(screen)).toHaveLength(2);
     });
 
     it('reads the candidates on the transactions, rules and categories tables', async () => {

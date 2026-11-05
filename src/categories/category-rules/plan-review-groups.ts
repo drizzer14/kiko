@@ -10,6 +10,7 @@ import { winningRule } from './prepare-rules';
 import { subjectOfStoredRow } from './rule-subject';
 import { hasNoRealCategory, isRewriteEligible } from './plan-rule-rewrite';
 import type { PreparedRules, ReviewCandidate, ReviewGroup } from './category-rules.d';
+import { addToNameTally, compareByCodeUnit, rankedNames, type NameTally } from './name-tally';
 
 type DescribedName = {
   key: string;
@@ -17,8 +18,6 @@ type DescribedName = {
   tidiedName: string;
   spelling: string;
 };
-
-type NameTally = { rowCount: number; tidiedName: string };
 
 type GroupTally = {
   rowCount: number;
@@ -41,12 +40,15 @@ const addToGroup = (
   const group = groups.get(name.key);
 
   if (group === undefined) {
-    groups.set(name.key, {
+    const created: GroupTally = {
       rowCount: 1,
       newestTime: row.time,
       prefixSpelling: name.spelling,
-      names: new Map([[name.normalizedName, { rowCount: 1, tidiedName: name.tidiedName }]]),
-    });
+      names: new Map(),
+    };
+
+    addToNameTally(created.names, name.normalizedName, name.tidiedName);
+    groups.set(name.key, created);
 
     return;
   }
@@ -54,35 +56,11 @@ const addToGroup = (
   group.rowCount += 1;
   group.newestTime = Math.max(group.newestTime, row.time);
   group.prefixSpelling = smallestSpelling([group.prefixSpelling, name.spelling]);
-
-  const tally = group.names.get(name.normalizedName);
-
-  if (tally === undefined) {
-    group.names.set(name.normalizedName, { rowCount: 1, tidiedName: name.tidiedName });
-
-    return;
-  }
-
-  tally.rowCount += 1;
-  tally.tidiedName = smallestSpelling([tally.tidiedName, name.tidiedName]);
-};
-
-// Compared by code unit, never by locale, so the order cannot depend on the device.
-const byCodeUnit = (first: string, second: string): number => {
-  if (first === second) {
-    return 0;
-  }
-
-  return first < second ? -1 : 1;
+  addToNameTally(group.names, name.normalizedName, name.tidiedName);
 };
 
 const reviewGroupOf = (key: string, group: GroupTally): ReviewGroup => {
-  const names = [...group.names.entries()]
-    .sort(
-      ([firstName, first], [secondName, second]) =>
-        second.rowCount - first.rowCount || byCodeUnit(firstName, secondName),
-    )
-    .map(([, tally]) => tally.tidiedName);
+  const names = rankedNames(group.names);
   const [onlyName] = names;
 
   return {
@@ -141,6 +119,6 @@ export const planReviewGroups = (
       (first, second) =>
         second.rowCount - first.rowCount ||
         second.newestTime - first.newestTime ||
-        byCodeUnit(first.key, second.key),
+        compareByCodeUnit(first.key, second.key),
     );
 };

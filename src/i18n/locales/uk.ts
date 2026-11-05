@@ -298,6 +298,7 @@ export const uk: typeof en = {
   },
   categoryReview: {
     choose: 'Обрати категорію',
+    chooseFor: 'Обрати категорію для «{{name}}»',
     emptyMessage:
       'Тут зʼявляться транзакції без категорії, згруповані за назвою. Оберіть категорію один раз, і Кіко додасть для неї правило.',
     emptyTitle: 'Немає що розподіляти',
@@ -306,7 +307,7 @@ export const uk: typeof en = {
     nameCount_few: '{{count}} назви',
     nameCount_many: '{{count}} назв',
     nameCount_other: '{{count}} назви',
-    optionsTitle: 'Вибір категорії',
+    optionsTitle: 'Обрати категорію',
     rowCount_one: '{{count}} транзакція',
     rowCount_few: '{{count}} транзакції',
     rowCount_many: '{{count}} транзакцій',
