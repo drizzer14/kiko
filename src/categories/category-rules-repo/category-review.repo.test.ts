@@ -18,7 +18,9 @@ jest.mock('@kiko/db/client', () => {
 import {
   type NameRuleKind,
   type PreparedRules,
-  type RewriteCandidate,
+  type ReviewCandidate,
+  type ReviewGroup,
+  planReviewGroups,
   prepareRules,
 } from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
@@ -27,37 +29,9 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { categoryRulesRepo } from './category-rules.repo';
 
-type ReviewRow = RewriteCandidate & {
-  exchangeCounterpartHoldingId: string | null;
-  untrackedCounterpart: string | null;
-};
-
-type ReviewGroup = {
-  key: string;
-  names: readonly string[];
-  rowCount: number;
-  newestTime: number;
-  rule: { kind: NameRuleKind; text: string };
-};
-
-type ReviewCandidateQuery = PromiseLike<ReviewRow[]> & {
+type ReviewCandidateQuery = PromiseLike<ReviewCandidate[]> & {
   toSQL: () => { sql: string; params: unknown[] };
 };
-
-const planReviewGroups = (
-  prepared: PreparedRules,
-  rows: readonly ReviewRow[],
-  knownCategoryKeys: ReadonlySet<string>,
-): ReviewGroup[] =>
-  (
-    jest.requireActual('@kiko/categories/category-rules') as {
-      planReviewGroups: (
-        prepared: PreparedRules,
-        rows: readonly ReviewRow[],
-        knownCategoryKeys: ReadonlySet<string>,
-      ) => ReviewGroup[];
-    }
-  ).planReviewGroups(prepared, rows, knownCategoryKeys);
 
 const reviewCandidateRowsQuery = (): ReviewCandidateQuery =>
   (

@@ -84,6 +84,22 @@ export type RewriteCandidate = {
   accountId: string | null;
 };
 
+// A candidate with the two exchange markers the review list leaves out: the candidate columns
+// already select both.
+export type ReviewCandidate = RewriteCandidate & {
+  exchangeCounterpartHoldingId: string | null;
+  untrackedCounterpart: string | null;
+};
+
+export type ReviewGroup = {
+  key: string;
+  // One per normalized name, in its full tidied spelling, most rows first.
+  names: readonly string[];
+  rowCount: number;
+  newestTime: number;
+  rule: { kind: NameRuleKind; text: string };
+};
+
 export type RuleValidation =
   | { kind: 'valid' }
   | { kind: 'noMatchers' }

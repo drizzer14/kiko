@@ -2,7 +2,9 @@ import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import { transactions } from '@kiko/db';
 import {
+  type ReviewGroup,
   parseRuleMatchers,
+  planReviewGroups,
   prepareRules,
   subjectOfStoredRow,
   validateRule,
@@ -720,13 +722,6 @@ describe('buildDemoSnapshot', () => {
 });
 
 describe.each(['en', 'uk'] as const)('the review list of the %s demo file', (language) => {
-  type ReviewGroup = {
-    key: string;
-    names: readonly string[];
-    rowCount: number;
-    rule: { kind: string; text: string };
-  };
-
   const demo = buildDemoSnapshot(buildScreenshotDataset(language, ANCHOR));
   const holdingById = new Map(demo.holdings.map((holding) => [holding.id, holding]));
   const candidates = demo.transactions.map((transaction) => ({
@@ -735,21 +730,11 @@ describe.each(['en', 'uk'] as const)('the review list of the %s demo file', (lan
     accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
   }));
   const groupOf = (key: string): ReviewGroup | undefined =>
-    (
-      jest.requireActual('@kiko/categories/category-rules') as {
-        planReviewGroups: (
-          prepared: ReturnType<typeof prepareRules>,
-          rows: typeof candidates,
-          knownCategoryKeys: ReadonlySet<string>,
-        ) => ReviewGroup[];
-      }
-    )
-      .planReviewGroups(
-        prepareRules(demo.categoryRules),
-        candidates,
-        new Set(demo.categories.map((category) => category.key.toLowerCase())),
-      )
-      .find((group) => group.key === key);
+    planReviewGroups(
+      prepareRules(demo.categoryRules),
+      candidates,
+      new Set(demo.categories.map((category) => category.key.toLowerCase())),
+    ).find((group) => group.key === key);
 
   it('the review list offers a starts-with line on the store-number rows', () => {
     expect(groupOf('varus')?.names).toEqual(['Varus 0212', 'Varus 0340']);

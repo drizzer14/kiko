@@ -2,42 +2,11 @@ import { sweep } from '@kiko/test-support/property-sweep';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
-import type {
-  NameRuleKind,
-  PreparedRules,
-  RewriteCandidate,
-  StoredCategoryRule,
-} from './category-rules.d';
-import * as categoryRules from './index';
 import { ruleRow } from './__fixtures__/rule-row';
 import { subjectOfStoredRow } from './rule-subject';
+import { planReviewGroups } from './plan-review-groups';
 import { matchesRule, prepareRules } from './prepare-rules';
-
-type ReviewRow = RewriteCandidate & {
-  exchangeCounterpartHoldingId: string | null;
-  untrackedCounterpart: string | null;
-};
-
-type ReviewGroup = {
-  key: string;
-  names: readonly string[];
-  rowCount: number;
-  newestTime: number;
-  rule: { kind: NameRuleKind; text: string };
-};
-
-type PlanReviewGroups = (
-  prepared: PreparedRules,
-  rows: readonly ReviewRow[],
-  knownCategoryKeys: ReadonlySet<string>,
-) => ReviewGroup[];
-
-const planReviewGroups: PlanReviewGroups = (prepared, rows, knownCategoryKeys) =>
-  (categoryRules as unknown as { planReviewGroups: PlanReviewGroups }).planReviewGroups(
-    prepared,
-    rows,
-    knownCategoryKeys,
-  );
+import type { ReviewCandidate, ReviewGroup, StoredCategoryRule } from './category-rules.d';
 
 const KNOWN_CATEGORY_KEYS: ReadonlySet<string> = new Set([
   'groceries',
@@ -49,7 +18,11 @@ const KNOWN_CATEGORY_KEYS: ReadonlySet<string> = new Set([
 
 const CONTROL_NAME = 'Control Shop';
 
-const rowOf = (id: string, description: string, overrides: Partial<ReviewRow> = {}): ReviewRow => ({
+const rowOf = (
+  id: string,
+  description: string,
+  overrides: Partial<ReviewCandidate> = {},
+): ReviewCandidate => ({
   id,
   description,
   amountMinorUnits: -100,
@@ -67,10 +40,10 @@ const rowOf = (id: string, description: string, overrides: Partial<ReviewRow> = 
   ...overrides,
 });
 
-const rowsOf = (descriptions: readonly string[]): ReviewRow[] =>
+const rowsOf = (descriptions: readonly string[]): ReviewCandidate[] =>
   descriptions.map((description, index) => rowOf(`row-${index}`, description));
 
-const plan = (rows: readonly ReviewRow[], rules: readonly StoredCategoryRule[] = []) =>
+const plan = (rows: readonly ReviewCandidate[], rules: readonly StoredCategoryRule[] = []) =>
   planReviewGroups(prepareRules(rules), rows, KNOWN_CATEGORY_KEYS);
 
 const namesOf = (groups: readonly ReviewGroup[]): string[] =>
@@ -88,7 +61,7 @@ describe('planReviewGroups keeps and drops', () => {
     expect(namesOf(plan(rows))).toEqual(['Empty Shop', 'Null Shop', 'Orphan Shop', 'Other Shop']);
   });
 
-  it.each<[string, Partial<ReviewRow>[]]>([
+  it.each<[string, Partial<ReviewCandidate>[]]>([
     ['drops a hand-set row', [{ categorySetByHand: true }]],
     [
       'drops a balance-setting and a split-change row',
@@ -202,10 +175,10 @@ const ORDER_WORLD: [string, number][] = [
   ['Alpha', 30],
 ];
 
-const orderWorldRows = (): ReviewRow[] =>
+const orderWorldRows = (): ReviewCandidate[] =>
   ORDER_WORLD.map(([description, time], index) => rowOf(`row-${index}`, description, { time }));
 
-const SHUFFLES: [string, (rows: ReviewRow[]) => ReviewRow[]][] = [
+const SHUFFLES: [string, (rows: ReviewCandidate[]) => ReviewCandidate[]][] = [
   ['reversed', (rows) => [...rows].reverse()],
   ['rotated', (rows) => [...rows.slice(4), ...rows.slice(0, 4)]],
   [
@@ -294,7 +267,7 @@ const generatedNameOf = (random: Random): string => {
   return [...cased, ...suffix].join(pickFrom(random, SPACINGS));
 };
 
-const worldOf = (seed: number): ReviewRow[] => {
+const worldOf = (seed: number): ReviewCandidate[] => {
   // The first draw of this generator on a seed this small is near zero, so every plain seed would
   // draw the same first name; the spread seed draws different worlds.
   const random = seededRandom(seed * SEED_SPREAD);
@@ -303,7 +276,7 @@ const worldOf = (seed: number): ReviewRow[] => {
   return rowsOf([...SAMPLE_NAMES, ...drawn]);
 };
 
-const groupRuleMatches = (group: ReviewGroup, row: ReviewRow): boolean => {
+const groupRuleMatches = (group: ReviewGroup, row: ReviewCandidate): boolean => {
   const [rule] = prepareRules([
     ruleRow({ matchers: [{ type: group.rule.kind, text: group.rule.text }] }),
   ]).ordered;

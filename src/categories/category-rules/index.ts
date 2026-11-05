@@ -7,4 +7,5 @@ export * from './prepare-rules';
 export { MCC_DIGITS } from './rule-constants';
 export * from './same-category';
 export * from './plan-rule-rewrite';
+export * from './plan-review-groups';
 export * from './validate-rule';

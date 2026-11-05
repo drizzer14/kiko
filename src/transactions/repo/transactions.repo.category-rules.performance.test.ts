@@ -21,12 +21,12 @@ jest.mock('@kiko/transactions/merchant-name', () => {
 
 import {
   type CategoryRuleMatcher,
-  type PreparedRules,
-  type RewriteCandidate,
+  type ReviewCandidate,
   hasNoRealCategory,
   isRewriteEligible,
   matchesRule,
   parseRuleMatchers,
+  planReviewGroups,
   planRuleRewrite,
   prepareRules,
   subjectOfStoredRow,
@@ -385,36 +385,16 @@ describe('rewriting 50 000 rows for a rule with a new condition', () => {
 });
 
 describe('listing the review groups of 50 000 rows', () => {
-  type ReviewRow = RewriteCandidate & {
-    exchangeCounterpartHoldingId: string | null;
-    untrackedCounterpart: string | null;
-  };
-  type ReviewGroupCount = { key: string; rowCount: number };
-  type ReviewCandidateQuery = PromiseLike<ReviewRow[]> & {
+  type ReviewCandidateQuery = PromiseLike<ReviewCandidate[]> & {
     toSQL: () => { sql: string; params: unknown[] };
   };
-
-  const planReviewGroups = (
-    plannedRules: PreparedRules,
-    candidates: readonly ReviewRow[],
-    knownCategoryKeys: ReadonlySet<string>,
-  ): ReviewGroupCount[] =>
-    (
-      jest.requireActual('@kiko/categories/category-rules') as {
-        planReviewGroups: (
-          prepared: PreparedRules,
-          rows: readonly ReviewRow[],
-          knownCategoryKeys: ReadonlySet<string>,
-        ) => ReviewGroupCount[];
-      }
-    ).planReviewGroups(plannedRules, candidates, knownCategoryKeys);
 
   const reviewCandidateRowsQuery = (): ReviewCandidateQuery =>
     (
       categoryRulesRepo as unknown as { reviewCandidateRowsQuery: () => ReviewCandidateQuery }
     ).reviewCandidateRowsQuery();
 
-  const candidateRows: ReviewRow[] = rows.map((row) => ({
+  const candidateRows: ReviewCandidate[] = rows.map((row) => ({
     ...row,
     exchangeCounterpartHoldingId: null,
     untrackedCounterpart: null,
@@ -429,7 +409,7 @@ describe('listing the review groups of 50 000 rows', () => {
 
   // Found by scanning every rule for every row, so it shares neither the name index nor the order
   // of the checks of the code under test.
-  const bruteForceKept = (known: ReadonlySet<string>): ReviewRow[] =>
+  const bruteForceKept = (known: ReadonlySet<string>): ReviewCandidate[] =>
     candidateRows.filter(
       (row) =>
         hasNoRealCategory(row, known) &&
