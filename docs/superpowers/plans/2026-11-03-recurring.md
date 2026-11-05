@@ -638,7 +638,8 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
   `markedEntriesOf` moves out of `use-recurring-series.ts` (a local `const` there today) into this module, and the list hook
   imports it: one definition. The marked chain keeps today's rule (`markedChainOfAmount`, by amount), so `writeMark` does not change.
 - **`useRowMark`:** the ledger read is `enabled` when the row is offered, the settings read has settled, and the key is not
-  hidden-without-a-mark-in-this-currency. So a hidden key with no mark there reads no ledger and shows "Not marked". The
+  hidden-without-a-mark-in-this-currency. So a hidden key with no mark there reads no ledger and shows "Not marked"
+  (coordinator 2026-11-05: accepted; this open point is closed). The
   `chargeGroupsOf` memo stays one per ledger fire. The hook returns `{ chain, detectedPeriod, isReady }`, and the one wait
   (spec 9.6) still covers the ledger read.
 - **The field:** on a detected row, `labels.none` is `t('forms.transaction.detectedRecurring.<period>')`, `selected` stays
@@ -704,15 +705,14 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
   detection or a new ledger read (spec 9.5)? No migration.
 - [ ] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain (the form's detected period, the one shared
   function, the hidden-key case) and the HANDOFF item 13 line. Report the sha or "no drift found"; `make doc-suites` after.
-- [ ] **step 5/6 Device measure (coordinator, before READY).** Release build of this tip and of task 2/3's tip (the base), on
-  one iPhone. Two ledgers:
-  - **10,000 rows:** an export file made outside the tree by `kiko:ops` (the 10.2 script's seed, word list and 25 rows per
-    description, 30 planted series, `EXPORT_VERSION` 5), restored on the device. Back up the user's data with Export first and
-    restore it after; or use a second install the coordinator names.
-  - **The user's real ledger:** record its row count.
+- [ ] **step 5/6 Device measure (coordinator, before READY).** Release build of task 2/3's tip (the base) and of this tip,
+  each in turn on the user's Duo, on the user's real ledger only (coordinator 2026-11-05: the Duo holds real data, so no
+  restore and no second install there). Record the real ledger's row count; the READY report states it.
+  - **10,000 rows, an indicator only:** a simulator Release build of both tips, at AC, in the simulator slot the coordinator
+    assigns. It sets no verdict on its own; the stall trigger below reads the Duo's numbers.
 
-  On each ledger, open an offered debit in a detected series and an offered debit in no series, three times each, from Home.
-  Record from a screen recording (frame-counted):
+  On the Duo, open an offered debit in a detected series and an offered debit in no series, three times each, from Home.
+  Take the median of three. Record from a screen recording (frame-counted):
   - **M1**, tap to first frame of the form;
   - **M2**, tap to the field showing its value, enabled;
   - **M3**, for three digits typed into Amount right after the form shows, each tap to its digit drawn;
@@ -721,16 +721,16 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
   - **Stall trigger** (the round's line, a planner's choice, not a measured iPhone fact): any one of these on either ledger
     is a stall: M1 on this build over the base's M1 by more than 100 ms (median of three); any M3 or M4 over 250 ms; or
     the user reads it as a stall. M2 has no pass line; it is reported.
-  - **Fallback (option B), on a stall:** no READY. The planner then adds steps to this set (renumbered N/M): the field takes the
-    funding caption's `listAllQuery` rows instead of its own `recurringLedgerQuery`, one whole-ledger read fewer. That edits
-    `use-exchange-funding-caption.ts` and `transaction-form.screen.tsx` (a `1.4-bybit` tie, ordered by the coordinator).
-    Then re-measure. B removes a read only: on the Mac the narrow read is about 6 to 8% of read plus reference detection at
-    100,000 rows (133.0-148.0 against 1823.5-2113.3 ms). If the stall survives B, it goes to the user as an open point, never
-    as a narrower rule or a raised line.
+  - **Fallback (option C, coordinator 2026-11-05), on a stall:** no READY. The planner then adds steps to this set
+    (renumbered N/M): the series screen passes the detected period through the form's route, and the field reads no ledger
+    and runs no detection. Opened from Home or an account's ledger, a row with no mark reads "Not marked". Then
+    re-measure, and the coordinator brings C to the user, never as a narrower rule or a raised line.
+  - **Option B rejected:** reusing the funding caption's rows removes only the read (on the Mac about 6 to 8% of read plus
+    reference detection at 100,000 rows, 133.0-148.0 against 1823.5-2113.3 ms), not the detection's CPU.
 - [ ] **step 6/6 Device and Ready.** Both languages: "Detected: monthly" from Home, an account's ledger and the series screen
   on the same row; a hidden detected series' row reads "Not marked"; a period pick moves the series to marked on the list; a
   row under a marked name reads its marked period; "Not marked" in the placeholder tone beside "Detected" in the value tone.
-  READY FOR VERIFY, label `1.4-recurring-visual-1-task-3`, with the M1 to M4 table, the stall verdict and this set's files.
+  READY FOR VERIFY, label `1.4-recurring-visual-1-task-3`, with the real ledger's row count, the M1 to M4 table, the stall verdict and this set's files.
 
 ---
 

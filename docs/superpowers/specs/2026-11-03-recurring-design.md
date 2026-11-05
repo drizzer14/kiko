@@ -660,8 +660,9 @@ reference detection, an upper bound of `chargeGroupsOf` plus one group, takes 16
 2113.3 ms at the same sizes. `chargeGroupsOf`'s own share is not measured. **iPhone not measured**, nor Hermes. The form must
 render, take input and save while the read and the detection are still to come: the field states no value and stays
 `disabled` until then (its one wait, below), and nothing else on the form waits for it. The device measure and its stall
-trigger are in the plan (task 3/3). A stall falls back to option B (the field reuses the funding caption's rows, one read
-fewer), which does not reduce the detection's own CPU.
+trigger are in the plan (task 3/3). A stall falls back to option C (coordinator 2026-11-05: the series screen passes the
+period through the route; the field reads nothing; Home and account ledgers show "Not marked"), which then goes to the user.
+Option B (reuse the funding caption's rows) is rejected: it removes only the read, not the detection's own CPU.
 
 **The field's one wait.** `useRowMark` is ready when the settings read neither loads nor holds an `error` and, while the ledger read
 is enabled, the same of that read. Until then, and through a pick's write (`isSubmitting` of `useSubmitOnce`), the field states no
@@ -768,8 +769,9 @@ keyed on the local day, detects nothing.
 opening the list to the list showing; the time from opening a series to the series showing; and, from task 4/4, the time from
 opening a transaction under a marked name to its mark field enabling (section 9.6). No pass line is set here, since no device figure
 exists to set one from. The numbers go in the coordinator's report with the user's own read of whether it stalls.
-was: the field-enable time under a marked name only. now (item 13): under any name the field offers, measured at 10,000 rows
-and at the user's ledger size, with the stall trigger of plan task 3/3.
+was: the field-enable time under a marked name only. now (item 13): under any name the field offers, on the user's real
+ledger on the Duo (base build against task 3/3's, median of 3; no restore, no second install), with the stall trigger of plan
+task 3/3. 10,000 rows run on a simulator Release build as an indicator only.
 
 ### 10.4 Pins, and the fix if one fails
 
