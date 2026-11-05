@@ -15,4 +15,10 @@ export type TwoPaneLayoutProps = {
   // The pane that takes the whole window, or none. Its screens are told they are in no pane; the
   // other pane keeps its frame and its screens, hidden and out of reach, so none is remounted.
   expandedPane?: PaneName | null;
+  // A stack over both panes, in the window's frame, that moves neither: its screens are told they
+  // are in no pane. It stays mounted whether it shows a screen or not, because a stack made afresh
+  // pushes its first screen instead of starting on it; `isLayerShown` says whether it holds one,
+  // and only then does it take touches and the screen reader. Single mode draws no layer.
+  layer?: ReactNode;
+  isLayerShown?: boolean;
 };

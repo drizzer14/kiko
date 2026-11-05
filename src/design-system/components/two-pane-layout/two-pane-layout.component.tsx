@@ -6,6 +6,7 @@ import {
 } from '@kiko/design-system/pane-context';
 import {
   belowTopBand,
+  type PaneFrame,
   resolveCompanionShare,
   resolvePaneGeometry,
   wholeWindowFrame,
@@ -52,6 +53,36 @@ const Pane: FC<PaneProps> = ({ mode, pane, width, isBelowTopBand, isExpanded, ch
   );
 };
 
+type LayerProps = Pick<PaneProps, 'mode' | 'isBelowTopBand' | 'children'> & {
+  frame: PaneFrame;
+  isShown: boolean;
+};
+
+// The window over both panes. Its flag-driven props are why the view is never collapsed: a view
+// that has no native node one moment and one the next would re-parent the stack inside it. While
+// it holds no screen it takes no touch; while it holds one, the screen reader skips its siblings.
+const Layer: FC<LayerProps> = ({ mode, frame, isShown, isBelowTopBand, children }) => {
+  return (
+    <View
+      style={styles.pane(frame)}
+      pointerEvents={isShown ? undefined : 'none'}
+      accessibilityViewIsModal={isShown ? true : undefined}
+      collapsable={false}
+      testID="two-pane-layer"
+    >
+      <Pane
+        mode={mode}
+        pane="primary"
+        width={frame.width}
+        isBelowTopBand={isBelowTopBand}
+        isExpanded
+      >
+        {children}
+      </Pane>
+    </View>
+  );
+};
+
 // The pane frames are in window coordinates (useWindowDimensions) and the root is never measured,
 // so this must mount at the window origin, at the full window size. It positions the panes and
 // nothing else: each pane child fills its frame, so native bars span the pane. It tells each child
@@ -67,6 +98,8 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
   mode: pinnedMode,
   companionShare,
   expandedPane = null,
+  layer,
+  isLayerShown = false,
 }) => {
   const { theme } = useUnistyles();
   const windowMode = useLayoutMode();
@@ -135,6 +168,11 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({
           {primary}
         </Pane>
       </View>
+      {layer !== undefined && (
+        <Layer mode={mode} frame={expanded} isShown={isLayerShown} isBelowTopBand={band > 0}>
+          {layer}
+        </Layer>
+      )}
     </View>
   );
 };
