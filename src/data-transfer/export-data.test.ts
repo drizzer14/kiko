@@ -110,7 +110,7 @@ describe('exportData', () => {
     expect(writtenPayload(withSecrets.keyBase64).secrets?.bybitCredentials).toEqual([
       { accountId: 'a2', apiKey: 'fake-bybit-key', secret: 'fake-bybit-0000' },
     ]);
-    // O10: the new list must not bump the version, or every earlier build refuses the file.
+    // The new list must not bump the version, or every earlier build refuses the file.
     expect((JSON.parse(mockWriteFile.mock.calls[0][1]) as { version: number }).version).toBe(5);
 
     mockWriteFile.mockClear();

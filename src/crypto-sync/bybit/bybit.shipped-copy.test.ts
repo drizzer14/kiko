@@ -1,7 +1,7 @@
 import { en, uk } from '@kiko/i18n/locales';
 
-// The Bybit texts that name a route for the user. Set 7 extends this file with the surfaces that
-// name the kinds Kiko reads.
+// The Bybit texts that name a route for the user, and the coin notes that say what a first sync
+// leaves out.
 const ENDED_KEYS = ['bybitKeyEnded', 'bybitKeyRefusedExpired'] as const;
 
 describe('the Bybit copy', () => {

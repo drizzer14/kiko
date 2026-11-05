@@ -373,8 +373,8 @@ describe('the state a Bybit balance read returns', () => {
     });
   });
 
-  // O76, PLANNER CALL 81: a refused coin is a note of its wallet, never an entry of the oversized
-  // list, so the same wallet-by-wallet replace and keep that `complete` gave the list holds here.
+  // A refused coin is a note of its wallet, never an entry of the oversized list, so the same
+  // wallet-by-wallet replace and keep that `complete` gave the list holds here.
   describe('a coin that is refused', () => {
     const stored = { oversizedCoins: { balance: ['SOL'], balanceByWallet: { fund: ['SOL'] } } };
 

@@ -11,8 +11,8 @@ const holdingWith = (metadata: unknown, id = 'h'): HoldingRow => ({ id, metadata
 
 const holdingKeyedBy = (field: string): HoldingRow => holdingWith({ [field]: 'KEY', syncedAt: 1 });
 
-// O11 and PLANNER CALL 13: a Bybit pick conflicts with a Binance or wallet key, a Binance or
-// wallet pick conflicts with a Bybit key, and Binance to wallet (either way) stays as it was.
+// A Bybit pick conflicts with a Binance or wallet key, a Binance or wallet pick conflicts with a
+// Bybit key, and Binance to wallet (either way) stays as it was.
 // Written out for every pick against every metadata key, so a new provider id fails here.
 const CONFLICTS: Record<PickedId, readonly (ExchangeMetadataField | 'monobankId')[]> = {
   bybit: ['binanceAsset', 'walletAddress'],

@@ -194,8 +194,8 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
     expect(mockSync).not.toHaveBeenCalled();
   });
 
-  // O11: an account that still holds another exchange's holdings (kept after a disconnect) must
-  // not connect a provider whose sync would leave them reading as synced.
+  // An account that still holds another exchange's holdings (kept after a disconnect) must not
+  // connect a provider whose sync would leave them reading as synced.
   describe('an account that holds a Bybit holding', () => {
     const bybitHoldings = [holdingKeyedBy('bybitAsset')];
 

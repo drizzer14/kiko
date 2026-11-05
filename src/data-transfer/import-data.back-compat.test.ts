@@ -274,8 +274,8 @@ describe('importing a version 1 file an earlier build wrote', () => {
       expect(summary.unrestoredCredentials).toEqual([]);
     });
 
-    // O10: the entry needs no version bump, so this build reads the file a Bybit user's build
-    // writes through the same two steps, and each list goes to its own service.
+    // The entry needs no version bump, so this build reads the file a Bybit user's build writes
+    // through the same two steps, and each list goes to its own service.
     it('restores a Bybit pair to its own account, beside the other keys', async () => {
       const payload = await earlierBuildPayload(
         {
