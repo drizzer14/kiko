@@ -205,7 +205,11 @@ describe('bybitProvider', () => {
       expect(deps.fetchFundBalance).not.toHaveBeenCalled();
     });
 
-    it.each(FAILURES.filter(([title]) => title !== 'an expired key'))(
+    // A rate refusal and a 403 cool the account inside the real client, which a mock does not do,
+    // so they are proved below over the real client.
+    const FAILS_THE_SYNC = ['an expired key', 'a rate refusal', 'a forbidden answer'];
+
+    it.each(FAILURES.filter(([title]) => !FAILS_THE_SYNC.includes(title)))(
       'tolerates %s and reads the balances',
       async (_title, failure) => {
         const deps = makeDeps([unifiedCoin('BTC', '1')]);
@@ -217,18 +221,53 @@ describe('bybitProvider', () => {
       },
     );
 
-    it('stops after a rate refusal of the check, which has cooled the account', async () => {
-      const { deps, requested } = routedDeps({
-        [KEY_INFO_PATH]: refusalAnswer(10006),
-        [UNIFIED_PATH]: okAnswer(unifiedResult([unifiedCoin('BTC', '1')])),
-        [FUND_PATH]: okAnswer(fundResult([])),
-      });
-      const target = freshTarget([heldHolding('BTC:unified', 5)]);
+    describe('refused for its rate or its network location, through the real client', () => {
+      const refusals: [string, ReturnType<typeof okAnswer>, () => string][] = [
+        [
+          'a rate refusal',
+          refusalAnswer(10006),
+          () => i18n.t('accountDetail.bybitRequestFailed', { code: 10006 }),
+        ],
+        [
+          'a forbidden answer',
+          { status: 403, notJson: true },
+          () => i18n.t('accountDetail.bybitForbidden'),
+        ],
+      ];
 
-      const read = await bybitProvider.fetchBalances(deps, target);
+      it.each(refusals)(
+        'fails the sync with its text, writes nothing and stops after the check for %s',
+        async (_title, answer, text) => {
+          const { deps, requested } = routedDeps({
+            [KEY_INFO_PATH]: answer,
+            [UNIFIED_PATH]: okAnswer(unifiedResult([unifiedCoin('BTC', '1')])),
+            [FUND_PATH]: okAnswer(fundResult([fundCoin('BTC', '2')])),
+          });
+          const target = freshTarget([heldHolding('BTC:unified', 5)]);
 
-      expect(read).toEqual({ balances: [] });
-      expect(requested).toEqual([KEY_INFO_PATH]);
+          await expect(bybitProvider.fetchBalances(deps, target)).rejects.toThrow(text());
+          expect(requested).toEqual([KEY_INFO_PATH]);
+          expect(isBybitCoolingDown(target.accountId, NOW)).toBe(true);
+        },
+      );
+
+      it.each(refusals)(
+        'makes no request on the next sync while the account cools, and returns no read for %s',
+        async (_title, answer) => {
+          const { deps, requested } = routedDeps({
+            [KEY_INFO_PATH]: answer,
+            [UNIFIED_PATH]: okAnswer(unifiedResult([unifiedCoin('BTC', '1')])),
+            [FUND_PATH]: okAnswer(fundResult([])),
+          });
+          const target = freshTarget([heldHolding('BTC:unified', 5)]);
+
+          await bybitProvider.fetchBalances(deps, target).catch(() => undefined);
+          const next = await bybitProvider.fetchBalances(deps, target);
+
+          expect(next).toEqual({ balances: [] });
+          expect(requested).toEqual([KEY_INFO_PATH]);
+        },
+      );
     });
   });
 

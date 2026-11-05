@@ -83,8 +83,16 @@ describe('the key expiry a Bybit balance read returns', () => {
     expect(Keychain.resetGenericPassword).not.toHaveBeenCalled();
   });
 
+  it('returns no state, so the stored entry stays, when the key check was refused for its rate', async () => {
+    const deps = makeDeps([unifiedCoin('BTC', '1')]);
+    deps.fetchKeyInfo.mockRejectedValue(new BybitRateLimitError(10006, 60_000));
+
+    await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toThrow(
+      i18n.t('accountDetail.bybitRequestFailed', { code: 10006 }),
+    );
+  });
+
   it.each([
-    ['a rate refusal', new BybitRateLimitError(10006, 60_000)],
     ['a malformed answer', new BybitRefusalError('malformed')],
     ['an unknown refusal', new BybitRefusalError('unknown', 99999)],
     ['a compliance refusal', new BybitRefusalError('compliance', 10024)],

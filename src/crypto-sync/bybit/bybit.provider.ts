@@ -15,6 +15,7 @@ import type { BalanceProvider, ProviderBalance } from '../provider';
 import {
   type BybitFundCoin,
   type BybitKeyInfo,
+  BybitRateLimitError,
   type BybitReadOptions,
   BybitRefusalError,
   type BybitUnifiedCoin,
@@ -95,9 +96,11 @@ const walletOutcome = async (
 
 /**
  * The key check goes first. A key refused as expired fails the sync at once, since no read can
- * pass, and shows as the localized text of its class; any other failure of it is logged and
- * tolerated, because the balance reads that follow answer for themselves. A tolerated failure
- * gives no key info, so the stored end stays.
+ * pass, and shows as the localized text of its class. A rate refusal or a 403 fails it too: the
+ * client has cooled the account, so no read follows, and a sync that returned no balance would
+ * report success with its cause hidden. Any other failure of it is logged and tolerated, because
+ * the balance reads that follow answer for themselves. A tolerated failure gives no key info, so
+ * the stored end stays.
  */
 const checkKey = async (
   deps: BybitDeps,
@@ -115,7 +118,10 @@ const checkKey = async (
 
   const error: unknown = bifold(attempt);
 
-  if (error instanceof BybitRefusalError && error.refusal === 'expired') {
+  if (
+    error instanceof BybitRateLimitError ||
+    (error instanceof BybitRefusalError && error.refusal === 'expired')
+  ) {
     throw bybitFailureOf(error);
   }
 
@@ -294,11 +300,6 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     };
 
     const keyInfo = await checkKey(deps, apiKey, secret, options);
-
-    // A rate refusal the check tolerated has cooled the account: the next read would break it.
-    if (isBybitCoolingDown(target.accountId, deps.now())) {
-      return { balances: [] };
-    }
 
     // UNIFIED must succeed: it is the connection's proof of life, so its failure fails the sync
     // and nothing is written. A read that threw never gets past this line, so an empty list
