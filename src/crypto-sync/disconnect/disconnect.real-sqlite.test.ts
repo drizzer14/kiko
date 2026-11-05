@@ -132,6 +132,33 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(mockClearCredentials).not.toHaveBeenCalled();
   });
 
+  // The read time is what lets the line tell "read, and its rows hold" from "never read" once the
+  // stamp is gone, so a disconnect must leave it with the key.
+  it('a disconnect keeps the read time of a Bybit holding and drops its stamp', async () => {
+    mockDatabase.exec('PRAGMA foreign_keys = ON;');
+    mockDatabase.exec(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('acc-1', 'Bybit', 'crypto', 'bybit')",
+    );
+    mockDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
+         VALUES ('h-unified', 'acc-1', 'Bybit BTC', 'crypto_asset', 'BTC', 100, ?)`,
+      )
+      .run(JSON.stringify({ bybitAsset: 'BTC:unified', syncedAt: NOW, balanceReadAt: NOW }));
+    mockDatabase.exec(
+      `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id)
+       VALUES ('t-1', 'h-unified', 50, ${NOW - 1}, 'bybit', 'acc-1:fill:1')`,
+    );
+
+    await disconnectCryptoAccount('acc-1', 'bybit');
+
+    const { metadata } = mockDatabase
+      .prepare("SELECT metadata FROM holdings WHERE id = 'h-unified'")
+      .get() as { metadata: string };
+
+    expect(JSON.parse(metadata)).toEqual({ bybitAsset: 'BTC:unified', balanceReadAt: NOW });
+  });
+
   it('for Binance, clears the not-imported list with the rest of the state but the walks', async () => {
     connectedBinanceAccount();
     mockDatabase.prepare("UPDATE sync_state SET exchange_state = ? WHERE account_id = 'acc-1'").run(
