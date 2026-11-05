@@ -9,14 +9,36 @@ import { FixedContentMarginContext } from 'react-native-screens';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
 import { NativeStackView, type NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
+import { oppositePane } from '../pane-assignment';
 import { OpenInPaneContext } from '../open-in-pane';
 import { PaneVisibilityContext } from '../pane-visibility';
-import { oppositePane, wholeWindowPaneOf } from '../pane-assignment';
 
-import { paneSlice, withoutDefaultRoutes } from './pane-slice';
 import type { PaneStackViewProps } from './pane-stack-view.props';
 import { usePaneVisibilityValue } from './use-pane-visibility-value';
+import { type LayerSlice, layerSlice, paneSlice, withoutDefaultRoutes } from './pane-slice';
 import { keepStandInOptions, type StandInOptions, withStandInOptions } from './stand-in-options';
+
+type LayerStackProps = Pick<PaneStackViewProps, 'navigation' | 'describe'> & {
+  slice: LayerSlice;
+};
+
+// The layer's screens are the window's, so its stack is told the margin of a stack outside any
+// pane, whatever margin the panes beside it are told.
+const LayerStack: FC<LayerStackProps> = ({ slice, navigation, describe }) => {
+  const tabBarPlacement = useTabBarPlacement();
+  const contentMargin = useContentMarginFor(false);
+
+  return (
+    <FixedContentMarginContext.Provider value={tabBarPlacement === 'side' ? contentMargin : 0}>
+      <NativeStackView
+        state={slice.state}
+        navigation={navigation}
+        descriptors={slice.descriptors}
+        describe={describe}
+      />
+    </FixedContentMarginContext.Provider>
+  );
+};
 
 /**
  * The view of a pane navigator: the native stack with the whole state on a narrow window, and on
@@ -40,14 +62,10 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   // screen's title and header items are lost. Mounting the new layout one commit after the old one
   // unmounted (this one renders neither, for about a frame) lets the old cleanup run first.
   const isSwitching = isSplitShown !== isSplit;
-  // The pane that takes the whole window while a route listed in the pane config is on top. It is
-  // still a split (`isSplit` and the settled mode stay, so nothing remounts or switches), but its
-  // screens are the window's, so the margins the native stack is told are the single stack's. One
-  // pane has no pane to take it, and reads none of this.
-  const wholeWindowPane = wholeWindowPaneOf(state.routes, state.panes, paneConfig);
-  const isPaned = isSplit && wholeWindowPane === null;
-  const hasFixedContentMargin = isPaned ? isTabBarNotAtBottom : tabBarPlacement === 'side';
-  const contentMargin = useContentMarginFor(isPaned);
+  // The panes' margins never depend on the layer over them, or a stack would be told a new one as
+  // a page opens. The layer's screens are the window's, so it is told the single stack's.
+  const hasFixedContentMargin = isSplit ? isTabBarNotAtBottom : tabBarPlacement === 'side';
+  const contentMargin = useContentMarginFor(isSplit);
   const { dispatch } = navigation;
   // A screen shown as a default has no route in the state, so React Navigation keeps nothing for
   // its `setOptions`; they are kept here and lie over the static options it is described with.
@@ -66,6 +84,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   const primary = isSplit
     ? paneSlice(state, paneConfig, 'primary', descriptors, describe, dispatch, standIns)
     : null;
+  const layer = layerSlice(state, paneConfig, descriptors, describe);
   const companionStandInKey = companion?.standInKey ?? '';
   const primaryStandInKey = primary?.standInKey ?? '';
   const companionTopKey = companion?.state.routes.at(-1)?.key ?? '';
@@ -92,7 +111,7 @@ const PaneStackView: FC<PaneStackViewProps> = ({
   );
   const visibility = usePaneVisibilityValue({
     isSplit,
-    wholeWindowPane,
+    layer,
     companionTopKey,
     primaryTopKey,
     detailRoute,
@@ -121,8 +140,13 @@ const PaneStackView: FC<PaneStackViewProps> = ({
           {!isSwitching && isSplit && (
             <TwoPaneLayout
               mode={mode}
-              expandedPane={wholeWindowPane}
+              isLayerShown={Boolean(layer?.topKey)}
               companionShare={paneConfig.companionShare}
+              layer={
+                layer ? (
+                  <LayerStack slice={layer} navigation={navigation} describe={describe} />
+                ) : undefined
+              }
               companion={
                 companion && (
                   <NativeStackView

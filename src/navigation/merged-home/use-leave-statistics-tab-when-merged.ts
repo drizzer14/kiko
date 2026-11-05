@@ -55,9 +55,9 @@ const openInHomeStack = (
  * merged window has no Statistics tab to stay on (a hidden tab that is the selected one would
  * still show). The forms and pages open above the Statistics root go along, in order and with
  * their params, into the companion pane of the Home stack, where the typed draft of a form goes on,
- * except Tables, which takes the whole window in the pane of Home; what the Home stack already
- * holds stays. The Home stack may not have been shown yet, so the routes are carried once it
- * exists.
+ * except Tables, which opens over both panes, above the routes carried before it; what the Home
+ * stack already holds stays. The Home stack may not have been shown yet, so the routes are carried
+ * once it exists.
  *
  * Outside a tab (a stack rendered alone) there is no tab to leave, so it does nothing.
  */

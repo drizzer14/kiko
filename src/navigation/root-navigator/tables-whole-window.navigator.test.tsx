@@ -20,10 +20,10 @@ import { SETTLE_DELAY_MS } from '../pane-stack';
 import RootNavigator from './root.navigator';
 
 /**
- * The Tables screen takes the whole window: on the real RootNavigator, the pane that holds Tables
- * fills the window, the other pane stays mounted and hidden, and no screen is made again. The
- * transaction form is a stand-in, as in the other navigator suites: its route is under test, not
- * its fields.
+ * The Tables screen is in a layer over both panes: on the real RootNavigator, the panes keep their
+ * frames, their routes and their screens as Tables opens and as it closes, and the layer is the
+ * window to its screens. The transaction form is a stand-in, as in the other navigator suites: its
+ * route is under test, not its fields.
  */
 
 jest.mock('@kiko/screens/forms/transaction-form', () => {
@@ -73,11 +73,14 @@ const BUTTON = 'statistics-open-tables';
 const COMPANION = 'two-pane-companion';
 const PRIMARY = 'two-pane-primary';
 const DIVIDER = 'two-pane-divider';
+const LAYER = 'two-pane-layer';
+const FORM = 'transaction-form-stub';
+const TABLES = 'tables-period';
 const WINDOW = { width: 951, height: 669 };
-const WHOLE_WINDOW = { x: 0, y: 0, ...WINDOW };
 const YEAR = new Date().getFullYear();
 
-// Testing Library leaves a pane hidden from accessibility out of its queries by default.
+// Testing Library leaves a view hidden from accessibility out of its queries by default, and a
+// shown layer is a modal view, which hides the panes beside it.
 const WITH_HIDDEN = { includeHiddenElements: true } as const;
 
 const renderRoot = async () => {
@@ -146,7 +149,7 @@ const oneOf = (rendered: Rendered, testID: string): Instance => {
 
 // The content view of the Tables screen, whose parent is the screen's SafeAreaView.
 const tablesContent = (rendered: Rendered): Instance | null => {
-  let node = rendered.getByTestId('tables-period').parent;
+  let node = rendered.getByTestId(TABLES).parent;
 
   while (node !== null && node.props.testID !== 'screen-content') {
     node = node.parent;
@@ -155,16 +158,21 @@ const tablesContent = (rendered: Rendered): Instance | null => {
   return node;
 };
 
-// The pane an instance is rendered in.
-const paneOf = (instance: Instance): string | null => {
+const ancestorsOf = (instance: Instance): Instance[] => {
+  const found: Instance[] = [];
+
   for (let node = instance.parent; node !== null; node = node.parent) {
-    if (node.props.testID === COMPANION || node.props.testID === PRIMARY) {
-      return node.props.testID;
-    }
+    found.push(node);
   }
 
-  return null;
+  return found;
 };
+
+// The pane or the layer an instance is rendered in.
+const placeOf = (instance: Instance): string | null =>
+  ancestorsOf(instance)
+    .map((node) => node.props.testID)
+    .find((testID) => testID === COMPANION || testID === PRIMARY || testID === LAYER) ?? null;
 
 const styleOf = (rendered: Rendered, testID: string) =>
   StyleSheet.flatten(oneOf(rendered, testID).props.style);
@@ -175,41 +183,75 @@ const frameOf = (rendered: Rendered, testID: string) => {
   return { x: left, y: top, width, height };
 };
 
-// A pane that is mounted and cannot be seen, touched or read out.
-const isHidden = (rendered: Rendered, testID: string): boolean => {
-  const { props } = oneOf(rendered, testID);
+// The frames of both panes and the divider, or null where there is none.
+const framesOf = (rendered: Rendered) => ({
+  companion: frameOf(rendered, COMPANION),
+  primary: frameOf(rendered, PRIMARY),
+  divider: allOf(rendered, DIVIDER).length === 1 ? frameOf(rendered, DIVIDER) : null,
+});
+
+// Two panes side by side, each in a part of the window, none hidden or out of reach.
+const isShared = (rendered: Rendered): boolean => {
+  const frames = framesOf(rendered);
 
   return (
-    styleOf(rendered, testID).opacity === 0 &&
-    props.pointerEvents === 'none' &&
-    props.accessibilityElementsHidden === true
+    frames.divider !== null &&
+    [COMPANION, PRIMARY].every((testID) => {
+      const { props } = oneOf(rendered, testID);
+
+      return (
+        styleOf(rendered, testID).opacity === undefined &&
+        props.pointerEvents === undefined &&
+        props.accessibilityElementsHidden === undefined
+      );
+    }) &&
+    frames.companion.width < WINDOW.width &&
+    frames.primary.width < WINDOW.width
   );
 };
 
-const isShared = (rendered: Rendered): boolean =>
-  allOf(rendered, DIVIDER).length === 1 &&
-  !isHidden(rendered, COMPANION) &&
-  !isHidden(rendered, PRIMARY) &&
-  frameOf(rendered, COMPANION).width < WINDOW.width &&
-  frameOf(rendered, PRIMARY).width < WINDOW.width;
+// The layer holds a page: it takes touches and the screen reader focus.
+const isLayerOpen = (rendered: Rendered): boolean => {
+  const { props } = oneOf(rendered, LAYER);
 
-const isWholeWindow = (rendered: Rendered, testID: string, other: string): boolean =>
-  frameOf(rendered, testID).width === WHOLE_WINDOW.width &&
-  frameOf(rendered, testID).height === WHOLE_WINDOW.height &&
-  !isHidden(rendered, testID) &&
-  isHidden(rendered, other) &&
-  allOf(rendered, DIVIDER).length === 0;
+  return props.pointerEvents === undefined && props.accessibilityViewIsModal === true;
+};
+
+// The layer holds only its placeholder root: it takes no touch and no focus.
+const isLayerAtRest = (rendered: Rendered): boolean => {
+  const { props } = oneOf(rendered, LAYER);
+
+  return props.pointerEvents === 'none' && props.accessibilityViewIsModal === undefined;
+};
 
 const pressTables = async (rendered: Rendered): Promise<void> => {
   await fireEvent.press(rendered.getByTestId(BUTTON));
 };
 
 const pickYear = async (rendered: Rendered, year: number): Promise<void> => {
-  await fireEvent.press(rendered.getByTestId('tables-period'));
+  await fireEvent.press(rendered.getByTestId(TABLES));
   await fireEvent.press(rendered.getByTestId(`tables-period-option-year-${year}`));
 };
 
-describe('Tables takes the whole window', () => {
+// What the native stack sends when the user's Back or swipe has finished: the screen's own
+// dismissal, which the stack turns into a pop that names the screen it came from.
+const dismissNatively = async (instance: Instance): Promise<void> => {
+  const owner = ancestorsOf(instance).find((node) => typeof node.props.onDismissed === 'function');
+
+  expect(owner).toBeDefined();
+
+  await act(async () => {
+    owner?.props.onDismissed({ nativeEvent: { dismissCount: 1 } });
+  });
+};
+
+const goBack = async (): Promise<void> => {
+  await act(async () => {
+    navigationRef.goBack();
+  });
+};
+
+describe('Tables is in a layer over both panes', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     mockLayout.mode = 'columns';
@@ -224,38 +266,45 @@ describe('Tables takes the whole window', () => {
   });
 
   describe('on the Home tab with two panes', () => {
-    it('shares the window between Home and Statistics until Tables opens', async () => {
+    it('shares the window between Home and Statistics until Tables opens, with the layer at rest', async () => {
       const rendered = await renderRoot();
 
       expect(isShared(rendered)).toBe(true);
+      expect(isLayerAtRest(rendered)).toBe(true);
+      expect(allOf(rendered, TABLES)).toHaveLength(0);
       expect(namesOf('HomeTab')).toEqual(['Home']);
     });
 
-    it('gives the primary pane the whole window and hides the companion', async () => {
+    it('opens Tables over Home, so Back is there, and moves neither pane', async () => {
       const rendered = await renderRoot();
+      const before = framesOf(rendered);
+      const layer = oneOf(rendered, LAYER);
 
       await pressTables(rendered);
 
       expect(namesOf('HomeTab')).toEqual(['Home', 'Tables']);
-      expect(isWholeWindow(rendered, PRIMARY, COMPANION)).toBe(true);
-      expect(rendered.getByTestId('tables-period')).toBeTruthy();
+      expect(framesOf(rendered)).toEqual(before);
+      expect(allOf(rendered, DIVIDER)).toHaveLength(1);
+      expect(styleOf(rendered, PRIMARY).opacity).toBeUndefined();
+      expect(styleOf(rendered, COMPANION).opacity).toBeUndefined();
+      expect(oneOf(rendered, LAYER)).toBe(layer);
+      expect(isLayerOpen(rendered)).toBe(true);
+      expect(frameOf(rendered, LAYER)).toEqual({ x: 0, y: 0, ...WINDOW });
+      expect(stackOf('HomeTab').panes[stackOf('HomeTab').routes[0].key]).toBe('primary');
     });
 
-    it('opens Tables in the pane of Home, so Back is there', async () => {
+    it('shows Tables once, in the layer, and Home in its pane', async () => {
       const rendered = await renderRoot();
 
       await pressTables(rendered);
 
-      const home = stackOf('HomeTab');
-      const tables = home.routes.find(({ name }) => name === 'Tables');
-
-      expect(home.panes[tables?.key ?? '']).toBe('primary');
-      expect(home.routes[0]?.name).toBe('Home');
+      expect(allOf(rendered, TABLES)).toHaveLength(1);
+      expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
     });
 
-    // The expanded pane tells its screens they are in no pane, so Tables reads as the single
-    // stack's: the header owns the top inset, the other edges are the window's, and the content
-    // starts at the base padding with no top-bar pill.
+    // The layer tells its screens they are in no pane, so Tables reads as the single stack's: the
+    // header owns the top inset, the other edges are the window's, and the content starts at the
+    // base padding with no top-bar pill.
     it('lays Tables out as the window under its header: no top edge, the base padding', async () => {
       const rendered = await renderRoot();
 
@@ -281,25 +330,57 @@ describe('Tables takes the whole window', () => {
       expect(namesOf('HomeTab')).not.toContain('Statistics');
       expect(allOf(rendered, BUTTON)).toHaveLength(1);
       expect(oneOf(rendered, BUTTON)).toBe(before);
-      expect(paneOf(oneOf(rendered, BUTTON))).toBe(COMPANION);
-      expect(paneOf(rendered.getByTestId('tables-period'))).toBe(PRIMARY);
+      expect(placeOf(oneOf(rendered, BUTTON))).toBe(COMPANION);
+      expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
     });
 
-    it('shares the window again on Back, with the route state it had', async () => {
+    it('goes back to the panes as they were: the same frames, screens and routes', async () => {
       const rendered = await renderRoot();
-      const before = oneOf(rendered, BUTTON);
+      const before = framesOf(rendered);
+      const button = oneOf(rendered, BUTTON);
+      const routes = stackOf('HomeTab').routes;
 
       await pressTables(rendered);
-      await act(async () => {
-        navigationRef.goBack();
-      });
+      await goBack();
 
       expect(namesOf('HomeTab')).toEqual(['Home']);
+      expect(stackOf('HomeTab').routes).toEqual(routes);
+      expect(framesOf(rendered)).toEqual(before);
       expect(isShared(rendered)).toBe(true);
-      expect(oneOf(rendered, BUTTON)).toBe(before);
+      expect(isLayerAtRest(rendered)).toBe(true);
+      expect(oneOf(rendered, BUTTON)).toBe(button);
+      expect(allOf(rendered, TABLES)).toHaveLength(0);
     });
 
-    it('gives the companion the window when Tables opens over a Statistics route that is there', async () => {
+    // The Back the user does: the native stack reports the finished dismissal of Tables, and the
+    // stack turns it into a pop from that screen.
+    it('goes back when the native stack reports the dismissal of Tables', async () => {
+      const rendered = await renderRoot();
+      const before = framesOf(rendered);
+      const routes = stackOf('HomeTab').routes;
+
+      await pressTables(rendered);
+      await dismissNatively(rendered.getByTestId(TABLES));
+
+      expect(stackOf('HomeTab').routes).toEqual(routes);
+      expect(framesOf(rendered)).toEqual(before);
+      expect(isLayerAtRest(rendered)).toBe(true);
+    });
+
+    it('opens Tables again after Back, with the layer made once', async () => {
+      const rendered = await renderRoot();
+      const layer = oneOf(rendered, LAYER);
+
+      await pressTables(rendered);
+      await goBack();
+      await pressTables(rendered);
+
+      expect(oneOf(rendered, LAYER)).toBe(layer);
+      expect(allOf(rendered, TABLES)).toHaveLength(1);
+      expect(isLayerOpen(rendered)).toBe(true);
+    });
+
+    it('opens Tables over a Statistics route that is there, which keeps its pane', async () => {
       mockLayout.mode = 'single';
       const rendered = await renderRoot();
 
@@ -311,79 +392,190 @@ describe('Tables takes the whole window', () => {
       expect(namesOf('HomeTab')).toEqual(['Home', 'Statistics']);
       expect(isShared(rendered)).toBe(true);
 
+      const before = framesOf(rendered);
+      const button = oneOf(rendered, BUTTON);
+
       await pressTables(rendered);
 
       expect(namesOf('HomeTab')).toEqual(['Home', 'Statistics', 'Tables']);
-      expect(isWholeWindow(rendered, COMPANION, PRIMARY)).toBe(true);
+      expect(framesOf(rendered)).toEqual(before);
+      expect(oneOf(rendered, BUTTON)).toBe(button);
+      expect(placeOf(button)).toBe(COMPANION);
+      expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
+      expect(isLayerOpen(rendered)).toBe(true);
+
+      await goBack();
+
+      expect(namesOf('HomeTab')).toEqual(['Home', 'Statistics']);
+      expect(framesOf(rendered)).toEqual(before);
+      expect(oneOf(rendered, BUTTON)).toBe(button);
     });
   });
 
   describe('on the Statistics tab with two panes', () => {
-    it('shares the window between Statistics and Home until Tables opens', async () => {
+    it('shares the window between Statistics and Home until Tables opens, with the layer at rest', async () => {
       const rendered = await renderRoot();
 
       await goToTab('StatisticsTab');
 
       expect(namesOf('StatisticsTab')).toEqual(['Statistics']);
       expect(isShared(rendered)).toBe(true);
+      expect(isLayerAtRest(rendered)).toBe(true);
     });
 
-    it('gives the primary pane the whole window and hides the Home beside it', async () => {
+    it('opens Tables over Statistics, which stays in its pane with the Home beside it', async () => {
       const rendered = await renderRoot();
 
       await goToTab('StatisticsTab');
+
+      const before = framesOf(rendered);
+      const button = oneOf(rendered, BUTTON);
+
       await pressTables(rendered);
 
       expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
-      expect(isWholeWindow(rendered, PRIMARY, COMPANION)).toBe(true);
+      expect(framesOf(rendered)).toEqual(before);
+      expect(oneOf(rendered, BUTTON)).toBe(button);
+      expect(placeOf(button)).toBe(PRIMARY);
+      expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
+      expect(allOf(rendered, TABLES)).toHaveLength(1);
+      expect(isLayerOpen(rendered)).toBe(true);
     });
 
-    it('keeps the Statistics under Tables in the same pane, mounted, with Back to it', async () => {
+    it('goes back to Statistics as it was, the same frames and the same screen', async () => {
       const rendered = await renderRoot();
 
       await goToTab('StatisticsTab');
-      const before = oneOf(rendered, BUTTON);
+
+      const before = framesOf(rendered);
+      const button = oneOf(rendered, BUTTON);
 
       await pressTables(rendered);
-
-      expect(oneOf(rendered, BUTTON)).toBe(before);
-      expect(paneOf(oneOf(rendered, BUTTON))).toBe(PRIMARY);
-      expect(paneOf(rendered.getByTestId('tables-period'))).toBe(PRIMARY);
-
-      await act(async () => {
-        navigationRef.goBack();
-      });
+      await goBack();
 
       expect(namesOf('StatisticsTab')).toEqual(['Statistics']);
+      expect(framesOf(rendered)).toEqual(before);
       expect(isShared(rendered)).toBe(true);
-      expect(oneOf(rendered, BUTTON)).toBe(before);
+      expect(isLayerAtRest(rendered)).toBe(true);
+      expect(oneOf(rendered, BUTTON)).toBe(button);
     });
 
-    it('closes a form that is over Statistics, and gives Tables the window', async () => {
+    it('goes back when the native stack reports the dismissal of Tables', async () => {
       const rendered = await renderRoot();
 
       await goToTab('StatisticsTab');
-      await act(async () => {
-        navigationRef.dispatch({
-          type: 'PANE_OPEN',
-          payload: { openerKey: 'pane-default:companion', route: { name: 'TransactionForm' } },
-          target: stackOf('StatisticsTab').key,
+
+      const before = framesOf(rendered);
+
+      await pressTables(rendered);
+      await dismissNatively(rendered.getByTestId(TABLES));
+
+      expect(namesOf('StatisticsTab')).toEqual(['Statistics']);
+      expect(framesOf(rendered)).toEqual(before);
+      expect(isLayerAtRest(rendered)).toBe(true);
+    });
+
+    // The user's ruling "A: It stays (Recommended)": a form that is open stays open under Tables,
+    // and Back returns to it as it was, the same route and the same screen, so its draft is kept.
+    describe('with a form open over Statistics', () => {
+      const openForm = async (): Promise<void> => {
+        await act(async () => {
+          navigationRef.dispatch({
+            type: 'PANE_OPEN',
+            payload: { openerKey: 'pane-default:companion', route: { name: 'TransactionForm' } },
+            target: stackOf('StatisticsTab').key,
+          });
         });
+      };
+
+      it('keeps the form under Tables, in its pane, with the layer over both', async () => {
+        const rendered = await renderRoot();
+
+        await goToTab('StatisticsTab');
+        await openForm();
+
+        expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Home', 'TransactionForm']);
+        expect(isShared(rendered)).toBe(true);
+
+        const before = framesOf(rendered);
+        const form = oneOf(rendered, FORM);
+
+        await pressTables(rendered);
+
+        expect(namesOf('StatisticsTab')).toEqual([
+          'Statistics',
+          'Home',
+          'TransactionForm',
+          'Tables',
+        ]);
+        expect(framesOf(rendered)).toEqual(before);
+        expect(oneOf(rendered, FORM)).toBe(form);
+        expect(placeOf(form)).toBe(COMPANION);
+        expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
       });
 
-      expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Home', 'TransactionForm']);
-      expect(isShared(rendered)).toBe(true);
-      expect(rendered.getByTestId('transaction-form-stub')).toBeTruthy();
+      it('goes back to the form as it was: the same route, key and screen', async () => {
+        const rendered = await renderRoot();
 
-      await pressTables(rendered);
+        await goToTab('StatisticsTab');
+        await openForm();
 
-      expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
-      expect(isWholeWindow(rendered, PRIMARY, COMPANION)).toBe(true);
+        const before = framesOf(rendered);
+        const form = oneOf(rendered, FORM);
+        const routes = stackOf('StatisticsTab').routes;
+
+        await pressTables(rendered);
+        await goBack();
+
+        expect(stackOf('StatisticsTab').routes).toEqual(routes);
+        expect(framesOf(rendered)).toEqual(before);
+        expect(oneOf(rendered, FORM)).toBe(form);
+        expect(isShared(rendered)).toBe(true);
+        expect(isLayerAtRest(rendered)).toBe(true);
+      });
+
+      it('goes back to the form when the native stack reports the dismissal of Tables', async () => {
+        const rendered = await renderRoot();
+
+        await goToTab('StatisticsTab');
+        await openForm();
+
+        const form = oneOf(rendered, FORM);
+        const routes = stackOf('StatisticsTab').routes;
+
+        await pressTables(rendered);
+        await dismissNatively(rendered.getByTestId(TABLES));
+
+        expect(stackOf('StatisticsTab').routes).toEqual(routes);
+        expect(oneOf(rendered, FORM)).toBe(form);
+      });
     });
   });
 
+  describe('with a form and no Tables', () => {
+    it.each(['HomeTab', 'StatisticsTab'])(
+      'on the %s: the panes share the window and the layer is at rest',
+      async (tab) => {
+        const rendered = await renderRoot();
+
+        await goToTab(tab);
+        await act(async () => {
+          navigationRef.dispatch({
+            type: 'PANE_OPEN',
+            payload: { openerKey: 'pane-default:companion', route: { name: 'TransactionForm' } },
+            target: stackOf(tab).key,
+          });
+        });
+
+        expect(rendered.getByTestId(FORM)).toBeTruthy();
+        expect(isShared(rendered)).toBe(true);
+        expect(isLayerAtRest(rendered)).toBe(true);
+      },
+    );
+  });
+
   describe('with one pane', () => {
-    it('has no panes, and Tables is not capped at the pane max width on a regular window', async () => {
+    it('has no panes and no layer, and Tables is not capped at the pane max width on a regular window', async () => {
       mockLayout.mode = 'single';
       reportWindow('regular', 669, 951);
       const rendered = await renderRoot();
@@ -394,6 +586,7 @@ describe('Tables takes the whole window', () => {
       const content = tablesContent(rendered);
 
       expect(allOf(rendered, PRIMARY)).toHaveLength(0);
+      expect(allOf(rendered, LAYER)).toHaveLength(0);
       expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
       expect(content).not.toBeNull();
       expect(StyleSheet.flatten(content?.parent?.props.style).maxWidth).toBeUndefined();
@@ -408,13 +601,17 @@ describe('Tables takes the whole window', () => {
 
       expect(allOf(rendered, PRIMARY)).toHaveLength(0);
       expect(allOf(rendered, COMPANION)).toHaveLength(0);
+      expect(allOf(rendered, LAYER)).toHaveLength(0);
       expect(rendered.getByTestId(BUTTON)).toBeTruthy();
     });
   });
 
+  // This row passes on any code that keeps the route in the state: it says the year survives the
+  // switch and the layer is there again, nothing about how a Back behaves after the cycle on a
+  // device.
   describe('a fold and an unfold with Tables open', () => {
     it.each(['HomeTab', 'StatisticsTab'])(
-      'keeps the year picked on the %s, and gives the window to Tables again',
+      'keeps the year picked on the %s, and shows Tables in the layer again',
       async (tab) => {
         const rendered = await renderRoot();
 
@@ -425,17 +622,25 @@ describe('Tables takes the whole window', () => {
         await setLayout('single');
 
         expect(allOf(rendered, PRIMARY)).toHaveLength(0);
-        expect(rendered.getByTestId('tables-period')).toHaveTextContent(String(YEAR), {
+        expect(allOf(rendered, LAYER)).toHaveLength(0);
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent(String(YEAR), {
           exact: false,
         });
 
         await setLayout('columns');
 
-        expect(isWholeWindow(rendered, PRIMARY, COMPANION)).toBe(true);
-        expect(rendered.getByTestId('tables-period')).toHaveTextContent(String(YEAR), {
+        expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
+        expect(isLayerOpen(rendered)).toBe(true);
+        expect(allOf(rendered, DIVIDER)).toHaveLength(1);
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent(String(YEAR), {
           exact: false,
         });
         expect(stackOf(tab).routes.at(-1)?.params?.period).toEqual({ kind: 'year', year: YEAR });
+
+        await goBack();
+
+        expect(isLayerAtRest(rendered)).toBe(true);
+        expect(allOf(rendered, TABLES)).toHaveLength(0);
       },
     );
   });

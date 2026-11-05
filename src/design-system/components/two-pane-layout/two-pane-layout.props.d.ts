@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import type { LayoutMode } from '@kiko/display-regions';
 import type { PaneName } from '@kiko/design-system/pane-context';
 
@@ -19,6 +19,6 @@ export type TwoPaneLayoutProps = {
   // are in no pane. It stays mounted whether it shows a screen or not, because a stack made afresh
   // pushes its first screen instead of starting on it; `isLayerShown` says whether it holds one,
   // and only then does it take touches and the screen reader. Single mode draws no layer.
-  layer?: ReactNode;
+  layer?: ReactElement;
   isLayerShown?: boolean;
 };

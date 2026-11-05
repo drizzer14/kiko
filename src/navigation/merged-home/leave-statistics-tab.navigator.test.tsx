@@ -285,8 +285,8 @@ describe('the Statistics tab when the window turns into a merged Home', () => {
     });
   });
 
-  // Tables takes the whole window, so it goes where the route below it is: in the pane of Home,
-  // which is its way back, not alone in the companion pane.
+  // Tables is in a layer over both panes, above the routes the panes hold: above Home, which is its
+  // way back, not alone in the companion pane.
   describe('with Tables open above the Statistics root', () => {
     const period = { kind: 'year', year: 2024 };
 
@@ -306,14 +306,42 @@ describe('the Statistics tab when the window turns into a merged Home', () => {
       expect(home?.routes.at(-1)?.params).toEqual({ period });
     });
 
-    it('opens Tables in the pane of Home, so that Home is its Back', async () => {
+    it('opens Tables above Home, which keeps its pane, so that Home is its Back', async () => {
       await setLargeWindow(true);
       await settle();
 
       const home = stackOf('HomeTab');
-      const tables = home?.routes.find(({ name }) => name === 'Tables');
 
-      expect(home?.panes[tables?.key ?? '']).toBe('primary');
+      expect(home?.panes[home?.routes[0]?.key ?? '']).toBe('primary');
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home', 'Tables']);
+    });
+
+    it('hands Tables to the layer of the Home stack, after a placeholder root named as Home', async () => {
+      mockShownRoutes.length = 0;
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+
+      expect(mockShownRoutes).toContainEqual({ key: 'pane-layer-root', name: 'Home' });
+      expect(mockShownRoutes).toContainEqual({ key: home?.routes.at(-1)?.key, name: 'Tables' });
+    });
+  });
+
+  // The form the user typed in goes along, and Tables opens over it: both are in the Home stack,
+  // and Back from Tables returns to the form with its draft.
+  describe('with Tables open above a form over the Statistics root', () => {
+    it('carries the form and Tables, in order, with the draft of the form', async () => {
+      await renderTabs('StatisticsTab');
+      await openIn('StatisticsTab', 'TransactionForm', typedForm);
+      await openIn('StatisticsTab', 'Tables', { period: { kind: 'year', year: 2024 } });
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home', 'TransactionForm', 'Tables']);
+      expect(home?.routes[1]?.params).toEqual(typedForm);
     });
   });
 

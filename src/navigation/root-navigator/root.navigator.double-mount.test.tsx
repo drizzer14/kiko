@@ -334,8 +334,8 @@ describe('the Tables screen opened from the Statistics button', () => {
     return [...new Set(mockReads.map(({ instance }) => instance))].sort();
   };
 
-  // Tables takes the whole window, so the screens beside and under it are not on screen. They stay
-  // mounted, paused, and only Tables reads a write.
+  // Tables is in a layer over both panes, so the screens beside and under it are paused: they stay
+  // mounted and in view behind it, and only Tables reads a write.
   it('on the Home tab with two panes, keeps Statistics where it is, not read again and paused, and a later write reads from Tables only', async () => {
     const rendered = await walkTabs();
 

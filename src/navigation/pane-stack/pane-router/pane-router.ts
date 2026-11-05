@@ -15,6 +15,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 
 import {
   foldAssignment,
+  layerRoutesOf,
   openFrom,
   oppositePane,
   type PaneConfig,
@@ -131,9 +132,9 @@ export const PaneRouter = ({
 
   // A static default is not in the stack, so a page opened from it would stand alone in its pane
   // with nothing to go back to. The user acted on it, so it becomes the real route below the page.
-  // Not for a whole-window route: it opens in the pane of the route below it, so the default beside
-  // it keeps its place, and a real route made here would mount a second instance of a screen that
-  // is already there.
+  // Not for a whole-window route: it opens over both panes, so the default beside it keeps its
+  // place, and a real route made here would mount a second instance of a screen that is already
+  // there.
   const realizeStaticDefault = (
     state: PaneStackState,
     openerKey: string,
@@ -325,15 +326,19 @@ export const PaneRouter = ({
     state.routes.some((route) => route.key === key && route.isDefault === true);
 
   // A native back of several screens closes screens of the one pane that goes back; the stack
-  // router would count them in stack order, across both panes. A pane keeps its first screen.
+  // router would count them in stack order, across both panes. A pane keeps its first screen. The
+  // layer keeps none: its native stack has a placeholder root under the first route, so a count
+  // above one can reach past the layer's routes and must still close the first of them.
   const dismiss = (state: PaneStackState, source: string, count: number): PaneStackState | null => {
     const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
+    const layer = layerRoutesOf(state.routes, paneConfig);
+    const isInLayer = layer.some((route) => route.key === source);
     const closing =
       foldMap(maybe(panes[source]), (pane) => {
-        const own = routesOfPane(state.routes, panes, paneConfig, pane);
+        const own = isInLayer ? layer : routesOfPane(state.routes, panes, paneConfig, pane);
         const at = own.findIndex((route) => route.key === source);
 
-        return own.slice(Math.max(at - count + 1, 1), at + 1);
+        return own.slice(Math.max(at - count + 1, isInLayer ? 0 : 1), at + 1);
       }) ?? [];
 
     if (closing.length === 0) {

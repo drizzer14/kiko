@@ -43,10 +43,14 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 const mockDetailMounted = jest.fn();
 const mockNativeStackView = jest.fn();
 const mockFixedContentMargin = jest.fn();
+const mockStackSeen = jest.fn();
+const mockStackMounted = jest.fn();
+const mockStackUnmounted = jest.fn();
 jest.mock('@react-navigation/native-stack', () => {
   const { useContext, useEffect } = require('react');
   const { View } = require('react-native');
   const { FixedContentMarginContext } = require('react-native-screens');
+  const { PaneContext, PaneWidthContext } = require('@kiko/design-system/pane-context');
   const { OpenInPaneContext } = require('../open-in-pane');
   const { PaneVisibilityContext } = require('../pane-visibility');
 
@@ -60,8 +64,23 @@ jest.mock('@react-navigation/native-stack', () => {
 
   return {
     NativeStackView: (props: { state: { routes: { key: string; name: string }[] } }) => {
+      const kind = props.state.routes[0]?.key === 'pane-layer-root' ? 'layer' : 'pane';
+      const margin = useContext(FixedContentMarginContext);
+
       mockNativeStackView(props, useContext(PaneVisibilityContext), useContext(OpenInPaneContext));
-      mockFixedContentMargin(useContext(FixedContentMarginContext));
+      mockFixedContentMargin(margin);
+      mockStackSeen({
+        kind,
+        keys: props.state.routes.map((route) => route.key),
+        pane: useContext(PaneContext),
+        width: useContext(PaneWidthContext),
+        margin,
+      });
+      useEffect(() => {
+        mockStackMounted(kind);
+
+        return () => mockStackUnmounted(kind);
+      }, [kind]);
 
       return (
         <View testID={`stack-${props.state.routes.map((route) => route.key).join('+')}`}>
@@ -129,6 +148,9 @@ describe('PaneStackView', () => {
   beforeEach(() => {
     mockNativeStackView.mockClear();
     mockDetailMounted.mockClear();
+    mockStackSeen.mockClear();
+    mockStackMounted.mockClear();
+    mockStackUnmounted.mockClear();
     mockUseFoldRegion.mockReturnValue(null);
     mockUseTabBarEdge.mockReturnValue('none');
     mockUseVerticalBarEdge.mockReturnValue('none');
@@ -547,14 +569,21 @@ describe('PaneStackView', () => {
     });
   });
 
-  describe('a whole-window route on top', () => {
+  // Tables is in a layer over both panes: a third stack that holds a placeholder root and the
+  // whole-window routes, while the panes keep every route below them and move not at all.
+  describe('a whole-window route', () => {
     const WHOLE_HOME: PaneConfig = { ...HOME, wholeWindowRoutes: ['Tables'] };
+    const atRest = stackState([route('home', 'Home')], { home: 'primary' });
     const onTables = stackState([route('home', 'Home'), route('tables', 'Tables')], {
       home: 'primary',
-      tables: 'primary',
+      tables: 'companion',
     });
+    const overStatistics = stackState(
+      [route('home', 'Home'), route('statistics', 'Statistics'), route('tables', 'Tables')],
+      { home: 'primary', statistics: 'companion', tables: 'companion' },
+    );
 
-    // Testing Library leaves a pane hidden from accessibility out of its queries by default.
+    // A shown layer is a modal view, which Testing Library takes to hide the views beside it.
     const WITH_HIDDEN = { includeHiddenElements: true } as const;
 
     const styleOf = (testID: string) =>
@@ -566,46 +595,161 @@ describe('PaneStackView', () => {
       return { x: left, y: top, width, height };
     };
 
-    it('gives its pane the whole window, hides the other pane and draws no divider', async () => {
-      await renderView(onTables, WHOLE_HOME);
+    const layerView = () => screen.getByTestId('two-pane-layer', WITH_HIDDEN);
 
-      expect(frameOf('two-pane-primary')).toEqual({ x: 0, y: 0, width: 951, height: 669 });
-      expect(styleOf('two-pane-primary').opacity).toBeUndefined();
-      expect(styleOf('two-pane-companion').opacity).toBe(0);
-      expect(screen.getByTestId('two-pane-companion', WITH_HIDDEN).props.pointerEvents).toBe(
-        'none',
-      );
-      expect(screen.queryByTestId('two-pane-divider')).toBeNull();
+    const element = (state: PaneStackState, config: PaneConfig = WHOLE_HOME) => (
+      <PaneStackView
+        mode="columns"
+        state={state}
+        navigation={navigation}
+        descriptors={descriptors}
+        describe={describeRoute}
+        paneConfig={config}
+      />
+    );
+
+    type Seen = {
+      kind: 'layer' | 'pane';
+      keys: string[];
+      pane: unknown;
+      width: unknown;
+      margin: unknown;
+    };
+
+    // The last render of each stack: the routes it was given and what its screens read.
+    const lastSeen = (): Seen[] => {
+      const latest = new Map<string, Seen>();
+
+      for (const [seen] of mockStackSeen.mock.calls as [Seen][]) {
+        latest.set(seen.kind === 'layer' ? 'layer' : seen.keys[0], seen);
+      }
+
+      return [...latest.values()];
+    };
+
+    const paneFrames = () => ({
+      companion: frameOf('two-pane-companion'),
+      primary: frameOf('two-pane-primary'),
+      divider: frameOf('two-pane-divider'),
     });
 
-    it('keeps the default beside it mounted in its pane, with Tables the only visible route', async () => {
+    const lastPanes = () => lastSeen().filter((seen) => seen.kind === 'pane');
+
+    it('draws the layer over both panes and the divider, with only its root while Tables is closed', async () => {
+      await renderView(atRest, WHOLE_HOME);
+
+      expect(screen.getByTestId('stack-pane-layer-root')).toBeTruthy();
+      expect(screen.getByTestId('stack-home')).toBeTruthy();
+      expect(screen.getByTestId('stack-pane-default:companion')).toBeTruthy();
+      expect(screen.getByTestId('two-pane-divider')).toBeTruthy();
+      expect(layerView().props.pointerEvents).toBe('none');
+      expect(layerView().props.accessibilityViewIsModal).toBeUndefined();
+    });
+
+    it('puts Tables in the layer alone, takes touches and the screen reader focus for it', async () => {
       await renderView(onTables, WHOLE_HOME);
 
+      expect(screen.getByTestId('stack-pane-layer-root+tables', WITH_HIDDEN)).toBeTruthy();
+      expect(screen.getByTestId('stack-home', WITH_HIDDEN)).toBeTruthy();
       expect(screen.getByTestId('stack-pane-default:companion', WITH_HIDDEN)).toBeTruthy();
-      expect(screen.getByTestId('stack-home+tables')).toBeTruthy();
-
-      for (const [, visibility] of mockNativeStackView.mock.calls) {
-        expect([...visibility.visibleKeys]).toEqual(['tables']);
-      }
+      expect(layerView().props.pointerEvents).toBeUndefined();
+      expect(layerView().props.accessibilityViewIsModal).toBe(true);
     });
 
-    it('is the companion pane that takes the window when Tables sits above a real route there', async () => {
-      const state = stackState(
-        [route('home', 'Home'), route('statistics', 'Statistics'), route('tables', 'Tables')],
-        { home: 'primary', statistics: 'companion', tables: 'companion' },
+    it('renders every route once, in the panes and the layer together', async () => {
+      await renderView(overStatistics, WHOLE_HOME);
+
+      const keys = lastSeen().flatMap((seen) =>
+        seen.keys.filter((key) => key !== 'pane-layer-root'),
       );
 
-      await renderView(state, WHOLE_HOME);
+      expect(keys.sort()).toEqual(['home', 'statistics', 'tables']);
+      expect(lastSeen().find((seen) => seen.kind === 'layer')?.keys).toEqual([
+        'pane-layer-root',
+        'tables',
+      ]);
+    });
 
-      expect(frameOf('two-pane-companion')).toEqual({ x: 0, y: 0, width: 951, height: 669 });
-      expect(styleOf('two-pane-primary').opacity).toBe(0);
+    it('marks only Tables visible while it is open, and each pane’s top route when it is not', async () => {
+      await renderView(onTables, WHOLE_HOME);
+
+      for (const [, visibility] of mockNativeStackView.mock.calls) {
+        expect([...visibility.visibleKeys]).toEqual(['tables']);
+      }
+
+      mockNativeStackView.mockClear();
+      await renderView(atRest, WHOLE_HOME);
+
+      for (const [, visibility] of mockNativeStackView.mock.calls) {
+        expect([...visibility.visibleKeys].sort()).toEqual(['home', 'pane-default:companion']);
+      }
+    });
+
+    it('marks only Tables visible when it sits above a real route in the companion pane', async () => {
+      await renderView(overStatistics, WHOLE_HOME);
 
       for (const [, visibility] of mockNativeStackView.mock.calls) {
         expect([...visibility.visibleKeys]).toEqual(['tables']);
       }
     });
 
-    it('keeps every screen mounted, with no frame that shows nothing, as Tables opens and closes', async () => {
+    it('tells the layer’s screens they are in no pane, and each pane’s screens their own', async () => {
+      await renderView(onTables, WHOLE_HOME);
+
+      expect(lastSeen().find((seen) => seen.kind === 'layer')).toMatchObject({
+        pane: null,
+        width: null,
+      });
+
+      for (const seen of lastPanes()) {
+        expect(seen.pane).not.toBeNull();
+        expect(seen.width).toEqual(expect.any(Number));
+      }
+    });
+
+    // The defect itself: a pane that moves, or is told another frame, context or margin, makes its
+    // screens measure themselves anew while the layer slides away.
+    it('changes no frame, context, width or margin of a pane as Tables opens and closes', async () => {
+      const view = await render(element(atRest));
+      const before = { frames: paneFrames(), panes: lastPanes() };
+
+      await view.rerender(element(onTables));
+      const open = { frames: paneFrames(), panes: lastPanes() };
+
+      await view.rerender(element(atRest));
+      const back = { frames: paneFrames(), panes: lastPanes() };
+
+      expect(before.panes).toHaveLength(2);
+      expect(open).toEqual(before);
+      expect(back).toEqual(before);
+      expect(styleOf('two-pane-primary').opacity).toBeUndefined();
+      expect(styleOf('two-pane-companion').opacity).toBeUndefined();
+    });
+
+    it('changes no frame of a pane when Tables opens over a real route in the companion pane', async () => {
+      const covered = stackState([route('home', 'Home'), route('statistics', 'Statistics')], {
+        home: 'primary',
+        statistics: 'companion',
+      });
+      const view = await render(element(covered));
+      const before = paneFrames();
+
+      await view.rerender(element(overStatistics));
+
+      expect(paneFrames()).toEqual(before);
+      expect(frameOf('two-pane-layer')).toEqual({ x: 0, y: 0, width: 951, height: 669 });
+    });
+
+    it('keeps the layer’s stack mounted, and made once, as Tables opens and closes', async () => {
+      const view = await render(element(atRest));
+      await view.rerender(element(onTables));
+      await view.rerender(element(atRest));
+
+      expect(mockStackMounted.mock.calls.filter(([kind]) => kind === 'layer')).toHaveLength(1);
+      expect(mockStackUnmounted.mock.calls.filter(([kind]) => kind === 'layer')).toHaveLength(0);
+    });
+
+    it('keeps every screen mounted as Tables opens and closes', async () => {
       const covered = stackState(
         [route('home', 'Home'), route('detail', 'WideDetail'), route('tables', 'Tables')],
         { home: 'primary', detail: 'companion', tables: 'companion' },
@@ -614,22 +758,11 @@ describe('PaneStackView', () => {
         home: 'primary',
         detail: 'companion',
       });
-      const element = (state: PaneStackState) => (
-        <PaneStackView
-          mode="columns"
-          state={state}
-          navigation={navigation}
-          descriptors={descriptors}
-          describe={describeRoute}
-          paneConfig={WHOLE_HOME}
-        />
-      );
 
       const view = await render(element(open));
       await view.rerender(element(covered));
 
-      expect(styleOf('two-pane-primary').opacity).toBe(0);
-      expect(screen.getByTestId('detail-screen')).toBeTruthy();
+      expect(screen.getByTestId('detail-screen', WITH_HIDDEN)).toBeTruthy();
 
       await view.rerender(element(open));
 
@@ -637,53 +770,90 @@ describe('PaneStackView', () => {
       expect(mockDetailMounted).toHaveBeenCalledTimes(1);
     });
 
-    it('shares the window again once a route covers Tables', async () => {
+    // The form that was open stays, and a route over Tables stays in the layer with its Back.
+    it('keeps a form under Tables in its pane, and a route over Tables in the layer', async () => {
       const state = stackState(
-        [route('home', 'Home'), route('tables', 'Tables'), route('form', 'TransactionForm')],
-        { home: 'primary', tables: 'primary', form: 'companion' },
+        [
+          route('home', 'Home'),
+          route('form', 'TransactionForm'),
+          route('tables', 'Tables'),
+          route('detail', 'WideDetail'),
+        ],
+        { home: 'primary', form: 'companion', tables: 'companion', detail: 'companion' },
       );
 
       await renderView(state, WHOLE_HOME);
 
-      expect(screen.getByTestId('two-pane-divider')).toBeTruthy();
-      expect(frameOf('two-pane-primary').width).toBeLessThan(951);
+      expect(screen.getByTestId('stack-form', WITH_HIDDEN)).toBeTruthy();
+      expect(screen.getByTestId('stack-pane-layer-root+tables+detail', WITH_HIDDEN)).toBeTruthy();
+      expect(screen.getAllByTestId('detail-screen', WITH_HIDDEN)).toHaveLength(1);
     });
 
-    it('changes nothing with one pane, or for a config that lists no whole-window route', async () => {
+    it('has no layer with one pane, and shows the whole state in one stack', async () => {
       await renderView(onTables, WHOLE_HOME, 'single');
 
       expect(renderedProps()).toHaveLength(1);
+      expect(renderedProps()[0].state.routes.map((entry) => entry.key)).toEqual(['home', 'tables']);
+      expect(renderedProps()[0].descriptors).toBe(descriptors);
       expect(screen.queryByTestId('two-pane-primary')).toBeNull();
+      expect(screen.queryByTestId('two-pane-layer', WITH_HIDDEN)).toBeNull();
+    });
 
-      mockNativeStackView.mockClear();
+    it('has no layer for a config that lists no whole-window route', async () => {
       await renderView(onTables, HOME);
 
       expect(screen.getByTestId('two-pane-divider')).toBeTruthy();
+      expect(screen.queryByTestId('two-pane-layer', WITH_HIDDEN)).toBeNull();
+      expect(lastSeen().map((seen) => seen.kind)).toEqual(['pane', 'pane']);
     });
 
     describe('the fixed content margin', () => {
-      it('is the single stack’s under a side bar, 16 pt, in both panes', async () => {
+      const MARGINS = (seen: Seen[]) => seen.map(({ kind, margin }) => [kind, margin]);
+
+      it('is the layer’s own, 16 pt, under a side bar, while each pane keeps the split 20 pt', async () => {
         mockUseTabBarEdge.mockReturnValue('leading');
         mockWindow.width = 1376;
         mockWindow.height = 1032;
 
         await renderView(onTables, WHOLE_HOME);
 
-        expect(mockFixedContentMargin.mock.calls).toEqual([
-          [darkTheme.spacing(4)],
-          [darkTheme.spacing(4)],
+        expect(MARGINS(lastSeen())).toEqual([
+          ['pane', darkTheme.spacing(5)],
+          ['pane', darkTheme.spacing(5)],
+          ['layer', darkTheme.spacing(4)],
         ]);
       });
 
-      it('is 0 under a top bar, as the single stack, where a split pane has the side padding', async () => {
+      it('is 0 in the layer under a top bar, where each pane has the side padding', async () => {
         mockUseTabBarEdge.mockReturnValue('top');
         mockWindow.width = 1376;
         mockWindow.height = 1032;
 
         await renderView(onTables, WHOLE_HOME);
 
-        expect(mockFixedContentMargin.mock.calls).toEqual([[0], [0]]);
+        expect(MARGINS(lastSeen())).toEqual([
+          ['pane', darkTheme.spacing(4)],
+          ['pane', darkTheme.spacing(4)],
+          ['layer', 0],
+        ]);
       });
+
+      it.each(['leading', 'top'] as const)(
+        'never changes in a pane as Tables opens, under a %s bar',
+        async (edge) => {
+          mockUseTabBarEdge.mockReturnValue(edge);
+          mockWindow.width = 1376;
+          mockWindow.height = 1032;
+
+          const view = await render(element(atRest));
+          const before = MARGINS(lastPanes());
+
+          await view.rerender(element(onTables));
+
+          expect(before).toHaveLength(2);
+          expect(MARGINS(lastPanes())).toEqual(before);
+        },
+      );
     });
   });
 });

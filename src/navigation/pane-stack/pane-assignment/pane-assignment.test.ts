@@ -1,6 +1,7 @@
 import {
   defaultRouteKey,
   foldAssignment,
+  layerRoutesOf,
   openFrom,
   type Pane,
   type PaneConfig,
@@ -10,7 +11,6 @@ import {
   type RouteLike,
   routesOfPane,
   unfoldAssignment,
-  wholeWindowPaneOf,
 } from '.';
 
 const route = (key: string, name = key, extra: Partial<RouteLike> = {}): RouteLike => ({
@@ -496,8 +496,11 @@ const WHOLE_HOME_TAB: PaneConfig = { ...HOME_TAB, wholeWindowRoutes: WHOLE_WINDO
 const WHOLE_STATISTICS_TAB: PaneConfig = { ...STATISTICS_TAB, wholeWindowRoutes: WHOLE_WINDOW };
 
 describe('a whole-window route', () => {
-  describe('opens in the pane of the route below it', () => {
-    it('from the static default beside Home: in Home’s pane, with the default left alone', () => {
+  // Tables is no detail: it opens over both panes, so nothing closes for it, and every pane keeps
+  // the routes and the screens it had. Its pane entry is the detail pane's by position only; no
+  // pane reads it, because the panes are given the routes below the layer.
+  describe('opens over both panes, closing nothing', () => {
+    it('from the static default beside Home: Home and the default stay as they were', () => {
       const opened = openFrom(
         [route('home', 'Home')],
         { home: 'primary' },
@@ -507,14 +510,14 @@ describe('a whole-window route', () => {
       );
 
       expect(keys(opened.routes)).toEqual(['home', 'tables']);
-      expect(opened.panes).toEqual({ home: 'primary', tables: 'primary' });
+      expect(opened.panes).toEqual({ home: 'primary', tables: 'companion' });
       expect(shown(opened.routes, opened.panes, WHOLE_HOME_TAB)).toEqual({
         companion: 'Statistics',
-        primary: 'Tables',
+        primary: 'Home',
       });
     });
 
-    it('from the Statistics root: in the root’s pane', () => {
+    it('from the Statistics root: Statistics stays in the root pane', () => {
       const opened = openFrom(
         [route('statistics', 'Statistics')],
         { statistics: 'primary' },
@@ -523,14 +526,14 @@ describe('a whole-window route', () => {
         WHOLE_STATISTICS_TAB,
       );
 
-      expect(opened.panes).toEqual({ statistics: 'primary', tables: 'primary' });
+      expect(opened.panes).toEqual({ statistics: 'primary', tables: 'companion' });
       expect(shown(opened.routes, opened.panes, WHOLE_STATISTICS_TAB)).toEqual({
         companion: 'Home',
-        primary: 'Tables',
+        primary: 'Statistics',
       });
     });
 
-    it('from a real route in the companion pane: in the companion pane', () => {
+    it('from a real route in the companion pane: that route stays in its pane', () => {
       const opened = openFrom(
         [route('home', 'Home'), route('statistics', 'Statistics')],
         { home: 'primary', statistics: 'companion' },
@@ -545,9 +548,15 @@ describe('a whole-window route', () => {
         statistics: 'companion',
         tables: 'companion',
       });
+      expect(shown(opened.routes, opened.panes, WHOLE_HOME_TAB)).toEqual({
+        companion: 'Statistics',
+        primary: 'Home',
+      });
     });
 
-    it('from a route that has a form above it: the form closes and Tables takes the opener’s pane', () => {
+    // The user's ruling "A: It stays (Recommended)": a form or a Home that is open stays open
+    // under Tables, and Back returns to it as it was.
+    it('from a route that has a form above it: the form stays, with Tables over both panes', () => {
       const opened = openFrom(
         [route('statistics', 'Statistics'), route('form', 'TransactionForm')],
         { statistics: 'primary', form: 'companion' },
@@ -556,11 +565,69 @@ describe('a whole-window route', () => {
         WHOLE_STATISTICS_TAB,
       );
 
-      expect(keys(opened.routes)).toEqual(['statistics', 'tables']);
-      expect(opened.panes).toEqual({ statistics: 'primary', tables: 'primary' });
+      expect(keys(opened.routes)).toEqual(['statistics', 'form', 'tables']);
+      expect(opened.panes).toEqual({
+        statistics: 'primary',
+        form: 'companion',
+        tables: 'companion',
+      });
+      expect(shown(opened.routes, opened.panes, WHOLE_STATISTICS_TAB)).toEqual({
+        companion: 'TransactionForm',
+        primary: 'Statistics',
+      });
+      expect(keys(layerRoutesOf(opened.routes, WHOLE_STATISTICS_TAB))).toEqual(['tables']);
     });
 
-    it('opens a route that is not listed in the detail pane, as before', () => {
+    it('from a Statistics root that has a real Home above it: Home stays too', () => {
+      const opened = openFrom(
+        [route('statistics', 'Statistics'), route('home', 'Home')],
+        { statistics: 'primary', home: 'companion' },
+        'statistics',
+        route('tables', 'Tables'),
+        WHOLE_STATISTICS_TAB,
+      );
+
+      expect(keys(opened.routes)).toEqual(['statistics', 'home', 'tables']);
+      expect(opened.panes.home).toBe('companion');
+    });
+
+    it('from a default made real by the press: it stops being a default, and stays', () => {
+      const opened = openFrom(
+        [route('home', 'Home'), route('statistics', 'Statistics', { isDefault: true })],
+        { home: 'primary', statistics: 'companion' },
+        'statistics',
+        route('tables', 'Tables'),
+        WHOLE_HOME_TAB,
+      );
+
+      expect(opened.routes[1]).toEqual({ key: 'statistics', name: 'Statistics' });
+    });
+
+    it('with a key that is already there: the route moves to the top and appears once', () => {
+      const opened = openFrom(
+        [route('home', 'Home'), route('tables', 'Tables'), route('form', 'TransactionForm')],
+        { home: 'primary', tables: 'companion', form: 'companion' },
+        'form',
+        route('tables', 'Tables'),
+        WHOLE_HOME_TAB,
+      );
+
+      expect(keys(opened.routes)).toEqual(['home', 'form', 'tables']);
+    });
+
+    it('an opener it cannot place leaves everything as it was', () => {
+      const routes = [route('home', 'Home')];
+      const panes = { home: 'primary' } as const;
+
+      expect(openFrom(routes, panes, 'nobody', route('tables', 'Tables'), WHOLE_HOME_TAB)).toEqual({
+        routes,
+        panes,
+      });
+    });
+  });
+
+  describe('opens in the detail pane, as before', () => {
+    it('a route that is not listed', () => {
       const opened = openFrom(
         [route('home', 'Home')],
         { home: 'primary' },
@@ -572,7 +639,7 @@ describe('a whole-window route', () => {
       expect(opened.panes).toEqual({ home: 'primary', form: 'companion' });
     });
 
-    it('opens the same name in the detail pane when the config lists no whole-window route', () => {
+    it('the same name, when the config lists no whole-window route', () => {
       const opened = openFrom(
         [route('home', 'Home')],
         { home: 'primary' },
@@ -583,10 +650,22 @@ describe('a whole-window route', () => {
 
       expect(opened.panes).toEqual({ home: 'primary', tables: 'companion' });
     });
+
+    it('and closes the routes above the opener first, as for any detail, when the config lists none', () => {
+      const opened = openFrom(
+        [route('statistics', 'Statistics'), route('form', 'TransactionForm')],
+        { statistics: 'primary', form: 'companion' },
+        'statistics',
+        route('tables', 'Tables'),
+        STATISTICS_TAB,
+      );
+
+      expect(keys(opened.routes)).toEqual(['statistics', 'tables']);
+    });
   });
 
   describe('without a stored pane', () => {
-    it('takes the pane of the route below it', () => {
+    it('takes the pane of its position, as any route above the root does', () => {
       const routes = [
         route('home', 'Home'),
         route('statistics', 'Statistics'),
@@ -598,44 +677,104 @@ describe('a whole-window route', () => {
         statistics: 'companion',
         tables: 'companion',
       });
+    });
+
+    it('is the detail pane’s above a root that is alone, and the root pane’s when it is the root', () => {
       expect(
-        routesOfPane(routes, { home: 'primary' }, WHOLE_HOME_TAB, 'companion').map(
-          (entry) => entry.key,
+        unfoldAssignment(
+          [route('statistics', 'Statistics'), route('tables', 'Tables')],
+          {},
+          WHOLE_STATISTICS_TAB,
         ),
-      ).toEqual(['statistics', 'tables']);
-    });
-
-    it('sits in the root pane above a root that is alone', () => {
-      const routes = [route('statistics', 'Statistics'), route('tables', 'Tables')];
-
-      expect(unfoldAssignment(routes, {}, WHOLE_STATISTICS_TAB)).toEqual({
-        statistics: 'primary',
-        tables: 'primary',
-      });
-    });
-
-    it('is the root’s own pane when it is the root', () => {
+      ).toEqual({ statistics: 'primary', tables: 'companion' });
       expect(unfoldAssignment([route('tables', 'Tables')], {}, WHOLE_STATISTICS_TAB)).toEqual({
         tables: 'primary',
       });
     });
 
-    it('keeps a stored pane over the pane of the route below', () => {
+    it('keeps a stored pane', () => {
       const routes = [route('statistics', 'Statistics'), route('tables', 'Tables')];
 
-      expect(unfoldAssignment(routes, { tables: 'companion' }, WHOLE_STATISTICS_TAB).tables).toBe(
-        'companion',
+      expect(unfoldAssignment(routes, { tables: 'primary' }, WHOLE_STATISTICS_TAB).tables).toBe(
+        'primary',
       );
     });
 
-    it('goes to the detail pane when the config lists no whole-window route', () => {
+    it('is the same when the config lists no whole-window route', () => {
       const routes = [route('statistics', 'Statistics'), route('tables', 'Tables')];
 
-      expect(unfoldAssignment(routes, {}, STATISTICS_TAB).tables).toBe('companion');
+      expect(unfoldAssignment(routes, {}, STATISTICS_TAB)).toEqual(
+        unfoldAssignment(routes, {}, WHOLE_STATISTICS_TAB),
+      );
     });
   });
 
-  describe('keeps its pane through a fold and an unfold', () => {
+  describe('the layer routes', () => {
+    it('are the first listed route above the root and every route over it', () => {
+      const routes = [
+        route('home', 'Home'),
+        route('statistics', 'Statistics'),
+        route('tables', 'Tables'),
+        route('form', 'TransactionForm'),
+      ];
+
+      expect(keys(layerRoutesOf(routes, WHOLE_HOME_TAB))).toEqual(['tables', 'form']);
+    });
+
+    it('are none when no route is listed, the config lists none, or the listed route is the root', () => {
+      expect(layerRoutesOf([route('home', 'Home')], WHOLE_HOME_TAB)).toEqual([]);
+      expect(layerRoutesOf([route('home', 'Home'), route('tables', 'Tables')], HOME_TAB)).toEqual(
+        [],
+      );
+      expect(layerRoutesOf([route('tables', 'Tables')], WHOLE_HOME_TAB)).toEqual([]);
+      expect(layerRoutesOf([], WHOLE_HOME_TAB)).toEqual([]);
+    });
+
+    it('start at the first of two listed routes', () => {
+      const routes = [route('home', 'Home'), route('first', 'Tables'), route('second', 'Tables')];
+
+      expect(keys(layerRoutesOf(routes, WHOLE_HOME_TAB))).toEqual(['first', 'second']);
+    });
+  });
+
+  // Tables renders in the layer and nowhere else: each pane gets only the routes below it, so
+  // no route is shown twice and none is lost between the panes and the layer.
+  describe('the routes of a pane', () => {
+    const covered = [
+      route('home', 'Home'),
+      route('statistics', 'Statistics'),
+      route('tables', 'Tables'),
+      route('form', 'TransactionForm'),
+    ];
+    const panes = { home: 'primary', statistics: 'companion', tables: 'companion' } as const;
+
+    it('leave out the layer routes and the routes over them', () => {
+      expect(keys(routesOfPane(covered, panes, WHOLE_HOME_TAB, 'companion'))).toEqual([
+        'statistics',
+      ]);
+      expect(keys(routesOfPane(covered, panes, WHOLE_HOME_TAB, 'primary'))).toEqual(['home']);
+    });
+
+    it('hold every route once, with the layer routes', () => {
+      const inPanes = (['companion', 'primary'] as const).flatMap((pane) =>
+        keys(routesOfPane(covered, panes, WHOLE_HOME_TAB, pane)),
+      );
+
+      expect([...inPanes, ...keys(layerRoutesOf(covered, WHOLE_HOME_TAB))].sort()).toEqual(
+        keys(covered).sort(),
+      );
+    });
+
+    it('keep the routes of a config that lists none, Tables included', () => {
+      expect(keys(routesOfPane(covered, panes, HOME_TAB, 'companion'))).toEqual([
+        'statistics',
+        'tables',
+        'form',
+      ]);
+    });
+  });
+
+  describe('keeps its place through a fold and an unfold', () => {
     it('for Tables opened from the static default', () => {
       const opened = openFrom(
         [route('home', 'Home')],
@@ -648,38 +787,21 @@ describe('a whole-window route', () => {
 
       expect(unfoldAssignment(folded.routes, folded.panes, WHOLE_HOME_TAB)).toEqual(opened.panes);
     });
-  });
 
-  describe('wholeWindowPaneOf', () => {
-    const tablesOnHome = [route('home', 'Home'), route('tables', 'Tables')];
-
-    it('names the pane of a listed route on top', () => {
-      expect(wholeWindowPaneOf(tablesOnHome, { home: 'primary' }, WHOLE_HOME_TAB)).toBe('primary');
-      expect(
-        wholeWindowPaneOf(
-          [route('home', 'Home'), route('statistics', 'Statistics'), route('tables', 'Tables')],
-          { home: 'primary', statistics: 'companion' },
-          WHOLE_HOME_TAB,
-        ),
-      ).toBe('companion');
-    });
-
-    it('is null while the listed route is covered by another', () => {
-      expect(
-        wholeWindowPaneOf(
-          [...tablesOnHome, route('form', 'TransactionForm')],
-          { home: 'primary' },
-          WHOLE_HOME_TAB,
-        ),
-      ).toBeNull();
-    });
-
-    it('is null when the top route is not listed, the config lists none, or there is no route', () => {
-      expect(wholeWindowPaneOf([route('home', 'Home')], { home: 'primary' }, WHOLE_HOME_TAB)).toBe(
-        null,
+    it('for a form that stayed under Tables', () => {
+      const opened = openFrom(
+        [route('statistics', 'Statistics'), route('form', 'TransactionForm')],
+        { statistics: 'primary', form: 'companion' },
+        'statistics',
+        route('tables', 'Tables'),
+        WHOLE_STATISTICS_TAB,
       );
-      expect(wholeWindowPaneOf(tablesOnHome, { home: 'primary' }, HOME_TAB)).toBeNull();
-      expect(wholeWindowPaneOf([], {}, WHOLE_HOME_TAB)).toBeNull();
+      const folded = foldAssignment(opened.routes, opened.panes);
+
+      expect(keys(folded.routes)).toEqual(['statistics', 'form', 'tables']);
+      expect(unfoldAssignment(folded.routes, folded.panes, WHOLE_STATISTICS_TAB)).toEqual(
+        opened.panes,
+      );
     });
   });
 });
