@@ -18,6 +18,7 @@ import CategoryReviewScreen from './category-review.screen';
 
 type ReviewScreenProps = NativeStackScreenProps<SettingsStackParamList, 'CategoryReview'>;
 type ReadKind = 'candidates' | 'rules' | 'categories';
+type EvidenceData = { description: string; categoryKey: string; rowCount: number };
 type CategoryData = { key: string; title: string; icon: string; color: string | null };
 type Preview = { count: number; names: string[] };
 type ModalProps = { visible: boolean; onDismiss?: () => void; onRequestClose?: () => void };
@@ -40,6 +41,7 @@ const mockModalProps = new Map<string, ModalProps>();
 let mockCandidates: ReviewCandidate[] = [];
 let mockRules: StoredCategoryRule[] = [];
 let mockCategories: CategoryData[] = [];
+let mockEvidence: EvidenceData[] = [];
 let mockLoading: Record<ReadKind, boolean> = { candidates: false, rules: false, categories: false };
 
 // The shared Modal double drops a hidden sheet from the tree, and a test needs the one handler
@@ -89,6 +91,7 @@ jest.mock('@kiko/categories/category-rules-repo', () => ({
   categoryRulesRepo: {
     allQuery: () => ({ __kind: 'rules' }),
     reviewCandidateRowsQuery: () => ({ __kind: 'candidates' }),
+    reviewEvidenceQuery: () => ({ __kind: 'evidence' }),
     previewNameRule: (input: object) => mockPreview(input),
     applyNameRule: (input: object) => mockApply(input),
   },
@@ -150,8 +153,13 @@ const ATB_ROWS = 5;
 const SILPO_ROWS = 2;
 const NAMES = ['Name 1', 'Name 2', 'Name 3', 'Name 4', 'Name 5', 'Name 6', 'Name 7'];
 
-const dataOf = (kind: ReadKind): unknown[] =>
-  ({ candidates: mockCandidates, rules: mockRules, categories: mockCategories })[kind];
+const dataOf = (kind: ReadKind | 'evidence'): unknown[] =>
+  ({
+    candidates: mockCandidates,
+    rules: mockRules,
+    categories: mockCategories,
+    evidence: mockEvidence,
+  })[kind];
 
 const linesOf = (screen: Screen) => screen.getAllByTestId(LINE);
 
@@ -214,6 +222,7 @@ beforeEach(() => {
   mockCandidates = worldCandidates();
   mockRules = [];
   mockCategories = SEEDED_CATEGORIES.map((category) => ({ ...category, color: null }));
+  mockEvidence = [];
   mockLoading = { candidates: false, rules: false, categories: false };
   mockApply.mockResolvedValue(0);
   previewReturns(ATB_ROWS);
@@ -715,6 +724,134 @@ describe('CategoryReviewScreen', () => {
       );
 
       expect(candidateCall?.[1]).toEqual(['transactions', 'category_rules', 'categories']);
+    });
+  });
+
+  describe('the suggestion chip', () => {
+    // The catalogue key has no type yet, so the red run reads it through a cast.
+    const suggestionText = (category: string, agreeing: number, total: number): string =>
+      (i18n.t as unknown as (key: string, options: object) => string)('categoryReview.suggestion', {
+        category,
+        agreeing,
+        total,
+      });
+
+    const GROCERIES_CHIP = suggestionText('Groceries', 3, 3);
+
+    const silpoSuggested = (): void => {
+      mockEvidence = [{ description: 'Silpo 7', categoryKey: 'groceries', rowCount: 3 }];
+    };
+
+    const pressChip = async (screen: Screen, lineIndex: number, text: string): Promise<void> => {
+      await fireEvent.press(within(linesOf(screen)[lineIndex]).getByText(text));
+    };
+
+    it("shows the chip with the category's title and count", async () => {
+      silpoSuggested();
+
+      const screen = await renderReview();
+      const [atb, silpo] = linesOf(screen);
+
+      expect(within(silpo).getByText(GROCERIES_CHIP)).toBeTruthy();
+      expect(GROCERIES_CHIP).not.toBe('categoryReview.suggestion');
+      expect(GROCERIES_CHIP).toContain('Groceries');
+      expect(within(atb).queryByText(GROCERIES_CHIP)).toBeNull();
+    });
+
+    it('shows no chip when there is no suggestion', async () => {
+      mockEvidence = [{ description: 'Silpo 7', categoryKey: 'groceries', rowCount: 1 }];
+
+      const screen = await renderReview();
+      const [, silpo] = linesOf(screen);
+
+      expect(within(silpo).queryByText(suggestionText('Groceries', 1, 1))).toBeNull();
+      expect(within(silpo).getByText(i18n.t('categoryReview.choose'))).toBeTruthy();
+    });
+
+    it('nothing changes until the chip is tapped', async () => {
+      silpoSuggested();
+
+      const screen = await renderReview();
+
+      expect(within(linesOf(screen)[SECOND_LINE]).getByText(GROCERIES_CHIP)).toBeTruthy();
+      expect(linesOf(screen)).toHaveLength(2);
+      expect(screen.queryByTestId(OPTIONS_SHEET)).toBeNull();
+      expect(screen.queryByTestId(CONFIRM_SHEET)).toBeNull();
+      expect(mockPreview).not.toHaveBeenCalled();
+      expect(mockApply).not.toHaveBeenCalled();
+    });
+
+    it('a tap runs the same preview and write as a pick', async () => {
+      silpoSuggested();
+      previewReturns(SILPO_ROWS);
+
+      const screen = await renderReview();
+      await pressChip(screen, SECOND_LINE, GROCERIES_CHIP);
+
+      expect(mockPreview).toHaveBeenCalledTimes(1);
+      expect(mockPreview).toHaveBeenCalledWith({
+        text: 'Silpo',
+        kind: 'nameIs',
+        category: 'groceries',
+        sourceTransactionId: null,
+      });
+      expect(mockApply).toHaveBeenCalledTimes(1);
+      expect(mockApply).toHaveBeenCalledWith(groceriesPayload('Silpo', 'nameIs'));
+      expect(screen.queryByTestId(CONFIRM_SHEET)).toBeNull();
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    it('a tap with a larger preview opens the confirm', async () => {
+      silpoSuggested();
+      previewReturns(SILPO_ROWS + 3, ['Silpo 12', 'Silpo 7', 'Silpo Market']);
+
+      const screen = await renderReview();
+      await pressChip(screen, SECOND_LINE, GROCERIES_CHIP);
+      const confirm = within(screen.getByTestId(CONFIRM_SHEET));
+
+      expect(confirm.getByText(/Silpo Market/)).toBeTruthy();
+      expect(mockApply).not.toHaveBeenCalled();
+
+      await pressMove(screen);
+
+      expect(mockApply).toHaveBeenCalledTimes(1);
+      expect(mockApply).toHaveBeenCalledWith(groceriesPayload('Silpo', 'nameIs'));
+    });
+
+    it('picking another category resolves the line by a rule', async () => {
+      silpoSuggested();
+      previewReturns(SILPO_ROWS);
+
+      const screen = await renderReview();
+
+      expect(within(linesOf(screen)[SECOND_LINE]).getByText(GROCERIES_CHIP)).toBeTruthy();
+
+      await pick(screen, SECOND_LINE, 'Transport');
+
+      expect(mockApply).toHaveBeenCalledTimes(1);
+      expect(mockApply).toHaveBeenCalledWith({
+        name: 'Silpo',
+        kind: 'nameIs',
+        category: 'transport',
+        sourceTransactionId: null,
+      });
+    });
+
+    it('the evidence read is paused and uncached with the others', async () => {
+      mockUseIsScreenVisible.mockReturnValue(false);
+
+      await renderReview();
+
+      const evidenceCalls = mockUseLiveQuery.mock.calls.filter(
+        ([query]) => query.__kind === 'evidence',
+      );
+
+      expect(evidenceCalls).toHaveLength(1);
+
+      for (const [, , , options] of evidenceCalls) {
+        expect(options).toMatchObject({ paused: true });
+        expect(options.cached).toBeFalsy();
+      }
     });
   });
 });
