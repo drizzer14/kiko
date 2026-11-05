@@ -165,13 +165,14 @@ const setVisible = async (
 };
 
 describe('useRecurringSeries', () => {
-  it('reads the ledger, the holdings and the accounts, each from its own table', async () => {
+  it('reads the ledger, the holdings, the accounts and the settings, each from its own table', async () => {
     await renderHook(() => useRecurringSeries());
 
     expect(mockUseLiveQuery.mock.calls.map((call) => call[1])).toEqual([
       ['transactions'],
       ['holdings'],
       ['accounts'],
+      ['settings'],
     ]);
   });
 
@@ -193,7 +194,7 @@ describe('useRecurringSeries', () => {
 
       await renderHook(() => useRecurringSeries());
 
-      expect(mockUseLiveQuery.mock.calls).toHaveLength(3);
+      expect(mockUseLiveQuery.mock.calls).toHaveLength(4);
 
       for (const options of optionsOfEveryCall()) {
         expect(options).toStrictEqual({ paused: true });
@@ -203,7 +204,7 @@ describe('useRecurringSeries', () => {
     it('leaves every read unpaused while the screen is on screen', async () => {
       await renderHook(() => useRecurringSeries());
 
-      expect(mockUseLiveQuery.mock.calls).toHaveLength(3);
+      expect(mockUseLiveQuery.mock.calls).toHaveLength(4);
 
       for (const options of optionsOfEveryCall()) {
         expect(options).toStrictEqual({ paused: false });

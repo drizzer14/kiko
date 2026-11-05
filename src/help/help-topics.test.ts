@@ -163,7 +163,7 @@ describe('help topic registry', () => {
     ['manageCategories', 5],
     ['categoryRules', 5],
     ['viewStatistics', 8],
-    ['viewRecurringCharges', 3],
+    ['viewRecurringCharges', 4],
     ['backupData', 4],
     ['restoreData', 4],
     ['systemSettings', 4],

@@ -107,7 +107,7 @@ jest.mock('@kiko/display-regions', () =>
 );
 
 jest.mock('@kiko/recurring/use-recurring-series', () => ({
-  useRecurringSeries: () => ({ series: [mockNetflix], isLoading: false }),
+  useRecurringSeries: () => ({ series: [mockNetflix], choices: new Map(), isLoading: false }),
 }));
 
 // The series screen reads its charges by id and the form reads one row by id; every other read
