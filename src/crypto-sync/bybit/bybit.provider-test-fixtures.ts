@@ -49,6 +49,7 @@ export const heldHolding = (
 
 type ProviderMocks = BybitDeps & {
   readCredentials: jest.Mock;
+  readExpiredAtMs: jest.Mock;
   fetchKeyInfo: jest.Mock;
   fetchUnifiedBalance: jest.Mock;
   fetchFundBalance: jest.Mock;
@@ -64,6 +65,7 @@ export const makeDeps = (
   }) as unknown as typeof fetch,
   now: () => NOW,
   readCredentials: jest.fn(async () => ({ apiKey: API_KEY, secret: SECRET })),
+  readExpiredAtMs: jest.fn(async () => undefined),
   fetchKeyInfo: jest.fn(async () => ({
     expiredAtMs: undefined,
     deadlineDay: undefined,
@@ -112,6 +114,7 @@ export const routedDeps = (
       fetchImpl,
       now: () => NOW,
       readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
+      readExpiredAtMs: async () => undefined,
     },
     requested,
   };

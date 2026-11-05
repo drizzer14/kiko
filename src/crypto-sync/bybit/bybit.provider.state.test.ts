@@ -271,7 +271,7 @@ describe('the state a Bybit balance read returns', () => {
   });
 
   describe('what the read writes to the state', () => {
-    it('names only the lists, the notes and the stamp', async () => {
+    it('names only the lists, the notes, the end of the key and the stamp', async () => {
       const read = await bybitProvider.fetchBalances(
         makeDeps([unifiedCoin('BTC', '1')], [fundCoin('ETH', '2')]),
         freshTarget(),
@@ -280,6 +280,7 @@ describe('the state a Bybit balance read returns', () => {
       expect(Object.keys(stateAfter(read)).sort()).toEqual([
         'balanceNotes',
         'balanceSyncedAt',
+        'keyExpiry',
         'oversizedCoins',
         'untrackedCoins',
         'version',

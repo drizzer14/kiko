@@ -2,15 +2,18 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { logFailure } from '@kiko/diagnostics';
 import type { Currency } from '@kiko/currency/currency';
-import either, { bifold, bifoldMap, isLeft } from 'fnts/either';
+import { exchangeStateDepsOf } from '@kiko/crypto-sync/exchange/walk';
 import { appearMinorUnitsOf } from '@kiko/crypto-sync/exchange/amounts';
-import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
+import { keyExpiryOf } from '@kiko/crypto-sync/exchange/history-status';
+import either, { bifold, bifoldMap, bifoldr, isLeft } from 'fnts/either';
 import type { ExchangeCredentials } from '@kiko/crypto-sync/exchange/credentials';
+import { type ExchangeStatePatch, parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import type { BalanceProvider, ProviderBalance } from '../provider';
 
 import {
   type BybitFundCoin,
+  type BybitKeyInfo,
   type BybitReadOptions,
   BybitRefusalError,
   type BybitUnifiedCoin,
@@ -39,15 +42,22 @@ export type BybitDeps = {
   fetchImpl: typeof fetch;
   now: () => number;
   readCredentials: (accountId: string) => Promise<ExchangeCredentials | undefined>;
-  fetchKeyInfo: WalletFetch<unknown>;
+  /** The end of the key the account's state holds, which a refusal is read against. */
+  readExpiredAtMs: (accountId: string) => Promise<number | undefined>;
+  fetchKeyInfo: WalletFetch<BybitKeyInfo>;
   fetchUnifiedBalance: WalletFetch<BybitUnifiedCoin[]>;
   fetchFundBalance: WalletFetch<BybitFundCoin[]>;
 };
+
+const readStoredExpiredAtMs = async (accountId: string): Promise<number | undefined> =>
+  keyExpiryOf(parseExchangeState(await exchangeStateDepsOf('bybit').readExchangeState(accountId)))
+    ?.expiredAtMs;
 
 export const defaultBybitDeps: BybitDeps = {
   fetchImpl: fetch,
   now: () => Date.now(),
   readCredentials: readBybitCredentials,
+  readExpiredAtMs: readStoredExpiredAtMs,
   fetchKeyInfo,
   fetchUnifiedBalance,
   fetchFundBalance,
@@ -94,18 +104,20 @@ const walletOutcome = async (
 /**
  * The key check goes first. A key refused as expired fails the sync at once, since no read can
  * pass; any other failure of it is logged and tolerated, because the balance reads that follow
- * answer for themselves.
+ * answer for themselves. A tolerated failure gives no key info, so the stored end stays.
  */
 const checkKey = async (
   deps: BybitDeps,
   apiKey: string,
   secret: string,
   options: BybitReadOptions,
-): Promise<void> => {
-  const attempt = await either<unknown, unknown>(() => deps.fetchKeyInfo(apiKey, secret, options));
+): Promise<BybitKeyInfo | undefined> => {
+  const attempt = await either<unknown, BybitKeyInfo>(() =>
+    deps.fetchKeyInfo(apiKey, secret, options),
+  );
 
   if (!isLeft(attempt)) {
-    return;
+    return bifoldr(attempt);
   }
 
   const error: unknown = bifold(attempt);
@@ -115,6 +127,8 @@ const checkKey = async (
   }
 
   logFailure('[bybit sync] the key check failed', error);
+
+  return undefined;
 };
 
 /** The `bybitAsset` match keys already present among a target's holdings. */
@@ -184,12 +198,23 @@ const appendWallet = (
 
 const sortedTickers = (tickers: readonly string[]): string[] => [...new Set(tickers)].sort();
 
+/** The patch of a good key read, which replaces the stored end; a failed read gives none. */
+const keyExpiryPatchesOf = (
+  info: BybitKeyInfo | undefined,
+  readAtMs: number,
+): ExchangeStatePatch[] =>
+  foldMap(maybe(info), ({ expiredAtMs, deadlineDay }): ExchangeStatePatch[] => [
+    { kind: 'keyExpiry', expiredAtMs, deadlineDay, readAtMs },
+  ]) ?? [];
+
 type ReadWallets = {
   unified: WalletRead;
   /** Absent when the FUND read failed. */
   fund: WalletRead | undefined;
   /** The wallets Bybit refused the key for. */
   refused: BybitWallet[];
+  /** Absent when the key check failed, so the stored end stays. */
+  keyInfo: BybitKeyInfo | undefined;
   syncedAt: number;
 };
 
@@ -203,6 +228,7 @@ const statePatchesOf = ({
   unified,
   fund,
   refused,
+  keyInfo,
   syncedAt,
 }: ReadWallets): ExchangeStatePatch[] => {
   const untracked =
@@ -233,6 +259,7 @@ const statePatchesOf = ({
       },
       refused,
     },
+    ...keyExpiryPatchesOf(keyInfo, syncedAt),
     { kind: 'balanceSyncedAt', value: syncedAt },
   ];
 };
@@ -255,15 +282,18 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     }
 
     const { apiKey, secret } = credentials;
+    const expiredAtMs = await deps.readExpiredAtMs(target.accountId);
     // The account is what a rate refusal puts in cooldown: a read without it still works and
-    // only loses the cooldown, so every read below passes it.
+    // only loses the cooldown, so every read below passes it. The stored end of the key turns a
+    // refusal that says only "no" past that end into the expired class.
     const options: BybitReadOptions = {
       fetchImpl: deps.fetchImpl,
       now: deps.now,
       accountId: target.accountId,
+      ...foldMap(maybe(expiredAtMs), (value) => ({ expiredAtMs: value })),
     };
 
-    await checkKey(deps, apiKey, secret, options);
+    const keyInfo = await checkKey(deps, apiKey, secret, options);
 
     // A rate refusal the check tolerated has cooled the account: the next read would break it.
     if (isBybitCoolingDown(target.accountId, deps.now())) {
@@ -296,6 +326,7 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
         unified,
         fund,
         refused: fundOutcome.refused ? ['fund'] : [],
+        keyInfo,
         syncedAt: deps.now(),
       }),
     };

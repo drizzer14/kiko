@@ -274,7 +274,7 @@ const expiredAtMsOf = (value: unknown): number | undefined => {
  * Every other field of the answer (the permissions, the user and inviter ids, the region, the
  * note) is dropped here, so none of it reaches state. A field of another shape reads as absent.
  */
-type BybitKeyInfo = {
+export type BybitKeyInfo = {
   expiredAtMs: number | undefined;
   deadlineDay: number | undefined;
   readOnly: number | undefined;
