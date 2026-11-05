@@ -115,6 +115,15 @@ describe('SettingsStack', () => {
     expect(titleByScreen().CategoryRuleForm).toBe('New Rule');
   });
 
+  it('registers the review screen with its localized title', () => {
+    // The review keys are not in the typed catalogue until the copy lands.
+    const title = (i18n as unknown as { t: (key: string) => string }).t('categoryReview.title');
+
+    expect(title).not.toBe('categoryReview.title');
+    expect(screenElements().map((screen) => screen.props.name)).toContain('CategoryReview');
+    expect(optionsOf('CategoryReview')).toEqual({ title });
+  });
+
   it('registers the reminders list and the reminder form it opens', () => {
     const titles = titleByScreen();
     expect(titles.Reminders).toBe('Reminders');

@@ -8,6 +8,7 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
@@ -74,6 +75,9 @@ jest.mock('@kiko/db/use-live-query', () => ({
 type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
 
 const navigation = navigationSpy();
+
+// The review keys are not in the typed catalogue until the copy lands.
+const copy = (key: string): string => (i18n as unknown as { t: (key: string) => string }).t(key);
 
 const screenElement = () => (
   <CategoriesScreen
@@ -462,6 +466,35 @@ describe('CategoriesScreen', () => {
       );
 
       expect(glyphs.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('the review entry', () => {
+    const ENTRY = 'category-review-entry';
+
+    it('shows the entry row above the grid and opens CategoryReview', async () => {
+      const view = await renderScreen();
+      const order = testIdsInOrder(view.toJSON());
+
+      expect(order).toContain(ENTRY);
+      expect(order.indexOf(ENTRY)).toBeLessThan(order.indexOf('sortable-grid'));
+      expect(view.getByTestId(ENTRY)).toHaveTextContent(copy('categoryReview.entryLabel'));
+      expect(copy('categoryReview.entryLabel')).not.toBe('categoryReview.entryLabel');
+
+      await fireEvent.press(view.getByText(copy('categoryReview.entryLabel')));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(navigation.navigate.mock.calls[0][0]).toBe('CategoryReview');
+    });
+
+    it('shows it with no transactions', async () => {
+      mockCategories = [];
+      mockRules = [];
+
+      const view = await renderScreen();
+
+      expect(view.queryAllByTestId('category-card')).toHaveLength(0);
+      expect(view.getByTestId(ENTRY)).toHaveTextContent(copy('categoryReview.entryLabel'));
     });
   });
 
