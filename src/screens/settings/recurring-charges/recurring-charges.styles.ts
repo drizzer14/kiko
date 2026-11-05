@@ -14,8 +14,9 @@ export const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
   }),
-  // The merchant's name on the left and the way back on the right, centered since the row is one
-  // line. A hidden merchant and a marked chain without a charge are laid out alike.
+  // The merchant's name on the left and the way back on the right, centered against the name block,
+  // which is one line for a hidden merchant and three for a marked chain without a charge. Both are
+  // laid out alike.
   entryRow: {
     justifyContent: 'space-between',
     alignItems: 'center',

@@ -687,17 +687,6 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         });
       });
 
-      it('rewrites the period of the stored 100 and adds no mark at 144', async () => {
-        await mark('apple', 'Apple', markOf(10_000));
-
-        await setPeriod('apple', [markOf(10_000)], 'yearly');
-
-        expect(storedEntries().get('apple')).toEqual({
-          name: 'Apple',
-          marks: [markOf(10_000, 'yearly')],
-        });
-      });
-
       it('keeps the hide', async () => {
         await hide('apple', 'Apple');
         await mark('apple', 'Apple', APPLE_99);
@@ -710,21 +699,33 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
           marks: [markOf(9_900, 'weekly')],
         });
       });
+    });
 
-      it.each([
-        ['an absent entry', async () => undefined],
-        ['a hide-only entry', () => hide('apple', 'Apple')],
-        ['marks at another amount', () => mark('apple', 'Apple', APPLE_399)],
-        [
-          'marks in another currency',
-          () => mark('apple', 'Apple', markOf(9_900, 'monthly', 'USD')),
+    type Seed = () => Promise<unknown>;
+
+    const NO_CHAIN_TO_CHANGE: [title: string, seed: Seed][] = [
+      ['an absent entry', async () => undefined],
+      ['a hide-only entry', () => hide('apple', 'Apple')],
+      ['marks at another amount', () => mark('apple', 'Apple', APPLE_399)],
+      ['marks in another currency', () => mark('apple', 'Apple', markOf(9_900, 'monthly', 'USD'))],
+    ];
+
+    describe.each<{ name: string; write: Seed; extra: [title: string, seed: Seed][] }>([
+      {
+        name: 'setRecurringChainPeriod',
+        write: () => setPeriod('apple', [APPLE_99], 'yearly'),
+        extra: [
+          ['marks at the same period', () => mark('apple', 'Apple', markOf(9_900, 'yearly'))],
         ],
-      ])('writes nothing on %s', async (_title, seed) => {
+      },
+      { name: 'removeRecurringMarks', write: () => unmark('apple', [APPLE_99]), extra: [] },
+    ])('$name', ({ write, extra }) => {
+      it.each([...NO_CHAIN_TO_CHANGE, ...extra])('writes nothing on %s', async (_title, seed) => {
         await seed();
         const before = storedText();
         writeCounts.count = 0;
 
-        await setPeriod('apple', [APPLE_99], 'yearly');
+        await write();
 
         expect(writeCounts.count).toBe(0);
         expect(storedText()).toBe(before);
@@ -764,25 +765,6 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         expect(storedEntries()).toStrictEqual(
           new Map([['apple', { name: 'Apple', hidden: true }]]),
         );
-      });
-
-      it.each([
-        ['an absent entry', async () => undefined],
-        ['a hide-only entry', () => hide('apple', 'Apple')],
-        ['marks at another amount', () => mark('apple', 'Apple', APPLE_399)],
-        [
-          'marks in another currency',
-          () => mark('apple', 'Apple', markOf(9_900, 'monthly', 'USD')),
-        ],
-      ])('writes nothing on %s', async (_title, seed) => {
-        await seed();
-        const before = storedText();
-        writeCounts.count = 0;
-
-        await unmark('apple', [APPLE_99]);
-
-        expect(writeCounts.count).toBe(0);
-        expect(storedText()).toBe(before);
       });
 
       it('writes nothing when the same marks are removed a second time', async () => {
@@ -837,14 +819,6 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         await showAgain('apple');
 
         expect(storedEntries()).toEqual(new Map());
-      });
-
-      it('gives the 399 back beside the marked 99 after a hide and a show again', async () => {
-        await mark('apple', 'Apple', APPLE_99);
-        await hide('apple', 'Apple');
-        await showAgain('apple');
-
-        expect(storedEntries()).toEqual(new Map([['apple', { name: 'Apple', marks: [APPLE_99] }]]));
       });
     });
 

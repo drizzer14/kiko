@@ -206,30 +206,6 @@ describe('RecurringChargesScreen — Marked, No Charges', () => {
     }
   });
 
-  it.each([
-    { title: 'reversed', arrange: <Entry,>(list: Entry[]) => [...list].reverse() },
-    {
-      title: 'rotated',
-      arrange: <Entry,>(list: Entry[]) => [...list.slice(2), ...list.slice(0, 2)],
-    },
-  ])(
-    'orders the pieces by key, currency and lowest stored amount, given them $title',
-    async ({ arrange }) => {
-      const state = hookStateOf(ledgerOf([]), GHOSTS);
-      const { getAllByText } = await renderScreen({
-        ...state,
-        withoutCharges: arrange(state.withoutCharges),
-      });
-
-      expect(getAllByText(/^Marked: /).map((node) => node.props.children)).toEqual([
-        i18n.t('recurringCharges.marked.monthly'),
-        i18n.t('recurringCharges.marked.yearly'),
-        i18n.t('recurringCharges.marked.everyThreeMonths'),
-        i18n.t('recurringCharges.marked.weekly'),
-      ]);
-    },
-  );
-
   it('removes the marks of the piece whose button is tapped, under its key', async () => {
     const removeSpy = jest.spyOn(settingsRepo, 'removeRecurringMarks').mockResolvedValue(undefined);
     const state = hookStateOf(ledgerOf([]), GHOSTS);

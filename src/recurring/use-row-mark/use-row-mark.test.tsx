@@ -7,7 +7,6 @@ import {
   STORED_AT_99,
   STORED_AT_100,
   TWO_CHAINS,
-  chargeRowOf,
   createMarkLiveQueries,
   markOf,
   netflixSettingsOf,
@@ -289,15 +288,6 @@ describe('the chain of a row', () => {
     const { result } = await renderRowMark(-9_900);
 
     expect(result.current.chain).toEqual({ period: 'yearly', marks: [markOf('yearly', 9_900)] });
-  });
-
-  it('reads a folded twin as its kept row', async () => {
-    landSettings(STORED_AT_100);
-    landLedger([...RISING_CHAIN, chargeRowOf('third-import', 0, -14_400, { source: 'import' })]);
-
-    const { result } = await renderRowMark(-14_400);
-
-    expect(result.current.chain).toEqual({ period: 'yearly', marks: [markOf('yearly', 10_000)] });
   });
 });
 

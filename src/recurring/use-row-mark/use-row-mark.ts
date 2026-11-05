@@ -1,10 +1,4 @@
 import { useMemo } from 'react';
-import {
-  type RecurringInput,
-  chargeGroupsOf,
-  foldTwins,
-  groupKeyOf,
-} from '@kiko/recurring/detection';
 import { startOfLocalDay } from '@kiko/dates';
 import { settingsRepo } from '@kiko/settings';
 import type { Currency } from '@kiko/currency/currency';
@@ -12,6 +6,7 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { type TransactionRow, useLiveQuery } from '@kiko/db';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { markedChainOfAmount } from '@kiko/recurring/marked-series';
+import { type RecurringInput, chargeGroupsOf, groupKeyOf } from '@kiko/recurring/detection';
 
 type RowMark = {
   chain: ReturnType<typeof markedChainOfAmount>;
@@ -68,9 +63,9 @@ export const useRowMark = (
   const chain = useMemo(
     () =>
       markedChainOfAmount(
-        foldTwins(groups?.groups.get(groupKeyOf(key, currency))?.charges ?? []).map(
-          ({ amount }) => ({ amountMinorUnits: amount }),
-        ),
+        (groups?.groups.get(groupKeyOf(key, currency))?.charges ?? []).map(({ amount }) => ({
+          amountMinorUnits: amount,
+        })),
         marks,
         Math.abs(row.amountMinorUnits),
         currency,

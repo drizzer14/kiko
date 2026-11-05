@@ -2,7 +2,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { isCurrency } from '@kiko/currency/currency';
 import type { RecurringMark } from '@kiko/recurring/detection';
-import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
+import { RECURRING_PERIODS, compareMarks, periodRankOf } from '@kiko/recurring/recurring-periods';
 
 /**
  * What the user chose for one merchant key: the last spelling they saw, that its detected series
@@ -31,16 +31,6 @@ export const recurringChoiceOf = (
         ...(marks.length > 0 ? { marks: [...marks] } : {}),
       }
     : null;
-
-const periodRankOf = (mark: RecurringMark): number => RECURRING_PERIODS.indexOf(mark.period);
-
-const compareText = (left: string, right: string): number =>
-  Number(left > right) - Number(left < right);
-
-const compareMarks = (left: RecurringMark, right: RecurringMark): number =>
-  left.amountMinorUnits - right.amountMinorUnits ||
-  periodRankOf(left) - periodRankOf(right) ||
-  compareText(left.currency, right.currency);
 
 const markOf = (stored: unknown): RecurringMark[] => {
   if (!isRecord(stored)) {
@@ -71,7 +61,7 @@ const marksOf = (stored: unknown): RecurringMark[] => {
     const chain = `${mark.currency}:${mark.amountMinorUnits}`;
     const kept = chains.get(chain);
 
-    if (kept === undefined || periodRankOf(mark) < periodRankOf(kept)) {
+    if (kept === undefined || periodRankOf(mark.period) < periodRankOf(kept.period)) {
       chains.set(chain, mark);
     }
   }

@@ -4770,7 +4770,7 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
   });
 
   // The mark field's one settings read is the choices column, gated on the row it offers on. The
-  // form never reads the whole row, which the tips removal took out.
+  // form never reads the whole row.
   describe("the form's one settings read", () => {
     type LiveQueryCall = [{ toSQL: () => { sql: string } }, string[], boolean | undefined];
 

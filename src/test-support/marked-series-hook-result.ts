@@ -17,7 +17,7 @@ export type MarkedNames = [name: string, ...marks: MarkSpec[]];
  * made of the real detection and marked functions: `series` is the detected series that share no
  * row with a marked one, and the marked ones and the chains without a charge come apart.
  */
-export const hookResultOf = (ledger: Ledger, entries: readonly MarkedEntry[]) => {
+const hookResultOf = (ledger: Ledger, entries: readonly MarkedEntry[]) => {
   const today = nowOf();
   const groups = chargeGroupsOf(ledger, today);
   const { series: markedSeries, withoutCharges } = markedSeriesOf(groups, entries, today);

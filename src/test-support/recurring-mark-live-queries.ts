@@ -6,7 +6,7 @@ import type { RecurringLedgerRow, RecurringMark, RecurringPeriod } from '@kiko/r
 // marks, and the whole-ledger read it takes only under a name marked in the row's currency. A test
 // hands each query its kind through `taggedQuery` and routes the live-query mock through `answer`.
 
-export type MarkRead = { rows: unknown[]; isLoading: boolean; error: Error | undefined };
+type MarkRead = { rows: unknown[]; isLoading: boolean; error: Error | undefined };
 export type LiveQueryCall = { kind: string | undefined; tables: string[]; enabled: boolean };
 type MarkReadKind = 'settings' | 'recurringLedger';
 export type SettingsRows = { recurringMerchantChoices: unknown }[];
@@ -142,7 +142,7 @@ export const settingsRowsOf = (key: string, entry: object): SettingsRows => [
   { recurringMerchantChoices: { [key]: entry } },
 ];
 
-export const NETFLIX_KEY = 'netflix';
+const NETFLIX_KEY = 'netflix';
 
 /** The settings read of a file whose only entry is Netflix. */
 export const netflixSettingsOf = (entry: object) =>

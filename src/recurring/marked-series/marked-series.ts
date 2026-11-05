@@ -16,7 +16,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
 import { startOfLocalDay } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
-import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
+import { compareMarks } from '@kiko/recurring/recurring-periods';
 
 export type MarkedEntry = { key: string; name: string; marks: readonly RecurringMark[] };
 
@@ -43,17 +43,8 @@ type Chain = MarkedPiece & {
   charges: Charge[];
 };
 
-const periodRankOf = (period: RecurringPeriod): number => RECURRING_PERIODS.indexOf(period);
-
-// By amount, then the picker's order, so the lowest stored amount of a piece names its period and
-// a tie between two periods goes to the earlier one, whatever order the marks arrive in.
-const compareMarks = (left: RecurringMark, right: RecurringMark): number =>
-  left.amountMinorUnits - right.amountMinorUnits ||
-  periodRankOf(left.period) - periodRankOf(right.period) ||
-  compareText(left.currency, right.currency);
-
-/** The list's order for chains without a charge, which have no date to sort by. */
-export const byKeyCurrencyAndAmount = (left: MarkedChain, right: MarkedChain): number =>
+// The list's order for chains without a charge, which have no date to sort by.
+const byKeyCurrencyAndAmount = (left: MarkedChain, right: MarkedChain): number =>
   compareText(left.key, right.key) ||
   compareText(left.currency, right.currency) ||
   left.marks[0].amountMinorUnits - right.marks[0].amountMinorUnits;
@@ -155,7 +146,8 @@ export const detectedBesideMarked = (
 /**
  * The marked chain whose lowest and highest amounts span `amountMinorUnits`, or null when the
  * amount lies in no chain that holds a stored amount of `currency`. `charges` are one group's
- * charges after the twin fold, as absolute minor units.
+ * charges as absolute minor units; a twin only repeats an amount, which moves no piece's lowest or
+ * highest, so the fold is not needed.
  */
 export const markedChainOfAmount = (
   charges: readonly { amountMinorUnits: number }[],

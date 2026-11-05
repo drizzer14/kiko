@@ -20,6 +20,7 @@ import LargeTitleHeading, {
 import { useOpenInPane } from '@kiko/navigation/pane-stack';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import { recurrenceLine } from '@kiko/recurring/recurrence-text';
+import type { MarkedChain } from '@kiko/recurring/marked-series';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
@@ -28,7 +29,6 @@ import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
 import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { compareText, type RecurringSeries } from '@kiko/recurring/detection';
-import { type MarkedChain, byKeyCurrencyAndAmount } from '@kiko/recurring/marked-series';
 
 import { styles } from './recurring-charges.styles';
 import RecurringSeriesRow from './recurring-series-row';
@@ -89,9 +89,7 @@ const markedEmptyItemsOf = (withoutCharges: readonly MarkedChain[]): ListItem[] 
   withoutCharges.length > 0
     ? [
         MARKED_EMPTY_HEADING_ITEM,
-        ...[...withoutCharges]
-          .sort(byKeyCurrencyAndAmount)
-          .map((chain): ListItem => ({ kind: 'markedEmpty', chain })),
+        ...withoutCharges.map((chain): ListItem => ({ kind: 'markedEmpty', chain })),
       ]
     : [];
 

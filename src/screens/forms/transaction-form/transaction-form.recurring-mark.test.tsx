@@ -177,13 +177,10 @@ const UNFUNDED_DEBIT: Change = {
 
 const navigation = navigationSpy();
 
-// Home, Holding Detail and a series link each open the form with this one param, so the two paths
-// are one route to the form and every pin below runs under each name.
+// Home, Holding Detail and a series link each open the form with this one param, so a pin on it
+// holds for every path; the real navigators in `recurring-series.marks.navigator.test.tsx` hold
+// the paths.
 const routeOf = (): TransactionFormParams => ({ transactionId: ROW_ID });
-const PATHS: [string, () => TransactionFormParams][] = [
-  ['Home', routeOf],
-  ['a series link', routeOf],
-];
 
 const formElement = (params: TransactionFormParams) => (
   <TransactionFormScreen
@@ -217,9 +214,9 @@ beforeEach(() => {
   mockWrites.reset();
 });
 
-describe.each(PATHS)('the mark field on a stored debit opened from %s', (_path, paramsOf) => {
+describe('the mark field on a stored debit', () => {
   it('shows on a manual debit, enabled, beside a Save', async () => {
-    const rendered = await open(paramsOf());
+    const rendered = await open(routeOf());
 
     expect(rendered.getByLabelText(FIELD_LABEL)).toBeTruthy();
     expect(isDisabled(rendered)).toBe(false);
@@ -227,7 +224,7 @@ describe.each(PATHS)('the mark field on a stored debit opened from %s', (_path, 
   });
 
   it('shows and enables on a synced debit whose amount stays locked and whose header has no Save', async () => {
-    const rendered = await open(paramsOf(), SYNCED);
+    const rendered = await open(routeOf(), SYNCED);
 
     expect(rendered.getByLabelText('Amount').props.editable).toBe(false);
     expect(saveItem(navigation.setOptions)).toBeUndefined();
@@ -236,7 +233,7 @@ describe.each(PATHS)('the mark field on a stored debit opened from %s', (_path, 
   });
 
   it('writes settings and no transactions row for a pick on a synced debit, and leaves Save and the draft', async () => {
-    const rendered = await open(paramsOf(), SYNCED);
+    const rendered = await open(routeOf(), SYNCED);
     const amountBefore = rendered.getByLabelText('Amount').props.value;
 
     await pick(rendered, 'Monthly');
@@ -252,7 +249,7 @@ describe.each(PATHS)('the mark field on a stored debit opened from %s', (_path, 
   });
 
   it('takes the key and the amount of the mark from the stored row, not the unsaved draft', async () => {
-    const rendered = await open(paramsOf());
+    const rendered = await open(routeOf());
 
     await fireEvent.changeText(rendered.getByLabelText('Description'), 'Spotify');
     await fireEvent.changeText(rendered.getByLabelText('Amount'), '999');
@@ -270,7 +267,7 @@ describe.each(PATHS)('the mark field on a stored debit opened from %s', (_path, 
   });
 
   it('stores the currency of the row holding', async () => {
-    const rendered = await open(paramsOf(), { row: { holdingId: 'dollar-card' } });
+    const rendered = await open(routeOf(), { row: { holdingId: 'dollar-card' } });
 
     await pick(rendered, 'Yearly');
 
@@ -289,7 +286,7 @@ describe.each(PATHS)('the mark field on a stored debit opened from %s', (_path, 
     };
     mockLive.reads.recurringLedger = { rows: [storedRowOf()], isLoading: false, error: undefined };
 
-    const rendered = await open(paramsOf());
+    const rendered = await open(routeOf());
 
     expect(rendered.getByText('Yearly')).toBeTruthy();
   });

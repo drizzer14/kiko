@@ -1,4 +1,4 @@
-import { match } from 'ts-pattern';
+import { match, P } from 'ts-pattern';
 import {
   merchantNameOf,
   smallestSpelling,
@@ -498,7 +498,8 @@ export const markedRecurrenceOf = (
 
   return match(rule.recurrenceOf([...charges].reverse()))
     .with({ kind: 'none' }, () => MARKED_RECURRENCE)
-    .otherwise((recurrence) => recurrence);
+    .with({ kind: P.not('none') }, (recurrence) => recurrence)
+    .exhaustive();
 };
 
 export const seriesOfCharges = (

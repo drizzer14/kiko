@@ -109,12 +109,6 @@ export const openSqliteWorld = (): DatabaseSync => {
   return database;
 };
 
-export const closeSqliteWorld = (): void => {
-  committed.engine?.close();
-  committed.engine = undefined;
-  subscribers.clear();
-};
-
 /** What a `jest.mock('@kiko/db/client', ...)` factory returns. */
 export const clientModule = () =>
   databaseClientOver(() => {

@@ -35,8 +35,8 @@ import { sweep } from '@kiko/test-support/property-sweep';
 import { seededRandom } from '@kiko/test-support/seeded-random';
 import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
 
+import { detectRecurringSeries } from './detection';
 import type { RecurringSeries } from './detection.types.d';
-import { chargeGroupsOf, seriesOfGroups, detectRecurringSeries } from './detection';
 
 type MatrixRow = [title: string, world: () => Ledger, expected: ExpectedSeries[]];
 type ExclusionWorld = [title: string, build: (excluded: boolean) => Ledger];
@@ -734,15 +734,6 @@ describe('detectRecurringSeries', () => {
         );
       },
     );
-  });
-
-  describe('the groups and the series it is composed of', () => {
-    it.each(MATRIX)('%s: equals seriesOfGroups of chargeGroupsOf', (_title, world) => {
-      const ledger = world();
-      const groups = chargeGroupsOf(ledger, nowOf());
-
-      expect(seriesOfGroups(groups, nowOf())).toEqual(detectRecurringSeries(ledger, nowOf()));
-    });
   });
 
   describe('a device zone without daylight saving', () => {

@@ -7,6 +7,7 @@ import {
 import {
   nowOf,
   timesOf,
+  ledgerOf,
   dayKeyOf,
   shuffled,
   randomLedgerOf,
@@ -148,6 +149,42 @@ describe('the marked matrix', () => {
       expect(outputKeys.filter((key) => key > todayKey)).toEqual([]);
     });
   });
+});
+
+describe('the order of the chains without a charge', () => {
+  // Apple's three pieces (two amounts in hryvnias, one in dollars) and ATB's one, with no charge.
+  const GHOST_ENTRIES: MarkedEntry[] = [
+    entryOf('Apple', [
+      ['monthly', 99],
+      ['yearly', 499],
+      ['everyThreeMonths', 5, 'USD'],
+    ]),
+    entryOf('ATB', [['weekly', 1]]),
+  ];
+  const ORDER = [
+    ['apple', 'UAH', 9_900],
+    ['apple', 'UAH', 49_900],
+    ['apple', 'USD', 500],
+    ['atb', 'UAH', 100],
+  ];
+
+  const orderOf = (entries: readonly MarkedEntry[]) =>
+    outcomeOf(ledgerOf([]), entries, nowOf()).withoutCharges.map(({ key, currency, marks }) => [
+      key,
+      currency,
+      marks[0].amountMinorUnits,
+    ]);
+
+  it.each([
+    ['as given', GHOST_ENTRIES],
+    ['reversed', reversedEntries(GHOST_ENTRIES)],
+    ['rotated', [...GHOST_ENTRIES.slice(1), ...GHOST_ENTRIES.slice(0, 1)]],
+  ])(
+    'lists them by key, currency and lowest stored amount, given the entries %s',
+    (_title, entries) => {
+      expect(orderOf(entries)).toEqual(ORDER);
+    },
+  );
 });
 
 describe('markedSeriesOf over random ledgers and marks', () => {
