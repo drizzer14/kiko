@@ -113,8 +113,10 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
 
     return (series?.chargeIds ?? []).flatMap((id) => rowById.get(id) ?? []);
   }, [rows, series]);
-  // Leaves only after the write, so the list it returns to already lacks the merchant. The series
-  // stays on screen until then: the hook hands it over before any hide filters it.
+  // Leaves only after the write, and only while still the focused screen: the charges stay
+  // pressable while it is queued, and a form opened over this screen must not be popped for it.
+  // The list it returns to re-reads on focus, so Back can show the merchant until that read lands.
+  // The series stays on screen until then: the hook hands it over before any hide filters it.
   const hide = async (): Promise<void> => {
     if (series === undefined) {
       return;
@@ -128,7 +130,9 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
       return;
     }
 
-    navigation.goBack();
+    if (navigation.isFocused()) {
+      navigation.goBack();
+    }
   };
   const { onPress: onHide, isSubmitting } = useSubmitOnce(hide);
   const openCharge = useCallback(
