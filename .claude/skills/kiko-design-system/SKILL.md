@@ -578,6 +578,10 @@ The established patterns grouped under this heading:
   and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
   `fetchAccount` (the check) and `saveCredentials`. `CryptoSyncForm` takes a required `source`
   and renders that source's field, nothing for `'other'`; the caller picks the source.
+  `BinanceCredentialsField` checks `isBinanceCoolingDown` after the blank-field check and
+  before `fetchAccount`. On a cooling account it shows the localized
+  `accountDetail.binanceCoolingDown` text, makes no request or write, and keeps the typed
+  pair, so a later press connects once the cooldown ends.
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly

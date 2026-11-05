@@ -405,6 +405,13 @@ than restated here:
   surfaced as the localized `accountDetail.binanceRequestFailed` message
   (never the raw `BinanceRateLimitError` text) — Spot's failure still
   fails the whole balance sync, per its own strict rule above.
+  `BinanceCredentialsField.handleConnect` checks
+  `isBinanceCoolingDown(accountId, Date.now())` before its first request.
+  On a cooling account it makes no `fetchAccount`, no `saveCredentials` and
+  no sync, and shows `accountDetail.binanceCoolingDown` as a `saveError`, so
+  the provider's quiet skip serves a sync of an already connected account.
+  A cooldown that starts after the check can still reach the provider's
+  cooling return.
 - **Disconnect resets the walk state, not the holdings.**
   `disconnectCryptoAccount`'s Binance path calls
   `accountsRepo.disconnectExchange(accountId, 'binance', HISTORY_FLOOR_MS)`,
