@@ -21,6 +21,7 @@ jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
 }));
 
 import { HISTORY_FLOOR_MS } from '@kiko/crypto-sync/binance';
+import { BYBIT_RESTART_FLOOR_MS } from '@kiko/crypto-sync/bybit';
 
 import { disconnectCryptoAccount } from './disconnect';
 
@@ -43,12 +44,19 @@ describe('disconnectCryptoAccount', () => {
 
     await disconnectCryptoAccount('acc-1', 'bybit');
 
-    // 2018-01-01, earlier than any rolling floor of a Bybit walk, and not Binance's floor.
-    expect(mockDisconnectExchange).toHaveBeenCalledWith('acc-1', 'bybit', Date.UTC(2018, 0, 1));
+    expect(mockDisconnectExchange).toHaveBeenCalledWith('acc-1', 'bybit', BYBIT_RESTART_FLOOR_MS);
+    expect(BYBIT_RESTART_FLOOR_MS).toBe(Date.UTC(2017, 0, 1));
     expect(mockClearBybitCredentials).toHaveBeenCalledWith('acc-1');
     expect(order).toEqual(['db', 'keychain']);
     expect(mockClearCredentials).not.toHaveBeenCalled();
     expect(mockDisconnectAccount).not.toHaveBeenCalled();
+  });
+
+  // The reset cursor is stored in the account's walk state, and a Binance connect on the same
+  // account later reads it: a value after Binance's floor would leave the ground between the two
+  // unread for BTC (the backfill leaves BTC out).
+  it('keeps the Bybit restart floor at or below the Binance history floor', () => {
+    expect(BYBIT_RESTART_FLOOR_MS).toBeLessThanOrEqual(HISTORY_FLOOR_MS);
   });
 
   it('for Bybit, leaves the key alone if resetting the walk state and disconnecting fails', async () => {

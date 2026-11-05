@@ -125,7 +125,7 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(storedState()).not.toContain('PEPE');
     expect(storedState()).not.toContain('balanceSyncedAt');
     expect(walkMarksOf(mockDatabase, 'acc-1', 'capital')).toEqual({
-      cursor: Date.UTC(2018, 0, 1),
+      cursor: Date.UTC(2017, 0, 1),
     });
     expect(
       (
