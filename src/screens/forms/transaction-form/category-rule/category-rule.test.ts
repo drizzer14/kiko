@@ -40,6 +40,7 @@ describe('subjectOfFormDraft', () => {
       currency: 'UAH',
       direction: 'expense',
       minuteOfDay: 8 * 60 + 15,
+      mcc: null,
     });
   });
 
