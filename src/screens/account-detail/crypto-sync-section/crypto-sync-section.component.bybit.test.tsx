@@ -86,7 +86,7 @@ const RENEW_PHRASE = 'Renew it on Bybit; the key stays the same.';
 const KEY_ENDED_FRAGMENT = 'Bybit key ended on';
 
 const expiryLineFragments = [
-  'Bybit key works until',
+  'Bybit key ends on',
   'Bybit key ends in',
   KEY_ENDED_FRAGMENT,
   'Kiko could not read when this Bybit key ends',
@@ -105,11 +105,11 @@ describe('the key expiry line of a Bybit account', () => {
   });
 
   it.each([
-    ['far', { expiredAtMs: Date.UTC(2024, 0, 20, 12) }, 'Bybit key works until 20.01.2024.'],
+    ['far', { expiredAtMs: Date.UTC(2024, 0, 20, 12) }, 'Bybit key ends on 20.01.2024.'],
     [
       'far, from the days left at the read',
       { deadlineDay: 20, readAtMs: NOW - 2 * DAY_MS },
-      'Bybit key works until 03.12.2023.',
+      'Bybit key ends on 03.12.2023.',
     ],
     [
       'near, 3 days',
@@ -149,7 +149,7 @@ describe('the key expiry line of a Bybit account', () => {
       keyExpiry: { expiredAtMs: NOW + 14 * DAY_MS + 1 },
     });
 
-    expect(queryByText('Bybit key works until', { exact: false })).not.toBeNull();
+    expect(queryByText('Bybit key ends on', { exact: false })).not.toBeNull();
     expect(queryByText('Bybit key ends in', { exact: false })).toBeNull();
   });
 
@@ -178,10 +178,8 @@ describe('the key expiry line of a Bybit account', () => {
     });
     const text = JSON.stringify(toJSON());
 
-    expect(text.indexOf('Last sync')).toBeLessThan(text.indexOf('Bybit key works until'));
-    expect(text.indexOf('Bybit key works until')).toBeLessThan(
-      text.indexOf('Kiko could not import'),
-    );
+    expect(text.indexOf('Last sync')).toBeLessThan(text.indexOf('Bybit key ends on'));
+    expect(text.indexOf('Bybit key ends on')).toBeLessThan(text.indexOf('Kiko could not import'));
   });
 
   it('is not shown while the state row is still loading', async () => {
@@ -232,7 +230,7 @@ describe('the key expiry line of a Bybit account', () => {
       });
       const unknown = await renderState('bybit', { walks: {} });
 
-      expect(far.getByText('Ключ Bybit діє до 20.01.2024.')).toBeTruthy();
+      expect(far.getByText('Дія ключа Bybit завершується 20.01.2024.')).toBeTruthy();
       expect(
         expired.getByText(i18n.t('accountDetail.bybitKeyEnded', { date: '10.11.2023' })),
       ).toBeTruthy();
