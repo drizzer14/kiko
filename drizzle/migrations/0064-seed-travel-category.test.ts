@@ -1,5 +1,3 @@
-// drizzle/migrations/0064-seed-travel-category.test.ts
-//
 // Runs the shipped SQL on a real `node:sqlite` engine seeded as a device's database stood before
 // it, so the row, its append-only sort order and its refusal to overwrite are proven on the real
 // engine.
@@ -26,7 +24,7 @@ const applyMigration = (database: DatabaseSync): void => {
   }
 };
 
-const databaseThrough0063 = (): DatabaseSync => {
+const databaseBeforeTravelSeed = (): DatabaseSync => {
   const database = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(database, '0063_add_transaction_operation');
@@ -45,9 +43,9 @@ const categoryNamed = (database: DatabaseSync, key: string): CategoryRow | undef
 const dumpOf = (database: DatabaseSync, table: string): unknown[] =>
   database.prepare(`SELECT * FROM ${table} ORDER BY 1`).all();
 
-describe('migration 0064: the Travel seed', () => {
+describe('the Travel seed migration', () => {
   it('seeds travel with its title, icon, color and the next sort order', () => {
-    const database = databaseThrough0063();
+    const database = databaseBeforeTravelSeed();
 
     expect(categoryNamed(database, 'travel')).toBeUndefined();
 
@@ -63,7 +61,7 @@ describe('migration 0064: the Travel seed', () => {
   });
 
   it('appends after the highest order of a reordered grid and changes no other order', () => {
-    const database = databaseThrough0063();
+    const database = databaseBeforeTravelSeed();
 
     database.exec(
       "UPDATE categories SET sort_order = 30 - sort_order WHERE key <> 'loan_interest'",
@@ -81,7 +79,7 @@ describe('migration 0064: the Travel seed', () => {
   });
 
   it('leaves a row already holding the key untouched', () => {
-    const database = databaseThrough0063();
+    const database = databaseBeforeTravelSeed();
 
     database.exec(
       "INSERT INTO categories (key, title, icon, color, sort_order) VALUES ('travel', 'Trips', 'car', '#010203', 4)",
@@ -102,7 +100,7 @@ describe('migration 0064: the Travel seed', () => {
   });
 
   it('leaves a user category titled Travel as its own row', () => {
-    const database = databaseThrough0063();
+    const database = databaseBeforeTravelSeed();
 
     database.exec(
       "INSERT INTO categories (key, title, icon, color, sort_order) VALUES ('0b1c2d3e-0000-4000-8000-000000000001', 'Travel', 'bag', '#A1B2C3', 11)",
@@ -117,7 +115,7 @@ describe('migration 0064: the Travel seed', () => {
   });
 
   it('changes no other category, transaction or rule', () => {
-    const database = databaseThrough0063();
+    const database = databaseBeforeTravelSeed();
 
     database.exec("INSERT INTO accounts (id, name, kind) VALUES ('account', 'Bank', 'bank')");
     database.exec(
@@ -149,7 +147,7 @@ describe('migration 0064: the Travel seed', () => {
   });
 
   it('runs twice to one row', () => {
-    const database = databaseThrough0063();
+    const database = databaseBeforeTravelSeed();
 
     applyMigration(database);
     const afterFirst = categoryRows(database);
@@ -160,7 +158,7 @@ describe('migration 0064: the Travel seed', () => {
   });
 
   it('starts at sort order 0 on an empty table', () => {
-    const database = databaseThrough0063();
+    const database = databaseBeforeTravelSeed();
 
     database.exec('DELETE FROM categories');
     applyMigration(database);

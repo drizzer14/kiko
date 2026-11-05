@@ -400,7 +400,7 @@ ONE worker thread" below) until it commits. A where-less
 `select().from(<table>)` inside it reads the whole table and then filters in
 JS while every other read and write waits. Filter in SQL (`.where(...)`),
 read only the column you need (`selectDistinct`, as
-`rowIdsForNamedRule` in
+`rowsForNamedRule` in
 `src/categories/category-rules-repo/category-rules.repo.ts` does for descriptions), or bound it with
 `.limit(...)`. The one-row `settings` table is exempt. Mechanized as
 `kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
@@ -815,12 +815,13 @@ legs by their markers (`exchange-exclusion.ts`), never by category.
 A name matcher reads `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`):
 the stored description, or for a blank one the label the row shows in the current language. Every
 apply path reads it so: the insert (`withCategoryRules`, which evaluates legs by their label), the
-rewrite and its count (`rowIdsRewrittenBy`), `giveSourceRowCategory`, and the form's
-`resolveRuleDescription`. A named rule's rewrite pages the blank rows by id-keyset
+rewrite and its count (`rowIdsRewrittenBy`), `planSourceRow` (the source row, shared by
+`giveSourceRowCategory` and the preview), and the form's `resolveRuleDescription`.
+A named rule's rewrite pages the blank rows by id-keyset
 (`rewriteBlankPageQuery`); a leg is rewritten like any row, and only the guard fields keep a
 row out. A leg is judged by its real label: `readHoldingLabels` (`category-rules.repo.ts`;
 every holding name and currency, read once per count or rewrite) feeds `withVisibleDescription`,
-and `giveSourceRowCategory` reuses it.
+and `planSourceRow` reuses it.
 A sync input that adopts its import twin is judged as the adopted row (`adoptedRowOf` in
 `src/transactions/repo/transactions.repo.ts`): with the twin's own exchange markers and operation
 when it keeps them (`keepsExchangeMarkers`), so a kept leg reads by its exchange label; the twin's
@@ -854,6 +855,10 @@ category the rules pre-selected saves flag 0 with no sheet; an edit is
 unchanged. Otherwise Apply rewrites every same-name row to a category the user
 never chose (`resolveCategoryOverrideRequest` in
 `src/screens/forms/transaction-form/category-rule/category-rule.ts`).
+When the name ends in a store number, the sheet also offers "All starting with X"
+(`merchantNameOf(...).prefix`): it first shows a confirm step with `previewNameRule`'s count (0
+reads title `Add Rule`, button `Add`), and only its "Move" or "Add" button writes the
+`nameStartsWith` rule through `applyNameRule({ kind })`.
 
 ## App-open and refresh work is gated on data presence
 

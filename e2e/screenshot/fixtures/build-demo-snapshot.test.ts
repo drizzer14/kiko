@@ -18,6 +18,7 @@ import {
 import { isCrypto } from '@kiko/currency/currency';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { exchangeFundingMatches } from '@kiko/statistics/exchange-funding-match';
@@ -401,6 +402,17 @@ describe('buildDemoSnapshot', () => {
     expect(travel?.color).toBe('#40C8E0');
     expect(travel?.sortOrder).toBe(SEEDED_CATEGORIES.length + 1);
   });
+
+  it.each(['en', 'uk'] as const)(
+    'holds a store-number name for the Apply prefix offer in the %s file',
+    (language) => {
+      const { transactions: rows } = buildDemoSnapshot(buildScreenshotDataset(language, ANCHOR));
+      const distinctNames = [...new Set(rows.map((row) => row.description))];
+      const prefixes = distinctNames.flatMap((name) => merchantNameOf(name).prefix ?? []);
+
+      expect([...new Set(prefixes)]).toEqual(['Varus']);
+    },
+  );
 
   it('marks the file as one this build wrote', () => {
     expect(snapshot.settings[0].mccCategoriesBackfilled).toBe(true);

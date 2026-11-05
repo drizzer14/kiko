@@ -8,6 +8,7 @@ import {
   type CategoryDraft,
   categoryForDraft,
   offersCategoryNameRule,
+  resolvePrefixConfirm,
   resolveCategoryOverrideRequest,
   subjectOfFormDraft,
 } from './category-rule';
@@ -176,5 +177,61 @@ describe('resolveCategoryOverrideRequest', () => {
     ['the name is blank', true, 'dining', '   '],
   ])('asks nothing when %s', (_label, changed, category, name) => {
     expect(resolveCategoryOverrideRequest(changed, category, name, 'row')).toBeNull();
+  });
+});
+
+describe('resolvePrefixConfirm', () => {
+  const buildMessage = jest.fn(
+    (preview: { count: number }, categoryTitle: string) =>
+      `${preview.count} move to ${categoryTitle}`,
+  );
+  const actions = { onConfirm: jest.fn(), onBack: jest.fn(), isApplying: false };
+
+  beforeEach(() => {
+    buildMessage.mockClear();
+  });
+
+  it.each([
+    ['no preview is shown', null, { title: 'Dining' }],
+    ['no category is pending', { count: 2, names: ['ATB 0212'] }, null],
+  ])('gives no step when %s', (_label, preview, pendingCategory) => {
+    expect(resolvePrefixConfirm(preview, pendingCategory, buildMessage, actions)).toBeNull();
+    expect(buildMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['rows move', 2, true],
+    ['one row moves', 1, true],
+    ['no row moves', 0, false],
+  ])('builds the step with the category title when %s', (_label, count, hasRowsToMove) => {
+    const preview = { count, names: [] };
+
+    expect(resolvePrefixConfirm(preview, { title: 'Dining' }, buildMessage, actions)).toEqual({
+      message: `${count} move to Dining`,
+      hasRowsToMove,
+      ...actions,
+    });
+    expect(buildMessage).toHaveBeenCalledWith(preview, 'Dining');
+  });
+
+  it('hands each action to its own slot and the applying flag through', () => {
+    const onConfirm = jest.fn();
+    const onBack = jest.fn();
+    const step = resolvePrefixConfirm({ count: 2, names: [] }, { title: 'Dining' }, buildMessage, {
+      onConfirm,
+      onBack,
+      isApplying: true,
+    });
+
+    step?.onConfirm();
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onBack).not.toHaveBeenCalled();
+
+    step?.onBack();
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(step?.isApplying).toBe(true);
   });
 });
