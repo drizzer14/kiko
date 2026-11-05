@@ -43,6 +43,7 @@ describe('property sweep sites', () => {
       'src/crypto-sync/binance/binance.trade-symbols.properties.test.ts',
       'src/crypto-sync/binance/binance.walks.backfill.properties.test.ts',
       'src/crypto-sync/binance/binance.walks.multi-coin.properties.test.ts',
+      'src/crypto-sync/bybit/bybit.keys.property.test.ts',
       'src/currency/currency-group/currency-group.test.ts',
       'src/statistics/internal-transfers/internal-transfers.test.ts',
       'src/transactions/merchant-name/merchant-name.test.ts',
