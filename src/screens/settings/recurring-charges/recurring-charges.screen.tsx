@@ -23,6 +23,7 @@ import { recurrenceLine } from '@kiko/recurring/recurrence-text';
 import type { MarkedChain } from '@kiko/recurring/marked-series';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import EmptyState from '@kiko/design-system/components/empty-state';
+import { newestChargeFirst } from '@kiko/recurring/recurring-groups';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
@@ -57,13 +58,6 @@ const MARKED_EMPTY_HEADING_ITEM: ListItem = { kind: 'heading', section: 'markedE
 const HIDDEN_HEADING_ITEM: ListItem = { kind: 'heading', section: 'hidden' };
 
 const EMPTY_ITEM: ListItem = { kind: 'empty' };
-
-// Within a section: the newest last charge first, then the merchant key, then the series id. Never
-// by amount, which one section can hold in several currencies.
-const newestChargeFirst = (left: RecurringSeries, right: RecurringSeries): number =>
-  right.lastChargeTime - left.lastChargeTime ||
-  compareText(left.merchantKey, right.merchantKey) ||
-  compareText(left.id, right.id);
 
 const seriesItem = (series: RecurringSeries): ListItem => ({ kind: 'series', series });
 
