@@ -404,6 +404,28 @@ describe('Settings stack: a link to a row that was deleted after the series was 
     expect(routeNames()).toEqual(ROUTES_TO_FORM);
   });
 
+  it('writes nothing on Save either once the amount is filled', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+
+    const link = await view.findByTestId(`recurring-series-charge-${MANUAL_CHARGE}`);
+
+    mockLedger.splice(
+      mockLedger.findIndex(({ id }) => id === MANUAL_CHARGE),
+      1,
+    );
+    await fireEvent.press(link);
+    await fireEvent.changeText(await view.findByLabelText('Amount'), '150');
+
+    expect(view.getByLabelText('Amount').props.value).toBe('150');
+
+    await pressSaveOnTopForm();
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(routeNames()).toEqual(ROUTES_TO_FORM);
+  });
+
   it('fills the same form from the row while the row is still stored', async () => {
     const view = await renderSettings();
 

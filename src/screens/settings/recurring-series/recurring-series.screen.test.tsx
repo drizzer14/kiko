@@ -401,7 +401,7 @@ describe('RecurringSeriesScreen — live reads', () => {
 
       await renderScreen({ series: [series], isLoading: false }, paramsOf(series));
 
-      expect(Object.fromEntries(mockOptionsByTables)).toEqual(
+      expect(Object.fromEntries(mockOptionsByTables)).toStrictEqual(
         Object.fromEntries(READS.map((tables) => [tables, { paused }])),
       );
     },
