@@ -325,6 +325,32 @@ describe('the rate refusals', () => {
     expect(isBybitCoolingDown(accountId, NOW + TEN_MINUTES_MS)).toBe(false);
   });
 
+  it('HTTP 429 reads as the rate class and sets the cooldown, from a page that is not JSON', async () => {
+    const accountId = 'acc-http-429';
+    const { result } = readWith({ notJson: true, status: 429 }, { accountId });
+
+    await expect(result).rejects.toBeInstanceOf(BybitRateLimitError);
+    await expect(result).rejects.toMatchObject({ code: 429, retryAfterMs: ONE_MINUTE_MS });
+    expect(isBybitCoolingDown(accountId, NOW + ONE_MINUTE_MS - 1)).toBe(true);
+    expect(isBybitCoolingDown(accountId, NOW + ONE_MINUTE_MS)).toBe(false);
+  });
+
+  it('HTTP 429 waits to the reset header when it is believable', async () => {
+    const { result } = readWith({
+      body: { error: 'too many requests' },
+      status: 429,
+      headers: { [RESET_HEADER]: String(NOW + 4_000) },
+    });
+
+    await expect(result).rejects.toMatchObject({ code: 429, retryAfterMs: 4_000 });
+  });
+
+  it('a code in the body of an HTTP 429 answer still decides first', async () => {
+    await expect(readWith({ body: envelopeOf(10005), status: 429 }).result).rejects.toMatchObject({
+      refusal: 'permission',
+    });
+  });
+
   it('a 403 ignores the reset header', async () => {
     const { result } = readWith({
       notJson: true,

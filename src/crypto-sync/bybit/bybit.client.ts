@@ -110,6 +110,7 @@ const failureOfStatus = (response: Response): Failure => ({
   kind: match(response.status)
     .returnType<FailureKind>()
     .with(403, () => 'forbidden')
+    .with(429, () => 'rate')
     .with(401, () => 'rejected')
     .otherwise(() => (response.ok ? 'malformed' : 'unknown')),
 });
