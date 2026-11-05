@@ -19,11 +19,13 @@ import HelpTopicScreen from './help-topic.screen';
 
 type HelpTopicProps = ComponentProps<typeof HelpTopicScreen>;
 
-const renderScreen = (topicId: HelpTopicId, navigation: NavigationSpy = navigationSpy()) =>
+const renderScreen = (topicId: string, navigation: NavigationSpy = navigationSpy()) =>
   render(
     <HelpTopicScreen
       navigation={asNavigationProp<HelpTopicProps['navigation']>(navigation)}
-      route={asRouteProp<HelpTopicProps['route']>('HelpTopic', { topicId })}
+      route={asRouteProp<HelpTopicProps['route']>('HelpTopic', {
+        topicId: topicId as HelpTopicId,
+      })}
     />,
   );
 
@@ -72,6 +74,7 @@ describe('HelpTopicScreen', () => {
     ['addTransaction', 'Add transaction', ['TransactionForm', {}]],
     ['useTemplates', 'Open templates', ['TransactionTemplates']],
     ['setReminder', 'Open reminders', ['Reminders']],
+    ['viewRecurringCharges', 'Open recurring charges', ['RecurringCharges']],
     ['manageCategories', 'Open categories', ['Categories']],
     ['backupData', 'Open data export', ['ExportData']],
     ['restoreData', 'Open data import', ['ImportData']],
@@ -128,6 +131,7 @@ describe('HelpTopicScreen', () => {
     ['trackLoan', accountKindSymbol.debt],
     ['addTransaction', genericEntitySymbol.transaction],
     ['viewStatistics', entrySymbol.statistics],
+    ['viewRecurringCharges', 'repeat'],
     ['useTemplates', genericEntitySymbol.template],
     ['manageCategories', genericEntitySymbol.category],
     ['categoryRules', genericEntitySymbol.category],
