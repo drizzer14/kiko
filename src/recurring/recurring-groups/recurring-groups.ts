@@ -26,9 +26,18 @@ type RecurringGroupsInput = {
   rateTable: RateTable;
 };
 
+export type RecurringGroup = {
+  key: string;
+  title: string;
+  icon: string;
+  color: string;
+  series: RecurringSeries[];
+  total: Money;
+};
+
 // Within a group: the newest last charge first, then the merchant key, then the series id. Never
 // by amount, which one group can hold in several currencies.
-export const newestChargeFirst = (left: RecurringSeries, right: RecurringSeries): number =>
+const newestChargeFirst = (left: RecurringSeries, right: RecurringSeries): number =>
   right.lastChargeTime - left.lastChargeTime ||
   compareText(left.merchantKey, right.merchantKey) ||
   compareText(left.id, right.id);
@@ -75,7 +84,7 @@ export const recurringGroupsOf = ({
     ...categories.map(({ key }) => key),
     ...(displayByKey.has(defaultCategoryKey) ? [] : [defaultCategoryKey]),
   ];
-  const groups = keys.flatMap((key) => {
+  const groups = keys.flatMap((key): RecurringGroup[] => {
     const series = inGroupOrder.filter((entry) => categoryKeyOf(entry) === key);
 
     if (series.length === 0) {

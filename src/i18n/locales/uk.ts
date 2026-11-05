@@ -1455,7 +1455,6 @@ export const uk: typeof en = {
     paidSoFar: 'Усього сплачено',
     removeMark: 'Зняти позначку',
     showAgain: 'Показати знову',
-    stoppedHeading: 'Без нових списань',
     title: 'Регулярні платежі',
     weekly: 'Щотижня',
     weeklyOn: {

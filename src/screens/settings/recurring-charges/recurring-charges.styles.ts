@@ -14,6 +14,18 @@ export const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
   }),
+  // The total of all, laid out as a group heading: the label on the left, the money opposite it.
+  totalRow: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
+    flex: 1,
+    marginRight: theme.spacing(3),
+  },
+  totalAmount: {
+    flexShrink: 0,
+  },
   // The merchant's name on the left and the way back on the right, centered against the name block,
   // which is one line for a hidden merchant and three for a marked chain without a charge. Both are
   // laid out alike.

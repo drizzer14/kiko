@@ -1754,7 +1754,6 @@ export const en = {
     paidSoFar: 'All paid so far',
     removeMark: 'Remove mark',
     showAgain: 'Show again',
-    stoppedHeading: 'No Recent Charge',
     title: 'Recurring Charges',
     weekly: 'Weekly',
     weeklyOn: {

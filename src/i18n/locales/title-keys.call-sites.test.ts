@@ -112,6 +112,8 @@ const UNCHECKED_HEADING_SITES: Record<string, string> = {
   'screens/accounts/implicit-account-heading/implicit-account-heading.component.tsx#accountDisplayName(account, t)':
     'the implicit account’s display name, the localized default or the name the user typed',
   'screens/settings/reminders/reminders.screen.tsx#group.name': 'the user-entered account name',
+  'screens/settings/recurring-charges/recurring-group-heading/recurring-group-heading.component.tsx#title':
+    'the category’s display name, the localized default or the title the user typed',
   'screens/statement-import/statement-preview-block/statement-preview-block.component.tsx#stats.displayName':
     'the statement format name the parser reports, a bank brand name',
 };
