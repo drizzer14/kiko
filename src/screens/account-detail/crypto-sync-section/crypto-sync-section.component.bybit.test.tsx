@@ -282,25 +282,13 @@ describe('the notes of a Bybit account', () => {
     expect(queryAllByText(line('ETH'))).toHaveLength(1);
   });
 
-  it.each([
-    [1, 'Kiko left 1 Bybit Earn position out of this balance'],
-    [3, 'Kiko left 3 Bybit Earn positions out of this balance'],
-  ])('counts %i Earn position(s) the allowlist left out', async (earnLeftOut, fragment) => {
-    const { getByText } = await renderState('bybit', {
-      walks: {},
-      balanceNotes: { earn: { earnLeftOut } },
-    });
-
-    expect(getByText(fragment, { exact: false })).toBeTruthy();
-  });
-
   it('shows no note line for a read with nothing to note', async () => {
     const { queryByText } = await renderState('bybit', {
       walks: {},
       balanceNotes: { unified: {}, fund: {} },
     });
 
-    for (const fragment of ['Bybit refused this key', 'Bybit shows a loan', 'Earn position']) {
+    for (const fragment of ['Bybit refused this key', 'Bybit shows a loan']) {
       expect(queryByText(fragment, { exact: false })).toBeNull();
     }
   });
@@ -316,19 +304,6 @@ describe('the notes of a Bybit account', () => {
       await act(async () => {
         await i18n.changeLanguage('en');
       });
-    });
-
-    it.each([
-      [1, 'Кіко не врахував у цьому балансі 1 позицію Bybit Earn'],
-      [2, 'Кіко не врахував у цьому балансі 2 позиції Bybit Earn'],
-      [5, 'Кіко не врахував у цьому балансі 5 позицій Bybit Earn'],
-    ])('gives %i left-out Earn position(s) their plural form', async (earnLeftOut, fragment) => {
-      const { getByText } = await renderState('bybit', {
-        walks: {},
-        balanceNotes: { earn: { earnLeftOut } },
-      });
-
-      expect(getByText(fragment, { exact: false })).toBeTruthy();
     });
 
     it('gives the refused and borrowed lines in Ukrainian', async () => {
@@ -367,7 +342,7 @@ describe('a Binance or wallet account beside the Bybit lines', () => {
   const bybitFacts = {
     keyExpiry: { expiredAtMs: Date.UTC(2024, 0, 20, 12), readAtMs: NOW },
     balanceNotes: {
-      unified: { borrowed: ['BTC'], earnLeftOut: 2 },
+      unified: { borrowed: ['BTC'] },
       fund: { refused: true },
     },
   };

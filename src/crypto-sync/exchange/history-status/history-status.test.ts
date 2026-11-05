@@ -109,19 +109,17 @@ describe('keyExpiryOf', () => {
 });
 
 describe('balanceNotesOf', () => {
-  it('lists the borrowed coins of every wallet once, sorted, and sums the left-out Earn positions', () => {
+  it('lists the borrowed coins of every wallet once, sorted', () => {
     const state = stateWith({
       balanceNotes: {
-        unified: { borrowed: ['USDT', 'BTC'], earnLeftOut: 2 },
+        unified: { borrowed: ['USDT', 'BTC'] },
         fund: { borrowed: ['BTC', 'ETH'] },
-        earn: { earnLeftOut: 1 },
       },
     });
 
     expect(balanceNotesOf(state)).toEqual({
       borrowed: ['BTC', 'ETH', 'USDT'],
       refusedWallets: [],
-      earnLeftOut: 3,
     });
   });
 
@@ -134,7 +132,7 @@ describe('balanceNotesOf', () => {
   });
 
   it('reads no note for a state with none, an unreadable entry or a state that is lost', () => {
-    const none = { borrowed: [], refusedWallets: [], earnLeftOut: 0 };
+    const none = { borrowed: [], refusedWallets: [] };
 
     expect(balanceNotesOf(stateWith({}))).toEqual(none);
     expect(balanceNotesOf(stateWith({ balanceNotes: 'x' }))).toEqual(none);

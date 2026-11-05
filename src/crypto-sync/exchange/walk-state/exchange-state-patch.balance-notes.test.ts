@@ -5,7 +5,7 @@ import {
 } from './exchange-state-patch';
 import { parseExchangeState } from './walk-state';
 
-type Notes = { borrowed: string[]; earnLeftOut?: number };
+type Notes = { borrowed: string[] };
 
 const notesPatch = (
   wallets: Record<string, Notes>,
@@ -27,12 +27,8 @@ describe('the balance notes patch', () => {
     const text = JSON.stringify({ version: 1, walks: {} });
 
     expect(
-      notesOf(
-        exchangeStatePatched(text, [
-          notesPatch({ unified: { borrowed: ['USDT', 'BTC'], earnLeftOut: 2 } }),
-        ]),
-      ),
-    ).toEqual({ unified: { borrowed: ['BTC', 'USDT'], earnLeftOut: 2 } });
+      notesOf(exchangeStatePatched(text, [notesPatch({ unified: { borrowed: ['USDT', 'BTC'] } })])),
+    ).toEqual({ unified: { borrowed: ['BTC', 'USDT'] } });
   });
 
   it('writes into a column nothing wrote yet', () => {
@@ -48,7 +44,7 @@ describe('the balance notes patch', () => {
   });
 
   it('replaces the stored notes of a wallet that read, its refused mark too', () => {
-    const seed = { unified: { borrowed: ['ETH'], earnLeftOut: 3, refused: true } };
+    const seed = { unified: { borrowed: ['ETH'], refused: true } };
 
     expect(patched(seed, notesPatch({ unified: { borrowed: ['BTC'] } }))).toEqual({
       unified: { borrowed: ['BTC'] },
@@ -58,7 +54,7 @@ describe('the balance notes patch', () => {
   it('writes an empty entry for a wallet that read with nothing to note', () => {
     const seed = { unified: { borrowed: ['ETH'] }, fund: { borrowed: ['BTC'] } };
 
-    expect(patched(seed, notesPatch({ unified: { borrowed: [], earnLeftOut: 0 } }))).toEqual({
+    expect(patched(seed, notesPatch({ unified: { borrowed: [] } }))).toEqual({
       unified: {},
       fund: { borrowed: ['BTC'] },
     });
@@ -67,21 +63,21 @@ describe('the balance notes patch', () => {
   it('keeps the stored notes of a wallet the read did not reach', () => {
     const seed = {
       unified: { borrowed: ['ETH'] },
-      fund: { borrowed: ['BTC'], earnLeftOut: 1 },
+      fund: { borrowed: ['BTC', 'ETH'] },
     };
 
     expect(patched(seed, notesPatch({ unified: { borrowed: [] } }))).toEqual({
       unified: {},
-      fund: { borrowed: ['BTC'], earnLeftOut: 1 },
+      fund: { borrowed: ['BTC', 'ETH'] },
     });
   });
 
   it('marks a wallet whose read was refused and keeps its other notes', () => {
-    const seed = { fund: { borrowed: ['BTC'], earnLeftOut: 1 } };
+    const seed = { fund: { borrowed: ['BTC'] } };
 
     expect(patched(seed, notesPatch({ unified: { borrowed: [] } }, ['fund']))).toEqual({
       unified: {},
-      fund: { borrowed: ['BTC'], earnLeftOut: 1, refused: true },
+      fund: { borrowed: ['BTC'], refused: true },
     });
   });
 

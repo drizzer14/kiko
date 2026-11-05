@@ -7,15 +7,15 @@ const parsedNotes = (balanceNotes?: unknown) => {
 };
 
 describe('the stored balance notes', () => {
-  it('reads the borrowed coins, the left-out count and the refused mark of each wallet', () => {
+  it('reads the borrowed coins and the refused mark of each wallet', () => {
     expect(
       parsedNotes({
-        unified: { borrowed: ['ETH', 'BTC'], earnLeftOut: 2 },
+        unified: { borrowed: ['ETH', 'BTC'] },
         fund: { refused: true },
       })?.balanceNotes,
     ).toEqual({
-      unified: { borrowed: ['ETH', 'BTC'], earnLeftOut: 2, refused: false },
-      fund: { borrowed: [], earnLeftOut: 0, refused: true },
+      unified: { borrowed: ['ETH', 'BTC'], refused: false },
+      fund: { borrowed: [], refused: true },
     });
   });
 
@@ -25,7 +25,7 @@ describe('the stored balance notes', () => {
 
   it('reads an empty entry as a wallet with nothing to note', () => {
     expect(parsedNotes({ unified: {} })?.balanceNotes).toEqual({
-      unified: { borrowed: [], earnLeftOut: 0, refused: false },
+      unified: { borrowed: [], refused: false },
     });
   });
 
@@ -38,15 +38,6 @@ describe('the stored balance notes', () => {
   });
 
   it.each([
-    ['text', '2'],
-    ['negative', -1],
-    ['a fraction', 1.5],
-    ['null', null],
-  ])('reads a left-out count that is %s as zero', (_title, earnLeftOut) => {
-    expect(parsedNotes({ unified: { earnLeftOut } })?.balanceNotes.unified?.earnLeftOut).toBe(0);
-  });
-
-  it.each([
     ['text', 'true'],
     ['a number', 1],
     ['false', false],
@@ -56,7 +47,7 @@ describe('the stored balance notes', () => {
 
   it('drops an entry that is no record and names it, keeping the others', () => {
     expect(parsedNotes({ unified: { borrowed: ['ETH'] }, fund: 'x', earn: ['y'] })).toMatchObject({
-      balanceNotes: { unified: { borrowed: ['ETH'], earnLeftOut: 0, refused: false } },
+      balanceNotes: { unified: { borrowed: ['ETH'], refused: false } },
       unreadable: ['balanceNotes.fund', 'balanceNotes.earn'],
     });
   });

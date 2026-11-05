@@ -798,19 +798,11 @@ export const en = {
       "Bybit refused the request because this device's clock is off. Turn on Set Automatically in Date & Time settings.",
     bybitCoinBorrowed:
       '{{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync.',
-    // English defines every plural form so both catalogues carry the same keys.
-    bybitEarnLeftOut_one:
-      'Kiko left {{count}} Bybit Earn position out of this balance, because its status is not one Kiko counts. It may be a position you already redeemed.',
-    bybitEarnLeftOut_few:
-      'Kiko left {{count}} Bybit Earn positions out of this balance, because their status is not one Kiko counts. They may include positions you already redeemed.',
-    bybitEarnLeftOut_many:
-      'Kiko left {{count}} Bybit Earn positions out of this balance, because their status is not one Kiko counts. They may include positions you already redeemed.',
-    bybitEarnLeftOut_other:
-      'Kiko left {{count}} Bybit Earn positions out of this balance, because their status is not one Kiko counts. They may include positions you already redeemed.',
     bybitForbidden:
       'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits 10 minutes before trying again.',
     bybitKeyEnded:
       'Bybit key ended on {{date}}. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    // English defines every plural form so both catalogues carry the same keys.
     bybitKeyEndsSoon_one:
       'Bybit key ends in {{count}} day. Renew it on Bybit; the key stays the same.',
     bybitKeyEndsSoon_few:

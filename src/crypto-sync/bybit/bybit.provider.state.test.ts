@@ -113,12 +113,12 @@ describe('the state a Bybit balance read returns', () => {
       deps.fetchFundBalance.mockRejectedValue(new BybitRefusalError('permission', 10005));
 
       const read = await bybitProvider.fetchBalances(deps, freshTarget());
-      const seed = { balanceNotes: { fund: { borrowed: ['LTC'] }, earn: { earnLeftOut: 2 } } };
+      const seed = { balanceNotes: { fund: { borrowed: ['LTC'] }, earn: { borrowed: ['SOL'] } } };
 
       expect(stateAfter(read, seed).balanceNotes).toEqual({
         unified: {},
         fund: { borrowed: ['LTC'], refused: true },
-        earn: { earnLeftOut: 2 },
+        earn: { borrowed: ['SOL'] },
       });
     });
 
@@ -190,7 +190,7 @@ describe('the state a Bybit balance read returns', () => {
       balanceNotes: {
         unified: { borrowed: ['ETH'] },
         fund: { borrowed: ['LTC'], refused: true },
-        earn: { earnLeftOut: 2 },
+        earn: { borrowed: ['SOL'] },
       },
     };
 
@@ -203,7 +203,7 @@ describe('the state a Bybit balance read returns', () => {
       expect(stateAfter(read, seed).balanceNotes).toEqual({
         unified: { borrowed: ['BTC'] },
         fund: { borrowed: ['LTC'], refused: true },
-        earn: { earnLeftOut: 2 },
+        earn: { borrowed: ['SOL'] },
       });
     });
 
@@ -213,7 +213,7 @@ describe('the state a Bybit balance read returns', () => {
       expect(stateAfter(read, seed).balanceNotes).toEqual({
         unified: {},
         fund: {},
-        earn: { earnLeftOut: 2 },
+        earn: { borrowed: ['SOL'] },
       });
     });
   });

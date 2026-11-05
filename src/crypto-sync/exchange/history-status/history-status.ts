@@ -49,13 +49,12 @@ export const keyExpiryOf = (state: ParsedExchangeState): ParsedKeyExpiry | undef
 
 /**
  * What the last balance reads left to show, over every wallet: the sorted coins set aside for a
- * loan, the wallets the exchange refused the key for (sorted by wallet key), and how many Earn
- * positions were left out. A wallet that failed keeps the notes it had, so these stand until a
- * read of that wallet replaces them.
+ * loan, and the wallets the exchange refused the key for (sorted by wallet key). A wallet that
+ * failed keeps the notes it had, so these stand until a read of that wallet replaces them.
  */
-type BalanceNotes = { borrowed: string[]; refusedWallets: string[]; earnLeftOut: number };
+type BalanceNotes = { borrowed: string[]; refusedWallets: string[] };
 
-const NO_NOTES: BalanceNotes = { borrowed: [], refusedWallets: [], earnLeftOut: 0 };
+const NO_NOTES: BalanceNotes = { borrowed: [], refusedWallets: [] };
 
 const notesOfParsed = (balanceNotes: Record<string, ParsedWalletNotes>): BalanceNotes => {
   const wallets = Object.entries(balanceNotes).sort(([left], [right]) => left.localeCompare(right));
@@ -63,7 +62,6 @@ const notesOfParsed = (balanceNotes: Record<string, ParsedWalletNotes>): Balance
   return {
     borrowed: [...new Set(wallets.flatMap(([, notes]) => notes.borrowed))].sort(),
     refusedWallets: wallets.filter(([, notes]) => notes.refused).map(([wallet]) => wallet),
-    earnLeftOut: wallets.reduce((total, [, notes]) => total + notes.earnLeftOut, 0),
   };
 };
 

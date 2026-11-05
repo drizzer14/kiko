@@ -140,10 +140,10 @@ export type ExchangeTrades = {
 export type ParsedKeyExpiry = { expiredAtMs?: number; deadlineDay?: number; readAtMs?: number };
 
 /**
- * What one wallet's last balance read left to show: the coins it set aside for a loan, how many
- * Earn positions it left out, and whether the exchange refused the key for it.
+ * What one wallet's last balance read left to show: the coins it set aside for a loan, and whether
+ * the exchange refused the key for it.
  */
-export type ParsedWalletNotes = { borrowed: string[]; earnLeftOut: number; refused: boolean };
+export type ParsedWalletNotes = { borrowed: string[]; refused: boolean };
 
 /** The JSON stored in `sync_state.exchange_state`. */
 export type ExchangeState = {
@@ -477,13 +477,12 @@ const keyExpiryEntryOf = (stored: unknown): ReadEntry<ParsedKeyExpiry | undefine
   );
 
 /**
- * A count of positions is a whole number from zero; any other value reads as none. A field that is
- * unreadable reads as its empty value, since a note shown by mistake would be worse than none.
+ * A field that is unreadable reads as its empty value, since a note shown by mistake would be worse
+ * than none. The entry names the keys it reads only, so any other key stored in it is ignored.
  */
 const walletNotesOf = (stored: unknown): ParsedWalletNotes | undefined =>
   foldMap(maybe(recordOrUndefined(stored)), (entry) => ({
     borrowed: stringListOrUndefined(entry.borrowed) ?? [],
-    earnLeftOut: timeOrUndefined(entry.earnLeftOut) ?? 0,
     refused: entry.refused === true,
   }));
 

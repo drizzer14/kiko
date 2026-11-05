@@ -134,7 +134,7 @@ const KeyExpiryLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
 };
 
 // What the last balance reads left out: a coin set aside for a loan, a wallet the key was refused
-// for, the Earn positions the allowlist did not count. Split out like `CoinLines`.
+// for. Split out like `CoinLines`.
 const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
   const { t } = useTranslation();
 
@@ -142,7 +142,7 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
     return null;
   }
 
-  const { borrowed, refusedWallets, earnLeftOut } = balanceNotesOf(walkState);
+  const { borrowed, refusedWallets } = balanceNotesOf(walkState);
 
   return (
     <>
@@ -157,12 +157,6 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
           {t('accountDetail.bybitWalletRefused', { wallet: walletLabelOf(wallet) })}
         </Text>
       ))}
-
-      {earnLeftOut > 0 && (
-        <Text variant="caption" tone="textSecondary">
-          {t('accountDetail.bybitEarnLeftOut', { count: earnLeftOut })}
-        </Text>
-      )}
     </>
   );
 };
