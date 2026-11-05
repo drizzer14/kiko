@@ -401,6 +401,18 @@ describe('bybitProvider', () => {
       ]);
     });
 
+    it('leaves a stored Earn holding alone: no write, no zero and no failure', async () => {
+      const deps = makeDeps([unifiedCoin('BTC', '1')], [fundCoin('BTC', '2')]);
+      const target = freshTarget([heldHolding('BTC:earn', 9), heldHolding('ETH:earn', 9, 'ETH')]);
+
+      const read = await bybitProvider.fetchBalances(deps, target);
+
+      expect(pairsOf(read.balances)).toEqual([
+        ['BTC:unified', 100000000],
+        ['BTC:fund', 200000000],
+      ]);
+    });
+
     it('names each holding by its wallet and carries no rename', async () => {
       const deps = makeDeps([unifiedCoin('USDT', '5')], [fundCoin('USDT', '6')]);
 

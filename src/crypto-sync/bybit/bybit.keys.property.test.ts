@@ -14,7 +14,7 @@ const SEEDS = sweep(Array.from({ length: 20 }, (_unused, position) => 17 + posit
 const SEED_SPREAD = 1_000_003;
 
 const COINS = [...CURATED_COIN_CODES, ...BYBIT_FIAT_CODES];
-const WALLETS: readonly BybitWallet[] = ['unified', 'fund', 'earn'];
+const WALLETS: readonly BybitWallet[] = ['unified', 'fund'];
 const KEYS_PER_SEED = 60;
 
 const pick = <Entry>(random: Random, entries: readonly Entry[]): Entry =>

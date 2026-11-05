@@ -3,7 +3,7 @@ import type { Currency } from '@kiko/currency/currency';
 
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 
-const BYBIT_WALLETS = ['unified', 'fund', 'earn'] as const;
+const BYBIT_WALLETS = ['unified', 'fund'] as const;
 
 export type BybitWallet = (typeof BYBIT_WALLETS)[number];
 
@@ -12,8 +12,9 @@ const isBybitWallet = (value: string): value is BybitWallet =>
 
 /**
  * The key stored under `metadata.bybitAsset`, one holding per Bybit coin and wallet:
- * `<COIN>:unified`, `<COIN>:fund`, `<COIN>:earn`. The coin is always part of the key, BTC too,
- * because no legacy holding exists to keep a bare `BTC` key for.
+ * `<COIN>:unified`, `<COIN>:fund`. The coin is always part of the key, BTC too, because no legacy
+ * holding exists to keep a bare `BTC` key for. A key of any other wallet names none here, so a
+ * stored holding with one is neither written nor zeroed by a sync.
  */
 export const holdingKeyOf = (code: Currency, wallet: BybitWallet): string => `${code}:${wallet}`;
 
@@ -41,7 +42,6 @@ export const bybitKeyOf = (holding: Pick<HoldingRow, 'metadata'>): string | unde
 const WALLET_LABELS: Record<BybitWallet, string> = {
   unified: 'Unified',
   fund: 'Funding',
-  earn: 'Earn',
 };
 
 /**
