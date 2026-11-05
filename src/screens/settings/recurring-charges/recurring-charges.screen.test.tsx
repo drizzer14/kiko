@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { render, within } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
@@ -19,6 +19,14 @@ let mockResult: { series: RecurringSeries[]; isLoading: boolean } = {
 
 jest.mock('@kiko/recurring/use-recurring-series', () => ({
   useRecurringSeries: () => mockResult,
+}));
+
+const mockOpenInPane = jest.fn();
+
+jest.mock('@kiko/navigation/pane-stack', () => ({
+  ...jest.requireActual('@kiko/navigation/pane-stack'),
+  useOpenInPane: () => mockOpenInPane,
+  useDetailPaneRoute: () => null,
 }));
 
 const renderScreen = async (result: typeof mockResult) => {
@@ -186,6 +194,58 @@ describe('RecurringChargesScreen — sections and order', () => {
       rowTestId(byIdFirst),
       rowTestId(byKeyLast),
     ]);
+  });
+});
+
+describe('RecurringChargesScreen — a tap', () => {
+  beforeEach(() => {
+    mockOpenInPane.mockClear();
+  });
+
+  it('opens the series with every route param, through the pane opener', async () => {
+    const dollars = seriesWith({
+      id: 'figma-1',
+      merchantKey: 'figma',
+      name: 'Figma',
+      currency: 'USD',
+      period: 'yearly',
+      recurrence: { kind: 'none' },
+    });
+    const { getByTestId } = await renderScreen({
+      series: [seriesWith({}), dollars],
+      isLoading: false,
+    });
+
+    expect(mockOpenInPane).not.toHaveBeenCalled();
+
+    await fireEvent.press(getByTestId(rowTestId(dollars)));
+
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('RecurringSeries', {
+      seriesId: 'figma-1',
+      merchantKey: 'figma',
+      currency: 'USD',
+      period: 'yearly',
+      name: 'Figma',
+    });
+  });
+
+  it('opens the series of the row tapped, not of another row', async () => {
+    const other = seriesWith({ id: 'spotify-1', merchantKey: 'spotify', name: 'Spotify' });
+    const { getByTestId } = await renderScreen({
+      series: [seriesWith({}), other],
+      isLoading: false,
+    });
+
+    await fireEvent.press(getByTestId(rowTestId(seriesWith({}))));
+
+    expect(mockOpenInPane).toHaveBeenCalledWith('RecurringSeries', {
+      seriesId: 'netflix-1',
+      merchantKey: 'netflix',
+      currency: 'UAH',
+      period: 'monthly',
+      name: 'Netflix',
+    });
   });
 });
 
