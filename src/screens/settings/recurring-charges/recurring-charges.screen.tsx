@@ -1,6 +1,6 @@
-import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { FlatList } from 'react-native';
+import { type FC, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import Screen, {
   useContentCap,
@@ -13,6 +13,7 @@ import Text from '@kiko/design-system/components/text';
 import LargeTitleHeading, {
   useLargeTitleScroll,
 } from '@kiko/design-system/components/large-title-heading';
+import { useOpenInPane } from '@kiko/navigation/pane-stack';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
@@ -70,6 +71,15 @@ const RecurringChargesScreen: FC<RecurringChargesScreenProps> = () => {
   const contentMargin = useContentMargin();
   const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
+  const openInPane = useOpenInPane();
+  // The route holds what a later read needs to find the series again, since its id is its earliest
+  // charge's and an older import moves that.
+  const openSeries = useCallback(
+    ({ id, merchantKey, currency, period, name }: RecurringSeries): void => {
+      openInPane('RecurringSeries', { seriesId: id, merchantKey, currency, period, name });
+    },
+    [openInPane],
+  );
 
   return (
     <Screen bleedTop>
@@ -84,7 +94,7 @@ const RecurringChargesScreen: FC<RecurringChargesScreenProps> = () => {
               </Box>
             ))
             .with({ kind: 'series' }, ({ series: listed }) => (
-              <RecurringSeriesRow series={listed} />
+              <RecurringSeriesRow series={listed} onPress={openSeries} />
             ))
             .exhaustive()
         }

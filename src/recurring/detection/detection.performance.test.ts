@@ -24,16 +24,18 @@ import { at, chargeOf, holdingOf, bankAccountOf, type Currency } from './detecti
 // whole number under which the first run on this fixture passed: it read `time` twice per row
 // (100 000 reads), so K of -13.6 or more was needed. It is never raised. The pin sees only the
 // input objects: `datedRowsOf` and the row spread in eligibility copy `time`, so every comparator
-// reads a copy. What it fails on is one more pass over the input rows, past 2.61 reads per row;
-// a second sort or a scan over the charges is seen by the two pins below.
+// reads a copy. What it fails on is one more pass over the input rows, past 2.61 reads per row.
+// A second sort is seen by the sort-comparison pin below, and a scan that calls `daysBetween` by
+// the day-gap pin; a scan over the charges that does neither is seen by no pin.
 const LOGARITHM_OFFSET = -13;
 // The comparator calls of every sort in one detection, over `rows x (log2(rows) + K)`, the cost of
 // one sort of the ledger. The first run made 1 062 843 calls, 21.26 per row, so K needed 5.65
 // or more. It is never raised, so a second sort over the charges fails it.
 const SORT_COMPARISON_OFFSET = 6;
-// Calls of `daysBetween` per row, the work of the fit evaluations (7 calls for each pair of
-// charges in a group). The first run made 1 812 081 calls, 36.24 per row. It is never raised, so
-// a scan that compares every charge of a group with every other fails it.
+// Calls of `daysBetween` per row, the work of the fit evaluations (at most 7 calls for each pair
+// of charges in a group, 5 when the nearest slot count is 0). The first run made 1 812 081
+// calls, 36.24 per row. It is never raised, so a scan that compares every charge of a group
+// with every other fails it.
 const DAY_GAP_CALLS_PER_ROW = 37;
 const HOLDINGS_PER_CURRENCY = { UAH: 8, USD: 4, EUR: 3, GBP: 3, BTC: 2 } as const;
 const PLANTED_ROW_COUNT = 3;

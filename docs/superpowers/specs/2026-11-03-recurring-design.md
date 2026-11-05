@@ -559,8 +559,10 @@ the plan adds a navigator pin for this path. Home is not used: `Home` takes no p
 which `1.4-tables` reports too.
 
 `seriesId` is the id of the series' earliest charge. The route also holds `merchantKey`, `currency` and `period`. A row
-deleted through a link, or an older row imported, moves the earliest charge while the series still lists. So a miss on
-`seriesId` falls back to the one series with the same merchant key, currency and period. With none, or with more than
+deleted through a link, or an older row imported, moves the earliest charge while the series still lists. An id hit
+counts only for a series with the route's `merchantKey` and `currency`, since a rename can give another merchant the
+earliest-charge id. So a miss on `seriesId`, or a hit on another merchant or currency, falls back to the one series with
+the same merchant key, currency and period. With none, or with more than
 one (two monthly Apple series: never guess), the screen shows `EmptyState` with a neutral text about the list, never
 about the merchant: nothing on this path says a charge stopped repeating.
 
@@ -572,7 +574,7 @@ the series' lowest stored amount, a lookup key never shown.** A route that holds
 currency whose span, from the lowest to the highest of its charges and stored amounts, holds that amount. Pieces are disjoint, so at
 most one span does. On a miss it shows the neutral text and never a detected series: that route's `seriesId` is the chain's earliest
 charge and its period may be the user's, so either step would be a guess. A route without it finds the marked series of the route's
-key and currency whose charges hold `seriesId`, then `seriesId` among the detected series left beside the marked ones, then the
+key and currency whose charges hold `seriesId`, then `seriesId` among the detected series left beside the marked ones, with the same key and currency, then the
 fallback above among those detected series, then the neutral text. A key can hold several marked series, so the key and currency no
 longer pick one. Remove mark on this screen holds the last resolved series until `goBack`, since that write takes the marked series
 away; a pin, as the hide's.
@@ -597,8 +599,9 @@ default, so the focus-hook rule does not apply; they use `useIsScreenVisible` an
 | `holdingsRepo.allQuery()`, `accountsRepo.listQuery()`, `settingsRepo.getQuery()` (the hook does not read settings until task 3/4) | their own | `paused` |
 | Series screen: `listWithContextByIdsQuery(ids)`, plus categories and settings for the row | `transactions`, `holdings`, `accounts`, `categories`, `settings` | `paused` |
 
-`paused: !useIsScreenVisible()` on every read. Not `cached`: a second LRU copy of a whole ledger for a screen opened
-rarely, and the hide control acts on its result. `write()` flushes once per commit, so a sync fires one re-read.
+`paused: !useIsScreenVisible()` on every read. Not `cached`: `cached` only makes a mount read the LRU, and a
+whole-ledger read is never a display-readiness seed. The entry is written either way (`writeCache` in
+`src/db/use-live-query.ts`), so leaving it off saves no memory. `write()` flushes once per commit, so a sync fires one re-read.
 Detection runs only when `useDataReady` over all the reads is true, and `isLoading = !isReady`. It runs in a `useMemo` on rows, holdings, accounts and the **local day of `now`** (`startOfLocalDay`), not on `now`:
 each Back refreshes `now` with no row change and must run nothing. Hidden keys are not in the memo: the list filters on
 them after detection, so a hide runs no detection, and the hook hands the series screen the unfiltered result.
@@ -734,7 +737,7 @@ shop with look-alike big baskets: 0 of 300. Recall, a real monthly among 15 to 6
 
 An iPhone; Hermes (no JIT); the encrypted file; op-sqlite row marshalling; the exclusion matchers on top of the reference
 (they run in Statistics today and hold their own counted pins); the size of a real ledger. The device check in the plan covers
-these on the user's real ledger, and it names one path: **opening a series** is a second uncached whole-ledger read plus
+these on the user's real ledger, and it names one path: **opening a series** is a second whole-ledger read (not `cached`, 9.5) plus
 detection, while the list's own read is paused beneath it. Returning with Back reads nothing new on an unchanged ledger and,
 keyed on the local day, detects nothing.
 
@@ -920,7 +923,7 @@ row dated two or more days from its bank row. A price rise over 25 percent cuts 
 
 **Q6's answer, "One per chain", in full.** A pick on another piece adds a series and the others stay. After a rise, the new price is active and the old chain stays with its history and its last real charge, stopped, until "Remove mark". That stopped line can read false before the re-mark, the accepted cost of Q5. Nothing the user marked is lost by a hide or by another mark. A row that later bridges two marks makes one series, with the lowest stored amount's period.
 
-**Planner's calls, recorded, not questions.** None of these is a user ruling; the rulings are quoted at the top. Reasons in the sections named: every 3 and every 6 months only in the mark (8.2); a mark wins on its chain (8.2); a stored amount takes part in the cut, so a mark outlives its row (8.2); a detected series sharing a row with a marked one leaves whole, with no second detection (8.2); a mark's ledger read on the form only for a name marked in that currency (9.6); "Marked" text only where the charges do not fit the period, the table gives no slot, or the period has no table row (6); a marked series never leaves the list (7); one choice map for hides and marks (8); a field rather than a button, between `ModeAndActions` and `CommentRow` (9.6); the matched-transfer row is offered and left out, rather than a second ledger read on the form (8.2); the Settings row is last in its group (9.1); the three periods and their minimums (5.1); yearly from two charges, with an accepted false match (5.1, 5.4); a series crosses holdings, not currencies (4); pending and manual rows count, refunds neither count nor cancel (4); loan links out by marker (4); crypto and other non-cash accounts out by kind (4); two of the last three decides a moved day (6); numeric dates as everywhere in the app (6); the stale source read from rows, not `syncState` (7); stopped sinks and leaves at 24 months (7); no midnight timer (7); hide is per merchant key (8); a settings column rather than a table or `dismissedTips` (8); the last charge's amount shows beside its date (9.2); not `cached` (9.5); `EXPORT_VERSION` stays 5 (11).
+**Planner's calls, recorded, not questions.** None of these is a user ruling; the rulings are quoted at the top. Reasons in the sections named: every 3 and every 6 months only in the mark (8.2); a mark wins on its chain (8.2); a stored amount takes part in the cut, so a mark outlives its row (8.2); a detected series sharing a row with a marked one leaves whole, with no second detection (8.2); a mark's ledger read on the form only for a name marked in that currency (9.6); "Marked" text only where the charges do not fit the period, the table gives no slot, or the period has no table row (6); a marked series never leaves the list (7); one choice map for hides and marks (8); a field rather than a button, between `ModeAndActions` and `CommentRow` (9.6); the matched-transfer row is offered and left out, rather than a second ledger read on the form (8.2); the Settings row is last in its group (9.1); the three periods and their minimums (5.1); yearly from two charges, with an accepted false match (5.1, 5.4); a series crosses holdings, not currencies (4); pending and manual rows count, refunds neither count nor cancel (4); loan links out by marker (4); crypto and other non-cash accounts out by kind (4); two of the last three decides a moved day (6); numeric dates as everywhere in the app (6); the stale source read from rows, not `syncState` (7); stopped sinks and leaves at 24 months (7); no midnight timer (7); hide is per merchant key (8); a settings column rather than a table or `dismissedTips` (8); the last charge's amount shows beside its date (9.2); the whole-ledger read is not `cached`: a mount does not read the LRU (9.5); `EXPORT_VERSION` stays 5 (11).
 
 **The orchestrator's calls after the spec review, recorded the same way, not user rulings:** a row is compared to today by local day, and a later local day is left out (4); the fold keeps the largest count of one source, and reaches one local day (4); a funded debit with a hand category stays in, as an accepted false match (4); quiet uses the stopped cutoff and dates from the holding's newest row (7); the quiet line names the holding (7); a stopped row shows its amount (9.2); the memo keys on the local day (9.5); on a detected route, a missed `seriesId` falls back to one matching series, else a neutral text (9.3); all four sets ship in one release (15); the uk past frame, which `kiko-translator` rules decide (13).
 
