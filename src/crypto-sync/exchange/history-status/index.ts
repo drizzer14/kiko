@@ -1,5 +1,4 @@
 export {
-  type BalanceNotes,
   balanceNotesOf,
   balanceSyncedAtOf,
   keyExpiryOf,

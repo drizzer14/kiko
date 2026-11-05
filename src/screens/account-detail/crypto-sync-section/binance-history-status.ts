@@ -26,6 +26,19 @@ const EXCHANGE_HISTORY: Record<BalanceProviderId, boolean> = {
 export const hasExchangeHistory = (provider: BalanceProviderId): boolean =>
   EXCHANGE_HISTORY[provider];
 
+/**
+ * Whether the account detail states the end of the provider's key and the kinds it reads. Only a
+ * key that ends on a date has the first (Bybit's, after about 90 days), and the kinds line names
+ * what that provider reads and leaves out; Binance's footer says its own on the holding.
+ */
+const KEY_LINES: Record<BalanceProviderId, boolean> = {
+  btc_wallet: false,
+  binance: false,
+  bybit: true,
+};
+
+export const hasKeyLines = (provider: BalanceProviderId): boolean => KEY_LINES[provider];
+
 // A wallet lists no coin at all, so nothing it holds reads as not tracked.
 const TRACKED_ASSET: Record<BalanceProviderId, (asset: string) => boolean> = {
   btc_wallet: () => true,

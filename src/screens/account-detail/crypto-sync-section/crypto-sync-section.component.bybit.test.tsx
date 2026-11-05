@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import { DAY_MS } from '@kiko/dates';
 import { i18n } from '@kiko/i18n/init';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { providerDisplayName } from '@kiko/crypto-sync/provider';
@@ -79,6 +80,332 @@ const PENDING_FRAGMENT = 'transaction history is not imported yet';
 
 const untrackedLine = (tickers: string, exchange: string): string =>
   `Not tracked: ${tickers}. Kiko does not import a currency its ${exchange} sync does not support.`;
+
+const NOW = 1_700_000_000_000;
+const RENEW_PHRASE = 'Renew it on Bybit; the key stays the same.';
+const KEY_ENDED_FRAGMENT = 'Bybit key ended on';
+
+const expiryLineFragments = [
+  'Bybit key works until',
+  'Bybit key ends in',
+  KEY_ENDED_FRAGMENT,
+  'Kiko could not read when this Bybit key ends',
+];
+
+const shownExpiryLines = (queryByText: (text: string, options: { exact: false }) => unknown) =>
+  expiryLineFragments.filter((fragment) => queryByText(fragment, { exact: false }) !== null);
+
+describe('the key expiry line of a Bybit account', () => {
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ['far', { expiredAtMs: Date.UTC(2024, 0, 20, 12) }, 'Bybit key works until 20.01.2024.'],
+    [
+      'far, from the days left at the read',
+      { deadlineDay: 20, readAtMs: NOW - 2 * DAY_MS },
+      'Bybit key works until 03.12.2023.',
+    ],
+    [
+      'near, 3 days',
+      { expiredAtMs: NOW + 3 * DAY_MS - 3_600_000 },
+      `Bybit key ends in 3 days. ${RENEW_PHRASE}`,
+    ],
+    [
+      'near, on the 14th day',
+      { expiredAtMs: NOW + 14 * DAY_MS },
+      `Bybit key ends in 14 days. ${RENEW_PHRASE}`,
+    ],
+    [
+      'near, 1 day',
+      { expiredAtMs: NOW + 5 * 3_600_000 },
+      `Bybit key ends in 1 day. ${RENEW_PHRASE}`,
+    ],
+    [
+      'expired',
+      { expiredAtMs: Date.UTC(2023, 10, 10, 12) },
+      'Bybit key ended on 10.11.2023. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    ],
+    [
+      'expired, at the instant of the end',
+      { expiredAtMs: NOW },
+      'Bybit key ended on 15.11.2023. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    ],
+  ])('reads %s from the stored end', async (_title, keyExpiry, line) => {
+    const { getByText, queryByText } = await renderState('bybit', { walks: {}, keyExpiry });
+
+    expect(getByText(line)).toBeTruthy();
+    expect(shownExpiryLines(queryByText)).toHaveLength(1);
+  });
+
+  it('starts the far state one millisecond past the 14th day', async () => {
+    const { queryByText } = await renderState('bybit', {
+      walks: {},
+      keyExpiry: { expiredAtMs: NOW + 14 * DAY_MS + 1 },
+    });
+
+    expect(queryByText('Bybit key works until', { exact: false })).not.toBeNull();
+    expect(queryByText('Bybit key ends in', { exact: false })).toBeNull();
+  });
+
+  it.each([
+    ['no entry', undefined],
+    ['an entry with no date', { readAtMs: NOW }],
+    ['an end at the epoch with negative days', { expiredAtMs: 0, deadlineDay: -2, readAtMs: NOW }],
+    ['an end that is no number', { expiredAtMs: '2099-01-02T03:04:05Z', readAtMs: NOW }],
+    ['an entry that is no record', 'x'],
+  ])('reads %s as unknown', async (_title, keyExpiry) => {
+    const { getByText, queryByText } = await renderState('bybit', { walks: {}, keyExpiry });
+
+    expect(
+      getByText(
+        'Kiko could not read when this Bybit key ends. A key with no IP restriction lasts about 90 days.',
+      ),
+    ).toBeTruthy();
+    expect(shownExpiryLines(queryByText)).toHaveLength(1);
+  });
+
+  it('sits under the last sync line, before the coin lines', async () => {
+    const { toJSON } = await renderState('bybit', {
+      walks: {},
+      keyExpiry: { expiredAtMs: Date.UTC(2024, 0, 20, 12) },
+      oversizedCoins: { balance: ['BTC'], history: [] },
+    });
+    const text = JSON.stringify(toJSON());
+
+    expect(text.indexOf('Last sync')).toBeLessThan(text.indexOf('Bybit key works until'));
+    expect(text.indexOf('Bybit key works until')).toBeLessThan(
+      text.indexOf('Kiko could not import'),
+    );
+  });
+
+  it('is not shown while the state row is still loading', async () => {
+    mockSyncState = { data: [], isLoading: true };
+    const { queryByText } = await render(
+      <CryptoSyncSection account={accountOf('bybit')} holdings={[holdingOf('bybit')]} />,
+    );
+
+    expect(shownExpiryLines(queryByText)).toEqual([]);
+    expect(queryByText('Bybit key', { exact: false })).toBeNull();
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it.each([
+      [1, 'Ключ Bybit діє ще 1 день. Подовжте його на Bybit; ключ лишається той самий.'],
+      [2, 'Ключ Bybit діє ще 2 дні. Подовжте його на Bybit; ключ лишається той самий.'],
+      [5, 'Ключ Bybit діє ще 5 днів. Подовжте його на Bybit; ключ лишається той самий.'],
+      [11, 'Ключ Bybit діє ще 11 днів. Подовжте його на Bybit; ключ лишається той самий.'],
+    ])('gives the near state of %i days its plural form', async (days, line) => {
+      const { getByText } = await renderState('bybit', {
+        walks: {},
+        keyExpiry: { expiredAtMs: NOW + days * DAY_MS - 3_600_000 },
+      });
+
+      expect(getByText(line)).toBeTruthy();
+    });
+
+    it('gives the far, expired and unknown states their Ukrainian lines', async () => {
+      const far = await renderState('bybit', {
+        walks: {},
+        keyExpiry: { expiredAtMs: Date.UTC(2024, 0, 20, 12) },
+      });
+      const expired = await renderState('bybit', {
+        walks: {},
+        keyExpiry: { expiredAtMs: Date.UTC(2023, 10, 10, 12) },
+      });
+      const unknown = await renderState('bybit', { walks: {} });
+
+      expect(far.getByText('Ключ Bybit діє до 20.01.2024.')).toBeTruthy();
+      expect(
+        expired.getByText(i18n.t('accountDetail.bybitKeyEnded', { date: '10.11.2023' })),
+      ).toBeTruthy();
+      expect(expired.getByText('Дія ключа Bybit завершилася', { exact: false })).toBeTruthy();
+      expect(
+        unknown.getByText('Кіко не зміг прочитати, коли завершується дія цього ключа Bybit', {
+          exact: false,
+        }),
+      ).toBeTruthy();
+    });
+  });
+});
+
+describe('the notes of a Bybit account', () => {
+  it('names the wallet the key was refused for', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { fund: { refused: true } },
+    });
+
+    expect(
+      getByText(
+        "Bybit refused this key for Funding, so Kiko did not update that balance. Check the key's permissions on Bybit.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it('names each refused wallet by the name its holdings carry', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: { refused: true }, fund: { refused: true } },
+    });
+
+    expect(getByText('Bybit refused this key for Unified', { exact: false })).toBeTruthy();
+    expect(getByText('Bybit refused this key for Funding', { exact: false })).toBeTruthy();
+  });
+
+  it('lists each coin set aside for a loan once, and says its balance is from an earlier sync', async () => {
+    const { getByText, queryAllByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: { borrowed: ['BTC', 'ETH'] }, fund: { borrowed: ['ETH'] } },
+    });
+    const line = (coin: string) =>
+      `${coin}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync.`;
+
+    expect(getByText(line('BTC'))).toBeTruthy();
+    expect(queryAllByText(line('ETH'))).toHaveLength(1);
+  });
+
+  it.each([
+    [1, 'Kiko left 1 Bybit Earn position out of this balance'],
+    [3, 'Kiko left 3 Bybit Earn positions out of this balance'],
+  ])('counts %i Earn position(s) the allowlist left out', async (earnLeftOut, fragment) => {
+    const { getByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { earn: { earnLeftOut } },
+    });
+
+    expect(getByText(fragment, { exact: false })).toBeTruthy();
+  });
+
+  it('shows no note line for a read with nothing to note', async () => {
+    const { queryByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: {}, fund: {} },
+    });
+
+    for (const fragment of ['Bybit refused this key', 'Bybit shows a loan', 'Earn position']) {
+      expect(queryByText(fragment, { exact: false })).toBeNull();
+    }
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it.each([
+      [1, 'Кіко не врахував у цьому балансі 1 позицію Bybit Earn'],
+      [2, 'Кіко не врахував у цьому балансі 2 позиції Bybit Earn'],
+      [5, 'Кіко не врахував у цьому балансі 5 позицій Bybit Earn'],
+    ])('gives %i left-out Earn position(s) their plural form', async (earnLeftOut, fragment) => {
+      const { getByText } = await renderState('bybit', {
+        walks: {},
+        balanceNotes: { earn: { earnLeftOut } },
+      });
+
+      expect(getByText(fragment, { exact: false })).toBeTruthy();
+    });
+
+    it('gives the refused and borrowed lines in Ukrainian', async () => {
+      const { getByText } = await renderState('bybit', {
+        walks: {},
+        balanceNotes: { fund: { refused: true }, unified: { borrowed: ['BTC'] } },
+      });
+
+      expect(
+        getByText(
+          'Bybit не дозволив цьому ключу читати Funding, тож Кіко не оновив цей баланс. Перевірте дозволи ключа на Bybit.',
+        ),
+      ).toBeTruthy();
+      expect(getByText('BTC: Bybit показує позику під цю монету', { exact: false })).toBeTruthy();
+    });
+  });
+});
+
+describe('the kinds line of a Bybit account', () => {
+  it('states what Kiko reads and what it leaves out, with what stays wrong', async () => {
+    const { getByText } = await renderState('bybit', { walks: {} });
+
+    expect(getByText(i18n.t('accountDetail.bybitKinds'))).toBeTruthy();
+    expect(i18n.t('accountDetail.bybitKinds')).toContain('It does not read P2P orders');
+    expect(i18n.t('accountDetail.bybitKinds')).toContain('The past of your net worth can be off');
+  });
+
+  it('shows on a state this build cannot read, since it states no stored fact', async () => {
+    const { getByText } = await renderState('bybit', '{not json');
+
+    expect(getByText(i18n.t('accountDetail.bybitKinds'))).toBeTruthy();
+  });
+});
+
+describe('a Binance or wallet account beside the Bybit lines', () => {
+  const bybitFacts = {
+    keyExpiry: { expiredAtMs: Date.UTC(2024, 0, 20, 12), readAtMs: NOW },
+    balanceNotes: {
+      unified: { borrowed: ['BTC'], earnLeftOut: 2 },
+      fund: { refused: true },
+    },
+  };
+
+  it.each(['binance', 'btc_wallet'])(
+    'shows %s byte-identical text, whatever Bybit facts its state holds',
+    async (institution) => {
+      const plain = await renderState(institution, { walks: {} });
+      const plainTree = JSON.stringify(plain.toJSON());
+      await plain.unmount();
+
+      const withFacts = await renderState(institution, { walks: {}, ...bybitFacts });
+
+      expect(JSON.stringify(withFacts.toJSON())).toBe(plainTree);
+      expect(withFacts.queryByText('Bybit', { exact: false })).toBeNull();
+    },
+  );
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('shows Binance no Bybit line either', async () => {
+      const { queryByText } = await renderState('binance', { walks: {}, ...bybitFacts });
+
+      expect(queryByText('Bybit', { exact: false })).toBeNull();
+    });
+  });
+});
 
 describe('CryptoSyncSection for a Bybit account', () => {
   it('lists a fiat code outside the five as not tracked, naming the exchange, with no amount', async () => {

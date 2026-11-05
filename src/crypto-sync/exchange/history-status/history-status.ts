@@ -53,7 +53,7 @@ export const keyExpiryOf = (state: ParsedExchangeState): ParsedKeyExpiry | undef
  * positions were left out. A wallet that failed keeps the notes it had, so these stand until a
  * read of that wallet replaces them.
  */
-export type BalanceNotes = { borrowed: string[]; refusedWallets: string[]; earnLeftOut: number };
+type BalanceNotes = { borrowed: string[]; refusedWallets: string[]; earnLeftOut: number };
 
 const NO_NOTES: BalanceNotes = { borrowed: [], refusedWallets: [], earnLeftOut: 0 };
 

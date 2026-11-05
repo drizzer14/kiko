@@ -1,0 +1,41 @@
+import { en, uk } from '@kiko/i18n/locales';
+
+// The Bybit texts that name a route for the user. Set 7 extends this file with the surfaces that
+// name the kinds Kiko reads.
+const ENDED_KEYS = ['bybitKeyEnded', 'bybitKeyRefusedExpired'] as const;
+
+describe('the Bybit copy', () => {
+  it.each(ENDED_KEYS)(
+    'the ended and refused texts give both the renewal and the new-key route, in en and uk: %s',
+    (key) => {
+      expect(en.accountDetail[key]).toMatch(/renew it on Bybit/);
+      expect(en.accountDetail[key]).toMatch(/If Bybit offers no renewal, create a new key/);
+      expect(en.accountDetail[key]).toMatch(/disconnect and connect again/);
+      expect(uk.accountDetail[key]).toMatch(/подовжити/);
+      expect(uk.accountDetail[key]).toMatch(
+        /Якщо Bybit не пропонує подовження, створіть новий ключ/,
+      );
+      expect(uk.accountDetail[key]).toMatch(/відʼєднайте й підключіть Bybit знову/);
+    },
+  );
+
+  it('the ended and refused texts say the key and secret stay the same after a renewal', () => {
+    expect(en.accountDetail.bybitKeyEnded).toMatch(/the key then stays the same/);
+    expect(en.accountDetail.bybitKeyRefusedExpired).toMatch(
+      /the key and secret then stay the same/,
+    );
+    expect(uk.accountDetail.bybitKeyEnded).toMatch(/він лишиться той самий/);
+    expect(uk.accountDetail.bybitKeyRefusedExpired).toMatch(/ключ і секрет лишаться ті самі/);
+  });
+
+  it('the borrowed line does not say a last balance exists', () => {
+    expect(en.accountDetail.bybitCoinBorrowed).not.toMatch(/last balance/i);
+    expect(en.accountDetail.bybitCoinBorrowed).toMatch(
+      /A balance shown here is from an earlier sync/,
+    );
+    expect(uk.accountDetail.bybitCoinBorrowed).not.toMatch(/останн\S* баланс/i);
+    expect(uk.accountDetail.bybitCoinBorrowed).toMatch(
+      /Баланс, показаний тут, узято з попередньої/,
+    );
+  });
+});

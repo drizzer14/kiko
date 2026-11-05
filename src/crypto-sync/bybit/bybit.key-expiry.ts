@@ -5,7 +5,7 @@ import type { ParsedKeyExpiry } from '@kiko/crypto-sync/exchange/walk-state';
 /** A key ends "soon" when it has this many days or fewer left. */
 const NEAR_DAYS = 14;
 
-export type BybitKeyExpiryState =
+type BybitKeyExpiryState =
   | { state: 'far'; endsAtMs: number }
   | { state: 'near'; endsAtMs: number; daysLeft: number }
   | { state: 'expired'; endsAtMs: number }

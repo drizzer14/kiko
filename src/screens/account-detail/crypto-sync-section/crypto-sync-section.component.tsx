@@ -1,8 +1,10 @@
+import { match } from 'ts-pattern';
 import {
   type BalanceProviderId,
   isBalanceProviderId,
   providerDisplayName,
 } from '@kiko/crypto-sync/provider';
+import { formatDate } from '@kiko/dates';
 import { type FC, useState } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import {
@@ -12,9 +14,16 @@ import {
   visibleExchangeEntries,
 } from '@kiko/crypto-sync/exchange-catalog';
 import { useTranslation } from 'react-i18next';
+import {
+  type NotImportedKind,
+  type ParsedExchangeState,
+  parseExchangeState,
+} from '@kiko/crypto-sync/exchange/walk-state';
 import { syncStateRepo } from '@kiko/sync-state';
 import {
+  balanceNotesOf,
   balanceSyncedAtOf,
+  keyExpiryOf,
   type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,
@@ -33,10 +42,10 @@ import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
+import { keyExpiryStateOf, walletLabelOf } from '@kiko/crypto-sync/bybit';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
-import { type NotImportedKind, parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import ProviderSheet from '../provider-sheet';
 import { styles } from '../account-detail.styles';
@@ -45,6 +54,7 @@ import { formatLastSyncAt, latestBalanceSyncAt } from '../format-last-sync';
 
 import {
   hasExchangeHistory,
+  hasKeyLines,
   historyOwesRange,
   historyOwesTrades,
   isBinanceHistoryBehind,
@@ -82,6 +92,92 @@ const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins, exchang
         </Text>
       ))}
     </>
+  );
+};
+
+type KeyLinesProps = {
+  provider: BalanceProviderId;
+  /** The state row is still on its first load, so no stored fact can be stated yet. */
+  loading: boolean;
+  walkState: ParsedExchangeState;
+};
+
+// The end of the key in one of its four states, under the last sync line. It reads the stored
+// date against the clock; all four states use the one caption tone. Split out of the section so
+// its own branches stay under the complexity budget.
+const KeyExpiryLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+
+  if (loading || !hasKeyLines(provider)) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {match(keyExpiryStateOf(keyExpiryOf(walkState), Date.now()))
+        .returnType<string>()
+        .with({ state: 'far' }, ({ endsAtMs }) =>
+          t('accountDetail.bybitKeyValidUntil', { date: formatDate(endsAtMs) }),
+        )
+        .with({ state: 'near' }, ({ daysLeft }) =>
+          t('accountDetail.bybitKeyEndsSoon', { count: daysLeft }),
+        )
+        .with({ state: 'expired' }, ({ endsAtMs }) =>
+          t('accountDetail.bybitKeyEnded', { date: formatDate(endsAtMs) }),
+        )
+        .with({ state: 'unknown' }, () => t('accountDetail.bybitKeyExpiryUnknown'))
+        .exhaustive()}
+    </Text>
+  );
+};
+
+// What the last balance reads left out: a coin set aside for a loan, a wallet the key was refused
+// for, the Earn positions the allowlist did not count. Split out like `CoinLines`.
+const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+
+  if (loading || !hasKeyLines(provider)) {
+    return null;
+  }
+
+  const { borrowed, refusedWallets, earnLeftOut } = balanceNotesOf(walkState);
+
+  return (
+    <>
+      {borrowed.map((coin) => (
+        <Text key={coin} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinBorrowed', { coin })}
+        </Text>
+      ))}
+
+      {refusedWallets.map((wallet) => (
+        <Text key={wallet} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitWalletRefused', { wallet: walletLabelOf(wallet) })}
+        </Text>
+      ))}
+
+      {earnLeftOut > 0 && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitEarnLeftOut', { count: earnLeftOut })}
+        </Text>
+      )}
+    </>
+  );
+};
+
+// What Kiko reads of the exchange and what it leaves out. It states no stored fact, so it needs no
+// loaded state.
+const KindsLine: FC<Pick<KeyLinesProps, 'provider'>> = ({ provider }) => {
+  const { t } = useTranslation();
+
+  if (!hasKeyLines(provider)) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {t('accountDetail.bybitKinds')}
+    </Text>
   );
 };
 
@@ -316,6 +412,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           </Box>
 
+          <KeyExpiryLine
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
+
           {coinLinesShown && (
             <CoinLines
               untrackedCoins={untrackedCoinsOf(walkState, isTrackedAssetOf(connectedProvider))}
@@ -330,6 +432,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               exchange={providerDisplayName(connectedProvider, t)}
             />
           )}
+
+          <BalanceNotesLines
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
 
           {historyPaused && (
             <Text variant="caption" tone="textSecondary">
@@ -356,6 +464,8 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               })}
             </Text>
           )}
+
+          <KindsLine provider={connectedProvider} />
 
           {/* Sync and Disconnect share a single row — the shared
               SyncDisconnectActionsRow (both the neutral `secondaryTonal`
