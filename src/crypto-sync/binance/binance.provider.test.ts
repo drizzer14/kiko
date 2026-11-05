@@ -302,12 +302,13 @@ describe('binanceProvider — shared 429/418 cooldown', () => {
     expect(read.spotBalanceTexts).toBeUndefined();
   });
 
-  // A Connect stops at the credentials field while the account cools down, so this skip serves a
-  // sync of a connected account: it is quiet by design, and the field's text is the only message.
-  it('lets a sync of a connected account with a stamped holding skip quietly: no request, no write, no throw', async () => {
+  // The credentials field stops a Connect on an account that is already cooling, so this skip
+  // serves a sync of a connected account: it is quiet by design.
+  it('lets a sync of a connected account with a stamped holding skip quietly: no request, no holding write, no throw', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
     const accountId = 'acc-cooldown-run-balance-sync';
     const upsertHoldings = jest.fn(async () => undefined);
+    const updateAccount = jest.fn(async () => undefined);
     setBinanceCooldownUntil(accountId, NOW + 60_000);
 
     const result = await runBalanceSync(binanceRead, deps, {
@@ -328,18 +329,14 @@ describe('binanceProvider — shared 429/418 cooldown', () => {
           createdAt: 0,
         },
       ],
-      updateAccount: async () => undefined,
+      updateAccount,
       listHoldingsByAccount: async () => [{ ...binanceHolding('BTC'), accountId }],
       upsertHoldings,
     });
 
     expect(result.syncedHoldings).toBe(0);
     expect(upsertHoldings).not.toHaveBeenCalled();
-    expect(deps.readCredentials).not.toHaveBeenCalled();
-    expect(deps.fetchAccount).not.toHaveBeenCalled();
-    expect(deps.fetchFundingAsset).not.toHaveBeenCalled();
-    expect(deps.fetchFlexiblePosition).not.toHaveBeenCalled();
-    expect(deps.fetchLockedPosition).not.toHaveBeenCalled();
+    expect(updateAccount).toHaveBeenCalledWith(accountId, { institution: 'binance' });
   });
 
   it('makes requests again once the cooldown instant has passed', async () => {

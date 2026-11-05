@@ -38,8 +38,8 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
 
 const COOLING_TEXT = 'Too many requests to Binance. Try again later.';
 
-// A disconnect keeps the Binance holdings but clears the account's connection, and the holdings'
-// stamps stay in the sync state, so the holding itself carries none.
+// A disconnect keeps the Binance holdings but clears the account's connection and drops the
+// holding's `syncedAt` and the sync state's `balanceSyncedAt`, so the kept holding has no stamp.
 const keptHolding = (accountId: string): HoldingRow =>
   ({
     id: 'kept-1',

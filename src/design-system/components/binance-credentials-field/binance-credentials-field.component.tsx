@@ -151,8 +151,8 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
       return;
     }
 
-    // Connect is reachable only on an account with no connection, and a cooling account makes no
-    // request: the sync would skip quietly and the field would report a connection it never read.
+    // A cooling account makes no request: the sync would skip quietly and the field would report a
+    // connection it never read.
     if (isBinanceCoolingDown(accountId, Date.now())) {
       setStatus({ kind: 'saveError', message: t('accountDetail.binanceCoolingDown') });
 

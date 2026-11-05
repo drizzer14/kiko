@@ -15,9 +15,12 @@ const mockCreateIfAbsent = jest.fn();
 const mockCryptoSync = jest.fn();
 const mockFetchAccount = jest.fn();
 const mockSaveCredentials = jest.fn();
+let mockStoredAccountRows: unknown[] = [];
 
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: [] }),
+  useLiveQuery: (query: { table: string }) => ({
+    data: query.table === 'accounts' ? mockStoredAccountRows : [],
+  }),
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ table: 'settings' }) },
@@ -96,6 +99,7 @@ const connectFromPendingId = async (pendingAccountId: string) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockStoredAccountRows = [];
   holdCurrencies([]);
   mockCreateIfAbsent.mockResolvedValue('new-account-id');
   mockCryptoSync.mockResolvedValue(true);
@@ -103,8 +107,10 @@ beforeEach(() => {
   mockSaveCredentials.mockResolvedValue(Symbol('saved'));
 });
 
-describe('the crypto create form — a first Binance Connect during a cooldown', () => {
+describe('the crypto create form — a retried Binance Connect during a cooldown', () => {
   it('shows the cooling text and creates no row, stores no pair and runs no sync', async () => {
+    // An earlier Connect on this id got a 429 and left its row; the form stays in create mode.
+    mockStoredAccountRows = [{ id: 'cooldown-form-blocked', bankId: 'binance' }];
     setBinanceCooldownUntil('cooldown-form-blocked', Date.now() + 60_000);
 
     const view = await connectFromPendingId('cooldown-form-blocked');
