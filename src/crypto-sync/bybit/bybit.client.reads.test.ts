@@ -195,14 +195,20 @@ describe('fetchUnifiedBalance', () => {
     await expect(unifiedFrom({ list: [] }).coins).resolves.toEqual([]);
   });
 
-  it('keeps a row that is not an object as a row of absent fields, so its coin is refused alone', async () => {
-    const coins = await unifiedFrom({ list: [{ coin: ['text', null, { coin: 'AAA' }] }] }).coins;
+  it.each<[string, unknown]>([
+    ['a row that is not an object', 'text'],
+    ['a null row', null],
+    ['a row with no coin', { walletBalance: '1' }],
+    ['a row whose coin is empty text', { coin: '' }],
+    ['a row whose coin is not text', { coin: 5 }],
+    ['a row whose coin is null', { coin: null }],
+  ])('refuses %s as a malformed body, so the last balance stays', async (_title, row) => {
+    const failure = await unifiedFrom({ list: [{ coin: [{ coin: 'AAA' }, row] }] }).coins.catch(
+      (error) => error,
+    );
 
-    expect(coins).toEqual([
-      { coin: undefined, walletBalance: undefined, spotBorrow: undefined, borrowAmount: undefined },
-      { coin: undefined, walletBalance: undefined, spotBorrow: undefined, borrowAmount: undefined },
-      { coin: 'AAA', walletBalance: undefined, spotBorrow: undefined, borrowAmount: undefined },
-    ]);
+    expect(failure).toBeInstanceOf(BybitRefusalError);
+    expect(failure).toMatchObject({ refusal: 'malformed' });
   });
 
   it.each<[string, unknown]>([
@@ -276,10 +282,20 @@ describe('fetchFundBalance', () => {
     await expect(fundFrom({ balance: [] }).coins).resolves.toEqual([]);
   });
 
-  it('keeps a row that is not an object as a row of absent fields', async () => {
-    await expect(fundFrom({ balance: [null] }).coins).resolves.toEqual([
-      { coin: undefined, walletBalance: undefined },
-    ]);
+  it.each<[string, unknown]>([
+    ['a row that is not an object', 'text'],
+    ['a null row', null],
+    ['a row with no coin', { walletBalance: '1' }],
+    ['a row whose coin is empty text', { coin: '' }],
+    ['a row whose coin is not text', { coin: 5 }],
+    ['a row whose coin is null', { coin: null }],
+  ])('refuses %s as a malformed body, so the last balance stays', async (_title, row) => {
+    const failure = await fundFrom({ balance: [{ coin: 'AAA' }, row] }).coins.catch(
+      (error) => error,
+    );
+
+    expect(failure).toBeInstanceOf(BybitRefusalError);
+    expect(failure).toMatchObject({ refusal: 'malformed' });
   });
 
   it.each<[string, unknown]>([

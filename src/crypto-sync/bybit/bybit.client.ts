@@ -290,17 +290,32 @@ export const fetchKeyInfo = async (
  * value of the account is read.
  */
 type BybitUnifiedCoin = {
-  coin: unknown;
+  coin: string;
   walletBalance: unknown;
   spotBorrow: unknown;
   borrowAmount: unknown;
 };
 
+/**
+ * The fields of one coin row. A row that is no object, or has no coin name, cannot be refused
+ * alone: the provider could not tell which stored coin it was, and would read it as not listed
+ * and write a zero for it. So it fails the whole read and the last balance stays.
+ */
+const coinRowOf = (row: unknown): { fields: Record<string, unknown>; coin: string } => {
+  const fields = recordOf(row);
+
+  if (typeof fields.coin !== 'string' || fields.coin === '') {
+    throw new BybitRefusalError('malformed');
+  }
+
+  return { fields, coin: fields.coin };
+};
+
 const unifiedCoinOf = (row: unknown): BybitUnifiedCoin => {
-  const fields = isRecord(row) ? row : {};
+  const { fields, coin } = coinRowOf(row);
 
   return {
-    coin: fields.coin,
+    coin,
     walletBalance: fields.walletBalance,
     spotBorrow: fields.spotBorrow,
     borrowAmount: fields.borrowAmount,
@@ -309,8 +324,8 @@ const unifiedCoinOf = (row: unknown): BybitUnifiedCoin => {
 
 /**
  * `GET /v5/account/wallet-balance`, the UNIFIED account: every coin it holds. An answer with no
- * list, or an entry with no coin list, is malformed and throws: it is never an account of no coin,
- * which the provider would write as a zero for each coin held.
+ * list, an entry with no coin list, or a coin row with no name, is malformed and throws: it is
+ * never an account of no coin, which the provider would write as a zero for each coin held.
  */
 export const fetchUnifiedBalance = async (
   apiKey: string,
@@ -333,17 +348,18 @@ export const fetchUnifiedBalance = async (
 };
 
 /** One coin of the FUND account, as `BybitUnifiedCoin` is. `transferBalance` is never read. */
-type BybitFundCoin = { coin: unknown; walletBalance: unknown };
+type BybitFundCoin = { coin: string; walletBalance: unknown };
 
 const fundCoinOf = (row: unknown): BybitFundCoin => {
-  const fields = isRecord(row) ? row : {};
+  const { fields, coin } = coinRowOf(row);
 
-  return { coin: fields.coin, walletBalance: fields.walletBalance };
+  return { coin, walletBalance: fields.walletBalance };
 };
 
 /**
  * `GET /v5/asset/transfer/query-account-coins-balance`, the FUND account: every coin it holds,
- * with no coin filter and no bonus parameter. An answer with no balance list is malformed.
+ * with no coin filter and no bonus parameter. An answer with no balance list, or a row with no
+ * coin name, is malformed.
  */
 export const fetchFundBalance = async (
   apiKey: string,
