@@ -158,7 +158,8 @@ const logRefusal = (wallet: BybitWallet): void => {
 /**
  * Append one wallet's holdings to the batch, one per coin. Only a read that succeeded gets here:
  * a wallet whose read failed has no holding in the batch, so each stays at its last balance.
- * - coin REFUSED or BORROWED: omit that coin's holding alone, for the same reason.
+ * - coin REFUSED, BORROWED or held for an OPEN ORDER: omit that coin's holding alone, for the same
+ *   reason: a held coin keeps its last balance, and a coin with none gets none.
  * - holding ALREADY exists: write it, a zero included, and a coin the good read does not list
  *   is a zero: a wallet the user emptied is zeroed, never left stale and never archived.
  * - no holding yet: write it only from the coin's dust threshold up.
@@ -169,14 +170,16 @@ const appendWallet = (
   read: WalletRead,
   existingKeys: ReadonlySet<string>,
 ): void => {
-  const { balances, refused, borrowed } = read;
+  const { balances, refused, borrowed, openOrder } = read;
   const coins = new Set([...balances.keys(), ...heldCoinsOf(wallet, existingKeys)]);
+  const setAside = (coin: Currency): boolean =>
+    refused.has(coin) || borrowed.has(coin) || openOrder.has(coin);
 
   refused.forEach(() => {
     logRefusal(wallet);
   });
 
-  for (const currency of [...coins].filter((coin) => !refused.has(coin) && !borrowed.has(coin))) {
+  for (const currency of [...coins].filter((coin) => !setAside(coin))) {
     const balanceMinorUnits = balances.get(currency) ?? 0;
 
     if (
@@ -246,7 +249,7 @@ const statePatchesOf = ({
     {
       kind: 'balanceNotes',
       wallets: {
-        unified: { borrowed: [...unified.borrowed] },
+        unified: { borrowed: [...unified.borrowed], openOrder: [...unified.openOrder] },
         ...foldMap(maybe(fund), (read) => ({ fund: { borrowed: [...read.borrowed] } })),
       },
       refused,

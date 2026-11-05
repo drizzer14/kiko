@@ -797,7 +797,9 @@ export const en = {
     bybitClockOff:
       "Bybit refused the request because this device's clock is off. Turn on Set Automatically in Date & Time settings.",
     bybitCoinBorrowed:
-      '{{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync.',
+      '{{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
+    bybitCoinOpenOrder:
+      '{{coin}}: Bybit may hold part of this coin for an open order, so Kiko does not read its balance now. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
     bybitComplianceRefused:
       'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
     bybitForbidden:

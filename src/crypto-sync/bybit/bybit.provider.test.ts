@@ -412,9 +412,67 @@ describe('bybitProvider', () => {
       expect(keysOf(read)).toEqual(['USDT:unified']);
       expect(read.exchangeState).toContainEqual({
         kind: 'balanceNotes',
-        wallets: { unified: { borrowed: ['BTC', 'ETH'] }, fund: { borrowed: [] } },
+        wallets: { unified: { borrowed: ['BTC', 'ETH'], openOrder: [] }, fund: { borrowed: [] } },
         refused: [],
       });
+    });
+  });
+
+  describe('a coin with an open order', () => {
+    it('keeps its last balance and lists itself', async () => {
+      const deps = makeDeps([
+        unifiedCoin('BTC', '1', { locked: '0.5' }),
+        unifiedCoin('ETH', '0', { locked: '2' }),
+        unifiedCoin('SOL', '4', { locked: 'unknown' }),
+        unifiedCoin('USDT', '3'),
+      ]);
+      const target = freshTarget([
+        heldHolding('BTC:unified', 5),
+        heldHolding('ETH:unified', 6, 'ETH'),
+        heldHolding('SOL:unified', 7, 'SOL'),
+      ]);
+
+      const read = await bybitProvider.fetchBalances(deps, target);
+
+      expect(keysOf(read)).toEqual(['USDT:unified']);
+      expect(read.exchangeState).toContainEqual({
+        kind: 'balanceNotes',
+        wallets: {
+          unified: { borrowed: [], openOrder: ['BTC', 'ETH', 'SOL'] },
+          fund: { borrowed: [] },
+        },
+        refused: [],
+      });
+    });
+
+    it('on a first sync creates no holding and lists itself', async () => {
+      const deps = makeDeps([
+        unifiedCoin('BTC', '1', { locked: '0.5' }),
+        unifiedCoin('USD', '5', { locked: '1' }),
+      ]);
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(read.balances).toEqual([]);
+      expect(read.exchangeState).toContainEqual({
+        kind: 'balanceNotes',
+        wallets: { unified: { borrowed: [], openOrder: ['BTC', 'USD'] }, fund: { borrowed: [] } },
+        refused: [],
+      });
+    });
+
+    it('writes the other coins of the wallet and the same coin of FUND as usual', async () => {
+      const deps = makeDeps(
+        [unifiedCoin('BTC', '1', { locked: '0.5' }), unifiedCoin('ETH', '2')],
+        [fundCoin('BTC', '3')],
+      );
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(pairsOf(read.balances)).toEqual([
+        ['ETH:unified', 200000000],
+        ['BTC:fund', 300000000],
+      ]);
     });
   });
 

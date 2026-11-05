@@ -4,6 +4,7 @@ import {
   fetchKeyInfo,
   fetchUnifiedBalance,
 } from './bybit.client';
+import { fundReadOf, unifiedReadOf } from './bybit.balance-read';
 import { API_KEY, NOW, SECRET, answerWith, envelopeOf } from './bybit.client-test-fixtures';
 
 // Each personal or secret field of the key info answer holds a value that must reach nothing.
@@ -140,7 +141,7 @@ const UNIFIED_BODY = {
           borrowAmount: '0',
           equity: 'SENTINEL-EQUITY',
           usdValue: 'SENTINEL-USD',
-          locked: 'SENTINEL-LOCKED',
+          locked: '0.5',
           unrealisedPnl: 'SENTINEL-PNL',
         },
         { coin: 'BBB', walletBalance: '20', spotBorrow: '3', borrowAmount: '0' },
@@ -167,11 +168,33 @@ describe('fetchUnifiedBalance', () => {
     expect(sent[0].url).toBe('https://api.bybit.com/v5/account/wallet-balance?accountType=UNIFIED');
   });
 
-  it('returns the coin, its wallet balance and its two borrow fields, and nothing else', async () => {
+  it('returns the coin, its wallet balance, its two borrow fields and its locked field, and nothing else', async () => {
     await expect(unifiedFrom(UNIFIED_BODY).coins).resolves.toStrictEqual([
-      { coin: 'AAA', walletBalance: '1.5', spotBorrow: '0', borrowAmount: '0' },
-      { coin: 'BBB', walletBalance: '20', spotBorrow: '3', borrowAmount: '0' },
+      { coin: 'AAA', walletBalance: '1.5', spotBorrow: '0', borrowAmount: '0', locked: '0.5' },
+      { coin: 'BBB', walletBalance: '20', spotBorrow: '3', borrowAmount: '0', locked: undefined },
     ]);
+  });
+
+  it("the page's sample row reads as a held coin with no loan and no open order", async () => {
+    const coins = await unifiedFrom({
+      list: [
+        {
+          coin: [
+            {
+              coin: 'BTC',
+              walletBalance: '0',
+              borrowAmount: '0.0',
+              spotBorrow: '0',
+              locked: '0',
+            },
+          ],
+        },
+      ],
+    }).coins;
+    const read = unifiedReadOf(coins);
+
+    expect([...read.balances]).toEqual([['BTC', 0]]);
+    expect(read.refused.size + read.borrowed.size + read.openOrder.size).toBe(0);
   });
 
   it('parses no value of the account and no price', async () => {
@@ -185,7 +208,13 @@ describe('fetchUnifiedBalance', () => {
       .coins;
 
     expect(coins).toStrictEqual([
-      { coin: 'AAA', walletBalance: 1.5, spotBorrow: undefined, borrowAmount: undefined },
+      {
+        coin: 'AAA',
+        walletBalance: 1.5,
+        spotBorrow: undefined,
+        borrowAmount: undefined,
+        locked: undefined,
+      },
     ]);
   });
 
@@ -277,6 +306,17 @@ describe('fetchFundBalance', () => {
       { coin: 'AAA', walletBalance: '7.25' },
       { coin: 'BBB', walletBalance: '0' },
     ]);
+  });
+
+  it('a FUND row drops any locked field, so it is never set aside', async () => {
+    const coins = await fundFrom({
+      balance: [{ coin: 'BTC', walletBalance: '1', locked: '5' }],
+    }).coins;
+    const read = fundReadOf(coins);
+
+    expect(coins).toStrictEqual([{ coin: 'BTC', walletBalance: '1' }]);
+    expect([...read.balances]).toEqual([['BTC', 100000000]]);
+    expect(read.openOrder.size).toBe(0);
   });
 
   it('parses no member id and no transfer balance', async () => {

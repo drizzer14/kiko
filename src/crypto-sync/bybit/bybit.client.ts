@@ -312,13 +312,15 @@ export const fetchKeyInfo = async (
 /**
  * One coin of the UNIFIED account. The values are passed on as the answer holds them (a decimal
  * string, as Bybit sends), for the provider to read and to refuse one coin alone; no price and no
- * value of the account is read.
+ * value of the account is read. `locked` is the part held for an open spot order, which the
+ * provider reads only to set the coin aside.
  */
 export type BybitUnifiedCoin = {
   coin: string;
   walletBalance: unknown;
   spotBorrow: unknown;
   borrowAmount: unknown;
+  locked: unknown;
 };
 
 /**
@@ -344,6 +346,7 @@ const unifiedCoinOf = (row: unknown): BybitUnifiedCoin => {
     walletBalance: fields.walletBalance,
     spotBorrow: fields.spotBorrow,
     borrowAmount: fields.borrowAmount,
+    locked: fields.locked,
   };
 };
 

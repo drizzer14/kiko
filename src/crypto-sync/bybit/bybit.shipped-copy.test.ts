@@ -40,6 +40,32 @@ describe('the Bybit copy', () => {
     );
   });
 
+  it('the open-order line says a shown balance is from an earlier sync, and no last balance or amount', () => {
+    const { bybitCoinOpenOrder: english } = en.accountDetail;
+    const { bybitCoinOpenOrder: ukrainian } = uk.accountDetail;
+
+    expect(english).toMatch(/A balance shown here is from an earlier sync/);
+    expect(english).not.toMatch(/last balance/i);
+    expect(english).not.toMatch(/\d/);
+    expect(english).toMatch(/may hold part of this coin/);
+    expect(ukrainian).toMatch(/Баланс, показаний тут, узято з попередньої/);
+    expect(ukrainian).not.toMatch(/останн\S* баланс/i);
+    expect(ukrainian).not.toMatch(/\d/);
+    expect(ukrainian).toMatch(/може тримати частину цієї монети/);
+  });
+
+  it.each(['bybitCoinBorrowed', 'bybitCoinOpenOrder'] as const)(
+    'the %s line says that a coin with no earlier sync is not in the balance',
+    (key) => {
+      expect(en.accountDetail[key]).toMatch(
+        /With no earlier sync, this coin is not in your balance\.$/,
+      );
+      expect(uk.accountDetail[key]).toMatch(
+        /Якщо попередньої синхронізації не було, цієї монети немає у вашому балансі\.$/,
+      );
+    },
+  );
+
   it('the borrowed line does not say a last balance exists', () => {
     expect(en.accountDetail.bybitCoinBorrowed).not.toMatch(/last balance/i);
     expect(en.accountDetail.bybitCoinBorrowed).toMatch(

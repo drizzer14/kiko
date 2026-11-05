@@ -7,15 +7,15 @@ const parsedNotes = (balanceNotes?: unknown) => {
 };
 
 describe('the stored balance notes', () => {
-  it('reads the borrowed coins and the refused mark of each wallet', () => {
+  it('reads the borrowed coins, the open-order coins and the refused mark of each wallet', () => {
     expect(
       parsedNotes({
-        unified: { borrowed: ['ETH', 'BTC'] },
+        unified: { borrowed: ['ETH', 'BTC'], openOrder: ['SOL'] },
         fund: { refused: true },
       })?.balanceNotes,
     ).toEqual({
-      unified: { borrowed: ['ETH', 'BTC'], refused: false },
-      fund: { borrowed: [], refused: true },
+      unified: { borrowed: ['ETH', 'BTC'], openOrder: ['SOL'], refused: false },
+      fund: { borrowed: [], openOrder: [], refused: true },
     });
   });
 
@@ -25,7 +25,7 @@ describe('the stored balance notes', () => {
 
   it('reads an empty entry as a wallet with nothing to note', () => {
     expect(parsedNotes({ unified: {} })?.balanceNotes).toEqual({
-      unified: { borrowed: [], refused: false },
+      unified: { borrowed: [], openOrder: [], refused: false },
     });
   });
 
@@ -35,6 +35,28 @@ describe('the stored balance notes', () => {
     ['null', { borrowed: null }],
   ])('reads a borrowed list that is %s as none', (_title, entry) => {
     expect(parsedNotes({ unified: entry })?.balanceNotes.unified?.borrowed).toEqual([]);
+  });
+
+  it.each([
+    ['text', { openOrder: 'ETH' }],
+    ['a list with a number', { openOrder: ['ETH', 5] }],
+    ['null', { openOrder: null }],
+  ])('reads an open-order list that is %s as none', (_title, entry) => {
+    expect(parsedNotes({ unified: entry })?.balanceNotes.unified?.openOrder).toEqual([]);
+  });
+
+  // The parse names only the keys it reads, so an entry that holds a key no code here names
+  // (`earnLeftOut`, a count another build may store) reads as the entry without it.
+  it('reads a wallet entry with a key this build never names as one without it, with nothing unreadable', () => {
+    const named = { borrowed: ['ETH'], openOrder: ['BTC'], refused: true };
+
+    expect(
+      parsedNotes({ unified: { ...named, earnLeftOut: 2 }, fund: { earnLeftOut: 1 } }),
+    ).toEqual(parsedNotes({ unified: named, fund: {} }));
+    expect(parsedNotes({ unified: { ...named, earnLeftOut: 2 } })).toMatchObject({
+      kind: 'parsed',
+      unreadable: [],
+    });
   });
 
   it.each([

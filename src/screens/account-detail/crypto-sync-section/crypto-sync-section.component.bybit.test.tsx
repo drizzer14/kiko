@@ -276,10 +276,32 @@ describe('the notes of a Bybit account', () => {
       balanceNotes: { unified: { borrowed: ['BTC', 'ETH'] }, fund: { borrowed: ['ETH'] } },
     });
     const line = (coin: string) =>
-      `${coin}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync.`;
+      `${coin}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.`;
 
     expect(getByText(line('BTC'))).toBeTruthy();
     expect(queryAllByText(line('ETH'))).toHaveLength(1);
+  });
+
+  it('lists each coin with an open order once', async () => {
+    const { getByText, queryAllByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: { openOrder: ['BTC', 'ETH'] }, fund: { openOrder: ['ETH'] } },
+    });
+    const line = (coin: string) =>
+      `${coin}: Bybit may hold part of this coin for an open order, so Kiko does not read its balance now. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.`;
+
+    expect(getByText(line('BTC'))).toBeTruthy();
+    expect(queryAllByText(line('ETH'))).toHaveLength(1);
+  });
+
+  it('shows the borrowed line alone for a coin with a loan and locked', async () => {
+    const { getByText, queryByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: { borrowed: ['BTC'] }, fund: {} },
+    });
+
+    expect(getByText('BTC: Bybit shows a loan', { exact: false })).toBeTruthy();
+    expect(queryByText('Bybit may hold part of this coin', { exact: false })).toBeNull();
   });
 
   it('shows no note line for a read with nothing to note', async () => {
@@ -288,7 +310,11 @@ describe('the notes of a Bybit account', () => {
       balanceNotes: { unified: {}, fund: {} },
     });
 
-    for (const fragment of ['Bybit refused this key', 'Bybit shows a loan']) {
+    for (const fragment of [
+      'Bybit refused this key',
+      'Bybit shows a loan',
+      'Bybit may hold part of this coin',
+    ]) {
       expect(queryByText(fragment, { exact: false })).toBeNull();
     }
   });
@@ -318,6 +344,19 @@ describe('the notes of a Bybit account', () => {
         ),
       ).toBeTruthy();
       expect(getByText('BTC: Bybit показує позику під цю монету', { exact: false })).toBeTruthy();
+    });
+
+    it('gives the open-order line in Ukrainian, with its first-sync sentence', async () => {
+      const { getByText } = await renderState('bybit', {
+        walks: {},
+        balanceNotes: { unified: { openOrder: ['BTC'] } },
+      });
+
+      expect(
+        getByText(
+          'BTC: Bybit може тримати частину цієї монети для відкритого замовлення, тож Кіко зараз не читає її баланс. Баланс, показаний тут, узято з попередньої синхронізації. Якщо попередньої синхронізації не було, цієї монети немає у вашому балансі.',
+        ),
+      ).toBeTruthy();
     });
   });
 });

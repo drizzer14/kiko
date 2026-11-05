@@ -1,5 +1,13 @@
-import { fundReadOf, unifiedReadOf } from './bybit.balance-read';
+import type { Currency } from '@kiko/currency/currency';
+
 import { fundCoin, unifiedCoin } from './bybit.balance-test-fixtures';
+import { type WalletRead, fundReadOf, unifiedReadOf } from './bybit.balance-read';
+
+// The one list that holds the coin: a coin has one outcome, never two.
+const outcomesOf = (read: WalletRead, coin: Currency): string[] =>
+  (['balances', 'borrowed', 'refused', 'openOrder'] as const).filter((list) =>
+    read[list].has(coin),
+  );
 
 describe('unifiedReadOf', () => {
   let warn: jest.SpyInstance;
@@ -126,6 +134,118 @@ describe('unifiedReadOf', () => {
 
     expect(read.untracked).toEqual(['PEPE']);
     expect(read.borrowed.size + read.refused.size).toBe(0);
+  });
+
+  it('does not read the locked field of a coin the app does not track', () => {
+    const read = unifiedReadOf([
+      unifiedCoin('PEPE', '5', { locked: 'x' }),
+      unifiedCoin('SHIB2', '0', { locked: '5' }),
+    ]);
+
+    expect(read.untracked).toEqual(['PEPE']);
+    expect(read.openOrder.size + read.refused.size + read.borrowed.size).toBe(0);
+  });
+
+  it('a tracked Unified coin with locked above zero is set aside as an open order', () => {
+    const read = unifiedReadOf([
+      unifiedCoin('BTC', '1', { locked: '0.5' }),
+      unifiedCoin('ETH', '0', { locked: '0.00000001' }),
+      unifiedCoin('USD', '5'),
+    ]);
+
+    expect([...read.openOrder]).toEqual(['BTC', 'ETH']);
+    expect([...read.balances]).toEqual([['USD', 500]]);
+    expect(read.refused.size + read.borrowed.size + read.untracked.length).toBe(0);
+  });
+
+  it.each([
+    ['an empty text', ''],
+    ['absent', undefined],
+    ['a word', 'none'],
+    ['a number', 1],
+    ['null', null],
+    ['a negative text', '-1'],
+    ['an exponent form', '1e-8'],
+  ])('a tracked Unified coin is set aside for a locked of %s', (_title, locked) => {
+    const read = unifiedReadOf([unifiedCoin('BTC', '1', { locked }), unifiedCoin('USD', '5')]);
+
+    expect([...read.openOrder]).toEqual(['BTC']);
+    expect([...read.balances]).toEqual([['USD', 500]]);
+    expect(read.refused.size + read.borrowed.size).toBe(0);
+  });
+
+  it.each(['0', '0.0', '0.00000000'])('reads a locked of %s as no open order', (locked) => {
+    const read = unifiedReadOf([unifiedCoin('BTC', '1', { locked })]);
+
+    expect([...read.balances]).toEqual([['BTC', 100000000]]);
+    expect(read.openOrder.size).toBe(0);
+  });
+
+  describe('one coin has one outcome by its loan, balance and locked', () => {
+    const LOADED = { spotBorrow: '0', borrowAmount: '0.0' };
+
+    it.each([
+      ['row 1: no loan, a readable balance, locked zero', [unifiedCoin('BTC', '1')], 'balances'],
+      [
+        'row 2: no loan, a readable balance, locked above zero',
+        [unifiedCoin('BTC', '1', { ...LOADED, locked: '3' })],
+        'openOrder',
+      ],
+      [
+        'row 3: no loan, a readable balance, locked that is no decimal text',
+        [unifiedCoin('BTC', '1', { ...LOADED, locked: null })],
+        'openOrder',
+      ],
+      [
+        'row 4: a loan above zero wins over locked above zero',
+        [unifiedCoin('BTC', '1', { spotBorrow: '0.1', locked: '3' })],
+        'borrowed',
+      ],
+      [
+        'row 4: a loan above zero wins over a locked that is no decimal text',
+        [unifiedCoin('BTC', '1', { borrowAmount: '2', locked: '' })],
+        'borrowed',
+      ],
+      [
+        'row 4: a loan above zero wins over an unreadable loan field and locked above zero',
+        [unifiedCoin('BTC', '1', { spotBorrow: '', borrowAmount: '2', locked: '3' })],
+        'borrowed',
+      ],
+      [
+        'row 5: a loan field that is no decimal text is refused, whatever locked says',
+        [unifiedCoin('BTC', '1', { borrowAmount: '', locked: '3' })],
+        'refused',
+      ],
+      [
+        'row 5: a loan field that is no decimal text is refused beside an unreadable locked',
+        [unifiedCoin('BTC', '1', { spotBorrow: undefined, locked: undefined })],
+        'refused',
+      ],
+      [
+        'row 6: an unreadable balance is refused, whatever locked says',
+        [unifiedCoin('BTC', 'lots', { locked: '3' })],
+        'refused',
+      ],
+      [
+        'row 6: a negative balance is refused, whatever locked says',
+        [unifiedCoin('BTC', '-1', { locked: '3' })],
+        'refused',
+      ],
+      [
+        'row 6: a balance past the safe integer is refused, whatever locked says',
+        [unifiedCoin('BTC', '90071992.54740992', { locked: '3' })],
+        'refused',
+      ],
+      [
+        'row 7: two rows of one coin are refused, whatever locked says',
+        [unifiedCoin('BTC', '1', { locked: '3' }), unifiedCoin('BTC', '1', { locked: '3' })],
+        'refused',
+      ],
+    ])('%s', (_title, rows, list) => {
+      const read = unifiedReadOf(rows);
+
+      expect(outcomesOf(read, 'BTC')).toEqual([list]);
+    });
   });
 
   it('reads an empty list as a wallet that holds nothing', () => {

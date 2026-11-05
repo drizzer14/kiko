@@ -119,6 +119,22 @@ describe('balanceNotesOf', () => {
 
     expect(balanceNotesOf(state)).toEqual({
       borrowed: ['BTC', 'ETH', 'USDT'],
+      openOrder: [],
+      refusedWallets: [],
+    });
+  });
+
+  it('lists the open-order coins of every wallet once, sorted, apart from the borrowed coins', () => {
+    const state = stateWith({
+      balanceNotes: {
+        unified: { borrowed: ['LTC'], openOrder: ['USDT', 'BTC'] },
+        fund: { openOrder: ['BTC', 'ETH'] },
+      },
+    });
+
+    expect(balanceNotesOf(state)).toEqual({
+      borrowed: ['LTC'],
+      openOrder: ['BTC', 'ETH', 'USDT'],
       refusedWallets: [],
     });
   });
@@ -132,7 +148,7 @@ describe('balanceNotesOf', () => {
   });
 
   it('reads no note for a state with none, an unreadable entry or a state that is lost', () => {
-    const none = { borrowed: [], refusedWallets: [] };
+    const none = { borrowed: [], openOrder: [], refusedWallets: [] };
 
     expect(balanceNotesOf(stateWith({}))).toEqual(none);
     expect(balanceNotesOf(stateWith({ balanceNotes: 'x' }))).toEqual(none);

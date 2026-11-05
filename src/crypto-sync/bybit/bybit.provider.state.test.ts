@@ -218,6 +218,88 @@ describe('the state a Bybit balance read returns', () => {
     });
   });
 
+  describe('a coin with an open order', () => {
+    it('lists itself under its wallet, sorted, and is no refused or untracked coin', async () => {
+      const deps = makeDeps([
+        unifiedCoin('ETH', '3', { locked: '1' }),
+        unifiedCoin('BTC', '1', { locked: '' }),
+      ]);
+
+      const state = stateAfter(await bybitProvider.fetchBalances(deps, freshTarget()));
+
+      expect(state.balanceNotes).toEqual({ unified: { openOrder: ['BTC', 'ETH'] }, fund: {} });
+      expect(state.oversizedCoins).toEqual({
+        balance: [],
+        balanceByWallet: { unified: [], fund: [] },
+      });
+      expect(state.untrackedCoins).toEqual({ balance: [] });
+    });
+
+    it('with a loan too is listed as borrowed alone', async () => {
+      const deps = makeDeps([unifiedCoin('BTC', '1', { spotBorrow: '0.25', locked: '1' })]);
+
+      const state = stateAfter(await bybitProvider.fetchBalances(deps, freshTarget()));
+
+      expect(state.balanceNotes).toEqual({ unified: { borrowed: ['BTC'] }, fund: {} });
+    });
+
+    it('the first good read after the order closes writes the balance and clears the mark', async () => {
+      const seed = { balanceNotes: { unified: { openOrder: ['BTC'] } } };
+      const deps = makeDeps([unifiedCoin('BTC', '1')]);
+
+      const read = await bybitProvider.fetchBalances(
+        deps,
+        freshTarget([heldHolding('BTC:unified', 5)]),
+      );
+
+      expect(keysOf(read)).toEqual(['BTC:unified']);
+      expect(read.balances[0]?.balanceMinorUnits).toBe(100000000);
+      expect(stateAfter(read, seed).balanceNotes).toEqual({ unified: {}, fund: {} });
+    });
+
+    it('a coin no longer listed after the order closes is written at zero and clears the mark', async () => {
+      const seed = { balanceNotes: { unified: { openOrder: ['BTC'] } } };
+      const deps = makeDeps([]);
+
+      const read = await bybitProvider.fetchBalances(
+        deps,
+        freshTarget([heldHolding('BTC:unified', 5)]),
+      );
+
+      expect(read.balances[0]?.balanceMinorUnits).toBe(0);
+      expect(stateAfter(read, seed).balanceNotes).toEqual({ unified: {}, fund: {} });
+    });
+
+    it('is still listed after a second read that finds the order open', async () => {
+      const seed = { balanceNotes: { unified: { openOrder: ['BTC'] } } };
+      const deps = makeDeps([unifiedCoin('BTC', '1', { locked: '0.1' })]);
+
+      const read = await bybitProvider.fetchBalances(
+        deps,
+        freshTarget([heldHolding('BTC:unified', 5)]),
+      );
+
+      expect(keysOf(read)).toEqual([]);
+      expect(stateAfter(read, seed).balanceNotes).toEqual({
+        unified: { openOrder: ['BTC'] },
+        fund: {},
+      });
+    });
+
+    it('is kept, with the refused mark added, when FUND is refused and UNIFIED reads', async () => {
+      const seed = { balanceNotes: { unified: { openOrder: ['BTC'] } } };
+      const deps = makeDeps([unifiedCoin('BTC', '1', { locked: '0.1' })]);
+      deps.fetchFundBalance.mockRejectedValue(new BybitRefusalError('permission', 10005));
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(stateAfter(read, seed).balanceNotes).toEqual({
+        unified: { openOrder: ['BTC'] },
+        fund: { refused: true },
+      });
+    });
+  });
+
   describe('the notes of the wallets', () => {
     const seed = {
       balanceNotes: {

@@ -133,8 +133,8 @@ const KeyExpiryLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
   );
 };
 
-// What the last balance reads left out: a coin set aside for a loan, a wallet the key was refused
-// for. Split out like `CoinLines`.
+// What the last balance reads left out: a coin set aside for a loan or an open order, a wallet the
+// key was refused for. Split out like `CoinLines`.
 const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
   const { t } = useTranslation();
 
@@ -142,13 +142,19 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
     return null;
   }
 
-  const { borrowed, refusedWallets } = balanceNotesOf(walkState);
+  const { borrowed, openOrder, refusedWallets } = balanceNotesOf(walkState);
 
   return (
     <>
       {borrowed.map((coin) => (
         <Text key={coin} variant="caption" tone="textSecondary">
           {t('accountDetail.bybitCoinBorrowed', { coin })}
+        </Text>
+      ))}
+
+      {openOrder.map((coin) => (
+        <Text key={coin} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinOpenOrder', { coin })}
         </Text>
       ))}
 

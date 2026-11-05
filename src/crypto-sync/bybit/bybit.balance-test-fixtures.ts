@@ -2,13 +2,20 @@ import type { BybitFundCoin, BybitUnifiedCoin } from './bybit.client';
 
 /**
  * A coin of the UNIFIED account as the client hands it on: the page's sample shape with a decimal
- * string for each amount and no loan, which a test overrides one field at a time.
+ * string for each amount, no loan and nothing locked, which a test overrides one field at a time.
  */
 export const unifiedCoin = (
   coin: string,
   walletBalance: unknown,
   overrides: Partial<Omit<BybitUnifiedCoin, 'coin' | 'walletBalance'>> = {},
-): BybitUnifiedCoin => ({ coin, walletBalance, spotBorrow: '0', borrowAmount: '0', ...overrides });
+): BybitUnifiedCoin => ({
+  coin,
+  walletBalance,
+  spotBorrow: '0',
+  borrowAmount: '0',
+  locked: '0',
+  ...overrides,
+});
 
 export const fundCoin = (coin: string, walletBalance: unknown): BybitFundCoin => ({
   coin,
@@ -21,14 +28,14 @@ export const unifiedResult = (coins: readonly BybitUnifiedCoin[]) => ({
     {
       accountType: 'UNIFIED',
       totalEquity: '1',
-      coin: coins.map(({ coin, walletBalance, spotBorrow, borrowAmount }) => ({
+      coin: coins.map(({ coin, walletBalance, spotBorrow, borrowAmount, locked }) => ({
         coin,
         walletBalance,
         spotBorrow,
         borrowAmount,
         equity: '1',
         usdValue: '1',
-        locked: '0',
+        locked,
       })),
     },
   ],

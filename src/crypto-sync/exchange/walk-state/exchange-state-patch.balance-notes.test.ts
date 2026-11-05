@@ -5,7 +5,7 @@ import {
 } from './exchange-state-patch';
 import { parseExchangeState } from './walk-state';
 
-type Notes = { borrowed: string[] };
+type Notes = { borrowed: string[]; openOrder?: string[] };
 
 const notesPatch = (
   wallets: Record<string, Notes>,
@@ -40,6 +40,43 @@ describe('the balance notes patch', () => {
   it('writes each coin of a wallet once', () => {
     expect(patched(undefined, notesPatch({ unified: { borrowed: ['ETH', 'ETH'] } }))).toEqual({
       unified: { borrowed: ['ETH'] },
+    });
+  });
+
+  it('writes the open-order coins of a wallet once and sorted, beside its borrowed coins', () => {
+    const notes = { borrowed: ['ETH'], openOrder: ['USDT', 'BTC', 'USDT'] };
+
+    expect(patched(undefined, notesPatch({ unified: notes }))).toEqual({
+      unified: { borrowed: ['ETH'], openOrder: ['BTC', 'USDT'] },
+    });
+  });
+
+  it('writes no open-order list for a wallet with no open-order coin', () => {
+    expect(patched(undefined, notesPatch({ unified: { borrowed: [], openOrder: [] } }))).toEqual({
+      unified: {},
+    });
+  });
+
+  it('clears the stored open-order coins of a wallet whose read lists none, and no other', () => {
+    const seed = { unified: { openOrder: ['BTC'] }, earn: { openOrder: ['SOL'] } };
+
+    expect(patched(seed, notesPatch({ unified: { borrowed: [], openOrder: [] } }))).toEqual({
+      unified: {},
+      earn: { openOrder: ['SOL'] },
+    });
+  });
+
+  it('clears the stored open-order coins of a wallet whose patch has no such list', () => {
+    expect(
+      patched({ fund: { openOrder: ['BTC'] } }, notesPatch({ fund: { borrowed: [] } })),
+    ).toEqual({ fund: {} });
+  });
+
+  it('marks a refused wallet and keeps its stored open-order coins', () => {
+    const seed = { unified: { openOrder: ['BTC'] } };
+
+    expect(patched(seed, notesPatch({}, ['unified']))).toEqual({
+      unified: { openOrder: ['BTC'], refused: true },
     });
   });
 
@@ -164,6 +201,22 @@ describe('the balance notes patch', () => {
         balanceNotes: { fund: { refused: true } },
         balanceSyncedAt: 5,
       });
+    });
+
+    it('keeps a note key this build never names through another patch', () => {
+      const notes = {
+        unified: { borrowed: ['ETH'], openOrder: ['BTC'], earnLeftOut: 2 },
+        earn: { earnLeftOut: 1 },
+      };
+      const another = exchangeStatePatched(stateWith(notes), [
+        { kind: 'balanceSyncedAt', value: 5 },
+      ]);
+      const walletPatch = exchangeStatePatched(stateWith(notes), [
+        notesPatch({ unified: { borrowed: [] } }),
+      ]);
+
+      expect(notesOf(another)).toEqual(notes);
+      expect(notesOf(walletPatch)).toEqual({ unified: {}, earn: { earnLeftOut: 1 } });
     });
   });
 
