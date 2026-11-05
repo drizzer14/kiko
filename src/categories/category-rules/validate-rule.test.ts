@@ -93,6 +93,39 @@ describe('canEverMatch', () => {
   });
 });
 
+describe('the nameContains and mcc conditions', () => {
+  const contains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const code = (value: number): CategoryRuleMatcher => ({ type: 'mcc', code: value });
+
+  it('two mcc codes can never match', () => {
+    expect(validateRule([code(5411), code(5412)], [], null)).toEqual({
+      kind: 'neverMatches',
+      conflict: 'other',
+    });
+  });
+
+  it('one code written twice can match', () => {
+    expect(canEverMatch([code(5411), code(5411)])).toBe(true);
+  });
+
+  it('an exact name without the contained text can never match', () => {
+    expect(canEverMatch([nameIs('silpo'), contains('atb')])).toBe(false);
+    expect(canEverMatch([contains('market'), nameIs('silpo'), contains('silpo')])).toBe(false);
+  });
+
+  it('an exact name holding the contained text can match', () => {
+    expect(canEverMatch([nameIs('Silpo Market'), contains('  MARKET')])).toBe(true);
+    expect(canEverMatch([nameIs('Silpo Market'), contains('silpo'), contains('market')])).toBe(
+      true,
+    );
+  });
+
+  it('a prefix with a contained text can match', () => {
+    expect(canEverMatch([startsWith('silpo'), contains('market')])).toBe(true);
+    expect(canEverMatch([startsWith('silpo'), contains('atb')])).toBe(true);
+  });
+});
+
 describe('matcherSetKey', () => {
   it('ignores matcher order', () => {
     expect(matcherSetKey([nameIs('silpo'), direction('expense'), clockAfter(6)])).toBe(

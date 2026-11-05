@@ -9,9 +9,11 @@ export type TimeOperator = 'before' | 'after';
 export type CategoryRuleMatcher =
   | { type: 'nameIs'; text: string }
   | { type: 'nameStartsWith'; text: string }
+  | { type: 'nameContains'; text: string }
   | { type: 'amount'; operator: AmountOperator; minorUnits: number; currency: Currency }
   | { type: 'direction'; direction: RuleDirection }
-  | { type: 'time'; operator: TimeOperator; minuteOfDay: number };
+  | { type: 'time'; operator: TimeOperator; minuteOfDay: number }
+  | { type: 'mcc'; code: number };
 
 export type NameRuleKind = 'nameIs' | 'nameStartsWith';
 
@@ -60,6 +62,7 @@ export type RuleSubject = {
   currency: Currency | null;
   direction: RuleDirection | null;
   minuteOfDay: number | null;
+  mcc: number | null;
 };
 
 export type RewriteCandidate = {
@@ -72,9 +75,8 @@ export type RewriteCandidate = {
   categorySetByHand: boolean;
   setsBalance: boolean;
   changeGroupId: string | null;
+  mcc: number | null;
 };
-
-export type MccBackfillRow = RewriteCandidate & { mcc: number | null };
 
 export type RuleValidation =
   | { kind: 'valid' }

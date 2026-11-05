@@ -1535,6 +1535,7 @@ const withCategoryRules = async (
         amountMinorUnits: input.amountMinorUnits,
         time: input.time,
         currency: holdingCurrencyById.get(input.holdingId) ?? null,
+        mcc: input.mcc ?? null,
       }),
     );
 

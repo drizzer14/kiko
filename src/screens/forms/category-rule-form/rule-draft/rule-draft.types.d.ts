@@ -18,12 +18,15 @@ export type MatcherDraft = {
   direction: RuleDirection;
   timeOperator: TimeOperator;
   minuteOfDay: number;
+  // The merchant code as typed: four digits, leading zeros kept.
+  mccText: string;
 };
 
 // The inline error a refused row shows, as the `ruleForm` key it reads. The decimals error carries
 // the digits the currency allows, so the message and the check read one scale.
 export type MatcherDraftError =
   | 'errorName'
+  | 'errorMcc'
   | 'errorAmountNegative'
   | 'errorAmountTooLarge'
   | 'errorAmountWholeOnly'

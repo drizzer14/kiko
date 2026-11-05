@@ -85,27 +85,42 @@ const timesCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
 
 const normalizedTextsOf = (
   matchers: readonly CategoryRuleMatcher[],
-  type: 'nameIs' | 'nameStartsWith',
+  type: 'nameIs' | 'nameStartsWith' | 'nameContains',
 ): string[] => ofType(matchers, type).map(({ text }) => normalizeTransactionName(text));
 
 const longestOf = (texts: readonly string[]): string =>
   texts.reduce((longest, text) => (text.length > longest.length ? text : longest), '');
 
 // Every prefix has to start the one name the row can have, or the longest prefix when there is
-// no exact name.
+// no exact name; with an exact name, every contained text has to be inside it too. Without one, a
+// contained text can always sit after a prefix, so it never clashes.
 const namesCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean => {
   const exactNames = normalizedTextsOf(matchers, 'nameIs');
   const prefixes = normalizedTextsOf(matchers, 'nameStartsWith');
+  const containedTexts = normalizedTextsOf(matchers, 'nameContains');
   const reference = exactNames[0] ?? longestOf(prefixes);
+  const exactNameHoldsEvery =
+    foldMap(maybe(exactNames[0]), (exactName) =>
+      containedTexts.every((text) => exactName.includes(text)),
+    ) ?? true;
 
-  return new Set(exactNames).size <= 1 && prefixes.every((prefix) => reference.startsWith(prefix));
+  return (
+    new Set(exactNames).size <= 1 &&
+    prefixes.every((prefix) => reference.startsWith(prefix)) &&
+    exactNameHoldsEvery
+  );
 };
+
+// Two codes are two different values of the one code a row has.
+const mccsCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
+  new Set(ofType(matchers, 'mcc').map(({ code }) => code)).size <= 1;
 
 export const canEverMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
   directionsCanMatch(matchers) &&
   amountsCanMatch(matchers) &&
   timesCanMatch(matchers) &&
-  namesCanMatch(matchers);
+  namesCanMatch(matchers) &&
+  mccsCanMatch(matchers);
 
 // Sorted and deduplicated, so the same matchers in another order, or with one written twice, are
 // the same set.

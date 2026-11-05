@@ -26,7 +26,7 @@ import {
 // only narrows: the pure plan decides every row.
 export const mccBackfillRowsQuery = (databaseTransaction: typeof database) =>
   databaseTransaction
-    .select({ ...candidateColumns, mcc: transactions.mcc })
+    .select(candidateColumns)
     .from(transactions)
     .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
     .where(and(inArray(transactions.mcc, [...ADDED_MCC_CODES]), noRealCategorySql));

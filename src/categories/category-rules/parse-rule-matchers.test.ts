@@ -100,4 +100,56 @@ describe('parseRuleMatchers', () => {
       ]);
     });
   });
+
+  describe('the nameContains and mcc conditions', () => {
+    it('reads a nameContains matcher', () => {
+      const matcher = { type: 'nameContains', text: 'Market' };
+
+      expect(parseRuleMatchers(json([matcher]))).toEqual([matcher]);
+    });
+
+    it('refuses a blank nameContains', () => {
+      expect(parseRuleMatchers(json([{ type: 'nameContains', text: '   ' }]))).toBeNull();
+      expect(parseRuleMatchers(json([{ type: 'nameContains', text: '' }]))).toBeNull();
+    });
+
+    it('reads an mcc matcher at 0 and at 9999', () => {
+      const lowest = { type: 'mcc', code: 0 };
+      const highest = { type: 'mcc', code: 9999 };
+
+      expect(parseRuleMatchers(json([lowest]))).toEqual([lowest]);
+      expect(parseRuleMatchers(json([highest]))).toEqual([highest]);
+    });
+
+    it('refuses an mcc of 10000, -1, 1.5 and "5411"', () => {
+      [10000, -1, 1.5, '5411'].forEach((code) => {
+        expect(parseRuleMatchers(json([{ type: 'mcc', code }]))).toBeNull();
+      });
+    });
+
+    it('drops an unknown field and keeps the known ones of a new type', () => {
+      const parsed = parseRuleMatchers(
+        json([
+          { type: 'nameContains', text: 'Market', note: 'junk' },
+          { type: 'mcc', code: 5411, extra: true },
+        ]),
+      );
+
+      expect(parsed).toStrictEqual([
+        { type: 'nameContains', text: 'Market' },
+        { type: 'mcc', code: 5411 },
+      ]);
+    });
+
+    it('makes the whole rule unreadable when one new matcher is bad', () => {
+      expect(
+        parseRuleMatchers(
+          json([
+            { type: 'nameContains', text: 'Market' },
+            { type: 'mcc', code: 10000 },
+          ]),
+        ),
+      ).toBeNull();
+    });
+  });
 });

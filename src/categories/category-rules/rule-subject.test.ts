@@ -10,6 +10,7 @@ const storedRow = (
   amountMinorUnits: -50000,
   time: at(2026, 5, 1, 12, 0),
   currency: 'UAH',
+  mcc: null,
   ...overrides,
 });
 
@@ -74,6 +75,28 @@ describe('subjectOfStoredRow', () => {
   });
 });
 
+describe('the mcc of a subject', () => {
+  it('a stored row carries its mcc', () => {
+    const coded = { ...storedRow(), mcc: 5411 };
+    const uncoded = { ...storedRow(), mcc: null };
+
+    expect(subjectOfStoredRow(coded).mcc).toBe(5411);
+    expect(subjectOfStoredRow(uncoded).mcc).toBeNull();
+  });
+
+  it('a draft carries none', () => {
+    expect(
+      subjectOfDraft({
+        description: 'Silpo',
+        absoluteMinorUnits: 12500,
+        currency: 'USD',
+        direction: 'income',
+        time: at(2027, 2, 28, 18, 30),
+      }).mcc,
+    ).toBeNull();
+  });
+});
+
 describe('subjectOfDraft', () => {
   const draft = {
     description: ' Silpo ',
@@ -90,6 +113,7 @@ describe('subjectOfDraft', () => {
       currency: 'USD',
       direction: 'income',
       minuteOfDay: 1110,
+      mcc: null,
     });
   });
 

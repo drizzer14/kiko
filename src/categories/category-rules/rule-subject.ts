@@ -34,12 +34,14 @@ export const subjectOfStoredRow = (row: {
   amountMinorUnits: number;
   time: number;
   currency: Currency | null;
+  mcc: number | null;
 }): RuleSubject => ({
   normalizedName: normalizeTransactionName(row.description ?? ''),
   absoluteMinorUnits: Math.abs(row.amountMinorUnits),
   currency: row.currency,
   direction: directionOf(row.amountMinorUnits),
   minuteOfDay: minuteOfDayOf(row.time),
+  mcc: row.mcc,
 });
 
 export const subjectOfDraft = (draft: {
@@ -54,4 +56,6 @@ export const subjectOfDraft = (draft: {
   currency: draft.currency,
   direction: draft.direction,
   minuteOfDay: minuteOfDayOf(draft.time),
+  // A form draft has no merchant code yet, so a code rule never pre-selects one.
+  mcc: null,
 });

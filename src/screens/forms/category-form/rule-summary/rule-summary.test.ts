@@ -97,6 +97,27 @@ describe('ruleRows', () => {
     ).toEqual(['Time is after 23:59']);
   });
 
+  it('shows a contained name quoted', () => {
+    expect(
+      rowsOf([{ type: 'nameContains', text: 'Market' }]).map(({ label, value }) => ({
+        label,
+        value,
+      })),
+    ).toEqual([{ label: 'Name contains', value: '"Market"' }]);
+  });
+
+  it('shows a code padded to four digits', () => {
+    expect(
+      rowsOf([
+        { type: 'mcc', code: 42 },
+        { type: 'mcc', code: 5411 },
+      ]).map(({ label, value }) => ({ label, value })),
+    ).toEqual([
+      { label: 'Merchant code (MCC)', value: '0042' },
+      { label: 'Merchant code (MCC)', value: '5411' },
+    ]);
+  });
+
   it('hands the stored minor units and currency to the amount formatter untouched', () => {
     const received: [number, Currency][] = [];
 

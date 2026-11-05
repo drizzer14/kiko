@@ -1,6 +1,6 @@
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 
-import type { MatcherDraftError } from './rule-draft.types';
+import type { MatcherDraft, MatcherDraftError } from './rule-draft.types';
 import { emptyMatcherDraft, fromMatcherDrafts, toMatcherDrafts } from './rule-draft';
 
 const roundTrip = (matchers: CategoryRuleMatcher[]) =>
@@ -82,6 +82,72 @@ describe('emptyMatcherDraft', () => {
       text: '',
       amountText: '',
       currency: 'EUR',
+    });
+  });
+});
+
+describe('the nameContains and mcc rows', () => {
+  const codeDraft = (mccText: string): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'mcc',
+    mccText,
+  });
+  const containsDraft = (text: string): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'nameContains',
+    text,
+  });
+
+  it('a four-digit code becomes a number', () => {
+    expect(fromMatcherDrafts([codeDraft('5411')])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'mcc', code: 5411 }],
+    });
+  });
+
+  it('0042 stores as 42 and shows as 0042', () => {
+    expect(fromMatcherDrafts([codeDraft('0042')])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'mcc', code: 42 }],
+    });
+
+    const [draft] = toMatcherDrafts([{ type: 'mcc', code: 42 }], 'UAH');
+
+    expect(draft).toMatchObject({ type: 'mcc', mccText: '0042' });
+  });
+
+  it('three digits, five digits and letters give errorMcc', () => {
+    ['541', '54111', 'abcd', '54 1', ''].forEach((mccText) => {
+      expect(fromMatcherDrafts([codeDraft(mccText)])).toEqual({
+        kind: 'invalid',
+        errors: new Map([[0, 'errorMcc']]),
+      });
+    });
+  });
+
+  it('a contained text is trimmed and a blank one gives errorName', () => {
+    expect(fromMatcherDrafts([containsDraft('  Market ')])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'nameContains', text: 'Market' }],
+    });
+    expect(fromMatcherDrafts([containsDraft('    ')])).toEqual({
+      kind: 'invalid',
+      errors: new Map([[0, 'errorName']]),
+    });
+  });
+
+  it('switching type keeps mccText', () => {
+    const coded = codeDraft('5411');
+    const asName = { ...coded, type: 'nameIs' as const, text: 'Silpo' };
+    const backToCode = { ...asName, type: coded.type };
+
+    expect(fromMatcherDrafts([asName])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'nameIs', text: 'Silpo' }],
+    });
+    expect(fromMatcherDrafts([backToCode])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'mcc', code: 5411 }],
     });
   });
 });
