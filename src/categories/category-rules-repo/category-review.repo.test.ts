@@ -453,21 +453,15 @@ describe('reviewEvidenceQuery', () => {
   });
 
   it('accepting a suggestion writes through applyNameRule and the count matches', async () => {
-    insertRows('silpo-sorted', 3, { description: 'Silpo 7', category: 'groceries' });
+    insertRows('silpo-sorted', 3, { description: 'Silpo 0712', category: 'groceries' });
 
     const group = await groupOf('silpo');
-    const [suggested] = planReviewGroups(
-      await preparedRules(),
-      await categoryRulesRepo.reviewCandidateRowsQuery(),
-      knownCategoryKeys(),
-      await reviewEvidenceQuery(),
-    );
-    const suggestion = suggested?.suggestion;
 
-    expect(suggestion).toEqual({ category: 'groceries', agreeing: 3, total: 3 });
+    expect(group.suggestion).toEqual({ category: 'groceries', agreeing: 3, total: 3 });
 
-    const preview = await previewOf(group.rule, suggestion?.category);
-    const changed = await changedBy(() => applyOf(group.rule, suggestion?.category));
+    const category = group.suggestion?.category;
+    const preview = await previewOf(group.rule, category);
+    const changed = await changedBy(() => applyOf(group.rule, category));
 
     expect(preview.count).toBe(group.rowCount);
     expect(changed).toHaveLength(group.rowCount);

@@ -22,6 +22,7 @@ jest.mock('@kiko/transactions/merchant-name', () => {
 import {
   type CategoryRuleMatcher,
   type ReviewCandidate,
+  type ReviewEvidence,
   hasNoRealCategory,
   isRewriteEligible,
   matchesRule,
@@ -463,6 +464,39 @@ describe('listing the review groups of 50 000 rows', () => {
       expect(described.length).toBeLessThanOrEqual(
         new Set(rows.map((row) => row.description)).size,
       );
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'calls merchantNameOf once per distinct name across the rows and the evidence',
+    () => {
+      const known = knownCategoryKeys();
+      const merchantNameCalls = jest.mocked(merchantNameOf);
+
+      merchantNameCalls.mockClear();
+      planReviewGroups(prepared, candidateRows, known, []);
+
+      const namesOfRows = new Set(merchantNameCalls.mock.calls.map(([name]) => name));
+      const namesOfEvidenceOnly = Array.from({ length: 5 }, (_, index) => `Evidence Only ${index}`);
+      // Each name the rows describe is filed under two categories, the way the evidence read
+      // returns it, so the same name reaches the plan from the rows and from two evidence rows.
+      const evidence: ReviewEvidence[] = [...namesOfRows, ...namesOfEvidenceOnly].flatMap(
+        (description) => [
+          { description, categoryKey: 'groceries', rowCount: 2 },
+          { description, categoryKey: 'dining', rowCount: 1 },
+        ],
+      );
+
+      merchantNameCalls.mockClear();
+      planReviewGroups(prepared, candidateRows, known, evidence);
+
+      const described = merchantNameCalls.mock.calls.map(([name]) => name);
+
+      expect(namesOfRows.size).toBeGreaterThan(0);
+      expect(evidence.length).toBeGreaterThan(namesOfRows.size);
+      expect(described).toHaveLength(namesOfRows.size + namesOfEvidenceOnly.length);
+      expect(new Set(described)).toEqual(new Set([...namesOfRows, ...namesOfEvidenceOnly]));
     },
     TEST_TIMEOUT,
   );

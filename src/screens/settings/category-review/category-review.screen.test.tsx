@@ -759,6 +759,102 @@ describe('CategoryReviewScreen', () => {
       expect(within(atb).queryByText(GROCERIES_CHIP)).toBeNull();
     });
 
+    it('names each chip on its button, so VoiceOver tells the chips apart', async () => {
+      mockEvidence = [
+        { description: 'ATB 0900', categoryKey: 'groceries', rowCount: 3 },
+        { description: 'Silpo 0712', categoryKey: 'groceries', rowCount: 3 },
+      ];
+
+      const screen = await renderReview();
+      const [atb, silpo] = linesOf(screen);
+      const labelOf = (name: string) =>
+        i18n.t('categoryReview.suggestionFor', {
+          category: 'Groceries',
+          name,
+          agreeing: 3,
+          total: 3,
+        });
+
+      expect(within(atb).getByText(GROCERIES_CHIP)).toBeTruthy();
+      expect(within(silpo).getByText(GROCERIES_CHIP)).toBeTruthy();
+      expect(labelOf('ATB')).not.toBe('categoryReview.suggestionFor');
+      expect(labelOf('ATB')).not.toBe(labelOf('Silpo'));
+      expect(within(atb).getByLabelText(labelOf('ATB'))).toBeTruthy();
+      expect(within(silpo).getByLabelText(labelOf('Silpo'))).toBeTruthy();
+      expect(within(atb).queryByLabelText(labelOf('Silpo'))).toBeNull();
+    });
+
+    it('disables the chip while a write runs, and frees it after', async () => {
+      silpoSuggested();
+
+      const write = deferredWrite();
+      mockApply.mockReturnValueOnce(write.promise);
+
+      const screen = await renderReview();
+      const chip = within(linesOf(screen)[SECOND_LINE]).getByLabelText(
+        i18n.t('categoryReview.suggestionFor', {
+          category: 'Groceries',
+          name: 'Silpo',
+          agreeing: 3,
+          total: 3,
+        }),
+      );
+
+      expect(chip).not.toBeDisabled();
+
+      await pick(screen, FIRST_LINE);
+
+      expect(chip).toBeDisabled();
+
+      previewReturns(SILPO_ROWS);
+      await fireEvent.press(chip);
+
+      expect(mockPreview).toHaveBeenCalledTimes(1);
+
+      await act(async () => write.resolve(ATB_ROWS));
+
+      expect(chip).not.toBeDisabled();
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('shows the translated title of a seeded category', async () => {
+        silpoSuggested();
+
+        const screen = await renderReview();
+        const translated = i18n.t('categories.groceries');
+        const silpo = within(linesOf(screen)[SECOND_LINE]);
+
+        expect(translated).not.toBe('Groceries');
+        expect(silpo.getByText(suggestionText(translated, 3, 3))).toBeTruthy();
+        expect(silpo.queryByText(suggestionText('Groceries', 3, 3))).toBeNull();
+      });
+
+      it.each([
+        ['renamed seeded', 'groceries', 'My groceries'],
+        ['user-made', 'corner-shop', 'Corner shop'],
+      ])('shows the title of a %s category verbatim', async (_, key, title) => {
+        mockCategories = [{ key, title, icon: 'cart', color: null }];
+        mockEvidence = [{ description: 'Silpo 0712', categoryKey: key, rowCount: 3 }];
+
+        const screen = await renderReview();
+        const silpo = within(linesOf(screen)[SECOND_LINE]);
+
+        expect(silpo.getByText(suggestionText(title, 3, 3))).toBeTruthy();
+      });
+    });
+
     it('shows no chip when there is no suggestion', async () => {
       mockEvidence = [{ description: 'Silpo 0712', categoryKey: 'groceries', rowCount: 1 }];
 
