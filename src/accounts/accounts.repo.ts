@@ -6,6 +6,7 @@ import {
   type AccountRow,
   accounts,
   deletedImportKeys,
+  fundingMatchRows,
   holdings,
   reminders,
   settings,
@@ -482,16 +483,22 @@ export const accountsRepo = {
   disconnect: (accountId: string) =>
     write((databaseTransaction) => disconnectDatabaseTransaction(databaseTransaction, accountId)),
   /**
-   * Disconnect an exchange account: the walk state reset to `floorMs`
-   * (`syncStateRepo.resetExchangeStateDatabaseTransaction`) and then the same clear `disconnect`
-   * runs, in ONE write. The reset passes the institution gate and the clear closes it in that
-   * write, so a walk's patch queued behind it finds the institution cleared and writes nothing,
-   * where a patch landing between two writes would bring back a cursor or a coin list the reset
-   * removed. A failure in either half rolls back both: the account stays connected with its
-   * state. Clearing the Keychain item stays with `crypto-sync/disconnect`.
+   * Disconnect an exchange account: the account's stored funding match rows deleted, the walk
+   * state reset to `floorMs` (`syncStateRepo.resetExchangeStateDatabaseTransaction`) and then the
+   * same clear `disconnect` runs, in ONE write. The reset passes the institution gate and the
+   * clear closes it in that write, so a walk's patch queued behind it finds the institution
+   * cleared and writes nothing, where a patch landing between two writes would bring back a
+   * cursor or a coin list the reset removed. A failure in any part rolls back all: the account
+   * stays connected with its state. Clearing the Keychain item stays with
+   * `crypto-sync/disconnect`.
    */
   disconnectExchange: (accountId: string, exchangeId: BalanceProviderId, floorMs: number) =>
     write(async (databaseTransaction) => {
+      // First, so a failure of the reset or the clear below rolls the delete back with them. A
+      // no-op for an account that never stored a row, which is every Binance account.
+      await databaseTransaction
+        .delete(fundingMatchRows)
+        .where(eq(fundingMatchRows.accountId, accountId));
       await syncStateRepo.resetExchangeStateDatabaseTransaction(
         databaseTransaction,
         accountId,
@@ -533,9 +540,9 @@ export const accountsRepo = {
     }),
   /**
    * Delete a MANUAL account together with all of its holdings, every one of
-   * their transactions, its reminders, and its `sync_state` cursor row (an
-   * account that ever attempted a Monobank sync, even a failed first Connect,
-   * carries one), in
+   * their transactions, its reminders, its stored funding match rows, and its
+   * `sync_state` cursor row (an account that ever attempted a Monobank sync,
+   * even a failed first Connect, carries one), in
    * ONE op-sqlite transaction so a partial failure can never leave
    * orphaned holdings, ledger rows, or a stranded cursor behind (and so
    * foreign-key enforcement, ON per connection, is satisfied by deleting
@@ -603,6 +610,11 @@ export const accountsRepo = {
       // it here, before the account row goes — mirrors the order
       // `restoreDataSnapshot` already uses (`data-transfer/snapshot/restore-snapshot.ts`).
       await databaseTransaction.delete(syncState).where(eq(syncState.accountId, accountId));
+      // `funding_match_rows.account_id` is the same kind of NO ACTION foreign key, and the account
+      // can own rows from a run before it was disconnected.
+      await databaseTransaction
+        .delete(fundingMatchRows)
+        .where(eq(fundingMatchRows.accountId, accountId));
       // `reminders.account_id` is the same kind of NO ACTION foreign key.
       await databaseTransaction.delete(reminders).where(eq(reminders.accountId, accountId));
       await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, holdingIds);
