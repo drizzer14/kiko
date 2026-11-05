@@ -1,5 +1,5 @@
 import { Alert } from 'react-native';
-import type { FC, ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -9,6 +9,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import type { ReviewCandidate, StoredCategoryRule } from '@kiko/categories/category-rules';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
+
+import CategoryReviewScreen from './category-review.screen';
 
 type ReviewScreenProps = NativeStackScreenProps<SettingsStackParamList, 'CategoryReview'>;
 type ReadKind = 'candidates' | 'rules' | 'categories';
@@ -76,21 +78,15 @@ jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
 
-// The review screen is read by a lookup, so this file compiles before it exists.
-const reviewScreen = (): FC<ReviewScreenProps> => require('./category-review.screen').default;
-
 const navigation = navigationSpy();
 
-const renderReview = () => {
-  const Review = reviewScreen();
-
-  return render(
-    <Review
+const renderReview = () =>
+  render(
+    <CategoryReviewScreen
       navigation={asNavigationProp<ReviewScreenProps['navigation']>(navigation)}
       route={asRouteProp<ReviewScreenProps['route']>('CategoryReview')}
     />,
   );
-};
 
 type Screen = Awaited<ReturnType<typeof renderReview>>;
 
@@ -276,10 +272,27 @@ describe('CategoryReviewScreen', () => {
       const [atb, silpo] = linesOf(screen);
 
       expect(linesOf(screen)).toHaveLength(2);
-      expect(atb).toHaveTextContent(i18n.t('categoryReview.nameCount', { count: 2 }));
-      expect(atb).toHaveTextContent(i18n.t('categoryReview.rowCount', { count: ATB_ROWS }));
-      expect(silpo).toHaveTextContent('Silpo');
-      expect(silpo).toHaveTextContent(i18n.t('categoryReview.rowCount', { count: SILPO_ROWS }));
+      const contains = { exact: false };
+
+      expect(atb).toHaveTextContent(i18n.t('categoryReview.nameCount', { count: 2 }), contains);
+      expect(atb).toHaveTextContent(
+        i18n.t('categoryReview.rowCount', { count: ATB_ROWS }),
+        contains,
+      );
+      expect(silpo).toHaveTextContent('Silpo', contains);
+      expect(silpo).toHaveTextContent(
+        i18n.t('categoryReview.rowCount', { count: SILPO_ROWS }),
+        contains,
+      );
+    });
+
+    it('gives a one-name line its row count and no name count', async () => {
+      const screen = await renderReview();
+      const [, silpo] = linesOf(screen);
+
+      expect(silpo).not.toHaveTextContent(i18n.t('categoryReview.nameCount', { count: 1 }), {
+        exact: false,
+      });
     });
 
     it('reads Starts with for a prefix group', async () => {
@@ -386,7 +399,12 @@ describe('CategoryReviewScreen', () => {
         const screen = await renderReview();
         await pick(screen, lineIndex);
 
-        expect(mockPreview).toHaveBeenCalledWith({ ...groceriesPayload(name, kind), text: name });
+        expect(mockPreview).toHaveBeenCalledWith({
+          text: name,
+          kind,
+          category: 'groceries',
+          sourceTransactionId: null,
+        });
         expect(mockApply).toHaveBeenCalledTimes(1);
         expect(mockApply).toHaveBeenCalledWith(groceriesPayload(name, kind));
         expect(screen.queryByTestId(CONFIRM_SHEET)).toBeNull();
