@@ -53,9 +53,9 @@ export type BybitRefusalClass =
   | 'malformed';
 
 /**
- * Bybit refuses a read for its rate (codes 10006 and 10018) or answers HTTP 403: both carry how
- * long the account waits, as ONE typed error, so a caller does not parse a message. The message is
- * fixed: a server text never enters an error.
+ * Bybit refuses a read for its rate (codes 10006 and 10018, or HTTP 429 with no code) or answers
+ * HTTP 403: each carries how long the account waits, as ONE typed error, so a caller does not
+ * parse a message. The message is fixed: a server text never enters an error.
  */
 export class BybitRateLimitError extends Error {
   constructor(
