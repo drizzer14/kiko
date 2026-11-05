@@ -602,7 +602,9 @@ new component can land between reviews of this skill:
   (`{ label; onPress }`, `select-field.props.d.ts`) renders an action row with a plus glyph in the
   sheet only when `options.length === 0`; the caller passes the translated label (no i18n in the
   design-system component), the action runs after the sheet has closed with no animation, and it
-  is never reported to `onSelect` or `onSelectClosed`. `TemplateSelect`'s "Add template" row
+  is never reported to `onSelect` or `onSelectClosed`. `SelectField`'s optional `emptyOption`
+  (an `Option`) makes the trigger's value `textSecondary` while it is selected, as for a `null`
+  selection (`RecurringMarkField` passes `'none'`). `TemplateSelect`'s "Add template" row
   (`forms.transaction.addTemplate`, en and uk) uses it; `HoldingSelectField` and
   `PaymentHoldingField` build their own sheet and keep their own create row. The
   `closesWithoutAnimation` flag is opt-in per call site; every other pick and

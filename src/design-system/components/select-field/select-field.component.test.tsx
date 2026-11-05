@@ -64,18 +64,14 @@ describe('SelectField', () => {
   });
 
   describe('the value tone', () => {
-    // The prop is not in the props type yet; the cast keeps tsc holding until it lands.
-    const withEmptyOption = (emptyOption: Kind): Partial<SelectFieldProps<Kind>> =>
-      ({ emptyOption }) as Partial<SelectFieldProps<Kind>>;
-
     it('reads textSecondary when the selected option is the empty option', async () => {
-      const { getByText } = await setup({ selected: 'a', ...withEmptyOption('a') });
+      const { getByText } = await setup({ selected: 'a', emptyOption: 'a' });
 
       expect(toneOf(getByText('Alpha'))).toBe('textSecondary');
     });
 
     it('reads textPrimary when another option than the empty option is selected', async () => {
-      const { getByText } = await setup({ selected: 'b', ...withEmptyOption('a') });
+      const { getByText } = await setup({ selected: 'b', emptyOption: 'a' });
 
       expect(toneOf(getByText('Beta'))).toBe('textPrimary');
     });
