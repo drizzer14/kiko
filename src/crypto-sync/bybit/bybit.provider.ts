@@ -67,8 +67,9 @@ export const defaultBybitDeps: BybitDeps = {
 
 /**
  * What one tolerant wallet's attempt came to: its read, or none on a failure. A failure never
- * writes a holding for the wallet, a zero included. `refused` is set when Bybit refused the key
- * for this wallet (code 10005), which the account shows by name.
+ * writes a holding for the wallet, a zero included, and the account always says the wallet was not
+ * read. `refused` is set when Bybit refused the key for this wallet (code 10005), which the
+ * account shows with its cause; any other failure shows as a wallet not read.
  */
 type WalletOutcome = { read?: WalletRead; refused: boolean };
 
@@ -208,6 +209,8 @@ type ReadWallets = {
   fund: WalletRead | undefined;
   /** The wallets Bybit refused the key for. */
   refused: BybitWallet[];
+  /** The wallets whose read failed for any other reason. */
+  notRead: BybitWallet[];
   /** Absent when the key check failed, so the stored end stays. */
   keyInfo: BybitKeyInfo | undefined;
   syncedAt: number;
@@ -216,14 +219,16 @@ type ReadWallets = {
 /**
  * The state writes of one read. Every note is written wallet by wallet: a wallet that read
  * replaces its own entry, the coins it could not read too, and one that failed keeps its stored
- * one, plus the refused mark when Bybit refused the key for it. No oversized list is written: a
- * refused coin is a note, so the text can say why. The not-tracked list is replaced only by a
- * read of both wallets, since a failed wallet knows nothing of its coins.
+ * one, plus the mark of its cause: refused when Bybit refused the key for it, else not read. No
+ * oversized list is written: a refused coin is a note, so the text can say why. The not-tracked
+ * list is replaced only by a read of both wallets, since a failed wallet knows nothing of its
+ * coins.
  */
 const statePatchesOf = ({
   unified,
   fund,
   refused,
+  notRead,
   keyInfo,
   syncedAt,
 }: ReadWallets): ExchangeStatePatch[] => {
@@ -252,6 +257,7 @@ const statePatchesOf = ({
         })),
       },
       refused,
+      notRead,
     },
     ...keyExpiryPatchesOf(keyInfo, syncedAt),
     { kind: 'balanceSyncedAt', value: syncedAt },
@@ -322,6 +328,7 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
         unified,
         fund,
         refused: fundOutcome.refused ? ['fund'] : [],
+        notRead: fund === undefined && !fundOutcome.refused ? ['fund'] : [],
         keyInfo,
         syncedAt: deps.now(),
       }),

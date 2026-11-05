@@ -10,7 +10,8 @@ type Notes = { borrowed: string[]; openOrder?: string[]; refusedCoins?: string[]
 const notesPatch = (
   wallets: Record<string, Notes>,
   refused: string[] = [],
-): ExchangeStatePatch => ({ kind: 'balanceNotes', wallets, refused });
+  notRead: string[] = [],
+): ExchangeStatePatch => ({ kind: 'balanceNotes', wallets, refused, notRead });
 
 const stateWith = (balanceNotes?: unknown, rest: Record<string, unknown> = {}): string =>
   JSON.stringify({ version: 1, walks: {}, ...rest, balanceNotes });
@@ -169,12 +170,50 @@ describe('the balance notes patch', () => {
     expect(patched(undefined, notesPatch({}, ['fund']))).toEqual({ fund: { refused: true } });
   });
 
-  it('keeps the refused mark of a wallet that failed again, whatever the failure', () => {
+  it('keeps the marks of a wallet that the patch names in no list', () => {
+    const seed = { fund: { borrowed: ['BTC'], refused: true }, unified: { notRead: true } };
+
+    expect(patched(seed, notesPatch({}))).toEqual(seed);
+  });
+
+  it('marks a wallet that was not read and keeps its stored coin lists', () => {
+    const seed = { fund: { borrowed: ['BTC'], refusedCoins: ['SOL'] } };
+
+    expect(patched(seed, notesPatch({ unified: { borrowed: [] } }, [], ['fund']))).toEqual({
+      unified: {},
+      fund: { borrowed: ['BTC'], refusedCoins: ['SOL'], notRead: true },
+    });
+  });
+
+  it('marks a wallet that was not read when it has no stored notes', () => {
+    expect(patched(undefined, notesPatch({}, [], ['fund']))).toEqual({ fund: { notRead: true } });
+  });
+
+  it('replaces the refused mark of a wallet that now was not read, so one cause shows', () => {
     const seed = { fund: { borrowed: ['BTC'], refused: true } };
 
-    expect(patched(seed, notesPatch({ unified: { borrowed: [] } }))).toEqual({
-      unified: {},
+    expect(patched(seed, notesPatch({}, [], ['fund']))).toEqual({
+      fund: { borrowed: ['BTC'], notRead: true },
+    });
+  });
+
+  it('replaces the not-read mark of a wallet that now was refused, so one cause shows', () => {
+    const seed = { fund: { borrowed: ['BTC'], notRead: true } };
+
+    expect(patched(seed, notesPatch({}, ['fund']))).toEqual({
       fund: { borrowed: ['BTC'], refused: true },
+    });
+  });
+
+  it('clears the not-read mark of a wallet that reads again', () => {
+    const seed = { fund: { notRead: true, borrowed: ['ETH'] } };
+
+    expect(patched(seed, notesPatch({ fund: { borrowed: [] } }))).toEqual({ fund: {} });
+  });
+
+  it('starts a not-read wallet from nothing when its stored entry is no record', () => {
+    expect(patched({ fund: 'x' }, notesPatch({}, [], ['fund']))).toEqual({
+      fund: { notRead: true },
     });
   });
 
@@ -268,7 +307,10 @@ describe('the balance notes patch', () => {
   });
 
   it('is dropped by a disconnect, which keeps the walks only', () => {
-    const text = stateWith({ fund: { refused: true } }, { walks: { capital: { cursor: 9 } } });
+    const text = stateWith(
+      { fund: { refused: true }, unified: { notRead: true } },
+      { walks: { capital: { cursor: 9 } } },
+    );
 
     expect(storedOf(exchangeStateReset(text, 1_000))).toEqual({
       version: 1,

@@ -270,6 +270,32 @@ describe('the notes of a Bybit account', () => {
     expect(getByText('Bybit refused this key for Funding', { exact: false })).toBeTruthy();
   });
 
+  it('names the wallet that was not read, and says its balance is from an earlier sync', async () => {
+    const { getByText, queryByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: {}, fund: { notRead: true } },
+    });
+
+    expect(
+      getByText(
+        'Kiko could not read Funding in the last sync, so it did not update that balance. A balance shown here is from an earlier sync. With no earlier sync, money there is not in your balance.',
+      ),
+    ).toBeTruthy();
+    expect(queryByText('Bybit refused this key', { exact: false })).toBeNull();
+  });
+
+  it('names a wallet that was not read apart from one the key was refused for', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: { notRead: true }, fund: { refused: true } },
+    });
+
+    expect(
+      getByText('Kiko could not read Unified in the last sync', { exact: false }),
+    ).toBeTruthy();
+    expect(getByText('Bybit refused this key for Funding', { exact: false })).toBeTruthy();
+  });
+
   it('lists each coin set aside for a loan once, and says its balance is from an earlier sync', async () => {
     const { getByText, queryAllByText } = await renderState('bybit', {
       walks: {},
@@ -337,6 +363,8 @@ describe('the notes of a Bybit account', () => {
 
     for (const fragment of [
       'Bybit refused this key',
+      'Kiko could not read Funding',
+      'Kiko could not read Unified',
       'Bybit shows a loan',
       'Bybit may hold part of this coin',
       "Kiko could not read this coin's amounts",
@@ -370,6 +398,19 @@ describe('the notes of a Bybit account', () => {
         ),
       ).toBeTruthy();
       expect(getByText('BTC: Bybit показує позику під цю монету', { exact: false })).toBeTruthy();
+    });
+
+    it('gives the not-read wallet line in Ukrainian, with its first-sync sentence', async () => {
+      const { getByText } = await renderState('bybit', {
+        walks: {},
+        balanceNotes: { fund: { notRead: true } },
+      });
+
+      expect(
+        getByText(
+          'Кіко не зміг прочитати Funding під час останньої синхронізації, тож не оновив цей баланс. Баланс, показаний тут, узято з попередньої синхронізації. Якщо попередньої синхронізації не було, кошти там не входять до вашого балансу.',
+        ),
+      ).toBeTruthy();
     });
 
     it('gives the open-order line in Ukrainian, with its first-sync sentence', async () => {

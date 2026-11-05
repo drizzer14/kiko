@@ -50,15 +50,16 @@ export const keyExpiryOf = (state: ParsedExchangeState): ParsedKeyExpiry | undef
 /**
  * What the last balance reads left to show, over every wallet: the sorted coins set aside for a
  * loan, the sorted coins set aside for an open order, the sorted coins the exchange sent in a shape
- * that could not be read, and the wallets the exchange refused the key for (sorted by wallet key).
- * A wallet that failed keeps the notes it had, so these stand until a read of that wallet replaces
- * them.
+ * that could not be read, the wallets the exchange refused the key for, and the wallets whose read
+ * failed for another reason (both sorted by wallet key). A wallet that failed keeps the notes it
+ * had, so these stand until a read of that wallet replaces them.
  */
 type BalanceNotes = {
   borrowed: string[];
   openOrder: string[];
   refusedCoins: string[];
   refusedWallets: string[];
+  notReadWallets: string[];
 };
 
 const NO_NOTES: BalanceNotes = {
@@ -66,6 +67,7 @@ const NO_NOTES: BalanceNotes = {
   openOrder: [],
   refusedCoins: [],
   refusedWallets: [],
+  notReadWallets: [],
 };
 
 const notesOfParsed = (balanceNotes: Record<string, ParsedWalletNotes>): BalanceNotes => {
@@ -76,6 +78,7 @@ const notesOfParsed = (balanceNotes: Record<string, ParsedWalletNotes>): Balance
     openOrder: [...new Set(wallets.flatMap(([, notes]) => notes.openOrder))].sort(),
     refusedCoins: [...new Set(wallets.flatMap(([, notes]) => notes.refusedCoins))].sort(),
     refusedWallets: wallets.filter(([, notes]) => notes.refused).map(([wallet]) => wallet),
+    notReadWallets: wallets.filter(([, notes]) => notes.notRead).map(([wallet]) => wallet),
   };
 };
 

@@ -113,12 +113,12 @@ describe('the state a Bybit balance read returns', () => {
       deps.fetchFundBalance.mockRejectedValue(new BybitRefusalError('permission', 10005));
 
       const read = await bybitProvider.fetchBalances(deps, freshTarget());
-      const seed = { balanceNotes: { fund: { borrowed: ['LTC'] }, earn: { borrowed: ['SOL'] } } };
+      const seed = { balanceNotes: { fund: { borrowed: ['LTC'] }, margin: { borrowed: ['SOL'] } } };
 
       expect(stateAfter(read, seed).balanceNotes).toEqual({
         unified: {},
         fund: { borrowed: ['LTC'], refused: true },
-        earn: { borrowed: ['SOL'] },
+        margin: { borrowed: ['SOL'] },
       });
     });
 
@@ -135,16 +135,16 @@ describe('the state a Bybit balance read returns', () => {
       ['an unknown refusal', new BybitRefusalError('unknown', 99999)],
       ['a compliance refusal', new BybitRefusalError('compliance', 10024)],
       ['a lost network', new TypeError('Network request failed')],
-    ])('is not marked for %s, which says nothing of the key', async (_title, failure) => {
+    ])('is marked as not read, not as refused, for %s', async (_title, failure) => {
       const deps = makeDeps();
       deps.fetchFundBalance.mockRejectedValue(failure);
 
       const read = await bybitProvider.fetchBalances(deps, freshTarget());
 
-      expect(stateAfter(read).balanceNotes).toEqual({ unified: {} });
+      expect(stateAfter(read).balanceNotes).toEqual({ unified: {}, fund: { notRead: true } });
     });
 
-    it('tolerates a FUND wallet that answers 10024, logged by code and with no mark', async () => {
+    it('marks a FUND wallet that answers 10024 as not read, and logs it by code', async () => {
       const { deps } = routedDeps({
         [KEY_INFO_PATH]: okAnswer({}),
         [UNIFIED_PATH]: okAnswer(unifiedResult([unifiedCoin('BTC', '1')])),
@@ -157,11 +157,56 @@ describe('the state a Bybit balance read returns', () => {
       );
 
       expect(keysOf(read)).toEqual(['BTC:unified']);
-      expect(stateAfter(read).balanceNotes).toEqual({ unified: {} });
+      expect(stateAfter(read).balanceNotes).toEqual({ unified: {}, fund: { notRead: true } });
       expect(warn).toHaveBeenCalledWith('[bybit sync] skipped the fund wallet', {
         name: 'BybitRefusalError',
         code: 10024,
       });
+    });
+
+    it('marks the wallet on a first sync, with no earlier balance to keep', async () => {
+      const { deps } = routedDeps({
+        [KEY_INFO_PATH]: okAnswer({}),
+        [UNIFIED_PATH]: okAnswer(unifiedResult([])),
+        [FUND_PATH]: okAnswer({ unexpected: true }),
+      });
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(read.balances).toEqual([]);
+      expect(stateAfter(read).balanceNotes).toEqual({ unified: {}, fund: { notRead: true } });
+    });
+
+    it('keeps the notes it had when it was not read again', async () => {
+      const deps = makeDeps([unifiedCoin('BTC', '1')]);
+      deps.fetchFundBalance.mockRejectedValue(new TypeError('Network request failed'));
+      const seed = { balanceNotes: { fund: { borrowed: ['LTC'], refusedCoins: ['SOL'] } } };
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(stateAfter(read, seed).balanceNotes).toEqual({
+        unified: {},
+        fund: { borrowed: ['LTC'], refusedCoins: ['SOL'], notRead: true },
+      });
+    });
+
+    it('shows one cause: a refusal that follows a not-read wallet replaces its mark', async () => {
+      const deps = makeDeps([unifiedCoin('BTC', '1')]);
+      deps.fetchFundBalance.mockRejectedValue(new BybitRefusalError('permission', 10005));
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(stateAfter(read, { balanceNotes: { fund: { notRead: true } } }).balanceNotes).toEqual({
+        unified: {},
+        fund: { refused: true },
+      });
+    });
+
+    it('loses its not-read mark when a later read of that wallet succeeds', async () => {
+      const read = await bybitProvider.fetchBalances(makeDeps(), freshTarget());
+      const seed = { balanceNotes: { fund: { notRead: true } } };
+
+      expect(stateAfter(read, seed).balanceNotes).toEqual({ unified: {}, fund: {} });
     });
 
     it('fails the sync with the compliance text when UNIFIED answers 10024', async () => {
@@ -300,11 +345,11 @@ describe('the state a Bybit balance read returns', () => {
       balanceNotes: {
         unified: { borrowed: ['ETH'] },
         fund: { borrowed: ['LTC'], refused: true },
-        earn: { borrowed: ['SOL'] },
+        margin: { borrowed: ['SOL'] },
       },
     };
 
-    it('are replaced for a wallet that read and kept for a wallet that failed', async () => {
+    it('are replaced for a wallet that read and kept for a wallet that failed, its cause now shown', async () => {
       const deps = makeDeps([unifiedCoin('BTC', '1', { spotBorrow: '1' })]);
       deps.fetchFundBalance.mockRejectedValue(new BybitRateLimitError(10006, 60_000));
 
@@ -312,18 +357,18 @@ describe('the state a Bybit balance read returns', () => {
 
       expect(stateAfter(read, seed).balanceNotes).toEqual({
         unified: { borrowed: ['BTC'] },
-        fund: { borrowed: ['LTC'], refused: true },
-        earn: { borrowed: ['SOL'] },
+        fund: { borrowed: ['LTC'], notRead: true },
+        margin: { borrowed: ['SOL'] },
       });
     });
 
-    it('are replaced for both wallets by a read of both, the Earn notes left as stored', async () => {
+    it('are replaced for both wallets by a read of both, the notes of another wallet left as stored', async () => {
       const read = await bybitProvider.fetchBalances(makeDeps(), freshTarget());
 
       expect(stateAfter(read, seed).balanceNotes).toEqual({
         unified: {},
         fund: {},
-        earn: { borrowed: ['SOL'] },
+        margin: { borrowed: ['SOL'] },
       });
     });
   });
@@ -393,7 +438,7 @@ describe('the state a Bybit balance read returns', () => {
 
       expect(stateAfter(read, seed).balanceNotes).toEqual({
         unified: { refusedCoins: ['ETH'] },
-        fund: { refusedCoins: ['SOL'] },
+        fund: { refusedCoins: ['SOL'], notRead: true },
       });
     });
 

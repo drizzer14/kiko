@@ -2845,6 +2845,7 @@ describe('AccountDetailScreen — a Bybit account with no holding and a balance 
     ['a refused Funding coin', { unified: {}, fund: { refusedCoins: ['BTC'] } }],
     ['a refused Unified wallet', { unified: { refused: true }, fund: {} }],
     ['a refused Funding wallet', { unified: {}, fund: { refused: true } }],
+    ['a Funding wallet that was not read', { unified: {}, fund: { notRead: true } }],
   ])('shows the not-read block, never No holdings yet, for %s', async (_title, balanceNotes) => {
     setLiveData({ accounts: [bybitAccount], holdings: [], syncState: storedNotes(balanceNotes) });
 
@@ -2893,7 +2894,7 @@ describe('AccountDetailScreen — a Bybit account with no holding and a balance 
 
   it.each([
     ['no state row', []],
-    ['a state with no note', storedNotes({ unified: {}, fund: {} })],
+    ['two wallets that both read with nothing to note', storedNotes({ unified: {}, fund: {} })],
     [
       'a state with no balance note',
       [{ exchangeState: JSON.stringify({ version: 1, walks: {} }) }],

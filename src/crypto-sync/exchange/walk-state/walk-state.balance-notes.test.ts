@@ -19,8 +19,19 @@ describe('the stored balance notes', () => {
         openOrder: ['SOL'],
         refusedCoins: ['XRP'],
         refused: false,
+        notRead: false,
       },
-      fund: { borrowed: [], openOrder: [], refusedCoins: [], refused: true },
+      fund: { borrowed: [], openOrder: [], refusedCoins: [], refused: true, notRead: false },
+    });
+  });
+
+  it('reads the not-read mark of a wallet apart from its refused mark', () => {
+    expect(parsedNotes({ fund: { notRead: true } })?.balanceNotes.fund).toEqual({
+      borrowed: [],
+      openOrder: [],
+      refusedCoins: [],
+      refused: false,
+      notRead: true,
     });
   });
 
@@ -30,7 +41,7 @@ describe('the stored balance notes', () => {
 
   it('reads an empty entry as a wallet with nothing to note', () => {
     expect(parsedNotes({ unified: {} })?.balanceNotes).toEqual({
-      unified: { borrowed: [], openOrder: [], refusedCoins: [], refused: false },
+      unified: { borrowed: [], openOrder: [], refusedCoins: [], refused: false, notRead: false },
     });
   });
 
@@ -80,9 +91,17 @@ describe('the stored balance notes', () => {
     expect(parsedNotes({ fund: { refused } })?.balanceNotes.fund?.refused).toBe(false);
   });
 
+  it.each([
+    ['text', 'true'],
+    ['a number', 1],
+    ['false', false],
+  ])('reads a not-read mark that is %s as not marked', (_title, notRead) => {
+    expect(parsedNotes({ fund: { notRead } })?.balanceNotes.fund?.notRead).toBe(false);
+  });
+
   it('drops an entry that is no record and names it, keeping the others', () => {
     expect(parsedNotes({ unified: { borrowed: ['ETH'] }, fund: 'x', earn: ['y'] })).toMatchObject({
-      balanceNotes: { unified: { borrowed: ['ETH'], refused: false } },
+      balanceNotes: { unified: { borrowed: ['ETH'], refused: false, notRead: false } },
       unreadable: ['balanceNotes.fund', 'balanceNotes.earn'],
     });
   });

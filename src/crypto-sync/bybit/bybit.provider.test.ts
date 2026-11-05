@@ -417,6 +417,7 @@ describe('bybitProvider', () => {
           fund: { borrowed: [], refusedCoins: [] },
         },
         refused: [],
+        notRead: [],
       });
     });
   });
@@ -451,6 +452,7 @@ describe('bybitProvider', () => {
           fund: { borrowed: [], refusedCoins: ['XRP'] },
         },
         refused: [],
+        notRead: [],
       });
       expect(read.exchangeState?.map(({ kind }) => kind)).not.toContain('oversizedBalance');
     });
@@ -465,6 +467,7 @@ describe('bybitProvider', () => {
         kind: 'balanceNotes',
         wallets: { unified: { borrowed: [], openOrder: [], refusedCoins: ['BTC'] } },
         refused: [],
+        notRead: ['fund'],
       });
     });
   });
@@ -493,6 +496,7 @@ describe('bybitProvider', () => {
           fund: { borrowed: [], refusedCoins: [] },
         },
         refused: [],
+        notRead: [],
       });
     });
 
@@ -512,6 +516,7 @@ describe('bybitProvider', () => {
           fund: { borrowed: [], refusedCoins: [] },
         },
         refused: [],
+        notRead: [],
       });
     });
 

@@ -141,14 +141,15 @@ export type ParsedKeyExpiry = { expiredAtMs?: number; deadlineDay?: number; read
 
 /**
  * What one wallet's last balance read left to show: the coins it set aside for a loan, the coins
- * it set aside for an open order, the coins it could not read, and whether the exchange refused
- * the key for it.
+ * it set aside for an open order, the coins it could not read, whether the exchange refused the
+ * key for it, and whether its read failed for any other reason (`notRead`).
  */
 export type ParsedWalletNotes = {
   borrowed: string[];
   openOrder: string[];
   refusedCoins: string[];
   refused: boolean;
+  notRead: boolean;
 };
 
 /** The JSON stored in `sync_state.exchange_state`. */
@@ -492,6 +493,7 @@ const walletNotesOf = (stored: unknown): ParsedWalletNotes | undefined =>
     openOrder: stringListOrUndefined(entry.openOrder) ?? [],
     refusedCoins: stringListOrUndefined(entry.refusedCoins) ?? [],
     refused: entry.refused === true,
+    notRead: entry.notRead === true,
   }));
 
 /** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */

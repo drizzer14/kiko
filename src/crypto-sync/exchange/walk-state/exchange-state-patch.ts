@@ -67,6 +67,8 @@ export type ExchangeStatePatch =
       wallets: Record<string, WalletNotes>;
       /** The wallets whose read the exchange refused for the key's permissions. */
       refused: string[];
+      /** The wallets whose read failed for any other reason. */
+      notRead: string[];
     }
   | { kind: 'balanceSyncedAt'; value: number }
   | {
@@ -177,16 +179,32 @@ const notesOfWallet = ({ borrowed, openOrder = [], refusedCoins = [] }: WalletNo
   ...coinListOf('refusedCoins', refusedCoins),
 });
 
+type FailureMark = 'refused' | 'notRead';
+
+const OTHER_MARK: Record<FailureMark, FailureMark> = { refused: 'notRead', notRead: 'refused' };
+
 /**
- * The notes of the wallets that read replace those wallets' stored entries whole, a refused mark
- * with them, and the entry of any other wallet stays as stored. A wallet whose read was refused
- * keeps its other notes and gains the mark, which only a later read of that wallet clears. The
- * notes sit under their own top-level key, which a build that does not read them leaves
- * untouched (the parse names only the keys it reads, and a patch spreads the stored raw state).
+ * The stored entry of a wallet that failed, with the mark of this failure and without the mark of
+ * the other cause, so the account shows the cause of the last failure only.
+ */
+const markedAs = (entry: unknown, mark: FailureMark): Metadata => ({
+  ...Object.fromEntries(
+    Object.entries(recordOrEmpty(entry)).filter(([key]) => key !== OTHER_MARK[mark]),
+  ),
+  [mark]: true,
+});
+
+/**
+ * The notes of the wallets that read replace those wallets' stored entries whole, the failure
+ * marks with them, and the entry of any other wallet stays as stored. A wallet whose read failed
+ * keeps its other notes and gains the mark of its cause (`refused` for the key's permissions,
+ * `notRead` for any other), which only a later read of that wallet clears. The notes sit under
+ * their own top-level key, which a build that does not read them leaves untouched (the parse names
+ * only the keys it reads, and a patch spreads the stored raw state).
  */
 const withBalanceNotes = (
   stored: StoredExchangeState,
-  { wallets, refused }: Extract<ExchangeStatePatch, { kind: 'balanceNotes' }>,
+  { wallets, refused, notRead }: Extract<ExchangeStatePatch, { kind: 'balanceNotes' }>,
 ): StoredExchangeState => {
   const replaced = {
     ...recordOrEmpty(stored.balanceNotes),
@@ -199,9 +217,10 @@ const withBalanceNotes = (
     ...stored,
     balanceNotes: {
       ...replaced,
-      ...Object.fromEntries(
-        refused.map((wallet) => [wallet, { ...recordOrEmpty(replaced[wallet]), refused: true }]),
-      ),
+      ...Object.fromEntries([
+        ...refused.map((wallet) => [wallet, markedAs(replaced[wallet], 'refused')]),
+        ...notRead.map((wallet) => [wallet, markedAs(replaced[wallet], 'notRead')]),
+      ]),
     },
   };
 };

@@ -134,8 +134,8 @@ const KeyExpiryLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
 };
 
 // What the last balance reads left out: a coin set aside for a loan or an open order, a coin Bybit
-// sent in a shape that could not be read, a wallet the key was refused for. Split out like
-// `CoinLines`.
+// sent in a shape that could not be read, a wallet the key was refused for or that was not read.
+// Split out like `CoinLines`.
 const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
   const { t } = useTranslation();
 
@@ -143,7 +143,8 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
     return null;
   }
 
-  const { borrowed, openOrder, refusedCoins, refusedWallets } = balanceNotesOf(walkState);
+  const { borrowed, openOrder, refusedCoins, refusedWallets, notReadWallets } =
+    balanceNotesOf(walkState);
 
   return (
     <>
@@ -168,6 +169,12 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
       {refusedWallets.map((wallet) => (
         <Text key={wallet} variant="caption" tone="textSecondary">
           {t('accountDetail.bybitWalletRefused', { wallet: walletLabelOf(wallet) })}
+        </Text>
+      ))}
+
+      {notReadWallets.map((wallet) => (
+        <Text key={wallet} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitWalletNotRead', { wallet: walletLabelOf(wallet) })}
         </Text>
       ))}
     </>
