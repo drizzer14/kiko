@@ -912,7 +912,8 @@ walk, transfer walk, log types, log walk, convert read, funding ledger read, mat
 
 - `runExchangeWalkPlan`, `commitExchangeSpan` move from `binance.walk-wiring.ts` into
   `exchange/walk/` taking config, cooldown test and unreadable test; Binance's wiring stays as a thin
-  caller, because a copy of 212 lines fails `check:dup`. No Binance test changes.
+  caller, because a copy of 212 lines fails `check:dup`. No Binance assertion changes; 42d49431c re-points one mock
+  (`binance.walks.unreadable-window`).
 - `createWriteSerial` in `exchange/credentials`: per-account write queue and tokens for Bybit.
   Binance's file stays as it is, repair path included (PLANNER CALL 5; backlog to adopt it).
 - `ExchangeKeyForm` from `BinanceCredentialsField`: shared two inputs, disclosure, Connect row and

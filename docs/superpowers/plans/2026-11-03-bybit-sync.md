@@ -169,7 +169,7 @@ no behaviour moved for `binance` or `btc_wallet`; each seam's red shown on the p
   row in `__tests__/plist-credential-detect.test.ts`. `ensureExchangeHoldings` reads an institution list,
   `isWalletHoldingInstitution`, holding `binance` only at this tip. `runExchangeWalkPlan` and `commitExchangeSpan`
   move to `exchange/walk/`, with `binance.walk-wiring.ts` their thin caller (consumer at this tip); `createWriteSerial`
-  waits for its consumer in set 3. Check: Binance's walk suites unchanged; `npm run check:plist`; `npm run check:dup`.
+  waits for its consumer in set 3. Check: Binance's walk suites unchanged (no assertion changes; 42d49431c re-points one mock, `binance.walks.unreadable-window`); `npm run check:plist`; `npm run check:dup`.
 - [ ] **step 5/5: the empty table, with what keeps every tip safe (F3, O68 (b), PLANNER CALLS 51, 72, 75).** Was: set 10 step 1/6.
   - `next` first: the coordinator merges current `next` into this branch, because `next` holds 0064 and 0065 and this base stops at 0063 (a floor; re-read both). Grep first: `snapshot-covers-every-table.test.ts`, `__tests__/closure-table.test.ts`, `run-migrations.test.ts`, `schema.test.ts`, the restore two-path suites.
   - `src/db/schema.ts`: `fundingMatchRows`, the final columns of spec section 3, stage F, primary key `(account_id, side, record_key)`, reference to `accounts`. A column added later is a second migration, so re-read rule 51 against that table now.

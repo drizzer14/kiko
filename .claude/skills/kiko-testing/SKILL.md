@@ -136,6 +136,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - A `jest.mock` factory replaces the whole module. When an import rewrite makes production code
   resolve a function through a partially mocked module (`holdingsRepo.balanceOf` via the barrel),
   add that function to the factory; never widen the mock to the real module.
+  A mock must target the module that holds the call site. After you extract code,
+  re-point each mock of a function that the moved code calls from a sibling file
+  (a mock on the barrel `exchange/walk` missed `runWalkPlan`, which
+  `exchange-walk-plan.ts` calls from `./walk`).
 - Before adding a prop to a hand-written `__mocks__` module, check the real library's own type in
   `node_modules` first. A mock that accepts a prop the real component discards lets a test pass
   while the real UI is silently broken: forward only the props the real library consumes.
