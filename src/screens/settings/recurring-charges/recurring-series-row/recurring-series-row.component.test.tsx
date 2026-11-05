@@ -1,4 +1,5 @@
-import { render } from '@testing-library/react-native';
+import type { FC } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
@@ -41,6 +42,23 @@ describe('RecurringSeriesRow', () => {
     expect(getByText('Charged monthly, on day 15')).toBeTruthy();
     expect(getByText(`Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`)).toBeTruthy();
     expect(getByText(formatMoney(Money.of('UAH', 29900)))).toBeTruthy();
+  });
+
+  it('hands its series to onPress when it is tapped', async () => {
+    const series = seriesWith({});
+    const onPress = jest.fn();
+    const PressableRow = RecurringSeriesRow as FC<{
+      series: RecurringSeries;
+      onPress: (pressed: RecurringSeries) => void;
+    }>;
+    const { getByTestId } = await render(<PressableRow series={series} onPress={onPress} />);
+
+    expect(onPress).not.toHaveBeenCalled();
+
+    await fireEvent.press(getByTestId('recurring-series-row-netflix-1'));
+
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(onPress).toHaveBeenCalledWith(series);
   });
 
   it('shows the amount in the currency of the series', async () => {
