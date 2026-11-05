@@ -20,16 +20,8 @@ type ContextRows = Awaited<ReturnType<typeof transactionsRepo.listWithContextBet
 
 const BASE_TIME = Date.UTC(2026, 8, 20, 10);
 
-const contextRowsByIds = (ids: readonly string[]): Promise<ContextRows> => {
-  const lookup = (transactionsRepo as unknown as Record<string, unknown>)
-    .listWithContextByIdsQuery as ((given: readonly string[]) => Promise<ContextRows>) | undefined;
-
-  if (lookup === undefined) {
-    throw new Error('transactionsRepo.listWithContextByIdsQuery does not exist');
-  }
-
-  return lookup(ids);
-};
+const contextRowsByIds = async (ids: readonly string[]): Promise<ContextRows> =>
+  transactionsRepo.listWithContextByIdsQuery(ids);
 
 const insertRow = (id: string, holdingId: string, dayOffset: number): void => {
   mockDatabase.exec(`
@@ -118,13 +110,7 @@ describe('transactionsRepo.listWithContextByIdsQuery', () => {
 
   it('is a builder with a toSQL that binds one parameter for 65 503 ids', () => {
     const ids = Array.from({ length: 65_503 }, (_unused, index) => `id-${index}`);
-    const query = (
-      transactionsRepo as unknown as {
-        listWithContextByIdsQuery: (given: readonly string[]) => {
-          toSQL: () => { params: unknown[] };
-        };
-      }
-    ).listWithContextByIdsQuery(ids);
+    const query = transactionsRepo.listWithContextByIdsQuery(ids);
 
     expect(typeof query.toSQL).toBe('function');
     expect(query.toSQL().params).toHaveLength(1);

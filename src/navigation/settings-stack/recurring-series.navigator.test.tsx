@@ -369,6 +369,52 @@ describe('Settings stack, one pane: a recurring series and its charges', () => {
   });
 });
 
+describe('Settings stack: a link to a row that was deleted after the series was read', () => {
+  const LEDGER_AS_SEEDED = [...mockLedger];
+
+  afterEach(() => {
+    mockLedger.splice(0, mockLedger.length, ...LEDGER_AS_SEEDED);
+  });
+
+  it('opens the form on no stored values and writes nothing on Save', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+
+    const link = await view.findByTestId(`recurring-series-charge-${MANUAL_CHARGE}`);
+
+    // The series still shows the link, as in the gap before its paused re-read lands.
+    mockLedger.splice(
+      mockLedger.findIndex(({ id }) => id === MANUAL_CHARGE),
+      1,
+    );
+    await fireEvent.press(link);
+
+    expect(routeNames()).toEqual(ROUTES_TO_FORM);
+    expect(paramsOf('TransactionForm')).toEqual({ transactionId: MANUAL_CHARGE });
+    expect(await view.findByLabelText('Amount')).toBeTruthy();
+    expect(view.queryByText(syncedNotice())).toBeNull();
+    expect(view.getByLabelText('Amount').props.value).toBe('');
+    expect(view.getByLabelText('Description').props.value).toBe('');
+    expect(view.queryByDisplayValue('Netflix')).toBeNull();
+
+    await pressSaveOnTopForm();
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(routeNames()).toEqual(ROUTES_TO_FORM);
+  });
+
+  it('fills the same form from the row while the row is still stored', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+    await openCharge(view, MANUAL_CHARGE);
+
+    expect(await view.findByDisplayValue('Netflix')).toBeTruthy();
+    expect(view.getByLabelText('Amount').props.value).toBe('299');
+  });
+});
+
 describe('Settings stack, two panes: a recurring series and its charges', () => {
   beforeEach(async () => {
     resetLayoutMode();

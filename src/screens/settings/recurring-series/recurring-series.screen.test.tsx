@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -6,6 +6,8 @@ import { formatDate } from '@kiko/dates';
 import type { transactionsRepo } from '@kiko/transactions/repo';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
+
+import RecurringSeriesScreen from './recurring-series.screen';
 
 type ContextRow = Awaited<ReturnType<typeof transactionsRepo.listWithContextByIdsQuery>>[number];
 
@@ -17,15 +19,7 @@ type RouteParams = {
   name: string;
 };
 
-type ScreenProps = { navigation: unknown; route: unknown };
-
-// A key read by name, because the catalogue does not hold it before the screen lands.
-const catalogueText = (key: string, options?: object): string =>
-  String((i18n.t as unknown as (key: string, options?: object) => unknown)(key, options));
-
-// Read when a test runs, not imported, so the file type-checks before the screen exists.
-const screenOf = (): FC<ScreenProps> =>
-  (jest.requireActual('./recurring-series.screen') as { default: FC<ScreenProps> }).default;
+type ScreenProps = ComponentProps<typeof RecurringSeriesScreen>;
 
 let mockResult: { series: RecurringSeries[]; isLoading: boolean } = {
   series: [],
@@ -38,11 +32,13 @@ jest.mock('@kiko/recurring/use-recurring-series', () => ({
 
 const mockOpenInPane = jest.fn();
 
+let mockIsVisible = true;
+
 jest.mock('@kiko/navigation/pane-stack', () => ({
   ...jest.requireActual('@kiko/navigation/pane-stack'),
   useOpenInPane: () => mockOpenInPane,
   useDetailPaneRoute: () => null,
-  useIsScreenVisible: () => true,
+  useIsScreenVisible: () => mockIsVisible,
 }));
 
 // The ledger the by-id read answers from. It returns the rows whose ids the real query binds,
@@ -53,12 +49,29 @@ type SqlQuery = { toSQL: () => { sql: string; params: unknown[] } };
 
 const EMPTY_READ = { data: [], isLoading: false, isFresh: true };
 
+// The by-id read of the charges answers as still loading while this is set.
+let mockRowsLoading = false;
+
+// The options each read was given on its latest render, by the tables it names.
+const mockOptionsByTables = new Map<string, unknown>();
+
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (query: SqlQuery, _tables: string[], enabled = true) => {
+  useLiveQuery: (
+    query: SqlQuery,
+    tables: string[],
+    enabled = true,
+    options: unknown = undefined,
+  ) => {
+    mockOptionsByTables.set(tables.join(), options);
+
     const { sql, params } = query.toSQL();
 
     if (!enabled || !sql.includes('json_each')) {
       return EMPTY_READ;
+    }
+
+    if (mockRowsLoading) {
+      return { data: [], isLoading: true, isFresh: false };
     }
 
     const ids = new Set(JSON.parse(String(params[0])) as string[]);
@@ -135,16 +148,12 @@ const HEADER = 'recurring-series-header';
 const EMPTY = 'recurring-series-empty';
 const LOADING = 'recurring-series-loading';
 
-const screenElement = (params: RouteParams) => {
-  const Screen = screenOf();
-
-  return (
-    <Screen
-      navigation={asNavigationProp<ScreenProps['navigation']>(navigationSpy())}
-      route={asRouteProp<ScreenProps['route']>('RecurringSeries', params)}
-    />
-  );
-};
+const screenElement = (params: RouteParams) => (
+  <RecurringSeriesScreen
+    navigation={asNavigationProp<ScreenProps['navigation']>(navigationSpy())}
+    route={asRouteProp<ScreenProps['route']>('RecurringSeries', params)}
+  />
+);
 
 const renderScreen = async (
   result: typeof mockResult,
@@ -192,6 +201,9 @@ const headerWithCount = async (count: number) => {
 
 beforeEach(async () => {
   mockOpenInPane.mockClear();
+  mockOptionsByTables.clear();
+  mockIsVisible = true;
+  mockRowsLoading = false;
   await setLanguage('en');
 });
 
@@ -230,7 +242,7 @@ describe('RecurringSeriesScreen — header', () => {
   it.each(COUNT_CASES)('reads $count charges as "$english"', async ({ count, english }) => {
     const { getByTestId } = await headerWithCount(count);
 
-    expect(catalogueText('recurringCharges.chargeCount', { count })).toBe(english);
+    expect(i18n.t('recurringCharges.chargeCount', { count })).toBe(english);
     expect(getByTestId(HEADER)).toHaveTextContent(english, { exact: false });
   });
 });
@@ -243,13 +255,13 @@ describe('RecurringSeriesScreen — header in Ukrainian', () => {
   it.each(COUNT_CASES)('reads $count charges as "$ukrainian"', async ({ count, ukrainian }) => {
     const { getByTestId } = await headerWithCount(count);
 
-    expect(catalogueText('recurringCharges.chargeCount', { count })).toBe(ukrainian);
+    expect(i18n.t('recurringCharges.chargeCount', { count })).toBe(ukrainian);
     expect(getByTestId(HEADER)).toHaveTextContent(ukrainian, { exact: false });
   });
 
   it('states the neutral list text literally', () => {
-    expect(catalogueText('recurringCharges.listChangedTitle')).toBe('Цей список змінився');
-    expect(catalogueText('recurringCharges.listChangedMessage')).toBe(
+    expect(i18n.t('recurringCharges.listChangedTitle')).toBe('Цей список змінився');
+    expect(i18n.t('recurringCharges.listChangedMessage')).toBe(
       'Поверніться назад, щоб побачити регулярні платежі в поточному вигляді.',
     );
   });
@@ -346,6 +358,21 @@ describe('RecurringSeriesScreen — loading', () => {
     expect(queryAllByTestId(CHARGE_ROW)).toHaveLength(0);
   });
 
+  it('shows the loading state, never the empty state or a blank body, while the charges are read', async () => {
+    mockRowsLoading = true;
+
+    const series = seriesWith({});
+    const { getByTestId, queryByTestId, queryAllByTestId } = await renderScreen(
+      { series: [series], isLoading: false },
+      paramsOf(series),
+    );
+
+    expect(getByTestId(HEADER)).toBeTruthy();
+    expect(getByTestId(LOADING)).toBeTruthy();
+    expect(queryByTestId(EMPTY)).toBeNull();
+    expect(queryAllByTestId(CHARGE_ROW)).toHaveLength(0);
+  });
+
   it('shows the series and no loading state once the read has settled', async () => {
     const series = seriesWith({});
     const { getByTestId, queryByTestId } = await renderScreen(
@@ -357,6 +384,28 @@ describe('RecurringSeriesScreen — loading', () => {
     expect(queryByTestId(LOADING)).toBeNull();
     expect(queryByTestId(EMPTY)).toBeNull();
   });
+});
+
+describe('RecurringSeriesScreen — live reads', () => {
+  const READS = ['transactions,holdings,accounts', 'categories', 'settings'];
+
+  it.each([
+    { title: 'shows', isVisible: true, paused: false },
+    { title: 'is hidden', isVisible: false, paused: true },
+  ])(
+    'passes paused: $paused to every read when the screen $title',
+    async ({ isVisible, paused }) => {
+      mockIsVisible = isVisible;
+
+      const series = seriesWith({});
+
+      await renderScreen({ series: [series], isLoading: false }, paramsOf(series));
+
+      expect(Object.fromEntries(mockOptionsByTables)).toEqual(
+        Object.fromEntries(READS.map((tables) => [tables, { paused }])),
+      );
+    },
+  );
 });
 
 describe('RecurringSeriesScreen — an id that no longer resolves', () => {
@@ -423,18 +472,12 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
       ledger,
     );
 
-    expect(getByTestId(EMPTY)).toHaveTextContent(
-      catalogueText('recurringCharges.listChangedTitle'),
-      {
-        exact: false,
-      },
-    );
-    expect(getByTestId(EMPTY)).toHaveTextContent(
-      catalogueText('recurringCharges.listChangedMessage'),
-      {
-        exact: false,
-      },
-    );
+    expect(getByTestId(EMPTY)).toHaveTextContent(i18n.t('recurringCharges.listChangedTitle'), {
+      exact: false,
+    });
+    expect(getByTestId(EMPTY)).toHaveTextContent(i18n.t('recurringCharges.listChangedMessage'), {
+      exact: false,
+    });
     expect(queryByTestId(HEADER)).toBeNull();
     expect(queryAllByTestId(CHARGE_ROW)).toHaveLength(0);
     expect(queryByText('Spotify')).toBeNull();
@@ -540,8 +583,8 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
   });
 
   it('states the neutral text literally', () => {
-    expect(catalogueText('recurringCharges.listChangedTitle')).toBe('This list has changed');
-    expect(catalogueText('recurringCharges.listChangedMessage')).toBe(
+    expect(i18n.t('recurringCharges.listChangedTitle')).toBe('This list has changed');
+    expect(i18n.t('recurringCharges.listChangedMessage')).toBe(
       'Go back to see your recurring charges as they are now.',
     );
   });
