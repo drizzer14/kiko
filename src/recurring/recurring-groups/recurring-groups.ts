@@ -44,8 +44,7 @@ const newestChargeFirst = (left: RecurringSeries, right: RecurringSeries): numbe
 
 // The charges are debits, so a series has paid the negation of their sum. A row of another
 // currency is skipped: the group key of a series holds its currency, so none should be there.
-export const paidSoFarOf = (series: RecurringSeries, rows: readonly ChargeRow[]): Money => {
-  const rowById = new Map(rows.map((row) => [row.id, row]));
+const paidFromRowsById = (series: RecurringSeries, rowById: ReadonlyMap<string, ChargeRow>) => {
   const minorUnits = series.chargeIds.reduce((sum, chargeId) => {
     const row = rowById.get(chargeId);
 
@@ -54,6 +53,9 @@ export const paidSoFarOf = (series: RecurringSeries, rows: readonly ChargeRow[])
 
   return Money.of(series.currency, minorUnits);
 };
+
+export const paidSoFarOf = (series: RecurringSeries, rows: readonly ChargeRow[]): Money =>
+  paidFromRowsById(series, new Map(rows.map((row) => [row.id, row])));
 
 export const recurringGroupsOf = ({
   shown,
@@ -84,8 +86,17 @@ export const recurringGroupsOf = ({
     ...categories.map(({ key }) => key),
     ...(displayByKey.has(defaultCategoryKey) ? [] : [defaultCategoryKey]),
   ];
+  // Each series is resolved once; pushing in `inGroupOrder` keeps that order inside every group.
+  const seriesByKey = new Map<string, RecurringSeries[]>();
+
+  for (const entry of inGroupOrder) {
+    const key = categoryKeyOf(entry);
+
+    seriesByKey.set(key, [...(seriesByKey.get(key) ?? []), entry]);
+  }
+
   const groups = keys.flatMap((key): RecurringGroup[] => {
-    const series = inGroupOrder.filter((entry) => categoryKeyOf(entry) === key);
+    const series = seriesByKey.get(key) ?? [];
 
     if (series.length === 0) {
       return [];
@@ -96,7 +107,7 @@ export const recurringGroupsOf = ({
     // holds. A currency with no rate is left out of the totals and its series stays listed.
     const total = series.reduce(
       (sum, entry) => {
-        const paid = paidSoFarOf(entry, rows);
+        const paid = paidFromRowsById(entry, rowById);
 
         return canConvert(paid.currency, baseCurrency, rateTable)
           ? sum.add(convert(paid, baseCurrency, rateTable))
