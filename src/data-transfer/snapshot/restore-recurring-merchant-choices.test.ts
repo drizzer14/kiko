@@ -145,4 +145,56 @@ describe('restoring the recurring merchant choices', () => {
       ['plain', { name: 'Plain', hidden: true }],
     ]);
   });
+
+  describe('marks', () => {
+    const monthlyAt99 = { currency: 'UAH', amountMinorUnits: 9_900, period: 'monthly' };
+    const yearlyAt400Dollars = { currency: 'USD', amountMinorUnits: 40_000, period: 'yearly' };
+    const badMarks = [
+      { currency: 'UAH', amountMinorUnits: 9_900, period: 'daily' },
+      { currency: 'XXX', amountMinorUnits: 9_900, period: 'monthly' },
+      { currency: 'UAH', amountMinorUnits: 99.5, period: 'monthly' },
+      { currency: 'UAH', amountMinorUnits: 0, period: 'monthly' },
+    ];
+
+    it('brings a mark back with its currency, amount and period, beside a hide', async () => {
+      const backup = await exportWith(
+        JSON.stringify({
+          apple: { name: 'Apple', hidden: true, marks: [monthlyAt99, yearlyAt400Dollars] },
+          gym: { name: 'Gym', marks: [monthlyAt99] },
+        }),
+      );
+
+      await restoreOnto(backup, LIVE_TEXT);
+
+      expect(storedChoices()).toEqual([
+        ['apple', { name: 'Apple', hidden: true, marks: [monthlyAt99, yearlyAt400Dollars] }],
+        ['gym', { name: 'Gym', marks: [monthlyAt99] }],
+      ]);
+    });
+
+    it('restores a file with a bad mark and drops that mark alone', async () => {
+      const backup = withValue(await exportWith(null), {
+        apple: { name: 'Apple', marks: [...badMarks, monthlyAt99] },
+        broken: { name: 'Broken', marks: badMarks },
+        kept: { name: 'Kept', hidden: true, marks: badMarks },
+      });
+
+      await restoreOnto(backup, null);
+
+      expect(storedChoices()).toEqual([
+        ['apple', { name: 'Apple', marks: [monthlyAt99] }],
+        ['kept', { name: 'Kept', hidden: true }],
+      ]);
+    });
+
+    it('keeps a mark under a __proto__ key through a round trip', async () => {
+      const backup = await exportWith(
+        JSON.stringify({ ['__proto__']: { name: 'Proto', marks: [monthlyAt99] } }),
+      );
+
+      await restoreOnto(backup, null);
+
+      expect(storedChoices()).toEqual([['__proto__', { name: 'Proto', marks: [monthlyAt99] }]]);
+    });
+  });
 });
