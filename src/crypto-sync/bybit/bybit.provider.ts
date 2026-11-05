@@ -31,8 +31,8 @@ import {
   partsOfHoldingKey,
 } from './bybit.holding-keys';
 import { isBybitCoolingDown } from './bybit.cooldown';
-import { bybitFailureOf } from './bybit.failure-text';
 import { readBybitCredentials } from './bybit.credentials';
+import { bybitCoolingFailure, bybitFailureOf } from './bybit.failure-text';
 import { fundReadOf, unifiedReadOf, type WalletRead } from './bybit.balance-read';
 
 type WalletFetch<Body> = (
@@ -274,10 +274,16 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
   id: 'bybit',
   metadataField: 'bybitAsset',
   fetchBalances: async (deps, target) => {
-    // Checked before even reading credentials, so a cooling account makes no request. Returning
-    // no balances, never throwing, keeps the balance sync from failing on a cooldown that a walk
-    // set.
+    // Checked before even reading credentials, so a cooling account makes no request. An account
+    // that holds a Bybit holding returns no balances, never throwing, so a later sync inside the
+    // cooldown leaves its stamp and balances as they were. An account with none has no read of
+    // Bybit behind it: an empty answer would let a first connect that the cooldown stopped report
+    // success with no text, so it fails with the refusal's text instead.
     if (isBybitCoolingDown(target.accountId, deps.now())) {
+      if (existingBybitKeys(target.holdings).size === 0) {
+        throw bybitCoolingFailure();
+      }
+
       return { balances: [] };
     }
 

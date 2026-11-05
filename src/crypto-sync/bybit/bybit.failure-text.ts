@@ -26,6 +26,12 @@ const textOfRefusal = (refusal: BybitRefusalClass, code: number | undefined): st
     .exhaustive();
 
 /**
+ * The error of a sync the cooldown stopped. The cooldown keeps no cause, and this text fits a rate
+ * refusal and a 403 alike: it names both and says how long Kiko waits.
+ */
+export const bybitCoolingFailure = (): Error => new Error(i18n.t('accountDetail.bybitForbidden'));
+
+/**
  * A typed Bybit refusal as the localized error the sync shows (`useSyncAction` surfaces its
  * message as it is), since a typed error carries a fixed English message that is no user text.
  * An error that is no Bybit refusal, a lost network for one, passes as it is.
@@ -34,9 +40,7 @@ export const bybitFailureOf = (error: unknown): unknown =>
   match(error)
     .returnType<unknown>()
     .with(P.instanceOf(BybitRateLimitError), ({ code }) =>
-      code === FORBIDDEN_STATUS
-        ? new Error(i18n.t('accountDetail.bybitForbidden'))
-        : new Error(generic(code)),
+      code === FORBIDDEN_STATUS ? bybitCoolingFailure() : new Error(generic(code)),
     )
     .with(
       P.instanceOf(BybitRefusalError),

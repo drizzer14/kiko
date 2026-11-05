@@ -191,6 +191,28 @@ describe('bybitProvider', () => {
 
       expect(keysOf(await bybitProvider.fetchBalances(deps, target))).toEqual(['BTC:unified']);
     });
+
+    // An empty answer would let a first Connect that the cooldown stopped report success on an
+    // account no read has reached, with no text to say why.
+    it.each([
+      ['no holding', []],
+      ['only a holding no Bybit key names', [{ ...heldHolding('BTC:unified'), metadata: null }]],
+    ])(
+      'fails with the text of the refusal and makes no call for an account with %s',
+      async (_title, holdings) => {
+        const deps = makeDeps([unifiedCoin('BTC', '1')]);
+        const target = freshTarget(holdings);
+        setBybitCooldownUntil(target.accountId, NOW + 1_000);
+
+        await expect(bybitProvider.fetchBalances(deps, target)).rejects.toThrow(
+          i18n.t('accountDetail.bybitForbidden'),
+        );
+        expect(deps.readCredentials).not.toHaveBeenCalled();
+        expect(deps.fetchKeyInfo).not.toHaveBeenCalled();
+        expect(deps.fetchUnifiedBalance).not.toHaveBeenCalled();
+        expect(deps.fetchFundBalance).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('the key check', () => {
@@ -265,6 +287,25 @@ describe('bybitProvider', () => {
           const next = await bybitProvider.fetchBalances(deps, target);
 
           expect(next).toEqual({ balances: [] });
+          expect(requested).toEqual([KEY_INFO_PATH]);
+        },
+      );
+
+      it.each(refusals)(
+        'fails the retry of a first connect inside the cooldown, with no request, for %s',
+        async (_title, answer) => {
+          const { deps, requested } = routedDeps({
+            [KEY_INFO_PATH]: answer,
+            [UNIFIED_PATH]: okAnswer(unifiedResult([unifiedCoin('BTC', '1')])),
+            [FUND_PATH]: okAnswer(fundResult([])),
+          });
+          const target = freshTarget();
+
+          await bybitProvider.fetchBalances(deps, target).catch(() => undefined);
+
+          await expect(bybitProvider.fetchBalances(deps, target)).rejects.toThrow(
+            i18n.t('accountDetail.bybitForbidden'),
+          );
           expect(requested).toEqual([KEY_INFO_PATH]);
         },
       );
