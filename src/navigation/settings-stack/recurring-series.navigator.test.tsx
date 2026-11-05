@@ -1,4 +1,5 @@
 import i18next from 'i18next';
+import { settingsRepo } from '@kiko/settings';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
@@ -366,6 +367,81 @@ describe('Settings stack, one pane: a recurring series and its charges', () => {
     expect(routeNames()).toEqual(ROUTES_TO_SERIES);
     expect(keyOf('RecurringSeries')).toBe(seriesKey);
     expect(paramsOf('RecurringSeries')).toEqual(SERIES_PARAMS);
+  });
+});
+
+describe('Settings stack: a hide write that lands after the user moved on', () => {
+  const HIDE_BUTTON = 'recurring-series-hide';
+  const ROUTES_TO_LIST = ['Settings', 'RecurringCharges'];
+
+  // The write the button starts, held open until the test settles it.
+  let settleWrite: () => void;
+
+  let hideSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    hideSpy = jest.spyOn(settingsRepo, 'hideRecurringMerchant').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          settleWrite = resolve;
+        }),
+    );
+  });
+
+  afterEach(() => {
+    hideSpy.mockRestore();
+  });
+
+  const settle = async (): Promise<void> => {
+    await act(async () => {
+      settleWrite();
+    });
+  };
+
+  it('keeps the form on top of the series when a charge was opened while the write was queued', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+
+    const seriesKey = keyOf('RecurringSeries');
+
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await openCharge(view, MANUAL_CHARGE);
+
+    expect(hideSpy).toHaveBeenCalledTimes(1);
+
+    await settle();
+
+    expect(routeNames()).toEqual(ROUTES_TO_FORM);
+    expect(keyOf('RecurringSeries')).toBe(seriesKey);
+    expect(paramsOf('TransactionForm')).toEqual({ transactionId: MANUAL_CHARGE });
+  });
+
+  it('leaves the list on top when the user went back while the write was queued', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await goBack();
+
+    expect(routeNames()).toEqual(ROUTES_TO_LIST);
+
+    await settle();
+
+    expect(routeNames()).toEqual(ROUTES_TO_LIST);
+  });
+
+  it('returns to the list once the write lands and the series is still the focused screen', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+
+    expect(routeNames()).toEqual(ROUTES_TO_SERIES);
+
+    await settle();
+
+    expect(routeNames()).toEqual(ROUTES_TO_LIST);
   });
 });
 

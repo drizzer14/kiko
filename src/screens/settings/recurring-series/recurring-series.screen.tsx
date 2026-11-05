@@ -116,7 +116,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
   // Leaves only after the write, and only while still the focused screen: the charges stay
   // pressable while it is queued, and a form opened over this screen must not be popped for it.
   // The list it returns to re-reads on focus, so Back can show the merchant until that read lands.
-  // The series stays on screen until then: the hook hands it over before any hide filters it.
+  // The series stays on screen until it leaves: the hook hands it over before any hide filters it.
   const hide = async (): Promise<void> => {
     if (series === undefined) {
       return;

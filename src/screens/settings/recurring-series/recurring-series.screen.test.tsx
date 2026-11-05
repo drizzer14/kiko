@@ -719,18 +719,6 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
   });
 
-  it('goes back after the write when the screen is still the focused one', async () => {
-    const { getByTestId, navigation } = await renderNetflix();
-
-    navigation.isFocused.mockReturnValue(true);
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
-    await act(async () => {
-      settleWrite.resolve();
-    });
-
-    expect(navigation.goBack).toHaveBeenCalledTimes(1);
-  });
-
   it('does not go back when another screen was opened over it before the write landed', async () => {
     const { getByTestId, navigation } = await renderNetflix();
 
