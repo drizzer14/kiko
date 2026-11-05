@@ -17,6 +17,20 @@ jest.mock('@kiko/transactions/repo', () => ({
 }));
 jest.mock('@kiko/holdings/repo', () => ({ holdingsRepo: { allQuery: () => stubQuery } }));
 jest.mock('@kiko/accounts', () => ({ accountsRepo: { listQuery: () => stubQuery } }));
+// The real parser stays, so a stored value reads as the repository reads it; only the queries are
+// stubbed.
+jest.mock('@kiko/settings', () => {
+  const actual = jest.requireActual('@kiko/settings');
+
+  return {
+    ...actual,
+    settingsRepo: {
+      ...actual.settingsRepo,
+      getQuery: () => stubQuery,
+      recurringMerchantChoicesQuery: () => stubQuery,
+    },
+  };
+});
 
 const mockDetectRecurringSeries = jest.fn();
 jest.mock('@kiko/recurring/detection', () => {
@@ -77,9 +91,24 @@ const names = (series: { name: string }[]): string[] => series.map((entry) => en
 // What the live-query hook gives a consumer, by its own contract: a call made with `paused: true`
 // never applies a pending write, and the first call made unpaused applies it. A table in
 // `queued` is a first read that has not settled.
+type ReadName = Table | 'settings';
+
 let committed: World;
 let pending: World | undefined;
-let queued: Set<Table>;
+let queued: Set<ReadName>;
+
+// The settings read answers with these rows; an empty list is a database with no settings row.
+type SettingsRows = { recurringMerchantChoices: unknown }[];
+
+let settingsRows: SettingsRows;
+let pendingSettingsRows: SettingsRows | undefined;
+
+// The tables each read listens to, by its first table, as its latest render gave them. A write to
+// a listened table makes that read run again, as the live-query hook does.
+let listenedTables: Map<string, string[]>;
+
+// How often the ledger read ran again: a ledger write, or a write to a table it listens to.
+let ledgerReruns: number;
 
 const actualDetection = (
   jest.requireActual('@kiko/recurring/detection') as {
@@ -101,11 +130,33 @@ beforeEach(() => {
   committed = worldOf([...monthlyCharges('Netflix', -41_900)]);
   pending = undefined;
   queued = new Set();
+  settingsRows = [];
+  pendingSettingsRows = undefined;
+  listenedTables = new Map();
+  ledgerReruns = 0;
   mockUseLiveQuery.mockImplementation(
     (_query: unknown, tables: string[], _enabled: boolean, options?: { paused?: boolean }) => {
-      if (!(options?.paused ?? false) && pending !== undefined) {
+      const isPaused = options?.paused ?? false;
+
+      listenedTables.set(tables[0], tables);
+
+      if (!isPaused && pending !== undefined) {
         committed = pending;
         pending = undefined;
+        ledgerReruns += 1;
+      }
+
+      if (tables[0] === 'settings') {
+        if (!isPaused && pendingSettingsRows !== undefined) {
+          settingsRows = pendingSettingsRows;
+          pendingSettingsRows = undefined;
+
+          if (listenedTables.get('transactions')?.includes('settings')) {
+            ledgerReruns += 1;
+          }
+        }
+
+        return { data: settingsRows, isLoading: queued.has('settings'), isFresh: true };
       }
 
       const table = tables[0] as Table;
@@ -130,13 +181,14 @@ const setVisible = async (
 };
 
 describe('useRecurringSeries', () => {
-  it('reads the ledger, the holdings and the accounts, each from its own table', async () => {
+  it('reads the ledger, the holdings, the accounts and the settings, each from its own table', async () => {
     await renderHook(() => useRecurringSeries());
 
     expect(mockUseLiveQuery.mock.calls.map((call) => call[1])).toEqual([
       ['transactions'],
       ['holdings'],
       ['accounts'],
+      ['settings'],
     ]);
   });
 
@@ -158,7 +210,7 @@ describe('useRecurringSeries', () => {
 
       await renderHook(() => useRecurringSeries());
 
-      expect(mockUseLiveQuery.mock.calls).toHaveLength(3);
+      expect(mockUseLiveQuery.mock.calls).toHaveLength(4);
 
       for (const options of optionsOfEveryCall()) {
         expect(options).toStrictEqual({ paused: true });
@@ -168,7 +220,7 @@ describe('useRecurringSeries', () => {
     it('leaves every read unpaused while the screen is on screen', async () => {
       await renderHook(() => useRecurringSeries());
 
-      expect(mockUseLiveQuery.mock.calls).toHaveLength(3);
+      expect(mockUseLiveQuery.mock.calls).toHaveLength(4);
 
       for (const options of optionsOfEveryCall()) {
         expect(options).toStrictEqual({ paused: false });
@@ -341,6 +393,167 @@ describe('useRecurringSeries', () => {
       expect(mockDetectRecurringSeries.mock.calls[1][1]).not.toBe(
         mockDetectRecurringSeries.mock.calls[0][1],
       );
+    });
+  });
+});
+
+describe('useRecurringSeries — the merchant choices', () => {
+  const NETFLIX_CHOICE = { name: 'Netflix', hidden: true };
+
+  const settingsCalls = (): unknown[][] =>
+    mockUseLiveQuery.mock.calls.filter((call) => (call[1] as string[])[0] === 'settings');
+
+  it('reads the settings table, paused with the others and never cached', async () => {
+    await renderHook(() => useRecurringSeries());
+
+    expect(mockUseLiveQuery.mock.calls.map((call) => call[1])).toContainEqual(['settings']);
+    expect(settingsCalls().map((call) => call[3])).toEqual([{ paused: false }]);
+  });
+
+  it('pauses the settings read while the screen is hidden', async () => {
+    mockUseIsScreenVisible.mockReturnValue(false);
+
+    await renderHook(() => useRecurringSeries());
+
+    expect(settingsCalls().map((call) => call[3])).toEqual([{ paused: true }]);
+  });
+
+  it('reads the stored choices of the settings row by key', async () => {
+    settingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
+
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect(result.current.choices.size).toBe(1);
+    expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
+  });
+
+  it.each([
+    { title: 'no settings row', rows: [] },
+    { title: 'a row with nothing stored', rows: [{ recurringMerchantChoices: null }] },
+  ])('reads no choice from $title, and none under an object property name', async ({ rows }) => {
+    settingsRows = rows;
+
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect(result.current.choices.size).toBe(0);
+    expect(result.current.choices.has('constructor')).toBe(false);
+  });
+
+  it('reads a stored __proto__ key as an entry beside a plain one', async () => {
+    settingsRows = [
+      {
+        recurringMerchantChoices: JSON.parse(
+          '{"__proto__":{"name":"Proto","hidden":true},"netflix":{"name":"Netflix","hidden":true}}',
+        ),
+      },
+    ];
+
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect([...result.current.choices.keys()].sort()).toEqual(['__proto__', 'netflix']);
+    expect(result.current.choices.get('__proto__')).toEqual({ name: 'Proto', hidden: true });
+  });
+
+  it('keeps a hidden merchant in series, which the list filters', async () => {
+    committed = worldOf([
+      ...monthlyCharges('Netflix', -41_900),
+      ...monthlyCharges('Spotify', -9_900),
+    ]);
+    settingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
+
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect(names(result.current.series)).toEqual(['Netflix', 'Spotify']);
+    expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
+  });
+
+  describe('detection and the settings read', () => {
+    it('waits for the settings read too, with each other read landed before it, then runs once', async () => {
+      queued = new Set<ReadName>(['transactions', 'holdings', 'accounts', 'settings']);
+      committed = { transactions: [], holdings: [], accounts: [] };
+
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+      const fullWorld = worldOf(monthlyCharges('Netflix', -41_900));
+
+      const land = async (read: ReadName, apply: () => void): Promise<void> => {
+        queued.delete(read);
+        apply();
+        await setVisible(rerender, true);
+      };
+
+      await land('transactions', () => {
+        committed = { ...committed, transactions: fullWorld.transactions };
+      });
+      await land('holdings', () => {
+        committed = { ...committed, holdings: fullWorld.holdings };
+      });
+      await land('accounts', () => {
+        committed = { ...committed, accounts: fullWorld.accounts };
+      });
+
+      expect(result.current.isLoading).toBe(true);
+      expect(mockDetectRecurringSeries).not.toHaveBeenCalled();
+      expect(result.current.series).toEqual([]);
+
+      await land('settings', () => {
+        settingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
+      });
+
+      expect(result.current.isLoading).toBe(false);
+      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(names(result.current.series)).toEqual(['Netflix']);
+      expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
+    });
+
+    it('runs nothing and reads no ledger for a settings write, and hands over the same series', async () => {
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+      const seriesBefore = result.current.series;
+
+      pendingSettingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
+      await setVisible(rerender, true);
+
+      expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
+      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+      expect(ledgerReruns).toBe(0);
+      expect(result.current.series).toBe(seriesBefore);
+    });
+
+    it('counts a ledger write as a ledger read that ran again', async () => {
+      const { rerender } = await renderHook(() => useRecurringSeries());
+
+      pending = worldOf([...committed.transactions, ...monthlyCharges('Spotify', -9_900)]);
+      await setVisible(rerender, true);
+
+      expect(ledgerReruns).toBe(1);
+    });
+
+    it('runs again for a ledger write beside it, which a settings write does not stand for', async () => {
+      const { rerender } = await renderHook(() => useRecurringSeries());
+
+      pendingSettingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
+      await setVisible(rerender, true);
+
+      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
+
+      pending = worldOf([...committed.transactions, ...monthlyCharges('Spotify', -9_900)]);
+      await setVisible(rerender, true);
+
+      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows a settings write made while hidden once the screen is back, running nothing', async () => {
+      const { result, rerender } = await renderHook(() => useRecurringSeries());
+
+      await setVisible(rerender, false);
+      pendingSettingsRows = [{ recurringMerchantChoices: { netflix: NETFLIX_CHOICE } }];
+      await setVisible(rerender, false);
+
+      expect(result.current.choices.size).toBe(0);
+
+      await setVisible(rerender, true);
+
+      expect(result.current.choices.get('netflix')).toEqual(NETFLIX_CHOICE);
+      expect(mockDetectRecurringSeries).toHaveBeenCalledTimes(1);
     });
   });
 });

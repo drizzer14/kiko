@@ -137,6 +137,7 @@ export const TITLE_KEYS = new Set([
   'home.filterAccountsSheetTitle',
   'home.filterCategoriesSheetTitle',
   'home.title',
+  'recurringCharges.hiddenHeading',
   'recurringCharges.stoppedHeading',
   'recurringCharges.title',
   'reminders.form.createTitle',

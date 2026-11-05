@@ -6,6 +6,7 @@ import {
   addAccountCurrencyColumn,
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -97,6 +98,20 @@ describe('addFundingMatchRowsTable', () => {
     expect(rawDatabase.prepare('SELECT COUNT(*) AS total FROM funding_match_rows').get()).toEqual({
       total: 0,
     });
+  });
+});
+
+describe('addRecurringMerchantChoicesColumn', () => {
+  it('adds the empty column to a database below it and nothing else', () => {
+    const rawDatabase = new DatabaseSync(':memory:');
+
+    applyMigrationsThrough(rawDatabase, '0066_add_funding_match_rows');
+    rawDatabase.prepare('INSERT INTO settings (id) VALUES (1)').run();
+    addRecurringMerchantChoicesColumn(rawDatabase);
+
+    expect(
+      rawDatabase.prepare('SELECT id, recurring_merchant_choices AS choices FROM settings').all(),
+    ).toEqual([{ id: 1, choices: null }]);
   });
 });
 

@@ -1,10 +1,12 @@
+import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import type { transactionsRepo } from '@kiko/transactions/repo';
 import type { RecurringSeries } from '@kiko/recurring/detection';
+import { settingsRepo, type RecurringMerchantChoice } from '@kiko/settings';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import RecurringSeriesScreen from './recurring-series.screen';
@@ -21,7 +23,11 @@ type RouteParams = {
 
 type ScreenProps = ComponentProps<typeof RecurringSeriesScreen>;
 
-let mockResult: { series: RecurringSeries[]; isLoading: boolean } = {
+let mockResult: {
+  series: RecurringSeries[];
+  isLoading: boolean;
+  choices?: ReadonlyMap<string, RecurringMerchantChoice>;
+} = {
   series: [],
   isLoading: false,
 };
@@ -401,7 +407,7 @@ describe('RecurringSeriesScreen — live reads', () => {
 
       await renderScreen({ series: [series], isLoading: false }, paramsOf(series));
 
-      expect(Object.fromEntries(mockOptionsByTables)).toEqual(
+      expect(Object.fromEntries(mockOptionsByTables)).toStrictEqual(
         Object.fromEntries(READS.map((tables) => [tables, { paused }])),
       );
     },
@@ -587,5 +593,209 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
     expect(i18n.t('recurringCharges.listChangedMessage')).toBe(
       'Go back to see your recurring charges as they are now.',
     );
+  });
+});
+
+describe('RecurringSeriesScreen — hiding a false match', () => {
+  const HIDE_BUTTON = 'recurring-series-hide';
+
+  let hideSpy: jest.SpyInstance;
+  let alertSpy: jest.SpyInstance;
+
+  // The write the button starts, held open until the test settles it.
+  let settleWrite: { resolve: () => void; reject: (reason: Error) => void };
+
+  const openWrite = (): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      settleWrite = { resolve, reject };
+    });
+
+  const NETFLIX = seriesWith({});
+
+  const hideScreen = (navigation: ReturnType<typeof navigationSpy>) => (
+    <RecurringSeriesScreen
+      navigation={asNavigationProp<ScreenProps['navigation']>(navigation)}
+      route={asRouteProp<ScreenProps['route']>('RecurringSeries', paramsOf(NETFLIX))}
+    />
+  );
+
+  const renderNetflix = async () => {
+    const navigation = navigationSpy();
+
+    mockResult = { series: [NETFLIX], isLoading: false };
+    mockLedger = NETFLIX_LEDGER;
+
+    const tree = await render(hideScreen(navigation));
+
+    return { ...tree, navigation };
+  };
+
+  beforeEach(() => {
+    hideSpy = jest.spyOn(settingsRepo, 'hideRecurringMerchant').mockImplementation(openWrite);
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    hideSpy.mockRestore();
+    alertSpy.mockRestore();
+  });
+
+  it('offers "Not a recurring charge" on a resolved series, and writes nothing before a tap', async () => {
+    const { getByTestId } = await renderNetflix();
+
+    expect(getByTestId(HIDE_BUTTON)).toHaveTextContent('Not a recurring charge');
+    expect(hideSpy).not.toHaveBeenCalled();
+  });
+
+  it('offers no hide button on the neutral text, and offers it again with a series', async () => {
+    const navigation = navigationSpy();
+
+    mockResult = { series: [], isLoading: false };
+    mockLedger = NETFLIX_LEDGER;
+
+    const { getByTestId, queryByTestId, rerender } = await render(hideScreen(navigation));
+
+    expect(getByTestId(EMPTY)).toBeTruthy();
+    expect(queryByTestId(HIDE_BUTTON)).toBeNull();
+
+    mockResult = { series: [NETFLIX], isLoading: false };
+    await rerender(hideScreen(navigation));
+
+    expect(queryByTestId(EMPTY)).toBeNull();
+    expect(getByTestId(HIDE_BUTTON)).toBeTruthy();
+  });
+
+  it('offers no hide button while the series read is loading, and offers it once loaded', async () => {
+    const navigation = navigationSpy();
+
+    mockResult = { series: [], isLoading: true };
+    mockLedger = NETFLIX_LEDGER;
+
+    const { getByTestId, queryByTestId, rerender } = await render(hideScreen(navigation));
+
+    expect(getByTestId(LOADING)).toBeTruthy();
+    expect(queryByTestId(HIDE_BUTTON)).toBeNull();
+
+    mockResult = { series: [NETFLIX], isLoading: false };
+    await rerender(hideScreen(navigation));
+
+    expect(queryByTestId(LOADING)).toBeNull();
+    expect(getByTestId(HIDE_BUTTON)).toBeTruthy();
+  });
+
+  it('states the button text literally in English', async () => {
+    const { getByTestId } = await renderNetflix();
+
+    expect(getByTestId(HIDE_BUTTON)).toHaveTextContent('Not a recurring charge');
+    expect(i18n.t('recurringCharges.notRecurring')).toBe('Not a recurring charge');
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await setLanguage('uk');
+    });
+
+    it('states the button text literally', async () => {
+      const { getByTestId } = await renderNetflix();
+
+      expect(getByTestId(HIDE_BUTTON)).toHaveTextContent('Це не регулярний платіж');
+      expect(i18n.t('recurringCharges.notRecurring')).toBe('Це не регулярний платіж');
+    });
+  });
+
+  it('hides the merchant key with its name on a tap, and goes back only after the write', async () => {
+    const { getByTestId, navigation } = await renderNetflix();
+
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+
+    expect(hideSpy).toHaveBeenCalledTimes(1);
+    expect(hideSpy).toHaveBeenCalledWith('netflix', 'Netflix');
+    expect(navigation.goBack).not.toHaveBeenCalled();
+
+    await act(async () => {
+      settleWrite.resolve();
+    });
+
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not go back when another screen was opened over it before the write landed', async () => {
+    const { getByTestId, navigation } = await renderNetflix();
+
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    navigation.isFocused.mockReturnValue(false);
+    await act(async () => {
+      settleWrite.resolve();
+    });
+
+    expect(hideSpy).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('blocks a second tap while the write is in flight, and takes one again once it settled', async () => {
+    const { getByTestId } = await renderNetflix();
+
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+
+    expect(hideSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settleWrite.resolve();
+    });
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+
+    expect(hideSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the save alert and stays on a rejected write, then lets the user try again', async () => {
+    const { getByTestId, navigation } = await renderNetflix();
+
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await act(async () => {
+      settleWrite.reject(new Error('disk full'));
+    });
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(getByTestId(HEADER)).toBeTruthy();
+
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+
+    expect(hideSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows no save alert when the write succeeds', async () => {
+    const { getByTestId } = await renderNetflix();
+
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await act(async () => {
+      settleWrite.resolve();
+    });
+
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps its series, never the neutral text, once the hide has fired and before it goes back', async () => {
+    const { getAllByTestId, getByTestId, queryByTestId, rerender, navigation } =
+      await renderNetflix();
+
+    await fireEvent.press(getByTestId(HIDE_BUTTON));
+
+    // The settings read has landed the hide; the hook still hands over the unfiltered series.
+    mockResult = {
+      series: [NETFLIX],
+      isLoading: false,
+      choices: new Map([['netflix', { name: 'Netflix', hidden: true }]]),
+    };
+    await rerender(hideScreen(navigation));
+
+    expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+    expect(shownChargeIds(getAllByTestId)).toHaveLength(3);
+    expect(queryByTestId(EMPTY)).toBeNull();
+    expect(navigation.goBack).not.toHaveBeenCalled();
   });
 });

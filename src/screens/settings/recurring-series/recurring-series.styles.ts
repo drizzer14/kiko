@@ -16,6 +16,9 @@ export const styles = StyleSheet.create((theme) => ({
   header: {
     paddingBottom: theme.spacing(4),
   },
+  footer: {
+    paddingTop: theme.spacing(2),
+  },
   // The gap below each card, so the charges read as a stack of cards, as Home's rows do.
   chargeCard: {
     marginBottom: theme.spacing(2),

@@ -251,6 +251,7 @@ const topicsById = {
       'help.topics.viewRecurringCharges.steps.1',
       'help.topics.viewRecurringCharges.steps.2',
       'help.topics.viewRecurringCharges.steps.3',
+      'help.topics.viewRecurringCharges.steps.4',
     ],
     action: 'openRecurringCharges',
   },

@@ -9,6 +9,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { currencyOptions } from '@kiko/currency/currency';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
+import type { RecurringMerchantChoice } from '@kiko/settings';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { type ReminderKind, type ReminderSchedule, reminderKinds } from '@kiko/reminders/schedule';
@@ -604,6 +605,15 @@ export const settings = sqliteTable('settings', {
   mccCategoriesBackfilled: integer('mcc_categories_backfilled', { mode: 'boolean' })
     .notNull()
     .default(false),
+  // What the user chose for each merchant on the recurring-charges list, as a map from the
+  // merchant key (the name as `merchantNameOf` normalizes it) to the last spelling they saw and
+  // `hidden: true` while its detected series stay off the list. The key is user text, so a reader
+  // goes through `recurringMerchantChoicesOf` and never indexes the stored object. NULL means
+  // nothing was chosen, which is every device before the first hide; no step fills it in. A
+  // restore takes it from the file, because the choice is the user's and not this device's.
+  recurringMerchantChoices: text('recurring_merchant_choices', { mode: 'json' }).$type<
+    Record<string, RecurringMerchantChoice>
+  >(),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

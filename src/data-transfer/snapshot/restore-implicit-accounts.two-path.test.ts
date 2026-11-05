@@ -30,6 +30,7 @@ import {
   addAccountCurrencyColumn,
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -113,6 +114,7 @@ const databaseBefore0050 = (): DatabaseSync => {
   addTransactionOperationColumn(target);
   addMccCategoriesBackfilledColumn(target);
   addFundingMatchRowsTable(target);
+  addRecurringMerchantChoicesColumn(target);
   target.exec('PRAGMA foreign_keys = ON;');
 
   return target;

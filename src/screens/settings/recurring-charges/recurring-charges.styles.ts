@@ -14,4 +14,14 @@ export const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
   }),
+  // The merchant's name on the left and the way back on the right, centered since the row is one
+  // line.
+  hiddenRow: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hiddenName: {
+    flex: 1,
+    marginRight: theme.spacing(3),
+  },
 }));

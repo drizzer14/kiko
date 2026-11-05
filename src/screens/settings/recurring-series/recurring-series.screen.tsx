@@ -22,12 +22,15 @@ import { type FC, useCallback, useMemo } from 'react';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Text from '@kiko/design-system/components/text';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import Button from '@kiko/design-system/components/button';
 import LargeTitleHeading, {
   useLargeTitleScroll,
 } from '@kiko/design-system/components/large-title-heading';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import type { RecurringSeries } from '@kiko/recurring/detection';
+import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import EmptyState from '@kiko/design-system/components/empty-state';
+import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
@@ -70,7 +73,7 @@ const seriesOfRoute = (
 
 // One series, every past charge of it. The list stays mounted while the series read is queued and
 // shows the loading state in place of its rows, never the neutral text.
-const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route }) => {
+const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { series: allSeries, isLoading } = useRecurringSeries();
   const series = seriesOfRoute(allSeries, route.params);
@@ -110,6 +113,28 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route }) => {
 
     return (series?.chargeIds ?? []).flatMap((id) => rowById.get(id) ?? []);
   }, [rows, series]);
+  // Leaves only after the write, and only while still the focused screen: the charges stay
+  // pressable while it is queued, and a form opened over this screen must not be popped for it.
+  // The list it returns to re-reads on focus, so Back can show the merchant until that read lands.
+  // The series stays on screen until it leaves: the hook hands it over before any hide filters it.
+  const hide = async (): Promise<void> => {
+    if (series === undefined) {
+      return;
+    }
+
+    try {
+      await settingsRepo.hideRecurringMerchant(series.merchantKey, series.name);
+    } catch {
+      alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
+
+      return;
+    }
+
+    if (navigation.isFocused()) {
+      navigation.goBack();
+    }
+  };
+  const { onPress: onHide, isSubmitting } = useSubmitOnce(hide);
   const openCharge = useCallback(
     (transactionId: string): void => {
       openInPane('TransactionForm', { transactionId });
@@ -186,6 +211,22 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route }) => {
                 <Text variant="caption" tone="textSecondary">
                   {t('recurringCharges.chargeCount', { count: series.chargeIds.length })}
                 </Text>
+              </Box>
+            )}
+          </>
+        }
+        ListFooterComponent={
+          <>
+            {series !== undefined && (
+              <Box style={styles.footer}>
+                <Button
+                  variant="secondary"
+                  loading={isSubmitting}
+                  onPress={onHide}
+                  testID="recurring-series-hide"
+                >
+                  {t('recurringCharges.notRecurring')}
+                </Button>
               </Box>
             )}
           </>

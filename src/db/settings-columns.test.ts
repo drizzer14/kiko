@@ -77,6 +77,7 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'quoteQuota',
   'dismissedTips',
   'mccCategoriesBackfilled',
+  'recurringMerchantChoices',
 ];
 
 const SCHEMA_PATH = join(__dirname, 'schema.ts');

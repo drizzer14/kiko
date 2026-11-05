@@ -21,6 +21,7 @@ import {
   addAccountCurrencyColumn,
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsBetween,
@@ -224,6 +225,7 @@ const restoredFromOlderFile = async (seed: Scenario['seed']): Promise<DatabaseSy
   addTransactionOperationColumn(source);
   addMccCategoriesBackfilledColumn(source);
   addFundingMatchRowsTable(source);
+  addRecurringMerchantChoicesColumn(source);
   mockDatabase = source;
 
   const exported = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
@@ -259,6 +261,7 @@ describe('restoring a .kiko file written before the account currency column', ()
     addTransactionOperationColumn(source);
     addMccCategoriesBackfilledColumn(source);
     addFundingMatchRowsTable(source);
+    addRecurringMerchantChoicesColumn(source);
     source.exec(
       "UPDATE accounts SET currency = 'GBP' WHERE id IN ('mixed', 'empty', 'one-currency')",
     );
