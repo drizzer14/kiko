@@ -60,7 +60,7 @@ describe('RecurringGroupHeading', () => {
 
   it('puts the total opposite the title in one centered row', async () => {
     const { getByTestId } = await render(<RecurringGroupHeading {...propsOf()} />);
-    const row = ancestorWithStyle(getByTestId('entity-icon-tile'), 'justifyContent');
+    const row = getByTestId('recurring-charges-group-subscriptions');
     const style = StyleSheet.flatten(row.props.style);
 
     expect(style.justifyContent).toBe('space-between');

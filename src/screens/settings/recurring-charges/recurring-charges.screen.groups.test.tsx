@@ -4,6 +4,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { formatMoney } from '@kiko/currency/format';
+import { activeLocale } from '@kiko/i18n/active-locale';
 import type { MarkedChain } from '@kiko/recurring/marked-series';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
@@ -144,7 +145,8 @@ const renderScreen = async () =>
     />,
   );
 
-const moneyText = (minorUnits: number): string => formatMoney(Money.of('UAH', minorUnits));
+const moneyText = (minorUnits: number): string =>
+  formatMoney(Money.of('UAH', minorUnits), activeLocale());
 
 const rowId = (name: string): string => `recurring-series-row-${idOf(name)}`;
 
@@ -290,7 +292,9 @@ describe.each(['en', 'uk'])('RecurringChargesScreen — no category, in %s', (la
       'recurring-charges-group-other',
     ]);
     expect(
-      within(tree.getByTestId('recurring-charges-group-other')).getByText('Other'),
+      within(tree.getByTestId('recurring-charges-group-other')).getByText(
+        language === 'uk' ? 'Інше' : 'Other',
+      ),
     ).toBeTruthy();
     expect(order.slice(order.indexOf('recurring-charges-group-other'))).toEqual(
       expect.arrayContaining([rowId('Gym'), rowId('Yoga'), rowId('Swim')]),
