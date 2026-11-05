@@ -13,6 +13,7 @@ const silpoSubject = (description = 'Silpo') =>
     amountMinorUnits: -10000,
     time: new Date(2026, 5, 1, 12, 0).getTime(),
     currency: 'UAH',
+    mcc: null,
   });
 
 const winnerIdOf = (rows: readonly StoredCategoryRule[], description = 'Silpo') =>
@@ -192,10 +193,8 @@ describe('rule priority', () => {
 });
 
 describe('rule priority of the new conditions', () => {
-  const matcherOf = (raw: unknown): CategoryRuleMatcher => raw as CategoryRuleMatcher;
-  const nameContains = (text: string): CategoryRuleMatcher =>
-    matcherOf({ type: 'nameContains', text });
-  const mccRule = (code: number): CategoryRuleMatcher => matcherOf({ type: 'mcc', code });
+  const nameContains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
 
   const codedWinnerIdOf = (rows: readonly StoredCategoryRule[]) => {
     const row = {

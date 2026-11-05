@@ -87,28 +87,31 @@ describe('emptyMatcherDraft', () => {
 });
 
 describe('the nameContains and mcc rows', () => {
-  const draftFromRaw = (raw: unknown): MatcherDraft => raw as MatcherDraft;
-  const matcherFromRaw = (raw: unknown): CategoryRuleMatcher => raw as CategoryRuleMatcher;
-
-  const codeDraft = (mccText: string) =>
-    draftFromRaw({ ...emptyMatcherDraft('UAH'), type: 'mcc', mccText });
-  const containsDraft = (text: string) =>
-    draftFromRaw({ ...emptyMatcherDraft('UAH'), type: 'nameContains', text });
+  const codeDraft = (mccText: string): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'mcc',
+    mccText,
+  });
+  const containsDraft = (text: string): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'nameContains',
+    text,
+  });
 
   it('a four-digit code becomes a number', () => {
     expect(fromMatcherDrafts([codeDraft('5411')])).toEqual({
       kind: 'valid',
-      matchers: [matcherFromRaw({ type: 'mcc', code: 5411 })],
+      matchers: [{ type: 'mcc', code: 5411 }],
     });
   });
 
   it('0042 stores as 42 and shows as 0042', () => {
     expect(fromMatcherDrafts([codeDraft('0042')])).toEqual({
       kind: 'valid',
-      matchers: [matcherFromRaw({ type: 'mcc', code: 42 })],
+      matchers: [{ type: 'mcc', code: 42 }],
     });
 
-    const [draft] = toMatcherDrafts([matcherFromRaw({ type: 'mcc', code: 42 })], 'UAH');
+    const [draft] = toMatcherDrafts([{ type: 'mcc', code: 42 }], 'UAH');
 
     expect(draft).toMatchObject({ type: 'mcc', mccText: '0042' });
   });
@@ -125,7 +128,7 @@ describe('the nameContains and mcc rows', () => {
   it('a contained text is trimmed and a blank one gives errorName', () => {
     expect(fromMatcherDrafts([containsDraft('  Market ')])).toEqual({
       kind: 'valid',
-      matchers: [matcherFromRaw({ type: 'nameContains', text: 'Market' })],
+      matchers: [{ type: 'nameContains', text: 'Market' }],
     });
     expect(fromMatcherDrafts([containsDraft('    ')])).toEqual({
       kind: 'invalid',
@@ -144,7 +147,7 @@ describe('the nameContains and mcc rows', () => {
     });
     expect(fromMatcherDrafts([backToCode])).toEqual({
       kind: 'valid',
-      matchers: [matcherFromRaw({ type: 'mcc', code: 5411 })],
+      matchers: [{ type: 'mcc', code: 5411 }],
     });
   });
 });

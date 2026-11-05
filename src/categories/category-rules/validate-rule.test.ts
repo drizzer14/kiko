@@ -94,9 +94,8 @@ describe('canEverMatch', () => {
 });
 
 describe('the nameContains and mcc conditions', () => {
-  const matcherOf = (raw: unknown): CategoryRuleMatcher => raw as CategoryRuleMatcher;
-  const contains = (text: string): CategoryRuleMatcher => matcherOf({ type: 'nameContains', text });
-  const code = (value: number): CategoryRuleMatcher => matcherOf({ type: 'mcc', code: value });
+  const contains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const code = (value: number): CategoryRuleMatcher => ({ type: 'mcc', code: value });
 
   it('two mcc codes can never match', () => {
     expect(validateRule([code(5411), code(5412)], [], null)).toEqual({

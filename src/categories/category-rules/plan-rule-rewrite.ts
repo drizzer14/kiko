@@ -3,7 +3,7 @@ import { ADDED_MCC_CODES, categoryForMcc } from '@kiko/monobank/mcc-category';
 import { winningRule } from './prepare-rules';
 import { subjectOfStoredRow } from './rule-subject';
 import { categoryKeyOf, isSameCategory } from './same-category';
-import type { MccBackfillRow, PreparedRules, RewriteCandidate } from './category-rules.d';
+import type { PreparedRules, RewriteCandidate } from './category-rules.d';
 
 // The fields that keep a row's category out of a rule's reach once they are set: a row the user
 // picked by hand, a balance-setting row and a split-change row. An exchange leg is NOT here: a rule
@@ -46,7 +46,7 @@ const ADDED_MCC_CODE_SET: ReadonlySet<number> = new Set(ADDED_MCC_CODES);
 // the rule match.
 export const planMccBackfill = (
   prepared: PreparedRules,
-  rows: readonly MccBackfillRow[],
+  rows: readonly RewriteCandidate[],
   knownCategoryKeys: ReadonlySet<string>,
 ): { id: string; category: string }[] =>
   rows.flatMap((row) => {

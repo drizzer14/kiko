@@ -41,6 +41,7 @@ type TransactionSeed = {
   untrackedCounterpart?: string;
   setsBalance?: boolean;
   changeGroupId?: string;
+  mcc?: number;
 };
 
 type RuleSeed = {
@@ -66,8 +67,8 @@ const insertTransaction = (row: TransactionSeed): void => {
     .prepare(
       `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category,
          source, category_set_by_hand, exchange_pair_id, exchange_counterpart_holding_id,
-         untracked_counterpart, sets_balance, change_group_id)
-       VALUES (?, ?, ?, 1000, ?, ?, 'manual', ?, ?, ?, ?, ?, ?)`,
+         untracked_counterpart, sets_balance, change_group_id, mcc)
+       VALUES (?, ?, ?, 1000, ?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       row.id,
@@ -81,6 +82,7 @@ const insertTransaction = (row: TransactionSeed): void => {
       row.untrackedCounterpart ?? null,
       row.setsBalance ? 1 : 0,
       row.changeGroupId ?? null,
+      row.mcc ?? null,
     );
 };
 
@@ -1712,6 +1714,102 @@ describe('a name rule of a store-number name', () => {
       expect(updated).toBe(6);
       expect(categoriesOf()).toMatchObject({ hand: 'food', third: 'food' });
       expect(flagOf('hand')).toBe(0);
+    });
+  });
+});
+
+describe('the merchant-code and name-contains conditions', () => {
+  const codeRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
+
+  const transactionSelects = (statements: string[]): string[] =>
+    statements.filter((sql) => /^select/i.test(sql) && /from "transactions"/i.test(sql));
+
+  it('an mcc rule rewrites by the id-keyset page path', async () => {
+    insertTransaction({ id: 'coded', description: 'Anything', mcc: 5411 });
+    insertTransaction({ id: 'other-code', description: 'Anything', mcc: 5812 });
+    insertTransaction({ id: 'no-code', description: 'Anything' });
+    insertTransaction({
+      id: 'picked',
+      description: 'Anything',
+      mcc: 5411,
+      categorySetByHand: true,
+    });
+
+    const draft = { id: null, category: 'travel', matchers: [codeRule(5411)] };
+    const counted = await categoryRulesRepo.countRuleRewrite(draft);
+    const statements = spyOnStatements();
+    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+    const selects = transactionSelects(statements);
+
+    expect([counted, changed]).toEqual([1, 1]);
+    expect(categoriesOf()).toEqual({
+      coded: 'travel',
+      'other-code': null,
+      'no-code': null,
+      picked: null,
+    });
+    expect(selects).toHaveLength(1);
+    expect(selects[0]).toMatch(/"transactions"\."id" > \?/);
+    expect(selects[0]).toMatch(/limit/i);
+    expect(selects[0]).not.toMatch(/"description" in \(/i);
+  });
+
+  it('a nameContains rule uses the description narrowing', async () => {
+    insertTransaction({ id: 'inside', description: 'Silpo Market 12' });
+    insertTransaction({ id: 'whole', description: 'MARKET' });
+    insertTransaction({ id: 'elsewhere', description: 'Atb' });
+    insertTransaction({ id: 'picked', description: 'Market', categorySetByHand: true });
+
+    const statements = spyOnStatements();
+    const { changed } = await categoryRulesRepo.saveRule({
+      id: null,
+      category: 'shops',
+      matchers: [{ type: 'nameContains', text: ' market ' }],
+      applyToExisting: true,
+    });
+    const selects = transactionSelects(statements);
+
+    expect(changed).toBe(2);
+    expect(categoriesOf()).toEqual({
+      inside: 'shops',
+      whole: 'shops',
+      elsewhere: null,
+      picked: null,
+    });
+    expect(selects.some((sql) => /"description" in \(/i.test(sql))).toBe(true);
+    expect(
+      selects.filter((sql) => /"id" > \?/.test(sql) && !/"description" = \?/.test(sql)),
+    ).toEqual([]);
+  });
+
+  describe('the source row', () => {
+    const SILPO_WITH_CODE: RuleSeed = {
+      id: 'silpo-coded',
+      category: 'shops',
+      matchers: [{ type: 'nameIs', text: 'Silpo' }, codeRule(5411)],
+    };
+
+    it('the source row is judged with its mcc', async () => {
+      insertRule(SILPO_WITH_CODE);
+      insertSilpo('source', { category: 'shops', mcc: 5411 });
+      insertSilpo('same-code', { category: 'shops', mcc: 5411 });
+      insertSilpo('plain');
+
+      const updated = await applySilpoRule('source');
+
+      expect(updated).toBe(2);
+      expect(categoriesOf()).toEqual({ plain: 'food', 'same-code': 'shops', source: 'food' });
+      expect(flagOf('source')).toBe(1);
+    });
+
+    it('frees a source row with no code, which the code rule does not win', async () => {
+      insertRule(SILPO_WITH_CODE);
+      insertSilpo('source', { category: 'shops', categorySetByHand: true });
+
+      await applySilpoRule('source');
+
+      expect(categoriesOf().source).toBe('food');
+      expect(flagOf('source')).toBe(0);
     });
   });
 });

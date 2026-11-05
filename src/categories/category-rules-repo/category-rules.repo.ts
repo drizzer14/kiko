@@ -34,7 +34,7 @@ import { smallestSpelling, tidiedNameOf } from '@kiko/transactions/merchant-name
 const REWRITE_PAGE_SIZE = 2000;
 
 const isNameMatcher = (matcher: CategoryRuleMatcher): boolean =>
-  matcher.type === 'nameIs' || matcher.type === 'nameStartsWith';
+  matcher.type === 'nameIs' || matcher.type === 'nameStartsWith' || matcher.type === 'nameContains';
 
 // Every reader of the rules (the insert path, the rewrite, the rule write) needs every rule, so
 // the read has no `where` and no cap: a rule dropped from it would be a category silently not
@@ -58,6 +58,7 @@ export const candidateColumns = {
   untrackedCounterpart: transactions.untrackedCounterpart,
   setsBalance: transactions.setsBalance,
   changeGroupId: transactions.changeGroupId,
+  mcc: transactions.mcc,
 };
 
 // `hasNoRealCategory` in SQL, narrowing only: `lower()` folds ASCII alone, so a key in another
@@ -298,6 +299,7 @@ const rowsForNamedRule = async (
         currency: null,
         direction: null,
         minuteOfDay: null,
+        mcc: null,
       }),
     );
   const rewrittenRows: RewrittenRow[] = [];
@@ -438,6 +440,7 @@ const planSourceRow = async (
       untrackedCounterpart: transactions.untrackedCounterpart,
       operation: transactions.operation,
       currency: holdings.currency,
+      mcc: transactions.mcc,
     })
     .from(transactions)
     .innerJoin(holdings, eq(holdings.id, transactions.holdingId))

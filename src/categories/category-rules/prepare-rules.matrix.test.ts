@@ -29,6 +29,7 @@ const storedSubject = (
     amountMinorUnits: minorUnitsOf(amountMajor, currency),
     time,
     currency,
+    mcc: null,
   });
 
 const amountRule = (
@@ -85,6 +86,7 @@ describe('amount matcher', () => {
           amountMinorUnits: -satoshi,
           time: NOON,
           currency: 'BTC',
+          mcc: null,
         }),
       ),
     ).toBe(true);
@@ -254,10 +256,8 @@ describe('name matchers', () => {
 });
 
 describe('the nameContains and mcc conditions', () => {
-  const matcherOf = (raw: unknown): CategoryRuleMatcher => raw as CategoryRuleMatcher;
-  const nameContains = (text: string): CategoryRuleMatcher =>
-    matcherOf({ type: 'nameContains', text });
-  const mccRule = (code: number): CategoryRuleMatcher => matcherOf({ type: 'mcc', code });
+  const nameContains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
 
   const named = (description: string | null) => storedSubject(-10, 'UAH', description);
   const withMcc = (mcc: number | null) => {

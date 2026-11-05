@@ -4,8 +4,8 @@ import { bifoldr, eitherSync } from 'fnts/either';
 import { isCurrency } from '@kiko/currency/currency';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
-import { LAST_MINUTE_OF_DAY } from './rule-constants';
 import type { CategoryRuleMatcher } from './category-rules.d';
+import { HIGHEST_MCC, LAST_MINUTE_OF_DAY } from './rule-constants';
 import { AMOUNT_OPERATORS, DIRECTIONS, TIME_OPERATORS } from './matcher-options';
 
 const isOneOf = <Option extends string>(
@@ -24,9 +24,15 @@ const isUsableName = (value: unknown): value is string =>
   typeof value === 'string' && normalizeTransactionName(value) !== '';
 
 const parseNameMatcher = (
-  type: 'nameIs' | 'nameStartsWith',
+  type: 'nameIs' | 'nameStartsWith' | 'nameContains',
   record: Record<string, unknown>,
 ): CategoryRuleMatcher | null => (isUsableName(record.text) ? { type, text: record.text } : null);
+
+const isMerchantCode = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= HIGHEST_MCC;
+
+const parseMccMatcher = (record: Record<string, unknown>): CategoryRuleMatcher | null =>
+  isMerchantCode(record.code) ? { type: 'mcc', code: record.code } : null;
 
 const parseAmountMatcher = (record: Record<string, unknown>): CategoryRuleMatcher | null => {
   const { operator, minorUnits, currency } = record;
@@ -57,10 +63,11 @@ const parseMatcher = (value: unknown): CategoryRuleMatcher | null => {
   }
 
   return match(value.type)
-    .with('nameIs', 'nameStartsWith', (type) => parseNameMatcher(type, value))
+    .with('nameIs', 'nameStartsWith', 'nameContains', (type) => parseNameMatcher(type, value))
     .with('amount', () => parseAmountMatcher(value))
     .with('direction', () => parseDirectionMatcher(value))
     .with('time', () => parseTimeMatcher(value))
+    .with('mcc', () => parseMccMatcher(value))
     .otherwise(() => null);
 };
 

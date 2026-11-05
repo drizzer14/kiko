@@ -5,7 +5,6 @@ import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import type { CurrencyGroup } from '@kiko/currency/currency-group';
 
 import { emptyMatcherDraft } from '../rule-draft';
-import type { MatcherDraft } from '../rule-draft/rule-draft.types';
 
 import MatcherRow from './matcher-row.component';
 import type { MatcherRowProps } from './matcher-row.props';
@@ -92,12 +91,10 @@ describe('MatcherRow', () => {
   });
 
   describe('the nameContains and mcc conditions', () => {
-    const draftFromRaw = (raw: unknown): MatcherDraft => raw as MatcherDraft;
-
     it('an mcc row shows a number-pad field limited to four digits', async () => {
       const onChange = jest.fn();
       const { getByLabelText } = await renderRow({
-        draft: draftFromRaw({ ...emptyMatcherDraft('UAH'), type: 'mcc', mccText: '0042' }),
+        draft: draftOf({ type: 'mcc', mccText: '0042' }),
         onChange,
       });
       const field = getByLabelText('Merchant code (MCC)');
@@ -115,11 +112,7 @@ describe('MatcherRow', () => {
     it('a nameContains row shows the name field', async () => {
       const onChange = jest.fn();
       const { getByLabelText, queryByLabelText } = await renderRow({
-        draft: draftFromRaw({
-          ...emptyMatcherDraft('UAH'),
-          type: 'nameContains',
-          text: 'Market',
-        }),
+        draft: draftOf({ type: 'nameContains', text: 'Market' }),
         onChange,
       });
 
