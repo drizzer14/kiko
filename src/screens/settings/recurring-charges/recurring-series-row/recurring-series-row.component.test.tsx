@@ -1,10 +1,11 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { formatMoney } from '@kiko/currency/format';
 import type { RecurringSeries } from '@kiko/recurring/detection';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 
 import RecurringSeriesRow from '.';
 
@@ -28,9 +29,68 @@ const seriesWith = (overrides: Partial<RecurringSeries>): RecurringSeries => ({
   ...overrides,
 });
 
+// The branch under the nearest shared ancestor of two nodes that holds `node`: one column of the
+// row, whatever number of wrappers a design-system box puts around its content.
+const columnOf = (node: RenderedElement, other: RenderedElement): RenderedElement => {
+  const shared = new Set<RenderedElement | null>();
+
+  for (let current: RenderedElement | null = other; current; current = current.parent) {
+    shared.add(current);
+  }
+
+  let column = node;
+
+  while (column.parent && !shared.has(column.parent)) {
+    column = column.parent;
+  }
+
+  return column;
+};
+
 describe('RecurringSeriesRow', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('en');
+  });
+
+  describe('the last-charge line', () => {
+    const QUIET_SERIES = {
+      isStopped: true,
+      lastChargeTime: FIRST_OF_MAY,
+      quiet: { since: TENTH_OF_JUNE, holdingName: 'Wallet' },
+    };
+
+    it.each([
+      {
+        kind: 'active',
+        overrides: {},
+        line: `Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`,
+      },
+      {
+        kind: 'stopped',
+        overrides: { isStopped: true, lastChargeTime: FIRST_OF_MAY },
+        line: `No charge since ${formatDate(FIRST_OF_MAY)}`,
+      },
+      {
+        kind: 'quiet',
+        overrides: QUIET_SERIES,
+        line: `Wallet: no newer transactions since ${formatDate(TENTH_OF_JUNE)}`,
+      },
+    ])(
+      'sits in the amount column of an $kind series, beside the name column',
+      async ({ overrides, line }) => {
+        const { getByText } = await render(
+          <RecurringSeriesRow series={seriesWith(overrides)} onPress={jest.fn()} />,
+        );
+        const amount = getByText(formatMoney(Money.of('UAH', 29900)));
+        const name = getByText('Netflix');
+        const amountColumn = columnOf(amount, name);
+        const nameColumn = columnOf(name, amount);
+
+        expect(within(amountColumn).getByText(line)).toBeTruthy();
+        expect(within(nameColumn).queryByText(line)).toBeNull();
+        expect(within(nameColumn).getByText('Monthly, on day 15')).toBeTruthy();
+      },
+    );
   });
 
   it('shows the name, the recurrence line, the last charge and its amount under its own testID', async () => {
