@@ -1080,7 +1080,8 @@ type SyncResult = { importedTransactions: number };
  * Connect (a `targetAccountId` sync) executes, and a re-sync joining an in-flight
  * run of the same account's token yields exactly the result it would have
  * computed itself. A run can outlive a Disconnect, though: it read its token once
- * and paces at 60 s per source, so a Connect checks `isMonobankSyncRunning` first.
+ * and the gate paces every request 60 s apart (a source with several windows takes longer),
+ * so a Connect checks `isMonobankSyncRunning` first.
  */
 const inFlightSyncs = new Map<string, Promise<SyncResult>>();
 

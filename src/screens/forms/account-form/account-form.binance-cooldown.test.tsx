@@ -50,7 +50,8 @@ jest.mock('@kiko/sync/use-crypto-sync', () =>
     (...args: unknown[]) => mockCryptoSync(...args),
   ),
 );
-// The real run pulls the repos, and so op-sqlite, into the graph; the join itself is pinned in
+// The mock drives the running state: each case chooses whether a Binance sync of the account is in
+// flight. With the check present the join never runs; the real run is held in
 // binance-credentials-field.component.running-sync.test.tsx.
 jest.mock('@kiko/crypto-sync/run-crypto-sync', () => ({
   isBinanceSyncRunning: (accountId: string) => mockIsBinanceSyncRunning(accountId),

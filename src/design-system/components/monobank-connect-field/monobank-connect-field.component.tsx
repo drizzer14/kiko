@@ -33,7 +33,8 @@ type MonobankConnectFieldProps = {
 // can show "Connected as {name}") and then hands the RAW token to `onConnect`,
 // which stores it and starts the sync. The field takes the account id only to check for a
 // running sync and writes no Keychain item itself — the secret's storage stays in the screen
-// closure keyed by the pre-generated account id, so a validated-but-unstorable token surfaces
+// closure keyed by the account id (the create form's pre-generated id, or the existing account's
+// id on the detail screen), so a validated-but-unstorable token surfaces
 // as a `false` result here rather than an unhandled rejection.
 const MonobankConnectField: FC<MonobankConnectFieldProps> = ({
   accountId,

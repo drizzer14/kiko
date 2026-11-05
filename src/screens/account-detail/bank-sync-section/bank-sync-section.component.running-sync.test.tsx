@@ -35,8 +35,9 @@ jest.mock('@kiko/monobank/disconnect', () => ({
 jest.mock('@kiko/monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
 }));
-// The real run pulls the repos, and so op-sqlite, into the graph; the join itself is pinned in
-// monobank-connect-field.component.running-sync.test.tsx.
+// The mock drives the running state: each case chooses whether a sync of the account is in flight.
+// With the check present the join never runs; the `runSync` join tests in
+// `src/monobank/sync/sync.test.ts` pin it.
 jest.mock('@kiko/monobank/sync', () => ({
   isMonobankSyncRunning: (accountId: string) => mockIsMonobankSyncRunning(accountId),
 }));
@@ -89,7 +90,7 @@ describe('BankSyncSection — a Monobank Connect during a running sync', () => {
     expect(mockFetchClientInfo).not.toHaveBeenCalled();
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockMonobankSync).not.toHaveBeenCalled();
-    expect(view.queryByText(/Connected as/)).toBeNull();
+    expect(view.queryByText(i18n.t('accountDetail.connectedAs', { name: 'Ada' }))).toBeNull();
   });
 
   it('syncs the same account id once only another account is running', async () => {

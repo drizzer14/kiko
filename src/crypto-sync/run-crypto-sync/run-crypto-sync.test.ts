@@ -755,7 +755,10 @@ describe('runCryptoSync', () => {
       expect(isBinanceSyncRunning('acc-running-3')).toBe(false);
     });
 
-    it('is false for a wallet run, which has no join', async () => {
+    // A wallet run still joins by account id in `runBalanceSync` (`crypto-sync/sync/sync.ts`)
+    // across providers; this pins only that it does not count for `isBinanceSyncRunning`. That
+    // gap is a known residual, not a behavior to keep.
+    it('does not count a wallet run of that account id as a Binance sync', async () => {
       const held = heldBalanceRead();
       const run = runCryptoSync({ providerId: 'btc_wallet', targetAccountId: 'acc-running-4' });
 

@@ -3017,8 +3017,11 @@ describe('runSync fetches a jar statement like a card', () => {
 });
 
 describe('isMonobankSyncRunning', () => {
-  const startHeldRun = (accountId: string) => {
-    const { deps } = makeInMemoryDeps(() => [], [bankAccount({ id: accountId })]);
+  const startHeldRun = (accountId: string, targeted = true) => {
+    const { deps } = makeInMemoryDeps(
+      () => [],
+      [bankAccount({ id: accountId, institution: 'monobank' })],
+    );
     const settle = { resolve: () => {}, reject: (_error: Error) => {} };
     const pending = new Promise<Awaited<ReturnType<SyncDeps['fetchClientInfo']>>>(
       (resolve, reject) => {
@@ -3052,7 +3055,7 @@ describe('isMonobankSyncRunning', () => {
       },
     };
 
-    return { held, run: runSync({ ...deps, targetAccountId: accountId }) };
+    return { held, run: runSync({ ...deps, targetAccountId: targeted ? accountId : undefined }) };
   };
 
   it('is false before any run of that account', () => {
@@ -3069,10 +3072,10 @@ describe('isMonobankSyncRunning', () => {
     await run;
   });
 
-  it('reads only the id key, never the shared no-target key', async () => {
-    const { held, run } = startHeldRun('acc-running-2');
+  it('is false for the connected account while a run with no target is in flight', async () => {
+    const { held, run } = startHeldRun('acc-running-2', false);
 
-    expect(isMonobankSyncRunning('institution:monobank')).toBe(false);
+    expect(isMonobankSyncRunning('acc-running-2')).toBe(false);
 
     await held.resolve();
     await run;

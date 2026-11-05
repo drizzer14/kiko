@@ -322,6 +322,7 @@ describe('while a Monobank sync of the account is running', () => {
 
   it('shows the running text and makes no request or connect, keeping the typed token', async () => {
     mockIsMonobankSyncRunning.mockImplementation((accountId) => accountId === 'run-blocked');
+    mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
     const onConnect = jest.fn().mockResolvedValue(true);
     const view = await renderForAccount('run-blocked', onConnect);
 
@@ -331,7 +332,7 @@ describe('while a Monobank sync of the account is running', () => {
     expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
     expect(mockFetchClientInfo).not.toHaveBeenCalled();
     expect(onConnect).not.toHaveBeenCalled();
-    expect(view.queryByText(/Connected as/)).toBeNull();
+    expect(view.queryByText(i18n.t('accountDetail.connectedAs', { name: 'Ada' }))).toBeNull();
     expect(view.getByDisplayValue('tok-123')).toBeTruthy();
     expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
   });

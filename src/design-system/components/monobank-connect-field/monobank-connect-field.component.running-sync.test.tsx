@@ -9,8 +9,9 @@ const mockFetchClientInfo = jest.fn();
 const mockListAccounts = jest.fn();
 
 // The REAL run and its join are under test: only the account read the run starts with is held,
-// so the run stays in flight for as long as a case wants. `@kiko/accounts` is the one repo the
-// run touches before it reads a token.
+// so the run stays in flight for as long as a case wants. The account read comes first in the
+// run: it resolves the account before anything else, and the sync-state repo and the token read
+// come after it.
 jest.mock('@kiko/accounts', () => ({
   accountsRepo: { listQuery: (...args: unknown[]) => mockListAccounts(...args) },
 }));
@@ -68,7 +69,7 @@ describe('MonobankConnectField — a Connect that would join the run of a discon
     expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
     expect(mockListAccounts).toHaveBeenCalledTimes(1);
     expect(mockFetchClientInfo).not.toHaveBeenCalled();
-    expect(view.queryByText(/Connected as/)).toBeNull();
+    expect(view.queryByText(i18n.t('accountDetail.connectedAs', { name: 'Ada' }))).toBeNull();
     expect(view.getByDisplayValue('new-token')).toBeTruthy();
 
     oldRun.resolve();
