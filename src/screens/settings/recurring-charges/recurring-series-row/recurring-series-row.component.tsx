@@ -24,14 +24,14 @@ const RecurringSeriesRow: FC<RecurringSeriesRowProps> = ({ series, onPress }) =>
             <Text variant="caption" tone="textSecondary">
               {recurrenceLine(series.period, series.recurrence, t)}
             </Text>
-
-            <Text variant="caption" tone="textSecondary">
-              {lastChargeLine(series, t)}
-            </Text>
           </Box>
 
-          <Box style={styles.amount}>
+          <Box gap={1} style={styles.amount}>
             <MoneyText money={Money.of(series.currency, series.lastChargeAmountMinorUnits)} />
+
+            <Text variant="caption" tone="textSecondary" style={styles.lastCharge}>
+              {lastChargeLine(series, t)}
+            </Text>
           </Box>
         </Box>
       </Card>

@@ -9,6 +9,7 @@ import { formatMoney } from '@kiko/currency/format';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import { settingsRepo, type RecurringMerchantChoice } from '@kiko/settings';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
+import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
 import RecurringChargesScreen from './recurring-charges.screen';
 
@@ -24,6 +25,10 @@ let mockResult: { series: RecurringSeries[]; isLoading: boolean; choices: Choice
 
 jest.mock('@kiko/recurring/use-recurring-series', () => ({
   useRecurringSeries: () => ({ markedSeries: [], withoutCharges: [], ...mockResult }),
+}));
+
+jest.mock('@kiko/recurring/use-recurring-groups', () => ({
+  useRecurringGroups: (shown: RecurringSeries[]) => mockUseRecurringGroups(shown),
 }));
 
 const mockOpenInPane = jest.fn();
@@ -68,8 +73,6 @@ const seriesWith = (overrides: Partial<RecurringSeries>): RecurringSeries => ({
 
 const rowTestId = (series: RecurringSeries): string => `recurring-series-row-${series.id}`;
 
-const STOPPED_HEADING = 'recurring-charges-heading-stopped';
-
 const amountOf = (series: RecurringSeries): string =>
   formatMoney(Money.of(series.currency, series.lastChargeAmountMinorUnits));
 
@@ -101,7 +104,6 @@ describe('RecurringChargesScreen — loading and empty', () => {
       i18n.t('recurringCharges.emptyMessage'),
       { exact: false },
     );
-    expect(queryByTestId(STOPPED_HEADING)).toBeNull();
   });
 
   it('shows no empty state once a series is listed', async () => {
@@ -144,8 +146,8 @@ describe('RecurringChargesScreen — sections and order', () => {
       (node) => node.props.testID,
     );
 
-  it('lists the active series newest charge first, then the stopped heading and the stopped series', async () => {
-    const { getAllByTestId, getByTestId } = await renderScreen({
+  it('lists the active series newest charge first, then the stopped series, in one group', async () => {
+    const { getAllByTestId } = await renderScreen({
       series: [OLDER_STOPPED, OLDER_ACTIVE, NEWER_STOPPED, NEWEST_ACTIVE],
       isLoading: false,
     });
@@ -153,36 +155,30 @@ describe('RecurringChargesScreen — sections and order', () => {
     expect(shownOrder(getAllByTestId)).toEqual([
       rowTestId(NEWEST_ACTIVE),
       rowTestId(OLDER_ACTIVE),
-      STOPPED_HEADING,
       rowTestId(NEWER_STOPPED),
       rowTestId(OLDER_STOPPED),
     ]);
-    expect(getByTestId(STOPPED_HEADING)).toHaveTextContent(
-      i18n.t('recurringCharges.stoppedHeading'),
-    );
   });
 
-  it('puts the stopped heading first when every series is stopped', async () => {
+  it('lists the stopped series newest first when every series is stopped', async () => {
     const { getAllByTestId } = await renderScreen({
       series: [OLDER_STOPPED, NEWER_STOPPED],
       isLoading: false,
     });
 
     expect(shownOrder(getAllByTestId)).toEqual([
-      STOPPED_HEADING,
       rowTestId(NEWER_STOPPED),
       rowTestId(OLDER_STOPPED),
     ]);
   });
 
-  it('shows no stopped heading when no series is stopped', async () => {
-    const { getAllByTestId, queryByTestId } = await renderScreen({
+  it('lists the active series newest charge first when none is stopped', async () => {
+    const { getAllByTestId } = await renderScreen({
       series: [OLDER_ACTIVE, NEWEST_ACTIVE],
       isLoading: false,
     });
 
     expect(shownOrder(getAllByTestId)).toEqual([rowTestId(NEWEST_ACTIVE), rowTestId(OLDER_ACTIVE)]);
-    expect(queryByTestId(STOPPED_HEADING)).toBeNull();
   });
 
   it('orders series with one last-charge time by merchant key, then by series id', async () => {
@@ -505,7 +501,6 @@ describe('RecurringChargesScreen — hidden merchants', () => {
 
     expect(shownRows(getAllByTestId)).toEqual([
       rowTestId(NETFLIX),
-      STOPPED_HEADING,
       rowTestId(stopped),
       HIDDEN_HEADING,
       hiddenRowTestId('atb'),

@@ -65,6 +65,13 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   same builders.
 - `marked-series-hook-result.ts`: what the series hook hands its screens for a ledger and marked
   entries (`hookStateOf`, with the `MarkedNames` type), made of the real detection functions.
+- `mock-recurring-groups.ts`: a stand-in for `useRecurringGroups` in a suite that does not test
+  the groups (the real grouping over no charge rows, one default category group); wire it with
+  `import { useRecurringGroups as mockUseRecurringGroups } from
+  '@kiko/test-support/mock-recurring-groups'` and
+  `jest.mock('@kiko/recurring/use-recurring-groups', () => ({ useRecurringGroups: (shown:
+  RecurringSeries[]) => mockUseRecurringGroups(shown) }))`; `jest.mock` hoists, so only a
+  `mock`-prefixed name works.
 - `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
   real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
   `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and
