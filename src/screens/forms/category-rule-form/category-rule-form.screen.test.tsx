@@ -931,7 +931,7 @@ describe('CategoryRuleFormScreen — an account condition', () => {
         applyToExisting: false,
       }),
     );
-    expect(screen.queryByText('Choose an account.')).toBeNull();
+    expect(screen.queryByText('Select an account.')).toBeNull();
   });
 
   it('a rule on a deleted account asks for a pick on Save', async () => {
@@ -942,8 +942,42 @@ describe('CategoryRuleFormScreen — an account condition', () => {
 
     await pressSave(navigation.setOptions);
 
-    expect(screen.getByText('Choose an account.')).toBeTruthy();
+    expect(screen.getByText('Select an account.')).toBeTruthy();
     expect(mockSaveRule).not.toHaveBeenCalled();
+  });
+
+  it('an account deleted after it was picked asks for a pick on Save', async () => {
+    mockRules = [accountRuleOf('account-1')];
+    mockAccounts = [MAIN_CARD, CASH_WALLET];
+
+    const screen = await renderEdit('mine');
+
+    mockAccounts = [CASH_WALLET];
+    await act(async () => {
+      await screen.rerender(formElement({ categoryKey: 'food', ruleId: 'mine' }));
+    });
+    await pressSave(navigation.setOptions);
+
+    expect(screen.getByText('Select an account.')).toBeTruthy();
+    expect(mockSaveRule).not.toHaveBeenCalled();
+  });
+
+  it('an archived account the row holds stays a valid pick on Save', async () => {
+    mockRules = [accountRuleOf('account-2')];
+    mockAccounts = [MAIN_CARD, OLD_CARD];
+
+    const screen = await renderEdit('mine');
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(mockSaveRule).toHaveBeenCalledWith({
+        id: 'mine',
+        category: 'food',
+        matchers: [{ type: 'account', accountId: 'account-2' }],
+        applyToExisting: false,
+      }),
+    );
+    expect(screen.queryByText('Select an account.')).toBeNull();
   });
 
   it('leaves an archived account out unless it is the row’s own', async () => {

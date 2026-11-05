@@ -7,4 +7,6 @@ export * from './prepare-rules';
 export { MCC_DIGITS } from './rule-constants';
 export * from './same-category';
 export * from './plan-rule-rewrite';
+export * from './plan-review-groups';
+export { addToNameTally, rankedNames, type NameTally } from './name-tally';
 export * from './validate-rule';

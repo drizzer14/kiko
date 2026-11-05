@@ -481,11 +481,12 @@ CategoryReview: undefined;
 | `categoryReview.startsWith` | `Starts with "{{name}}"` | `Починається з «{{name}}»` |
 | `categoryReview.nameCount_*` | `{{count}} names` | `{{count}} назва / назви / назв` |
 | `categoryReview.rowCount_*` | `{{count}} transactions` | `{{count}} транзакція / транзакції / транзакцій` |
-| `categoryReview.choose` | `Choose category` | `Вибрати категорію` |
-| `categoryReview.optionsTitle` (title key) | `Choose Category` | `Вибір категорії` |
+| `categoryReview.choose` | `Select category` | `Обрати категорію` |
+| `categoryReview.chooseFor` (added by the fix round) | `Select category for {{name}}` | `Обрати категорію для «{{name}}»` |
+| `categoryReview.optionsTitle` (title key) | `Select Category` | `Обрати категорію` |
 | `categoryReview.emptyTitle` | `Nothing to sort` | `Немає що розподіляти` |
-| `categoryReview.emptyMessage` | `Transactions without a category appear here, grouped by name. Pick a category once, and Kiko adds a rule for it.` | `Тут зʼявляться транзакції без категорії, згруповані за назвою. Виберіть категорію один раз, і Кіко додасть для неї правило.` |
-| `help.topics.categoryRules.steps.6` | `To sort what has no category yet, open "Categories", tap "Sort transactions without a category" and pick a category for a name.` | `Щоб розподілити транзакції без категорії, відкрийте «Категорії», натисніть «Розподілити транзакції без категорії» й виберіть категорію для назви.` |
+| `categoryReview.emptyMessage` | `Transactions without a category appear here, grouped by name. Select a category once, and Kiko adds a rule for it.` | `Тут зʼявляться транзакції без категорії, згруповані за назвою. Оберіть категорію один раз, і Кіко додасть для неї правило.` |
+| `help.topics.categoryRules.steps.6` | `To sort what has no category yet, open "Categories", tap "Sort transactions without a category" and select a category for a name.` | `Щоб розподілити транзакції без категорії, відкрийте «Категорії», натисніть «Розподілити транзакції без категорії» й оберіть категорію для назви.` |
 
 The confirm reuses `categoryRulePreview.*` from task 2.
 
@@ -505,7 +506,8 @@ The confirm reuses `categoryRulePreview.*` from task 2.
   - `planned equals listed when no other row carries the name`: `Silpo`, so `rowCount === count`.
   - `a listed count below the preview means a confirm`: `count > rowCount`.
   - `every listed row moves whatever it holds`: NULL, `''`, `other` and an orphan key, picked to `groceries`: `count === rowCount`.
-  - `a one-name store-number group previews its own rows`: `group.rule` of a group of only `ATB 0212` previews a count equal to its `rowCount`, not 0.
+  - `a one-name store-number group previews its own rows`: `group.rule` of a group of only `ATB 0212` previews a count equal to a SQL count of the stored rows with
+    the full name, not to its `rowCount`: the row set includes rows outside the list.
   - `a hand-set row is not listed, not counted and not written`.
   - `the plan is redone inside the write`: a row added between the preview and the write gets the category, and `applyNameRule` returns the new count.
   - Reminder trap (spec 5.3), `src/reminders/repo/reminders.repo.test.ts`: `a manual row with a name and no category becomes an entry only inside its created-at window when a tap gives it a category`: seed the row; `manualEntryDaysQuery` before; `applyNameRule`; after, for a `since` before and after the row's `createdAt`.

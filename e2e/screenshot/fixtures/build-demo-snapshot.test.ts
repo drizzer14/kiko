@@ -2,7 +2,9 @@ import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import { transactions } from '@kiko/db';
 import {
+  type ReviewGroup,
   parseRuleMatchers,
+  planReviewGroups,
   prepareRules,
   subjectOfStoredRow,
   validateRule,
@@ -716,5 +718,36 @@ describe('buildDemoSnapshot', () => {
       expect(balanceByName.get('Монобанк:UAH')).toBe(1_333_500);
       expect(balanceByName.get('Wise:EUR')).toBe(60_000);
     });
+  });
+});
+
+describe.each(['en', 'uk'] as const)('the review list of the %s demo file', (language) => {
+  const demo = buildDemoSnapshot(buildScreenshotDataset(language, ANCHOR));
+  const holdingById = new Map(demo.holdings.map((holding) => [holding.id, holding]));
+  const candidates = demo.transactions.map((transaction) => ({
+    ...transaction,
+    currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+    accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
+  }));
+  const groupOf = (key: string): ReviewGroup | undefined =>
+    planReviewGroups(
+      prepareRules(demo.categoryRules),
+      candidates,
+      new Set(demo.categories.map((category) => category.key.toLowerCase())),
+    ).find((group) => group.key === key);
+
+  it('the review list offers a starts-with line on the store-number rows', () => {
+    expect(groupOf('varus')?.names).toEqual(['Varus 0212', 'Varus 0340']);
+    expect(groupOf('varus')?.rule).toEqual({ kind: 'nameStartsWith', text: 'Varus' });
+    expect(groupOf('varus')?.rowCount).toBe(3);
+  });
+
+  it("leaves the rule demo's merchants in their own lines", () => {
+    expect(groupOf('kfc')?.names).toEqual(['KFC']);
+    expect(groupOf('kfc')?.rule).toEqual({ kind: 'nameIs', text: 'KFC' });
+    expect(groupOf('kfc')?.rowCount).toBe(4);
+    expect(groupOf('sushi master')?.names).toEqual(['Sushi Master']);
+    expect(groupOf('sushi master')?.rule).toEqual({ kind: 'nameIs', text: 'Sushi Master' });
+    expect(groupOf('sushi master')?.rowCount).toBe(1);
   });
 });

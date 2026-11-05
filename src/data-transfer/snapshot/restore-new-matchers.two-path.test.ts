@@ -192,6 +192,9 @@ const categoryOf = (id: string): string | null =>
     }
   ).category;
 
+const transactionRow = (id: string): unknown =>
+  mockDatabase.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+
 const importedCategory = async (row: Record<string, unknown>, externalId: string) => {
   const holdingId = (row.holdingId as string | undefined) ?? 'first-card';
 
@@ -298,6 +301,17 @@ describe('a release 1.3 file, restored into this build', () => {
       'travel',
     );
     expect(await importedCategory({ description: 'ATB', mcc: 5411 }, 'both')).toBe('shopping');
+  });
+
+  it('a row that holds a category of its own comes back whole, as the file had it', () => {
+    const seeded = ledgerDatabase();
+
+    seedLedgerRows(seeded);
+
+    expect(transactionRow('coded')).toEqual(
+      seeded.prepare('SELECT * FROM transactions WHERE id = ?').get('coded'),
+    );
+    expect(categoryOf('coded')).toBe('groceries');
   });
 
   it('a row the rule would win keeps its category until the user applies', async () => {

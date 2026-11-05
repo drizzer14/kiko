@@ -15,6 +15,7 @@ import ImportDataScreen from '@kiko/screens/settings/import-data';
 import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import CategoryFormScreen from '@kiko/screens/forms/category-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
+import CategoryReviewScreen from '@kiko/screens/settings/category-review';
 import CategoryRuleFormScreen from '@kiko/screens/forms/category-rule-form';
 import RecurringSeriesScreen from '@kiko/screens/settings/recurring-series';
 import RecurringChargesScreen from '@kiko/screens/settings/recurring-charges';
@@ -68,6 +69,12 @@ const SettingsStack: FC = () => {
         name="Categories"
         component={CategoriesScreen}
         options={{ title: t('settings.categories') }}
+      />
+
+      <Stack.Screen
+        name="CategoryReview"
+        component={CategoryReviewScreen}
+        options={{ title: t('categoryReview.title') }}
       />
 
       {/* An existing category's screen sets its own title from the category's name, so it starts

@@ -31,6 +31,7 @@ import type { CategoryRuleFormDraft, SettingsStackParamList } from '@kiko/naviga
 import {
   type MatcherDraft,
   type MatcherDraftError,
+  clearStaleAccounts,
   emptyMatcherDraft,
   toMatcherDrafts,
 } from './rule-draft';
@@ -116,6 +117,11 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   const categoryTitles = useMemo(() => buildCategoryDisplayMap(categories), [categories]);
   const drafts = useMemo(() => rows.map((row) => row.draft), [rows]);
+  const liveAccountIds = useMemo(() => new Set(accounts.map((account) => account.id)), [accounts]);
+  const savableDrafts = useMemo(
+    () => clearStaleAccounts(drafts, liveAccountIds),
+    [drafts, liveAccountIds],
+  );
   const onFieldBlur = useDraftAutosave({ rows: drafts }, saveDraft);
 
   const bringIntoView = (target: RefusalTarget): void =>
@@ -129,7 +135,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   const { errors, save, sheet } = useSaveRule({
     ruleId: ruleId ?? null,
     categoryKey,
-    drafts,
+    drafts: savableDrafts,
     rules,
     onSaved: () => navigation.goBack(),
     onRefused: bringIntoView,
@@ -172,14 +178,18 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
       return;
     }
 
-    seedRows(
-      toMatcherDrafts(
-        stored.displayMatchers,
-        baseCurrency,
-        new Set(accounts.map((account) => account.id)),
-      ),
-    );
-  }, [hydrated, isReady, isEdit, rules, ruleId, baseCurrency, accounts, navigation, initialDraft]);
+    seedRows(toMatcherDrafts(stored.displayMatchers, baseCurrency, liveAccountIds));
+  }, [
+    hydrated,
+    isReady,
+    isEdit,
+    rules,
+    ruleId,
+    baseCurrency,
+    liveAccountIds,
+    navigation,
+    initialDraft,
+  ]);
 
   const isLoaded = isReady && hydrated;
 

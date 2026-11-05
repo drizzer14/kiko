@@ -1020,7 +1020,12 @@ matches (`src/categories/category-rules/prepare-rules.ts`); the card reads "Dele
 (`src/screens/forms/category-form/rule-summary/rule-summary.ts`); a restore keeps the id. The form
 seeds an unknown id as none, so Save asks for a pick
 (`src/screens/forms/category-rule-form/rule-draft/rule-draft.ts`). An account deleted while the
-form is open is a known open item.
+form is open: `clearStaleAccounts` (same file, used in `category-rule-form.screen.tsx`) clears
+it, so Save asks for a pick.
+
+**Review list.** `planReviewGroups` (`src/categories/category-rules/plan-review-groups.ts`),
+`reviewCandidateRowsQuery`, `name-tally.ts` and the `CategoryReview` route
+(`src/navigation/settings-stack/settings.stack.tsx`) build and show it.
 
 ## Spending-exclusion pipeline
 

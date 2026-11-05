@@ -93,6 +93,21 @@ export const toMatcherDrafts = (
 ): MatcherDraft[] =>
   matchers.map((matcher) => draftOf(matcher, emptyMatcherDraft(baseCurrency), liveAccountIds));
 
+/**
+ * The rows with a picked account that no row holds any more cleared, for Save: the field already
+ * shows its placeholder for such an id, so Save asks for a pick instead of storing an id that can
+ * never match.
+ */
+export const clearStaleAccounts = (
+  drafts: readonly MatcherDraft[],
+  liveAccountIds: ReadonlySet<string>,
+): MatcherDraft[] =>
+  drafts.map((draft) =>
+    draft.accountId === null || liveAccountIds.has(draft.accountId)
+      ? draft
+      : { ...draft, accountId: null },
+  );
+
 const nameOutcome = (
   type: 'nameIs' | 'nameStartsWith' | 'nameContains',
   text: string,

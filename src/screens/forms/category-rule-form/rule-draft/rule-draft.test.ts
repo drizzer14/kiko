@@ -1,7 +1,12 @@
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 
+import {
+  clearStaleAccounts,
+  emptyMatcherDraft,
+  fromMatcherDrafts,
+  toMatcherDrafts,
+} from './rule-draft';
 import type { MatcherDraft, MatcherDraftError } from './rule-draft.types';
-import { emptyMatcherDraft, fromMatcherDrafts, toMatcherDrafts } from './rule-draft';
 
 const NO_ACCOUNTS: ReadonlySet<string> = new Set();
 
@@ -203,6 +208,15 @@ describe('the account and counterIban rows', () => {
     );
 
     expect(draft).toMatchObject({ type: 'account', accountId: 'account-1' });
+  });
+
+  it('clearStaleAccounts clears an id no row holds and keeps a live or empty one', () => {
+    const cleared = clearStaleAccounts(
+      [accountDraft('gone'), accountDraft('account-1'), accountDraft(null)],
+      new Set(['account-1']),
+    );
+
+    expect(cleared.map((draft) => draft.accountId)).toEqual([null, 'account-1', null]);
   });
 
   it('a typed IBAN is stored normalized', () => {
