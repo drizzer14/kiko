@@ -702,6 +702,11 @@ export const uk: typeof en = {
     binanceRequestFailed: 'Запит до Binance не вдався: {{status}}{{detail}}',
     blockExplorerRequestFailed: 'Запит до оглядача блокчейну не вдався: {{status}}',
     btcAddressPlaceholder: 'BTC-адреса',
+    bybitBalancesNotRead: {
+      message:
+        'Кіко не зміг прочитати деякі баланси цього рахунку Bybit. Рядки в розділі «Синхронізація» вказують, які саме й чому.',
+      title: 'Деякі баланси не прочитано',
+    },
     bybitClockOff:
       'Bybit відхилив запит, бо годинник цього пристрою неточний. Увімкніть «Автоматично» в налаштуваннях дати й часу.',
     bybitCoinBorrowed:

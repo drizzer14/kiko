@@ -171,9 +171,10 @@ const BINANCE_PRODUCT_PHRASES = new RegExp(
 );
 
 // The Bybit wallet and product names `accountDetail.bybitKinds` writes, the iOS clock labels
-// `bybitClockOff` names, and the proper nouns of `bybitKinds` and `bybitForbidden` (a date, a
-// country), as whole phrases for the same reason: "Funding", "Unified" or "Earn" alone would then
-// pass in every en string.
+// `bybitClockOff` names, the title of the Synchronization section that `bybitBalancesNotRead`
+// names, and the proper nouns of `bybitKinds` and `bybitForbidden` (a date, a country), as whole
+// phrases for the same reason: "Funding", "Unified" or "Earn" alone would then pass in every en
+// string.
 const BYBIT_PHRASES = new RegExp(
   `(?:${[
     'Unified, Funding, Flexible Savings, On-Chain Earn',
@@ -187,6 +188,7 @@ const BYBIT_PHRASES = new RegExp(
     'an Earn product',
     "Bybit's Funding",
     'Set Automatically',
+    'under Synchronization',
     'Date & Time',
     '10 September 2025',
     'mainland China',

@@ -207,6 +207,11 @@ jest.mock('@kiko/settings/settings.repo', () => ({
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
+// The empty block reads which exchange has key lines through the exchange barrels, which load the
+// credentials modules and their react-native-keychain binding, absent under Jest.
+jest.mock('react-native-keychain', () => ({
+  ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
+}));
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
     getQuery: () => ({ __kind: 'sync_state', toSQL: () => ({ sql: '', params: [] }) }),
@@ -249,7 +254,11 @@ type Holding = {
 };
 type Rate = { base: string; quote: string; rate: string };
 type Settings = { baseCurrency: string };
-type SyncState = { lastSyncAt?: number | null; lastSyncDisplayAt?: number | null };
+type SyncState = {
+  lastSyncAt?: number | null;
+  lastSyncDisplayAt?: number | null;
+  exchangeState?: string | null;
+};
 
 // One mocked `useLiveQuery` result.
 type LiveResult = { data: unknown[]; isLoading?: boolean; isFresh?: boolean };
@@ -274,6 +283,7 @@ const setLiveData = (data: {
   holdingsIsLoading?: boolean;
   ratesIsLoading?: boolean;
   settingsIsLoading?: boolean;
+  syncStateIsLoading?: boolean;
   pricePointsIsLoading?: boolean;
   // `true` = the holdings are still the cached rows (`isFresh: false`), for
   // the reorder-gate test only.
@@ -297,7 +307,7 @@ const setLiveData = (data: {
       data: data.settings ?? [{ baseCurrency: 'UAH' }],
       isLoading: data.settingsIsLoading ?? false,
     },
-    sync_state: { data: data.syncState ?? [] },
+    sync_state: { data: data.syncState ?? [], isLoading: data.syncStateIsLoading ?? false },
     transactions: { data: [], isLoading: false },
     price_points: { data: [], isLoading: data.pricePointsIsLoading ?? false },
   };
@@ -2791,6 +2801,249 @@ describe('AccountDetailScreen — the empty holdings state', () => {
       expect(getByText('Ще немає активів')).toBeTruthy();
       expect(getByText('Додайте актив, щоб відстежувати баланс цього рахунку.')).toBeTruthy();
       expect(queryByText('No holdings yet')).toBeNull();
+    });
+  });
+});
+
+describe('AccountDetailScreen — a Bybit account with no holding and a balance note', () => {
+  const NOT_READ_TITLE = 'Some balances not read';
+  const NOT_READ_MESSAGE =
+    'Kiko could not read some balances on this Bybit account. The lines under Synchronization say which and why.';
+  const EMPTY_TITLE = 'No holdings yet';
+  const EMPTY_MESSAGE = 'Add a holding to start tracking the balance of this account.';
+  const bybitAccount = account({ kind: 'crypto', institution: 'bybit' });
+
+  const storedNotes = (balanceNotes: Record<string, unknown>): SyncState[] => [
+    { exchangeState: JSON.stringify({ version: 1, walks: {}, balanceNotes }) },
+  ];
+
+  const refusedCoinNotes = storedNotes({ unified: { refusedCoins: ['BTC'] }, fund: {} });
+
+  const rerenderScreen = async (view: Awaited<ReturnType<typeof renderScreen>>): Promise<void> => {
+    await act(async () => {
+      view.rerender(
+        <AccountDetailScreen
+          route={route}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+  });
+
+  it.each([
+    ['a coin set aside for a loan', { unified: { borrowed: ['BTC'] }, fund: {} }],
+    ['a Funding coin set aside for a loan', { unified: {}, fund: { borrowed: ['BTC'] } }],
+    ['a coin set aside for an open order', { unified: { openOrder: ['BTC'] }, fund: {} }],
+    ['a refused Unified coin', { unified: { refusedCoins: ['BTC'] }, fund: {} }],
+    ['a refused Funding coin', { unified: {}, fund: { refusedCoins: ['BTC'] } }],
+    ['a refused Unified wallet', { unified: { refused: true }, fund: {} }],
+    ['a refused Funding wallet', { unified: {}, fund: { refused: true } }],
+  ])('shows the not-read block, never No holdings yet, for %s', async (_title, balanceNotes) => {
+    setLiveData({ accounts: [bybitAccount], holdings: [], syncState: storedNotes(balanceNotes) });
+
+    const { getByTestId, getByText, queryByText } = await renderScreen();
+
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText(NOT_READ_TITLE),
+    ).toBeTruthy();
+    expect(getByText(NOT_READ_MESSAGE)).toBeTruthy();
+    expect(queryByText(EMPTY_TITLE)).toBeNull();
+    expect(queryByText(EMPTY_MESSAGE)).toBeNull();
+  });
+
+  it('keeps the block testID, the generic holding glyph and the Add holding action', async () => {
+    setLiveData({ accounts: [bybitAccount], holdings: [], syncState: refusedCoinNotes });
+
+    const { getByTestId, getAllByText, queryByTestId, navigation } = await renderScreen();
+
+    expect(getByTestId('account-detail-holdings-empty-icon').props.name).toBe(
+      'list.bullet.rectangle',
+    );
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText('Add holding'),
+    ).toBeTruthy();
+    expect(getAllByText('Add holding')).toHaveLength(1);
+    expect(queryByTestId('screen-footer')).toBeNull();
+
+    await fireEvent.press(getByTestId('account-detail-holdings-empty-action'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+  });
+
+  it('shows the Holdings grid and no block when a holding exists', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [{ id: 'h1', name: 'Bitcoin', currency: 'BTC', balanceMinorUnits: 100000000 }],
+      syncState: refusedCoinNotes,
+    });
+
+    const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('holdings-grid')).toBeTruthy();
+    expect(queryByTestId('account-detail-holdings-empty')).toBeNull();
+    expect(queryByText(NOT_READ_TITLE)).toBeNull();
+  });
+
+  it.each([
+    ['no state row', []],
+    ['a state with no note', storedNotes({ unified: {}, fund: {} })],
+    [
+      'a state with no balance note',
+      [{ exchangeState: JSON.stringify({ version: 1, walks: {} }) }],
+    ],
+    ['a state this build cannot read', [{ exchangeState: 'not json' }]],
+  ])('keeps No holdings yet on a Bybit account with %s', async (_title, syncState) => {
+    setLiveData({ accounts: [bybitAccount], holdings: [], syncState });
+
+    const { getByTestId, getByText, queryByText } = await renderScreen();
+
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText(EMPTY_TITLE),
+    ).toBeTruthy();
+    expect(getByText(EMPTY_MESSAGE)).toBeTruthy();
+    expect(queryByText(NOT_READ_TITLE)).toBeNull();
+  });
+
+  it.each([
+    ['a Binance account', account({ kind: 'crypto', institution: 'binance' })],
+    ['a BTC wallet account', account({ kind: 'crypto', institution: 'btc_wallet' })],
+    ['a Monobank account', account({ bankId: 'monobank' })],
+    ['a manual account', account({ kind: 'cash' })],
+  ])('keeps No holdings yet on %s, whatever its stored state holds', async (_title, other) => {
+    setLiveData({ accounts: [other], holdings: [], syncState: refusedCoinNotes });
+
+    const { getByTestId, getByText, queryByText } = await renderScreen();
+
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText(EMPTY_TITLE),
+    ).toBeTruthy();
+    expect(getByText(EMPTY_MESSAGE)).toBeTruthy();
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText('Add holding'),
+    ).toBeTruthy();
+    expect(queryByText(NOT_READ_TITLE)).toBeNull();
+  });
+
+  it('renders a Bybit account with no note exactly as the Binance account with the same rows', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'crypto', institution: 'binance' })],
+      holdings: [],
+    });
+    const view = await renderScreen();
+    const binanceTree = JSON.stringify(view.toJSON());
+
+    setLiveData({ accounts: [bybitAccount], holdings: [], syncState: storedNotes({}) });
+    await rerenderScreen(view);
+
+    expect(JSON.stringify(view.toJSON())).toBe(binanceTree);
+  });
+
+  it('shows neither block while the state row is on its first load', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: refusedCoinNotes,
+      syncStateIsLoading: true,
+    });
+
+    const { queryByTestId, queryByText } = await renderScreen();
+
+    expect(queryByTestId('account-detail-holdings-empty')).toBeNull();
+    expect(queryByText(EMPTY_TITLE)).toBeNull();
+    expect(queryByText(NOT_READ_TITLE)).toBeNull();
+  });
+
+  it('shows the not-read block once the state row has loaded', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: [],
+      syncStateIsLoading: true,
+    });
+    const view = await renderScreen();
+
+    setLiveData({ accounts: [bybitAccount], holdings: [], syncState: refusedCoinNotes });
+    await rerenderScreen(view);
+
+    expect(view.getByText(NOT_READ_TITLE)).toBeTruthy();
+    expect(view.queryByText(EMPTY_TITLE)).toBeNull();
+  });
+
+  it('reads no state while a Binance account has no holding, so its block never waits', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'crypto', institution: 'binance' })],
+      holdings: [],
+      syncStateIsLoading: true,
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText(EMPTY_TITLE)).toBeTruthy();
+  });
+
+  it('goes back to No holdings yet when the notes clear, with no restart', async () => {
+    setLiveData({ accounts: [bybitAccount], holdings: [], syncState: refusedCoinNotes });
+    const view = await renderScreen();
+
+    expect(view.getByText(NOT_READ_TITLE)).toBeTruthy();
+
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: storedNotes({ unified: {}, fund: {} }),
+    });
+    await rerenderScreen(view);
+
+    expect(view.getByText(EMPTY_TITLE)).toBeTruthy();
+    expect(view.queryByText(NOT_READ_TITLE)).toBeNull();
+  });
+
+  it('names the section by the title it shows on the screen', () => {
+    expect(i18n.t('accountDetail.synchronization')).toBe('Synchronization');
+    expect(i18n.t('accountDetail.bybitBalancesNotRead.message')).toContain(
+      i18n.t('accountDetail.synchronization'),
+    );
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the not-read block from the Ukrainian catalog', async () => {
+      setLiveData({ accounts: [bybitAccount], holdings: [], syncState: refusedCoinNotes });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Деякі баланси не прочитано')).toBeTruthy();
+      expect(
+        getByText(
+          'Кіко не зміг прочитати деякі баланси цього рахунку Bybit. Рядки в розділі «Синхронізація» вказують, які саме й чому.',
+        ),
+      ).toBeTruthy();
+      expect(queryByText('Ще немає активів')).toBeNull();
+    });
+
+    it('names the section by the title it shows on the screen', () => {
+      expect(i18n.t('accountDetail.synchronization')).toBe('Синхронізація');
+      expect(i18n.t('accountDetail.bybitBalancesNotRead.message')).toContain(
+        `«${i18n.t('accountDetail.synchronization')}»`,
+      );
     });
   });
 });

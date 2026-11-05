@@ -794,6 +794,11 @@ export const en = {
     binanceRequestFailed: 'Binance request failed: {{status}}{{detail}}',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
+    bybitBalancesNotRead: {
+      message:
+        'Kiko could not read some balances on this Bybit account. The lines under Synchronization say which and why.',
+      title: 'Some balances not read',
+    },
     bybitClockOff:
       "Bybit refused the request because this device's clock is off. Turn on Set Automatically in Date & Time settings.",
     bybitCoinBorrowed:
