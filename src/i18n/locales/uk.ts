@@ -762,6 +762,7 @@ export const uk: typeof en = {
     monobankRateLimited:
       'Monobank дозволяє не більше одного запиту на 60 секунд. Зачекайте хвилину й спробуйте ще раз.',
     monobankRequestFailed: 'Запит до Monobank не вдався: {{status}}',
+    monobankSyncStillRunning: 'Кіко ще завершує останню синхронізацію Monobank. Спробуйте пізніше.',
     monobankTimeout: 'Monobank не відповів вчасно. Спробуйте ще раз.',
     monobankTokenPlaceholder: 'Токен Monobank',
     never: 'Ніколи',

@@ -857,6 +857,7 @@ export const en = {
     monobankRateLimited:
       'Monobank allows at most 1 request per 60 seconds. Wait a minute, then try again.',
     monobankRequestFailed: 'Monobank request failed: {{status}}',
+    monobankSyncStillRunning: 'Kiko is still finishing the last Monobank sync. Try again later.',
     monobankTimeout: 'Monobank did not respond in time. Please try again.',
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',

@@ -19,6 +19,7 @@ import {
 import type { MonobankAccount, MonobankJar, MonobankStatementItem } from '../monobank-types';
 
 import {
+  isMonobankSyncRunning,
   mapAccountToHolding,
   mapStatementItem,
   nextFailedSet,
@@ -3012,5 +3013,87 @@ describe('runSync fetches a jar statement like a card', () => {
       '[monobank sync] done',
       expect.objectContaining({ cards: 2, jars: 1, fetched: 3 }),
     );
+  });
+});
+
+describe('isMonobankSyncRunning', () => {
+  const startHeldRun = (accountId: string) => {
+    const { deps } = makeInMemoryDeps(() => [], [bankAccount({ id: accountId })]);
+    const settle = { resolve: () => {}, reject: (_error: Error) => {} };
+    const pending = new Promise<Awaited<ReturnType<SyncDeps['fetchClientInfo']>>>(
+      (resolve, reject) => {
+        settle.resolve = () =>
+          resolve({
+            accounts: clientInfo.accounts as MonobankAccount[],
+            jars: clientInfo.jars as MonobankJar[],
+          });
+        settle.reject = reject;
+      },
+    );
+    let reachFetch = () => {};
+    const reachedFetch = new Promise<void>((resolve) => {
+      reachFetch = resolve;
+    });
+    deps.fetchClientInfo = () => {
+      reachFetch();
+
+      return pending;
+    };
+    // The run gets to its client-info read after a few awaits, so a settle waits for the read:
+    // a rejection settled earlier would have no handler yet.
+    const held = {
+      resolve: async (): Promise<void> => {
+        await reachedFetch;
+        settle.resolve();
+      },
+      reject: async (error: Error): Promise<void> => {
+        await reachedFetch;
+        settle.reject(error);
+      },
+    };
+
+    return { held, run: runSync({ ...deps, targetAccountId: accountId }) };
+  };
+
+  it('is false before any run of that account', () => {
+    expect(isMonobankSyncRunning('acc-running-none')).toBe(false);
+  });
+
+  it('is true while that account run is in flight, and false for another account', async () => {
+    const { held, run } = startHeldRun('acc-running-1');
+
+    expect(isMonobankSyncRunning('acc-running-1')).toBe(true);
+    expect(isMonobankSyncRunning('acc-running-other')).toBe(false);
+
+    await held.resolve();
+    await run;
+  });
+
+  it('reads only the id key, never the shared no-target key', async () => {
+    const { held, run } = startHeldRun('acc-running-2');
+
+    expect(isMonobankSyncRunning('institution:monobank')).toBe(false);
+
+    await held.resolve();
+    await run;
+  });
+
+  it('is false once the run resolves', async () => {
+    const { held, run } = startHeldRun('acc-running-3');
+
+    await held.resolve();
+    await run;
+
+    expect(isMonobankSyncRunning('acc-running-3')).toBe(false);
+  });
+
+  it('is false once the run rejects', async () => {
+    const { held, run } = startHeldRun('acc-running-4');
+
+    expect(isMonobankSyncRunning('acc-running-4')).toBe(true);
+    await held.reject(new Error('client info failed'));
+
+    await expect(run).rejects.toThrow('client info failed');
+    expect(isMonobankSyncRunning('acc-running-4')).toBe(false);
   });
 });

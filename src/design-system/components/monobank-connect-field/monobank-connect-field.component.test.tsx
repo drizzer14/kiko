@@ -8,14 +8,23 @@ import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import MonobankConnectField from './monobank-connect-field.component';
 
 const mockFetchClientInfo = jest.fn();
+const mockIsMonobankSyncRunning = jest.fn<boolean, [string]>();
 jest.mock('@kiko/monobank/client', () => ({
   fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
+}));
+// The real run pulls the repos, and so op-sqlite, into the graph; the join itself is pinned in
+// monobank-connect-field.component.running-sync.test.tsx.
+jest.mock('@kiko/monobank/sync', () => ({
+  isMonobankSyncRunning: (accountId: string) => mockIsMonobankSyncRunning(accountId),
 }));
 
 const connectLabel = i18n.t('accountDetail.connectMonobank');
 
+const ACCOUNT_ID = 'field-account';
+
 beforeEach(() => {
   jest.clearAllMocks();
+  mockIsMonobankSyncRunning.mockReturnValue(false);
 });
 
 // This project's RNTL render is async, so every case awaits it.
@@ -46,7 +55,7 @@ const holdClientInfo = (): { resolve: () => void } => {
 
 it('shows the token-required error and calls no network when Connect is pressed blank', async () => {
   const onConnect = jest.fn();
-  const view = await render(<MonobankConnectField onConnect={onConnect} />);
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={onConnect} />);
   expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
 
   await pressConnect(view);
@@ -59,7 +68,7 @@ it('shows the token-required error and calls no network when Connect is pressed 
 });
 
 it('clears the token-required error once a token is typed', async () => {
-  const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn()} />);
 
   await pressConnect(view);
   await waitFor(() =>
@@ -71,7 +80,7 @@ it('clears the token-required error once a token is typed', async () => {
 });
 
 it('gives the Connect action a lock glyph', async () => {
-  const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn()} />);
 
   // The Connect affordance carries the Kiko UI `lock` glyph (the SFSymbolView
   // forwards `name` as a host prop).
@@ -82,7 +91,7 @@ it('gives the Connect action a lock glyph', async () => {
 it('validates the token, then calls onConnect and shows "Connected as {name}" on success', async () => {
   mockFetchClientInfo.mockResolvedValue({ name: 'Ada Lovelace' });
   const onConnect = jest.fn().mockResolvedValue(true);
-  const view = await render(<MonobankConnectField onConnect={onConnect} />);
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={onConnect} />);
 
   await type(view, '  tok-123  ');
   await pressConnect(view);
@@ -104,7 +113,7 @@ it('validates the token, then calls onConnect and shows "Connected as {name}" on
 it('shows invalidToken and never calls onConnect (so saveToken, which onConnect gates, never runs) when validation throws', async () => {
   mockFetchClientInfo.mockRejectedValue(new Error('401'));
   const onConnect = jest.fn();
-  const view = await render(<MonobankConnectField onConnect={onConnect} />);
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={onConnect} />);
 
   await type(view, 'bad');
   await pressConnect(view);
@@ -122,7 +131,7 @@ it('shows invalidToken and never calls onConnect (so saveToken, which onConnect 
 it('shows couldNotConnectMonobank when a valid token fails to store/sync, keeping Connect pressable for an immediate retry', async () => {
   mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
   const onConnect = jest.fn().mockResolvedValue(false);
-  const view = await render(<MonobankConnectField onConnect={onConnect} />);
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={onConnect} />);
 
   await type(view, 'tok');
   await pressConnect(view);
@@ -145,7 +154,7 @@ it('shows couldNotConnectMonobank when a valid token fails to store/sync, keepin
 
 it('disables Connect while validation is in flight, even with a filled token', async () => {
   const held = holdClientInfo();
-  const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn()} />);
 
   await type(view, 'tok-123');
   expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
@@ -169,7 +178,9 @@ describe('once unmounted', () => {
   }> => {
     const held = holdClientInfo();
     const onConnect = jest.fn().mockResolvedValue(true);
-    const view = await render(<MonobankConnectField onConnect={onConnect} />);
+    const view = await render(
+      <MonobankConnectField accountId={ACCOUNT_ID} onConnect={onConnect} />,
+    );
 
     await type(view, 'tok-123');
     await pressConnect(view);
@@ -213,7 +224,10 @@ describe('connect reminder', () => {
   const renderWithReminder = (
     reminder: ConnectReminder,
     onConnect: ComponentProps<typeof MonobankConnectField>['onConnect'] = jest.fn(),
-  ): Promise<View> => render(<MonobankConnectField onConnect={onConnect} reminder={reminder} />);
+  ): Promise<View> =>
+    render(
+      <MonobankConnectField accountId={ACCOUNT_ID} onConnect={onConnect} reminder={reminder} />,
+    );
 
   it('shows the reminder message under the Connect button, and nothing without one', async () => {
     const reminder = makeReminder('Tap Connect first.');
@@ -226,7 +240,11 @@ describe('connect reminder', () => {
     );
 
     await view.rerender(
-      <MonobankConnectField onConnect={jest.fn()} reminder={{ ...reminder, message: undefined }} />,
+      <MonobankConnectField
+        accountId={ACCOUNT_ID}
+        onConnect={jest.fn()}
+        reminder={{ ...reminder, message: undefined }}
+      />,
     );
 
     expect(view.queryByText('Tap Connect first.')).toBeNull();
@@ -268,7 +286,9 @@ describe('connect reminder', () => {
     const reminder = makeReminder();
     const view = await renderWithReminder(reminder);
 
-    await view.rerender(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+    await view.rerender(
+      <MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn()} reminder={reminder} />,
+    );
 
     expect(reminder.onDraftChange).not.toHaveBeenCalled();
   });
@@ -291,5 +311,78 @@ describe('connect reminder', () => {
     await pressConnect(view);
 
     expect(reminder.onConnectPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('while a Monobank sync of the account is running', () => {
+  const RUNNING_TEXT = i18n.t('accountDetail.monobankSyncStillRunning');
+
+  const renderForAccount = (accountId: string, onConnect = jest.fn()): Promise<View> =>
+    render(<MonobankConnectField accountId={accountId} onConnect={onConnect} />);
+
+  it('shows the running text and makes no request or connect, keeping the typed token', async () => {
+    mockIsMonobankSyncRunning.mockImplementation((accountId) => accountId === 'run-blocked');
+    const onConnect = jest.fn().mockResolvedValue(true);
+    const view = await renderForAccount('run-blocked', onConnect);
+
+    await type(view, 'tok-123');
+    await pressConnect(view);
+
+    expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
+    expect(mockFetchClientInfo).not.toHaveBeenCalled();
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(view.queryByText(/Connected as/)).toBeNull();
+    expect(view.getByDisplayValue('tok-123')).toBeTruthy();
+    expect(view.getByRole('button', { name: connectLabel })).not.toBeDisabled();
+  });
+
+  it('checks the sync only after the blank check, so a blank press still asks for the token', async () => {
+    mockIsMonobankSyncRunning.mockReturnValue(true);
+    const view = await renderForAccount('run-blank');
+
+    await pressConnect(view);
+
+    expect(view.getByText(i18n.t('accountDetail.tokenRequiredError'))).toBeTruthy();
+    expect(view.queryByText(RUNNING_TEXT)).toBeNull();
+    expect(mockIsMonobankSyncRunning).not.toHaveBeenCalled();
+  });
+
+  it('runs the whole Connect when another account is the one running', async () => {
+    mockIsMonobankSyncRunning.mockImplementation((accountId) => accountId === 'run-other');
+    mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
+    const onConnect = jest.fn().mockResolvedValue(true);
+    const view = await renderForAccount('run-free', onConnect);
+
+    await type(view, 'tok-123');
+    await pressConnect(view);
+
+    expect(
+      await view.findByText(i18n.t('accountDetail.connectedAs', { name: 'Ada' })),
+    ).toBeTruthy();
+    expect(view.queryByText(RUNNING_TEXT)).toBeNull();
+    expect(mockFetchClientInfo).toHaveBeenCalledWith('tok-123');
+    expect(onConnect).toHaveBeenCalledWith('tok-123');
+  });
+
+  it('keeps the typed token, so a later press connects once the run has ended', async () => {
+    let running = true;
+    mockIsMonobankSyncRunning.mockImplementation(() => running);
+    mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
+    const onConnect = jest.fn().mockResolvedValue(true);
+    const view = await renderForAccount('run-retry', onConnect);
+
+    await type(view, 'tok-123');
+    await pressConnect(view);
+    expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
+
+    running = false;
+    await pressConnect(view);
+
+    expect(
+      await view.findByText(i18n.t('accountDetail.connectedAs', { name: 'Ada' })),
+    ).toBeTruthy();
+    expect(view.queryByText(RUNNING_TEXT)).toBeNull();
+    expect(mockFetchClientInfo).toHaveBeenCalledWith('tok-123');
+    expect(onConnect).toHaveBeenCalledWith('tok-123');
   });
 });
