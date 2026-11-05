@@ -253,9 +253,7 @@ const statePatchesOf = ({
   ];
 };
 
-// The id joins `BalanceProviderId` when the provider is wired into the sync; until then the
-// provider is typed by its own id.
-export const bybitProvider: Omit<BalanceProvider<BybitDeps>, 'id'> & { id: 'bybit' } = {
+export const bybitProvider: BalanceProvider<BybitDeps> = {
   id: 'bybit',
   metadataField: 'bybitAsset',
   fetchBalances: async (deps, target) => {

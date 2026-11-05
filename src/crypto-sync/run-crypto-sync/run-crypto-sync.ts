@@ -23,6 +23,7 @@ import {
   syncBinanceTransferHistory,
   syncBinanceFiatPaymentHistory,
 } from '../binance';
+import { bybitProvider, defaultBybitDeps } from '../bybit';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
 
@@ -32,7 +33,8 @@ import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
  */
 export type CryptoSyncRequest =
   | { providerId: 'btc_wallet'; targetAccountId: string; address?: string }
-  | { providerId: 'binance'; targetAccountId: string };
+  | { providerId: 'binance'; targetAccountId: string }
+  | { providerId: 'bybit'; targetAccountId: string };
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -144,23 +146,55 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
  */
 const inFlightBinanceSyncs = new Map<string, Promise<BalanceSyncResult>>();
 
-const runBinanceSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult> => {
-  const joined = inFlightBinanceSyncs.get(targetAccountId);
+const inFlightBybitSyncs = new Map<string, Promise<BalanceSyncResult>>();
+
+const joinedOrStarted = (
+  inFlight: Map<string, Promise<BalanceSyncResult>>,
+  targetAccountId: string,
+  start: (targetAccountId: string) => Promise<BalanceSyncResult>,
+): Promise<BalanceSyncResult> => {
+  const joined = inFlight.get(targetAccountId);
 
   if (joined) {
     return joined;
   }
-  const run = runBinanceSyncAndImport(targetAccountId);
-  inFlightBinanceSyncs.set(targetAccountId, run);
+  const run = start(targetAccountId);
+  inFlight.set(targetAccountId, run);
   const release = (): void => {
-    if (inFlightBinanceSyncs.get(targetAccountId) === run) {
-      inFlightBinanceSyncs.delete(targetAccountId);
+    if (inFlight.get(targetAccountId) === run) {
+      inFlight.delete(targetAccountId);
     }
   };
   run.then(release, release);
 
   return run;
 };
+
+const runBinanceSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult> =>
+  joinedOrStarted(inFlightBinanceSyncs, targetAccountId, runBinanceSyncAndImport);
+
+/**
+ * The Bybit arm: the balance sync and the write of the lists it read. No history walk runs yet, so
+ * the join covers the balance sync alone, with the same per-account key as Binance's.
+ */
+const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyncResult> => {
+  const { syncedHoldings, exchangeState } = await runBalanceSync(bybitProvider, defaultBybitDeps, {
+    targetAccountId,
+  });
+
+  // Written here, not by the read, for the reason of Binance's arm: the write finds the account
+  // connected to Bybit only once the sync has marked it. A failed write only logs.
+  if (exchangeState !== undefined) {
+    await logOnFailure('[bybit sync] balance lists failed', () =>
+      exchangeStateDepsOf('bybit').patchExchangeState(targetAccountId, exchangeState),
+    );
+  }
+
+  return { syncedHoldings };
+};
+
+const runBybitSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult> =>
+  joinedOrStarted(inFlightBybitSyncs, targetAccountId, runBybitSyncAndWrite);
 
 /** Pick the concrete provider for the request and run the generic balance sync. */
 export const runCryptoSync = (request: CryptoSyncRequest): Promise<BalanceSyncResult> =>
@@ -173,4 +207,5 @@ export const runCryptoSync = (request: CryptoSyncRequest): Promise<BalanceSyncRe
       ),
     )
     .with({ providerId: 'binance' }, ({ targetAccountId }) => runBinanceSyncOnce(targetAccountId))
+    .with({ providerId: 'bybit' }, ({ targetAccountId }) => runBybitSyncOnce(targetAccountId))
     .exhaustive();

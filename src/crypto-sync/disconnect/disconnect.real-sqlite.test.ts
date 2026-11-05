@@ -3,6 +3,7 @@
 // institution, the holdings and the rows it must leave alone all sit side by side.
 let mockDatabase: DatabaseSync;
 const mockClearCredentials = jest.fn(async (_id: string) => {});
+const mockClearBybitCredentials = jest.fn(async (_id: string) => {});
 
 jest.mock('@kiko/db/client', () => {
   const actual = jest.requireActual('@kiko/db/client');
@@ -13,6 +14,10 @@ jest.mock('@kiko/db/client', () => {
 });
 jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   clearCredentials: (id: string) => mockClearCredentials(id),
+}));
+
+jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
+  clearBybitCredentials: (id: string) => mockClearBybitCredentials(id),
 }));
 
 import { DatabaseSync } from 'node:sqlite';
@@ -67,6 +72,7 @@ beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
   mockClearCredentials.mockClear();
+  mockClearBybitCredentials.mockClear();
 });
 
 describe('disconnectCryptoAccount over the real repos', () => {
@@ -91,6 +97,46 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(rowCount('holdings')).toBe(1);
     expect(rowCount('transactions')).toBe(1);
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
+  });
+
+  it('for Bybit, resets the walks to its restart floor, drops the lists and keeps the holdings', async () => {
+    mockDatabase.exec('PRAGMA foreign_keys = ON;');
+    mockDatabase.exec(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('acc-1', 'Bybit', 'crypto', 'bybit')",
+    );
+    mockDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
+         VALUES ('h-unified', 'acc-1', 'Bybit BTC', 'crypto_asset', 'BTC', 100, ?)`,
+      )
+      .run(JSON.stringify({ bybitAsset: 'BTC:unified', syncedAt: NOW }));
+    seedWalkMarks(mockDatabase, 'acc-1', 'capital', { cursor: NOW });
+    mockDatabase.prepare("UPDATE sync_state SET exchange_state = ? WHERE account_id = 'acc-1'").run(
+      JSON.stringify({
+        ...JSON.parse(storedState()),
+        untrackedCoins: { balance: ['PEPE'] },
+        balanceSyncedAt: NOW,
+      }),
+    );
+    expect(storedState()).toContain('PEPE');
+
+    await disconnectCryptoAccount('acc-1', 'bybit');
+
+    expect(storedState()).not.toContain('PEPE');
+    expect(storedState()).not.toContain('balanceSyncedAt');
+    expect(walkMarksOf(mockDatabase, 'acc-1', 'capital')).toEqual({
+      cursor: Date.UTC(2018, 0, 1),
+    });
+    expect(
+      (
+        mockDatabase.prepare("SELECT institution FROM accounts WHERE id = 'acc-1'").get() as {
+          institution: string | null;
+        }
+      ).institution,
+    ).toBeNull();
+    expect(rowCount('holdings')).toBe(1);
+    expect(mockClearBybitCredentials).toHaveBeenCalledWith('acc-1');
+    expect(mockClearCredentials).not.toHaveBeenCalled();
   });
 
   it('for Binance, clears the not-imported list with the rest of the state but the walks', async () => {

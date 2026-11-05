@@ -46,6 +46,15 @@ describe('exchange provider registry not-listed notes', () => {
   });
 });
 
+describe('exchange provider registry wiring', () => {
+  // `syncJobsFor` skips an id with no entry and the connect sheet offers only a wired one, so the
+  // Bybit id has no way in until an entry lands with the connect path.
+  it('wires no Bybit entry', () => {
+    expect(exchangeProviderRegistry.bybit).toBeUndefined();
+    expect(Object.keys(exchangeProviderRegistry).sort()).toEqual(['binance', 'btc_wallet']);
+  });
+});
+
 describe.each(['en', 'uk'] as const)('exchange provider registry in %s', (language) => {
   beforeEach(async () => {
     await i18n.changeLanguage(language);

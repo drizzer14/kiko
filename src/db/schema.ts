@@ -278,7 +278,7 @@ export const transactions = sqliteTable(
     // amount like any row's.
     setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
-    // 'btc_wallet' / 'binance' double as `accounts.institution` values. The
+    // 'btc_wallet' / 'binance' / 'bybit' double as `accounts.institution` values. The
     // BALANCE sync writes no transaction rows, but the Binance crypto sync now
     // imports BTC deposit/withdrawal history as `source: 'binance'` rows on the
     // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
@@ -298,7 +298,7 @@ export const transactions = sqliteTable(
     // delete on it (`src/holdings/deletable/deletable.ts`), so a bad import
     // is undone by deleting its whole (always-plain) holding, not one row.
     source: text('source', {
-      enum: ['manual', 'monobank', 'btc_wallet', 'binance', 'import'],
+      enum: ['manual', 'monobank', 'btc_wallet', 'binance', 'bybit', 'import'],
     }).notNull(),
     externalId: text('external_id'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),

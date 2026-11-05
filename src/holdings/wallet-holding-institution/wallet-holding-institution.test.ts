@@ -1,8 +1,8 @@
 import { isWalletHoldingInstitution } from './wallet-holding-institution';
 
 describe('isWalletHoldingInstitution', () => {
-  it('holds binance', () => {
-    expect(isWalletHoldingInstitution('binance')).toBe(true);
+  it.each([['binance'], ['bybit']])('holds %s', (institution) => {
+    expect(isWalletHoldingInstitution(institution)).toBe(true);
   });
 
   it.each([['btc_wallet'], ['monobank'], [''], [null], [undefined]])(

@@ -33,6 +33,12 @@ describe('syncJobsFor with an unwired provider', () => {
     expect(jobs).toEqual([]);
   });
 
+  it('contributes no job for a connected account of the Bybit id, which no registry entry wires', () => {
+    const jobs = syncJobsFor(syncable({ id: 'byb-1', name: 'Bybit', institution: 'bybit' }));
+
+    expect(jobs).toEqual([]);
+  });
+
   it("still builds the wired provider's job beside an unwired one", async () => {
     const jobs = [
       syncable({ id: 'bin-1', name: 'Binance', institution: 'binance' }),
