@@ -30,7 +30,7 @@ Relayed by the coordinator on 2026-11-03; the spec's head quotes them. Q1: "Char
 
 ## Global Constraints
 
-- No next charge date, no reminder, no amount prediction, no projected total, no sum of any kind, in any output or text. No output date has a local day later than today. Stopped steps back from `now`, never forward from a charge (spec 6, 7).
+- No next charge date, no reminder, no amount prediction, no projected total, no sum of any kind, in any output or text (the sum of past charges: reversed by spec 17.1 for the visual round). No output date has a local day later than today. Stopped steps back from `now`, never forward from a charge (spec 6, 7).
 - `merchantNameOf`, `merchantSpellingOf`, `smallestSpelling` come from `@kiko/transactions/merchant-name` (category plan read at branch tip 71de98891, where that folder does not exist yet; re-grep). No copy, no wrapper with other rules, no local normalizing (spec 3).
 - Eligibility calls the existing functions (`rowsForTransferMatch`, `internalTransferTransactionIds`, `mccExcludedTransferTransactionIds`, `descriptionExcludedTransferTransactionIds`, `exchangeFundingMatches`, `ibanOf`). No MCC, wording or marker list of its own beyond the structural fields of spec 4.
 - Never sum or compare across currencies; the group key holds the currency.
@@ -446,6 +446,164 @@ Order: the text steps come first, because the commit that adds `{ kind: 'marked'
 
 ---
 
+## 1.4-recurring visual round 1
+
+**Spec:** section 17 (rules, reads, conversion, texts, open points P1 to P3). **Branch:** `1.4-recurring-visual-1`, base `next`
+14f997ad7. Two change sets, so the transaction-form set can be merged in its own order against `1.4-bybit`, which edits
+`transaction-form.screen.tsx` and `transaction-form.screen.test.tsx` (`git diff --stat next...1.4-bybit`). Every count is a
+floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base. The texts of spec 17.8 wait for
+the user's review of `.superpowers/sdd/1.4-recurring/texts-visual-1.md`: no step copies a text before the coordinator relays
+"texts lgtm". Item 13 ("Not marked" on a detected row) goes to kiko:debugger first and is not in these sets.
+
+**Run-log gaps:** these sets close none and leave all open; none names the recurring screens. Nearest, left open:
+`20261018T0952-kiko-duo-adaptive/1` (the Duo outer window shape, read for item 14's width) and
+`20261103T2049-kiko-1-4-light-scheme-2/1` (dark look owed on a device; this round's device call is on the same build).
+
+**Existing suites.** No owed state, no column, no migration, no seed: no 1.2-upgrade world is touched. Not "unchanged": the
+named edits of each step below are the only edited expectations; any other is reported, not made. Each qa pin is shown red on
+the base before its commit; a pin green on the base is a guard and is shown failing by a temporary mutant (lessons, candidate G).
+
+**Checks for every step:** the fast tier on write; `npx jest <named files> --maxWorkers=2` with output in a file; `make
+jest-affected BASE=<set base>` where it does not exit 3 (`en.ts`/`uk.ts` make it 3: run the named files and say so). No agent
+runs `make verify`, `check:all` or full jest. At the end of each set the coordinator queues `bash scripts/job-queue.sh verify
+<worktree> 1.4-recurring-visual-1-task-N` and reruns until green. Mutation gates are paused by the user; if lifted, one gate per
+set, `KIKO_MUTATION_BASE` = that set's own base (task 2/2's base is task 1/2's tip), never one run over the round.
+
+### 1.4-recurring-visual-1 task 1/2: the recurring screens (items 1 to 10)
+
+**Files (floor 34, tests included; mutable floor 6: `recurring-groups.ts`, `use-recurring-groups.ts`,
+`recurring-group-heading.component.tsx`, `recurring-charges.screen.tsx`, `recurring-series-row.component.tsx`,
+`recurring-series.screen.tsx`).**
+- Create: `src/recurring/recurring-groups/{recurring-groups.ts,index.ts,recurring-groups.test.ts}`;
+  `src/recurring/use-recurring-groups/{use-recurring-groups.ts,index.ts,use-recurring-groups.test.tsx}`;
+  `src/screens/settings/recurring-charges/recurring-group-heading/{recurring-group-heading.component.tsx,recurring-group-heading.props.d.ts,recurring-group-heading.styles.ts,index.ts,recurring-group-heading.component.test.tsx}`;
+  `src/screens/settings/recurring-charges/recurring-charges.screen.groups.test.tsx`;
+  `src/screens/settings/recurring-series/recurring-series.screen.footer.test.tsx`.
+- Modify: `src/recurring/recurrence-text/recurrence-text.test.ts`; `src/i18n/locales/{en,uk,title-keys}.ts`;
+  `recurring-charges.screen.tsx`, `recurring-charges.styles.ts`; `recurring-series-row/{recurring-series-row.component.tsx,recurring-series-row.styles.ts,recurring-series-row.component.test.tsx}`;
+  `recurring-series.screen.tsx`, `recurring-series.styles.ts`, `recurring-series.screen.test.tsx`;
+  `recurring-charges.screen.test.tsx`, `recurring-charges.screen.marked.test.tsx`;
+  `src/transactions/repo/transactions.repo.context-by-ids.test.ts`; `__tests__/property-sweep-sites.test.ts` if step 3 adds a sweep.
+- Modify, by measure (each gains a `useRecurringGroups` mock line or its repo mocks, nothing else):
+  `recurring-charges.screen.marked-flows.test.tsx`, `recurring-series.screen.marked.test.tsx`,
+  `src/navigation/settings-stack/recurring-series.navigator.test.tsx`, `src/navigation/settings-stack/recurring-series.marks.navigator.test.tsx`.
+
+- [ ] **step 1/9 (kiko:qa): text pins.** `recurrence-text.test.ts`, per language, every recurrence kind reads spec 17.8's
+  text (red on the base: it reads "Charged ..." / «Списувалося ...»); the "Marked:" and "Last charge" lines unchanged (guards).
+  `paidSoFar` resolves in both catalogues (red: key absent). Commit `test(recurring): the recurrence text without "Charged"`.
+- [ ] **step 2/9 (kiko:developer): catalogue.** After "texts lgtm" only. Spec 17.8's rows in `en.ts` and `uk.ts` together;
+  `paidSoFar` is a label (sentence case, no full stop, not a title key). Named edits in the same commit: the old texts in
+  `recurring-series-row.component.test.tsx` and `recurring-series.screen.test.tsx` (grep `Charged ` and «Списувалося» in `src`
+  and `docs/superpowers/specs` on the base). `stoppedHeading` stays until step 6. Run `npx jest src/recurring/recurrence-text
+  src/i18n/locales src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2`. Commit
+  `feat(i18n): recurrence lines without "Charged"`.
+- [ ] **step 3/9 (kiko:qa): groups and totals pins.** Red by a runtime lookup of the missing modules (Global Constraints).
+  `recurring-groups.test.ts` over `recurringGroupsOf({ shown, rows, categories, defaultCategoryKey, baseCurrency, rateTable })`
+  and `paidSoFarOf(series, rows)`: the category is the newest charge's (two charges, two categories, the newest wins; a
+  newest row missing from `rows` takes the next id found); an unknown slug folds to the default (`resolveCategoryKey`); null
+  and empty go to the Uncategorized group, last (P1 B; with P1 A this world joins the default group); groups in
+  `categories` order, not by total or name (a world where the two disagree); a group holds only shown series (a hidden
+  detected series beside it adds nothing); inside a group active by `newestChargeFirst`, then stopped by the same order;
+  a series sum is `-amountMinorUnits` over its rows in its currency, a row of another currency skipped; a UAH and a USD series
+  in one group: the USD sum goes through `convert` at `buildRateTable(rates)` once per series, the group total is the `Money`
+  sum of its series in the base currency, the total of all equals the sum of the group totals (a rounding world where
+  per-row conversion would differ by one minor unit, so per-row fails); a currency `canConvert` rejects is left out of the
+  totals and its series still listed; with no shown series no total. `paidSoFarOf`: the sum of the listed rows in the
+  series currency, no rate table taken (its signature). `use-recurring-groups.test.tsx` on a mocked `useLiveQuery` that
+  records each call's sql and params: the four reads of spec 17.5 with `paused` from `useIsScreenVisible` and no `cached`;
+  the id list is unique and sorted for any series order (a mutant without the sort fails); a hide (choices change, same
+  series ids) adds no new by-ids key, and a mark that changes `markedSeries` adds exactly one; `isLoading` true until all four
+  settle, one at a time (lessons, fix round 1/4). `transactions.repo.context-by-ids.test.ts`, real SQLite: EXPLAIN QUERY PLAN
+  of `listWithContextByIdsQuery` reads `transactions` by its primary key, never `SCAN transactions` (a guard, green on the
+  base: show it red with a temporary `where` that drops the id test). Commit `test(recurring): category groups and totals`.
+- [ ] **step 4/9 (kiko:developer): groups and the hook.** Spec 17.2, 17.4, 17.5. `recurringGroupsOf` and `paidSoFarOf` in
+  `src/recurring/recurring-groups/`, pure, importing `resolveCategoryKey`, `resolveCategoryDisplay`, `neutralCategory`
+  (`@kiko/categories/category-display`), `resolveCategoryColor` (`@kiko/statistics/category-breakdown`), `canConvert`
+  (`@kiko/rates/net-worth-view`), `convert` (`@kiko/rates/conversion`), `Money`; nothing from `@kiko/settings` (the
+  `recurring-periods` leaf rule stays). `useRecurringGroups(shown, all)` in `src/recurring/use-recurring-groups/`: the four reads,
+  `buildRateTable` in a `useMemo` on the rates rows, the id list memoized on its joined string, the grouping memo gated on
+  `isReady` (`useDataReady`). Run the named files and `src/recurring`. Commit `feat(recurring): category groups and totals`.
+- [ ] **step 5/9 (kiko:qa): screen pins.** `recurring-charges.screen.groups.test.tsx` (mocks both hooks): item order of spec
+  17.2 (total row, groups in the given order, "Marked, No Charges", "Hidden"); each group heading shows the category title,
+  its icon tile and its total under the testIDs of 17.2; a `Divider` before every group and section after the first item,
+  "Hidden" included (item 10, red: no divider today); no total in "Marked, No Charges" or "Hidden"; no
+  `recurring-charges-heading-stopped` and a stopped series inside its group after the active ones; the list shows
+  `LoadingState` while either hook loads; the empty state and no total row with no series. `recurring-group-heading.component.test.tsx`:
+  tile, title, total, the style contract of kiko-design-system's "user data in a row" (`ancestorWithStyle`: title box
+  `flex: 1`, total box `flexShrink: 0`), not pressable. `recurring-series-row.component.test.tsx`: the last-charge line is a
+  descendant of the amount's column and not of the name's (red: today it sits under the name), for the active, stopped and
+  quiet lines. `recurring-series.screen.footer.test.tsx`: the button by kind is inside `screen-footer`
+  (`within(getByTestId('screen-footer'))`, red: today it is in the list footer), `secondaryTonal`, regular; "All paid so far"
+  with the sum of the listed rows in the series currency and no `ratesRepo` read; it waits for the rows read; Remove mark
+  still holds the series between the write's fire and `goBack` (the existing pin, rerun, must stay green). Commit
+  `test(settings): category groups, totals and the footer button`.
+- [ ] **step 6/9 (kiko:developer): screens.** Spec 17.2, 17.3, 17.6. The list: items from `recurringGroupsOf`, the group
+  heading component of shared parts (`EntityIconTile` `compact`, `Text`, `MoneyText`), `Divider spacing={2}`, the total row, the
+  row's two lines; theme tokens only. Remove `recurringCharges.stoppedHeading` from `en.ts`, `uk.ts`, `title-keys.ts`, its
+  two test reads and the `STOPPED_HEADING` testID pins (`recurring-charges.screen.test.tsx`,
+  `recurring-charges.screen.marked.test.tsx`: those become the in-group order of 17.2), spec 13's row marked removed, all in
+  this commit (harness-workflow "Removing or renaming a catalogue key"; re-grep help topics, pin suites and uk first). The
+  series screen: the header total; the button into `Screen`'s `footer` with `floatingFooter`, `secondaryTonal`; the list's
+  bottom padding from `useFloatingFooterEnd()` through a child of `Screen`, as `LedgerList`; `removedSeries` untouched. The
+  by-measure suites of the Files list get their mock lines. Run the named files, `src/screens/settings/recurring-charges`,
+  `src/screens/settings/recurring-series`, `src/navigation/settings-stack`, `src/i18n/locales`. Commit
+  `feat(settings): recurring charges by category, with totals`.
+- [ ] **step 7/9 Review (kiko:reviewer).** Diff from the set's base. Top question: can a total add two currencies' minor units,
+  or count a row twice (a folded twin, a row in two series, a hidden series)? Second: does a hide or a mark now run any
+  whole-ledger read or detection (spec 9.5, S13)? Third: does the series screen still hold its series across Remove mark?
+  No migration in this set.
+- [ ] **step 8/9 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring section (totals, groups, the
+  stopped placement), kiko-design-system (the group heading, the lone secondary footer action on a `bleedTop` list),
+  kiko-pricing (a named past-row conversion rule, `buildCategoryBreakdown`'s, now with a second reader). Report the sha or "no
+  drift found"; `make doc-suites` after the last doc commit.
+- [ ] **step 9/9 Device and Ready.** Device, both languages: groups, icons, totals and the total of all against a hand sum;
+  a UAH and a USD series; a stopped series in its group; "Hidden" with its divider; the row's second line with a long quiet
+  line; the series footer button and "All paid so far"; iPad two panes and the Duo fold. READY FOR VERIFY, label
+  `1.4-recurring-visual-1-task-1`.
+
+### 1.4-recurring-visual-1 task 2/2: the transaction form (items 11, 12, 14)
+
+**Base:** task 1/2's tip. **Files (floor 12; mutable floor 4: `select-field.component.tsx`, `field-group.component.tsx`,
+`mode-and-actions.component.tsx`, `transaction-form.screen.tsx`).**
+- Modify: `src/design-system/components/select-field/{select-field.component.tsx,select-field.component.test.tsx}` (its props type
+  lives in the component file at 14f997ad7; re-grep);
+  `src/screens/forms/transaction-form/recurring-mark-field/{recurring-mark-field.component.tsx,recurring-mark-field.component.test.tsx}`;
+  `src/screens/forms/transaction-form/mode-and-actions/{mode-and-actions.component.tsx,mode-and-actions.props.d.ts}`;
+  `src/screens/forms/transaction-form/field-group/{field-group.component.tsx,field-group.props.d.ts}`;
+  `src/screens/forms/transaction-form/transaction-form.screen.tsx` (the footer expression; the `typeSelectField` element moves
+  into a `FieldGroup` prop; the two `ModeAndActions` props go). kiko-design-system's `SelectField` entry (component-set.md).
+- Create: `src/screens/forms/transaction-form/field-group/field-group.styles.ts`;
+  `src/screens/forms/transaction-form/transaction-form.layout.test.tsx` (a new suite, so `transaction-form.screen.test.tsx`,
+  which `1.4-bybit` edits, stays untouched unless a by-measure edit is needed; report it if so).
+
+- [ ] **step 1/5 (kiko:qa): field look pins (item 11).** `select-field` test: with `emptyOption` equal to the selected option
+  the value's tone is `textSecondary`, with another option `textPrimary`, with no prop `textPrimary` (red: the prop is ignored;
+  pass it through a cast so `tsc` holds). `recurring-mark-field.component.test.tsx`: "Not marked" in `textSecondary`, a period
+  in `textPrimary`, the loading state unchanged. Commit `test(forms): "Not marked" reads as an empty value`.
+- [ ] **step 2/5 (kiko:developer): field look.** Spec 17.6 item 11: `SelectField`'s optional `emptyOption`; `RecurringMarkField`
+  passes `emptyOption="none"`; the component entry in kiko-design-system. Run the named files and
+  `src/design-system/components/select-field`. Commit `feat(forms): the mark field's empty value as the loan field's`.
+- [ ] **step 3/5 (kiko:qa then kiko:developer, one step as the coordinator asked): layout (items 12, 14).** Pins first in
+  `transaction-form.layout.test.tsx`, one commit red, then the code commit. Pins: "Convert to exchange" is inside
+  `screen-footer` and not in the form body (red today), absent on a create, while converting and on a template edit, where the
+  footer still holds "Create transaction" (the two never meet: a world with `editTemplateId` and a stored row id asserts one
+  button); its press enters convert mode. Type and Amount: at `fontScale` 1 the Type trigger and the Amount field share one
+  row parent with `flexDirection: 'row'` and each sits in a `flex: 1` box (red today: separate rows); at `fontScale` 3 (set
+  through `Dimensions.set` in the suite) they stack in today's order with no row parent; Exchange mode keeps Type above
+  "Value Out" (P3 A); convert shows Amount alone; the invalid-amount scroll still reaches `amountFieldRef` (rerun the existing
+  pin). Code: spec 17.6 items 12 and 14; the threshold a named constant with its source in a comment; theme spacing only.
+  Run `npx jest src/screens/forms/transaction-form src/design-system/components/select-field --maxWorkers=2`. Commits
+  `test(forms): the convert button in the footer, type and amount in one row`, then `feat(forms): ...` the same words.
+- [ ] **step 4/5 Review, Drift and Scribe (kiko:reviewer, kiko:retrospect, kiko:scribe).** Top question: does any field move
+  besides Type, Amount and the convert button, and does a read-only synced row still lock both? Drift: kiko-design-system
+  (`SelectField`, the two-field row and its accessibility fallback, the footer), spec 9.6's placement text.
+- [ ] **step 5/5 Device and Ready.** Device: the mark field beside the loan field (both empty); the convert button in the
+  footer and the fields with no button between them; Type and Amount on an iPhone, the Duo folded window, the largest
+  non-accessibility size and AX1 and above (stacked, nothing clipped). READY FOR VERIFY, label `1.4-recurring-visual-1-task-2`,
+  with the files of this set listed for the merge order against `1.4-bybit`.
+
+---
+
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
 
 | Task | Floor |
@@ -454,6 +612,8 @@ Order: the text steps come first, because the commit that adds `{ kind: 'marked'
 | 2/4 | 6 |
 | 3/4 | 6 |
 | 4/4 | 12 (was 11): `marked-series.ts`, `use-row-mark.ts`, `recurring-mark-field.component.tsx`, `detection.ts`, `eligibility.ts`, `recurrence-text.ts`, `use-recurring-series.ts`, `settings.repo.ts`, both Settings screens, `transaction-form.screen.tsx`, `help-topics.ts` |
+| visual-1 task 1/2 | 6 (listed in its Files) |
+| visual-1 task 2/2 | 4 (listed in its Files) |
 
 Mutation gates are paused by the user; this table is for a lift.
 

@@ -888,7 +888,7 @@ What's New draft, per the release skill's format: "Recurring charges: see what r
 
 | Constraint | Enforced by |
 |---|---|
-| No future date, no forecast, no total | A property pin: no date in the output has a local day later than today; the output type has no sum; stopped steps back only; review |
+| No future date, no forecast, no total (the total: reversed by section 17.1) | A property pin: no date in the output has a local day later than today; the output type has no sum; stopped steps back only; review |
 | One name definition | Import from `@kiko/transactions/merchant-name`; review. No local normalizing |
 | One eligibility definition | `recurringExcludedIds` only calls the existing functions; one world per rule |
 | Never sums across currencies | The group key holds the currency; no sum exists anywhere |
@@ -935,3 +935,176 @@ row dated two or more days from its bank row. A price rise over 25 percent cuts 
 **The orchestrator's calls after the review of 41be4a687, recorded the same way, not user rulings; each changes the design:** a marked route finds the piece spanning its amount, else the neutral text, with no detected fallback (9.3); a pick inside a chain rewrites its period and moves no stored amount, and a re-mark at a new price adds a chain (8.2); one entry holds a hide flag and marks, a hide affects detected series only, and each reversal clears only its own part (8.1, 8.2); a stored amount can bridge what its row did not join (8.2); the parser dedupes marks and sorts them, with a period tie-break (8.2); the settings read also gates the field, and a rejected read holds it disabled with no value (9.6); the field takes the screen's holdings and accounts as props, and its currency from the stored row's holding (9.6). The consequence for two subscriptions inside one chain is the planner's, stated at the head of this spec and told to the user through the coordinator.
 
 **Where the measured reference moved a call:** step 2's condition was called as "every pair fits". On that form a seasonal bill with one moved day went back to the reported fault (two stopped rows or one short stopped row, in 7 of 9 placements of the moved day). So it reads "passes as monthly, no two charges in a slot": all 9 give one series, and the sweep below 5.3 shows no new false match. Step 6 runs when nothing stands, not only when nothing was found. The fold, coverage exception and exact-cut calls hold as called.
+
+## 17. Visual round 1 (2026-11-05)
+
+The user's device reading of task 4/4, relayed by the coordinator: items 1 to 12 and 14 (HANDOFF "Item 1"). The answers to the round's questions A to L
+are binding; words in quotes are the user's. A total states money already paid, never a forecast (A: "show total", "show
+total of all recurring charges"; B, C: "Total = sum of all charges"; J: "All paid so far"). This section overrides sections
+9.2, 9.3, 9.5, 13 and 15 where they differ. Detection, marks, the store, the routes and the help topic do not change.
+
+### 17.1 What this reverses
+
+| Rule | was: | now |
+|---|---|---|
+| A total (15, row 1; plan Global Constraints) | "no total", "the output type has no sum" | A display-only sum of past charges on both screens (17.4). Detection's output type still has no sum: the totals live outside `src/recurring/detection`. No forecast, no date after today |
+| Sums across currencies (15, row 4) | "no sum exists anywhere" | A series sums only its own currency. List totals convert each series sum to the base currency (17.4); the detail total stays in the series currency. No raw sum of minor units across currencies: every base sum adds `Money` in the base currency |
+| Purpose (15, last row) | "No balance, net worth, category or statistic reads this" | The list reads categories and rates for display. It still changes no balance, net worth, category or statistic |
+| Recurrence line (13; Q1 "Charged monthly, on day 15") | "Charged monthly, on day 15" / «Списувалося щомісяця, 15 числа» | "Monthly, on day 15" / «Щомісяця, 15 числа»; every recurrence key drops "Charged" (17.8). The "Marked:" lines and "Last charge" keep their text |
+| List sections (9.2) | active, "No Recent Charge", "Marked, No Charges", "Hidden" | one group per category (17.2), then "Marked, No Charges", then "Hidden". The "No Recent Charge" heading and its key go (17.3) |
+| Row layout (9.2) | name; recurrence line; last-charge line; amount beside the lines | line 1: name, amount; line 2: recurrence line, last-charge line under the amount (17.2) |
+| Series screen button (9.3) | in `ListFooterComponent`, variant `secondary` | the `Screen` footer, as other detail screens (17.5) |
+| Transaction form, "Convert to exchange" (9.6 placement) | a `small` inline button in `ModeAndActions`, between the loan field and the mark field | the form's `Screen` footer (17.6) |
+| Transaction form, Type and Amount (item 14) | Type full width under the Holding field, Amount full width under it | one row, as `DateTimeRow`; stacked at accessibility text sizes (17.6) |
+
+### 17.2 The list
+
+Order of items: the total of all; the category groups; "Marked, No Charges"; "Hidden". A `Divider` (`spacing={2}`, as the
+Accounts screen puts before a section) stands before every group and section that follows another item (item 10: "Hidden"
+gets it as the other groups do). With no series, the empty state as today and no total row.
+
+- **A series' category** (F) is the stored `category` of its newest charge: the first id of `chargeIds` (newest first) found
+  in the charges read (17.5). It resolves through `resolveCategoryKey` (`src/categories/category-display/`), so an unknown or
+  deleted slug folds to the default category, as everywhere. A null or empty stored category, or a series none of whose rows
+  is in the read, goes in the **Uncategorized group**: title and icon from `neutralCategory()` (existing key
+  `categories.uncategorized`, symbol `creditcard`), color `resolveCategoryColor(null, <its group id>)`. Open point P1 (17.9).
+- **Group order** (G): the Categories screen's order, `categoriesRepo.allQuery()` (`sortOrder`, then `key`); the
+  Uncategorized group last. A group shows only when it holds a shown series.
+- **Inside a group** (E, the planner's proposal, the smallest change): the active series by today's order
+  (`newestChargeFirst`), then the group's stopped series in the same order. A stopped row keeps its "No charge since" or quiet
+  line, which tells it apart; the "No Recent Charge" heading goes. Stopped series count in the totals ("their charges were
+  paid"). Open point P2 (17.9).
+- **Which series:** today's shown set: detected series not hidden, plus every marked series with charges (`itemsOf`).
+  "Marked, No Charges" and "Hidden" stay their own sections with no totals (I).
+- **Group heading** (items 2, 3): the Accounts section heading's composition, built from the shared parts:
+  `EntityIconTile` (`compact`) with the category's icon and color, the title as `Text variant="heading"`, the group total as
+  `MoneyText` opposite it, in a row of `justifyContent: 'space-between'`, `alignItems: 'center'`, the title box `flex: 1`,
+  the total box `flexShrink: 0` (`implicit-account-heading.styles.ts`, `accounts.styles.ts` `sectionHeadingRow`/`rowAmount`).
+  It is not pressable and has no chevron: nothing opens a category here. `ImplicitAccountHeading` and `AccountTotal` are not
+  imported: both live in `src/screens/accounts/` (`check:screen-imports`), the first takes an `AccountRow` and the second
+  carries a converted caption a base total does not have. So the list gets one local component,
+  `recurring-group-heading`, of shared parts only (kiko-design-system: no shared component fits).
+- **The total of all** (item 6): a row above the first group, `t('recurringCharges.paidSoFar')` as `Text variant="body"` and
+  the total as `MoneyText`, laid out as the group heading's row.
+- **Row** (items 4, 5): line 1 holds the name (`flex: 1`) and the last charge's amount (`flexShrink: 0`); line 2 holds the
+  recurrence line (`flex: 1`) and `lastChargeLine` right-aligned under the amount, allowed to wrap (the quiet line is long).
+  The amount stays the last real charge's, in its own currency.
+- testIDs: `recurring-charges-total`, `recurring-charges-group-category-<key>`, `recurring-charges-group-uncategorized`,
+  each total `recurring-charges-group-total-<group id>`, each divider `recurring-charges-divider-<item key>`. A user category
+  keyed `uncategorized` cannot collide: the group id has a kind.
+
+### 17.3 Removed key
+
+`recurringCharges.stoppedHeading` goes with its heading, from `en.ts`, `uk.ts` and `title-keys.ts`, in the step that removes
+the heading; its two test reads (`recurring-charges.screen.test.tsx`, `recurring-charges.screen.marked.test.tsx`) and the
+`recurring-charges-heading-stopped` testID change in the same step. No help topic, skill or e2e file names it (grep at
+14f997ad7; re-grep on the base). It has not shipped.
+
+### 17.4 Totals and the conversion rule
+
+- **A series' own sum:** the sum of `-amountMinorUnits` over its charge rows in the read, as `Money` in `series.currency`
+  (each charge is a debit; `chargeIds` holds no folded twin and no refund, section 4). Every row of a series has its
+  currency (the group key holds it); a row of another currency is skipped, never added.
+- **List totals, base currency (D):** the rule `buildCategoryBreakdown` (`src/statistics/category-breakdown/`) applies to past
+  rows: the CURRENT rate table, `buildRateTable(rates)` (`src/rates/net-worth-view/`, the fiat seed under the live
+  `currency_rates` rows), `canConvert` as the guard, `convert` (`src/rates/conversion/`) for the value. One `convert` per
+  series sum, not per row: the table is the same for every row, so the two differ only in rounding, and one conversion per
+  series keeps a group total equal to the sum of what it holds. A group total adds its series' base `Money`; the total of all
+  adds the group totals, so it equals the sum of the shown group totals. Charges are fiat cash rows (section 4's account-kind
+  allow-list) and the seed covers every fiat currency, so `canConvert` fails only with no seed and no live row; such a series
+  is left out of the base totals, as Statistics leaves the row out, and its own row still shows its amount. No price book:
+  no charge is a priced holding.
+- **Detail total (J, K):** "All paid so far" = the series' own sum over the rows the screen already lists (`charges`), in the
+  series currency, no rates. Shown once the rows read has landed, beside the charge count.
+- A total is display only: no write, no route and no form reads it.
+
+### 17.5 Reads and their cost
+
+The list screen adds one hook, `useRecurringGroups` (`src/recurring/use-recurring-groups/`), beside `useRecurringSeries`. The
+series screen adds no read.
+
+| Read | Tables | When it runs | Cost |
+|---|---|---|---|
+| `transactionsRepo.listWithContextByIdsQuery(ids)`, `ids` = every `chargeIds` of the hook's `series` and `markedSeries` (unfiltered by a hide), unique and sorted | `transactions`, `holdings`, `accounts` | mount; a write to those tables (the whole-ledger read re-runs on `transactions` anyway); a change of the id set (a mark write, a detection change). **Not on a hide**: a hide changes no `series` id, so the sql and params are equal and `useLiveQuery` reads nothing (its key is `sql::params`) | rows by primary key, one bound parameter (`json_each`), joined to holdings and accounts by key; N = the charges of all series. Not a whole-ledger read |
+| `categoriesRepo.allQuery()` | `categories` | mount, a category write | the categories table |
+| `ratesRepo.allQuery()` | `currency_rates` | mount, a rates refresh | about 107 fiat rows plus one per coin |
+| `settingsRepo.getQuery()` (base currency, default category) | `settings` | mount, every settings write, a hide or a mark included | one row |
+
+All four `paused: !useIsScreenVisible()`, not `cached` (9.5). A hide or mark still runs no detection and no whole-ledger read
+(9.5, plan S13): it adds one one-row settings read, and a mark adds one by-ids read. The list's `isLoading` is the hook's or
+the groups' loading; a re-keyed by-ids read shows the loading state until it lands, never a group built on rows of another
+id set.
+
+### 17.6 The series screen and the transaction form
+
+- **Series screen (items 7, 8, 9, L):** the recurrence line loses "Charged" (17.8). The header gains a row:
+  `t('recurringCharges.paidSoFar')` and the total as `MoneyText`. The button by kind ("Not a recurring charge", "Remove mark")
+  moves from `ListFooterComponent` to `Screen`'s `footer` with `floatingFooter`, as `holding-detail.screen.tsx`
+  (`holdingDetailFooterAction`), `category-form.screen.tsx` and the Edit template footer do; variant `secondaryTonal`, regular
+  size, full width: the lone secondary footer action (kiko-design-system "Form Save and Cancel", the Edit template ruling of
+  2026-10-11), never a primary. Its `loading`, `useSubmitOnce`, testIDs (`recurring-series-hide`,
+  `recurring-series-remove-mark`) and the `removedSeries` hold across a Remove mark write stay as they are. Under a floating
+  footer the list's bottom padding is `useFloatingFooterEnd()`, read in a child of `Screen` (as `LedgerList` in
+  `holding-detail.screen.tsx`), so the last charge stops at the footer's top edge.
+- **Mark field's empty value (item 11):** the loan payment field shows "None" in the placeholder tone:
+  `PaymentHoldingField` passes `valueTone={selected ? 'textPrimary' : 'textSecondary'}` to `FieldTrigger`. `SelectField`
+  sets `textPrimary` for any selected option, so "Not marked" reads as a value. `SelectField` gains an optional
+  `emptyOption` prop: when the selected option equals it, `valueTone` is `textSecondary`; with no prop nothing changes.
+  `RecurringMarkField` passes `emptyOption="none"`. The loan field's `NONE_ICON` is not copied: the mark field has no icons.
+- **"Convert to exchange" (item 12):** leaves `ModeAndActions` (its `convertEligible` and `onPressConvert` props go) and becomes
+  the transaction form's `Screen` footer: `editTemplateId`'s "Create transaction" when set, else this button when
+  `convertView.eligible && !converting`, else none. `convertView.eligible` needs `isEditing` and a stored row, so the two
+  never meet; a pin holds it. Variant `secondaryTonal`, regular size, full width, icon `arrow.left.arrow.right`, label
+  unchanged: a footer button is regular (the Edit template footer).
+- **Type and Amount in one row (item 14, USER: "Display 'Type' and 'Amount' in a single row of a transaction form"):** the
+  income/expense branch of `FieldGroup` lays the Type field (`typeSelectField`, the `ModeSelectField` the screen builds) and
+  the Amount `TextField` side by side, as `DateTimeRow` lays Date and Time: `Box direction="row" gap={3}`, each field in a
+  `View` with `flex: 1`. The screen passes `typeSelectField` to `FieldGroup` instead of rendering it above. The exchange
+  branch keeps Type full width above "Value Out", and convert has no Type (`visible={!converting}`). Open point P3.
+  **Fallback:** at an accessibility text size (`useWindowDimensions().fontScale` at or above a named constant for iOS's
+  first accessibility size, AX1; the developer reads the value on the device and names its source) the two stack full width
+  in today's order. The Duo folded window (386pt wide in Device Hub, finding `20261018T0952-kiko-duo-adaptive/1`) leaves each
+  field about 170pt at the content margin, which holds the Type trigger with its icon and an amount with its currency
+  suffix; the device call checks it and the largest non-accessibility size. Reading order, refs (`amountFieldRef`, the
+  scroll to the first invalid field) and testIDs do not change. Nothing else on the form moves.
+
+### 17.7 Guideline 2.5.19 and compliance
+
+No flag and no condition on any new element: the totals, headings and footer buttons show whenever their data exists, and
+the empty state explains the screen with none. Nothing new is stored, sent or logged.
+
+### 17.8 i18n
+
+Draft rows; the user reviews them in both languages before the developer copies them (`.superpowers/sdd/1.4-recurring/texts-visual-1.md`).
+These replace the matching rows of section 13.
+
+| Key | en | uk |
+|---|---|---|
+| `recurringCharges.monthlyOnDay` | Monthly, on day {{day}} | Щомісяця, {{day}} числа |
+| `recurringCharges.monthlyAroundDay` | Monthly, around day {{day}} | Щомісяця, близько {{day}} числа |
+| `recurringCharges.monthlyLastDay` | Monthly, on the last day | Щомісяця, в останній день |
+| `recurringCharges.monthly` | Monthly | Щомісяця |
+| `recurringCharges.weekly` | Weekly | Щотижня |
+| `recurringCharges.weeklyOn.monday` ... `.sunday` | Weekly, on Mondays ... | Щотижня, у понеділок / у вівторок / у середу / у четвер / у пʼятницю / у суботу / у неділю |
+| `recurringCharges.yearly` | Yearly | Щороку |
+| `recurringCharges.yearlyOn` | Yearly, on {{date}} | Щороку, {{date}} |
+| `recurringCharges.paidSoFar` (new) | All paid so far | Усього сплачено |
+| `recurringCharges.stoppedHeading` (removed) | was: No Recent Charge | was: Без нових списань |
+
+Section 13's note on the uk past frame no longer holds: with "Charged" gone, the uk lines drop «Списувалося» as en drops the
+verb. The Uncategorized group reads the existing `categories.uncategorized` through `neutralCategory()`; no key is added for it.
+
+### 17.9 Open points for the user
+
+- **P1, the group of a charge with no category.** The coordinator's answer F gives an "Uncategorized" group, last; kiko-domain
+  says a null, empty or unknown category folds onto the default category, "never a separate 'uncategorized' bucket", and the
+  series screen's rows already show such a charge as the default category. A: fold into the default category's group at its
+  Categories place (one fold, the list and the series screen agree, no exception). B (written above, as answered): a separate
+  "Uncategorized" group last for a null or empty category; the list then says "Uncategorized" where the series screen says
+  "Other", and kiko-domain needs a documented exception. Switching to A drops one branch and one pin world.
+- **P2, stopped series:** in their category group after the active ones (written above). The other way keeps a
+  "No Recent Charge" section after the groups with its own category groups, so a category can show twice with two totals.
+- **P3, Type and Amount in Exchange mode:** A (written above): the row in income/expense only, as the user's words name
+  "Amount"; on a switch to Exchange the Type field widens to full width over "Value Out". B: Type pairs with "Value Out" in
+  Exchange too, so it never moves; `ExchangeFields` (`src/screens/forms/exchange-fields/`) gains a leading slot, two more
+  files. Recommendation A unless the reflow reads wrong on the device.
