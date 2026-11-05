@@ -134,9 +134,10 @@ The rows raise the card's opening deposit by their total, so the card keeps its 
 
 Netflix, Kyivstar, Kyivteploenergo, YASNO and Kyivvodokanal keep their day every month, so the
 Recurring charges list in Settings shows exactly these five. Every other merchant on the main card
-sits 10 days nearer the middle of its 30-day month in the odd months (month 0, the newest, never
-moves), so a shop or the taxi reads as spending that comes and goes, not as a subscription. The
-amount stays and the row stays in its month, so each month's total is unchanged.
+moves in the odd months only: a row on a day under 15 moves ten days later, any other row ten days
+earlier. The even months and month 0, the newest, never move. So a shop or the taxi reads as
+spending that comes and goes, not as a subscription. The amount stays and the row stays in its
+30-day month, so each month's total is unchanged.
 `build-demo-snapshot.recurring.test.ts` pins the five on every anchor it tries.
 
 ## Importing on a device

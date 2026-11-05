@@ -14,12 +14,12 @@ import LargeTitleHeading, {
   useLargeTitleScroll,
 } from '@kiko/design-system/components/large-title-heading';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
-import type { RecurringSeries } from '@kiko/recurring/detection';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { compareText, type RecurringSeries } from '@kiko/recurring/detection';
 
 import { styles } from './recurring-charges.styles';
 import RecurringSeriesRow from './recurring-series-row';
@@ -33,10 +33,6 @@ type RecurringChargesScreenProps = NativeStackScreenProps<
 type ListItem = { kind: 'heading' } | { kind: 'series'; series: RecurringSeries };
 
 const HEADING_ITEM: ListItem = { kind: 'heading' };
-
-// Compares by code unit, never by locale, so no order depends on the device.
-const compareText = (left: string, right: string): number =>
-  Number(left > right) - Number(left < right);
 
 // Within a section: the newest last charge first, then the merchant key, then the series id. Never
 // by amount, which one section can hold in several currencies.

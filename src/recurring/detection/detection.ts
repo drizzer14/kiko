@@ -43,8 +43,8 @@ type PeriodRule = {
   allowedJumps: (charges: number) => number;
   stepForward: (time: number, slots: number) => number;
   recurrenceOf: (newestFirst: readonly Charge[]) => Recurrence;
+  // How long after its last charge a series reads as stopped, grace included.
   stoppedAfter: { months: number; days: number };
-  graceDays: number;
 };
 
 type Found = { charges: Charge[]; rule: PeriodRule };
@@ -96,7 +96,7 @@ const SOURCE_RANK: Record<RecurringLedgerRow['source'], number> = {
 const total = (values: readonly number[]): number => values.reduce((sum, value) => sum + value, 0);
 
 // Compares by code unit, never by locale, so no order depends on the device.
-const compareText = (left: string, right: string): number =>
+export const compareText = (left: string, right: string): number =>
   Number(left > right) - Number(left < right);
 
 const compareCharges = (left: Charge, right: Charge): number =>
@@ -117,24 +117,6 @@ const groupedBy = <Item, Key>(items: readonly Item[], keyOf: (item: Item) => Key
   }
 
   return groups;
-};
-
-const memoized = <Argument, Result>(compute: (argument: Argument) => Result) => {
-  const results = new Map<Argument, Result>();
-
-  return (argument: Argument): Result => {
-    const cached = results.get(argument);
-
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const result = compute(argument);
-
-    results.set(argument, result);
-
-    return result;
-  };
 };
 
 const localDayOfMonthOf = (time: number): number => new Date(time).getDate();
@@ -205,8 +187,7 @@ const MONTHLY: PeriodRule = {
   allowedJumps: (charges) => 1 + Math.floor(charges / CHARGES_PER_EXTRA_JUMP),
   stepForward: addMonths,
   recurrenceOf: monthlyRecurrenceOf,
-  stoppedAfter: { months: 1, days: 0 },
-  graceDays: 7,
+  stoppedAfter: { months: 1, days: 7 },
 };
 
 const YEARLY: PeriodRule = {
@@ -219,8 +200,7 @@ const YEARLY: PeriodRule = {
   allowedJumps: () => 0,
   stepForward: (time, years) => addMonths(time, MONTHS_PER_YEAR * years),
   recurrenceOf: yearlyRecurrenceOf,
-  stoppedAfter: { months: MONTHS_PER_YEAR, days: 0 },
-  graceDays: 14,
+  stoppedAfter: { months: MONTHS_PER_YEAR, days: 14 },
 };
 
 const WEEKLY: PeriodRule = {
@@ -233,8 +213,8 @@ const WEEKLY: PeriodRule = {
   allowedJumps: () => 0,
   stepForward: weekStepOf,
   recurrenceOf: weeklyRecurrenceOf,
-  stoppedAfter: { months: 0, days: 2 * WEEK_DAYS },
-  graceDays: 3,
+  // Two weeks and 3 days of grace.
+  stoppedAfter: { months: 0, days: 2 * WEEK_DAYS + 3 },
 };
 
 const PERIOD_RULES: readonly PeriodRule[] = [WEEKLY, MONTHLY, YEARLY];
@@ -247,7 +227,7 @@ const stoppedCutoffOf = (rule: PeriodRule, today: number): number => {
   return new Date(
     monthsBack.getFullYear(),
     monthsBack.getMonth(),
-    monthsBack.getDate() - days - rule.graceDays,
+    monthsBack.getDate() - days,
   ).getTime();
 };
 
@@ -434,16 +414,13 @@ const splitByAmount = (charges: Charge[]): Found[] => {
   return covered / charges.length >= MIN_COVERAGE ? found : found.filter(isSteadyMonthly);
 };
 
-const oneChargeASlotIn = (charges: Charge[]): Found[] =>
-  passes(charges, MONTHLY, { withAmounts: false, minimumCharges: ONE_A_SLOT_MIN_CHARGES }) &&
-  !hasSharedSlot(charges)
-    ? monthlyFound(charges)
-    : [];
-
 const withoutAmountTestIn = (charges: Charge[]): Found[] =>
   passes(charges, MONTHLY, { withAmounts: false, minimumCharges: ONE_A_SLOT_MIN_CHARGES })
     ? monthlyFound(charges)
     : [];
+
+const oneChargeASlotIn = (charges: Charge[]): Found[] =>
+  withoutAmountTestIn(charges).filter((found) => !hasSharedSlot(found.charges));
 
 const GROUP_STEPS = [foundIn, oneChargeASlotIn, splitByAmount, withoutAmountTestIn] as const;
 
@@ -546,7 +523,7 @@ const chargeGroupsOf = (
   const excludedIds = recurringExcludedIds(input.rows, input.holdings, input.accounts);
   const holdingById = new Map(input.holdings.map((holding) => [holding.id, holding]));
   const accountById = new Map(input.accounts.map((account) => [account.id, account]));
-  const keyOf = memoized((description: string) => merchantNameOf(description).key);
+  const keyByDescription = new Map<string, string>();
   const groups = new Map<string, ChargeGroup>();
 
   for (const { row, time } of dated) {
@@ -561,7 +538,9 @@ const chargeGroupsOf = (
       continue;
     }
 
-    const key = keyOf(row.description);
+    const key = keyByDescription.get(row.description) ?? merchantNameOf(row.description).key;
+
+    keyByDescription.set(row.description, key);
 
     if (key === '') {
       continue;
