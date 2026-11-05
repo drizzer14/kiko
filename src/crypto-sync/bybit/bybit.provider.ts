@@ -1,3 +1,4 @@
+import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { logFailure } from '@kiko/diagnostics';
@@ -30,6 +31,7 @@ import {
 } from './bybit.holding-keys';
 import { isBybitCoolingDown } from './bybit.cooldown';
 import { readBybitCredentials } from './bybit.credentials';
+import { bybitFailureOf, failWithText } from './bybit.failure-text';
 import { fundReadOf, unifiedReadOf, type WalletRead } from './bybit.balance-read';
 
 type WalletFetch<Body> = (
@@ -63,17 +65,6 @@ export const defaultBybitDeps: BybitDeps = {
   fetchFundBalance,
 };
 
-/** The Keychain holds no pair for the account, so no read can be signed. */
-export class BybitNoCredentialsError extends Error {
-  constructor() {
-    super('Bybit credentials missing');
-    this.name = 'BybitNoCredentialsError';
-    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
-    // `instanceof` relies on unless it is restored explicitly.
-    Object.setPrototypeOf(this, BybitNoCredentialsError.prototype);
-  }
-}
-
 /**
  * What one tolerant wallet's attempt came to: its read, or none on a failure. A failure never
  * writes a holding for the wallet, a zero included. `refused` is set when Bybit refused the key
@@ -103,8 +94,9 @@ const walletOutcome = async (
 
 /**
  * The key check goes first. A key refused as expired fails the sync at once, since no read can
- * pass; any other failure of it is logged and tolerated, because the balance reads that follow
- * answer for themselves. A tolerated failure gives no key info, so the stored end stays.
+ * pass, and shows as the localized text of its class; any other failure of it is logged and
+ * tolerated, because the balance reads that follow answer for themselves. A tolerated failure
+ * gives no key info, so the stored end stays.
  */
 const checkKey = async (
   deps: BybitDeps,
@@ -123,7 +115,7 @@ const checkKey = async (
   const error: unknown = bifold(attempt);
 
   if (error instanceof BybitRefusalError && error.refusal === 'expired') {
-    throw error;
+    throw bybitFailureOf(error);
   }
 
   logFailure('[bybit sync] the key check failed', error);
@@ -278,7 +270,7 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     const credentials = await deps.readCredentials(target.accountId);
 
     if (credentials === undefined) {
-      throw new BybitNoCredentialsError();
+      throw new Error(i18n.t('accountDetail.noBybitCredentials'));
     }
 
     const { apiKey, secret } = credentials;
@@ -303,7 +295,9 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     // UNIFIED must succeed: it is the connection's proof of life, so its failure fails the sync
     // and nothing is written. A read that threw never gets past this line, so an empty list
     // below is a wallet that answered and holds nothing.
-    const unified = unifiedReadOf(await deps.fetchUnifiedBalance(apiKey, secret, options));
+    const unified = unifiedReadOf(
+      await failWithText(() => deps.fetchUnifiedBalance(apiKey, secret, options)),
+    );
     const fundOutcome = await walletOutcome('fund', async () =>
       fundReadOf(await deps.fetchFundBalance(apiKey, secret, options)),
     );

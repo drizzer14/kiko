@@ -1,3 +1,5 @@
+import { i18n } from '@kiko/i18n/init';
+
 import {
   FUND_PATH,
   KEY_INFO_PATH,
@@ -149,7 +151,7 @@ describe('the state a Bybit balance read returns', () => {
       });
 
       await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toThrow(
-        BybitRefusalError,
+        i18n.t('accountDetail.bybitKeyMissingPermission'),
       );
     });
   });

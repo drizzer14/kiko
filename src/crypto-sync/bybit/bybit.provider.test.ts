@@ -1,3 +1,5 @@
+import { i18n } from '@kiko/i18n/init';
+
 import {
   BybitRateLimitError,
   BybitRefusalError,
@@ -18,9 +20,9 @@ import {
   routedDeps,
 } from './bybit.provider-test-fixtures';
 import { readBybitCredentials } from './bybit.credentials';
+import { bybitProvider, defaultBybitDeps } from './bybit.provider';
 import { API_KEY, NOW, SECRET } from './bybit.client-test-fixtures';
 import { isBybitCoolingDown, setBybitCooldownUntil } from './bybit.cooldown';
-import { BybitNoCredentialsError, bybitProvider, defaultBybitDeps } from './bybit.provider';
 import { fundCoin, fundResult, unifiedCoin, unifiedResult } from './bybit.balance-test-fixtures';
 
 // The credentials module imports react-native-keychain, whose native binding is absent under Jest;
@@ -30,13 +32,40 @@ jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
 
-const FAILURES: [string, () => Error][] = [
-  ['a rate refusal', () => new BybitRateLimitError(10006, 60_000)],
-  ['a malformed answer', () => new BybitRefusalError('malformed')],
-  ['an unknown refusal', () => new BybitRefusalError('unknown', 99999)],
-  ['a permission refusal', () => new BybitRefusalError('permission', 10005)],
-  ['an expired key', () => new BybitRefusalError('expired', 33004)],
-  ['a lost network', () => new TypeError('Network request failed')],
+// Each failure with the text a strict read shows for it; a lost network is no Bybit refusal and
+// shows as it is.
+const FAILURES: [string, () => Error, () => string][] = [
+  [
+    'a rate refusal',
+    () => new BybitRateLimitError(10006, 60_000),
+    () => i18n.t('accountDetail.bybitRequestFailed', { code: 10006 }),
+  ],
+  [
+    'a malformed answer',
+    () => new BybitRefusalError('malformed'),
+    () => i18n.t('accountDetail.bybitMissingBalances'),
+  ],
+  [
+    'an unknown refusal',
+    () => new BybitRefusalError('unknown', 99999),
+    () => i18n.t('accountDetail.bybitRequestFailed', { code: 99999 }),
+  ],
+  [
+    'a permission refusal',
+    () => new BybitRefusalError('permission', 10005),
+    () => i18n.t('accountDetail.bybitKeyMissingPermission'),
+  ],
+  [
+    'an expired key',
+    () => new BybitRefusalError('expired', 33004),
+    () => i18n.t('accountDetail.bybitKeyRefusedExpired'),
+  ],
+  [
+    'a forbidden answer',
+    () => new BybitRateLimitError(403, 600_000),
+    () => i18n.t('accountDetail.bybitForbidden'),
+  ],
+  ['a lost network', () => new TypeError('Network request failed'), () => 'Network request failed'],
 ];
 
 const pairsOf = (balances: { metadataKey: string; balanceMinorUnits: number }[]) =>
@@ -67,27 +96,15 @@ describe('bybitProvider', () => {
     expect(typeof defaultBybitDeps.now()).toBe('number');
   });
 
-  it('throws before any request when no credentials are stored', async () => {
+  it('throws the text that asks to connect Bybit, before any request, when no pair is stored', async () => {
     const deps = makeDeps();
     deps.readCredentials.mockResolvedValue(undefined);
 
     await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toThrow(
-      BybitNoCredentialsError,
+      i18n.t('accountDetail.noBybitCredentials'),
     );
     expect(deps.fetchKeyInfo).not.toHaveBeenCalled();
     expect(deps.fetchUnifiedBalance).not.toHaveBeenCalled();
-  });
-
-  it('names the missing pair in a fixed message', async () => {
-    const deps = makeDeps();
-    deps.readCredentials.mockResolvedValue(undefined);
-
-    const failure = await bybitProvider.fetchBalances(deps, freshTarget()).catch((error) => error);
-
-    expect(failure).toMatchObject({
-      name: 'BybitNoCredentialsError',
-      message: 'Bybit credentials missing',
-    });
   });
 
   it('reads the credentials of the target account, then the key check, UNIFIED and FUND', async () => {
@@ -177,12 +194,13 @@ describe('bybitProvider', () => {
   });
 
   describe('the key check', () => {
-    it('fails the sync at once when the key is refused as expired', async () => {
+    it('fails the sync at once, with the text of an ended key, when the key is refused as expired', async () => {
       const deps = makeDeps([unifiedCoin('BTC', '1')]);
-      const expired = new BybitRefusalError('expired', 33004);
-      deps.fetchKeyInfo.mockRejectedValue(expired);
+      deps.fetchKeyInfo.mockRejectedValue(new BybitRefusalError('expired', 33004));
 
-      await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toBe(expired);
+      await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toThrow(
+        i18n.t('accountDetail.bybitKeyRefusedExpired'),
+      );
       expect(deps.fetchUnifiedBalance).not.toHaveBeenCalled();
       expect(deps.fetchFundBalance).not.toHaveBeenCalled();
     });
@@ -215,16 +233,18 @@ describe('bybitProvider', () => {
   });
 
   describe('a failed UNIFIED read', () => {
-    it.each(FAILURES)('fails the sync and writes no holding for %s', async (_title, failure) => {
-      const deps = makeDeps([unifiedCoin('BTC', '1')], [fundCoin('ETH', '2')]);
-      const error = failure();
-      deps.fetchUnifiedBalance.mockRejectedValue(error);
+    it.each(FAILURES)(
+      'fails the sync with its text and writes no holding for %s',
+      async (_title, failure, text) => {
+        const deps = makeDeps([unifiedCoin('BTC', '1')], [fundCoin('ETH', '2')]);
+        deps.fetchUnifiedBalance.mockRejectedValue(failure());
 
-      await expect(
-        bybitProvider.fetchBalances(deps, freshTarget([heldHolding('BTC:unified', 5)])),
-      ).rejects.toBe(error);
-      expect(deps.fetchFundBalance).not.toHaveBeenCalled();
-    });
+        await expect(
+          bybitProvider.fetchBalances(deps, freshTarget([heldHolding('BTC:unified', 5)])),
+        ).rejects.toThrow(text());
+        expect(deps.fetchFundBalance).not.toHaveBeenCalled();
+      },
+    );
 
     it.each([
       ['no result list', okAnswer({ accountType: 'UNIFIED' })],
@@ -236,7 +256,9 @@ describe('bybitProvider', () => {
       const { deps } = routedDeps({ [KEY_INFO_PATH]: okAnswer({}), [UNIFIED_PATH]: answer });
       const target = freshTarget([heldHolding('BTC:unified', 5)]);
 
-      await expect(bybitProvider.fetchBalances(deps, target)).rejects.toThrow(BybitRefusalError);
+      await expect(bybitProvider.fetchBalances(deps, target)).rejects.toThrow(
+        i18n.t('accountDetail.bybitMissingBalances'),
+      );
     });
   });
 

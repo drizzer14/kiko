@@ -794,6 +794,47 @@ export const en = {
     binanceRequestFailed: 'Binance request failed: {{status}}{{detail}}',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
+    bybitClockOff:
+      "Bybit refused the request because this device's clock is off. Turn on Set Automatically in Date & Time settings.",
+    bybitCoinBorrowed:
+      '{{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync.',
+    // English defines every plural form so both catalogues carry the same keys.
+    bybitEarnLeftOut_one:
+      'Kiko left {{count}} Bybit Earn position out of this balance, because its status is not one Kiko counts. It may be a position you already redeemed.',
+    bybitEarnLeftOut_few:
+      'Kiko left {{count}} Bybit Earn positions out of this balance, because their status is not one Kiko counts. They may include positions you already redeemed.',
+    bybitEarnLeftOut_many:
+      'Kiko left {{count}} Bybit Earn positions out of this balance, because their status is not one Kiko counts. They may include positions you already redeemed.',
+    bybitEarnLeftOut_other:
+      'Kiko left {{count}} Bybit Earn positions out of this balance, because their status is not one Kiko counts. They may include positions you already redeemed.',
+    bybitForbidden:
+      'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits 10 minutes before trying again.',
+    bybitKeyEnded:
+      'Bybit key ended on {{date}}. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    bybitKeyEndsSoon_one:
+      'Bybit key ends in {{count}} day. Renew it on Bybit; the key stays the same.',
+    bybitKeyEndsSoon_few:
+      'Bybit key ends in {{count}} days. Renew it on Bybit; the key stays the same.',
+    bybitKeyEndsSoon_many:
+      'Bybit key ends in {{count}} days. Renew it on Bybit; the key stays the same.',
+    bybitKeyEndsSoon_other:
+      'Bybit key ends in {{count}} days. Renew it on Bybit; the key stays the same.',
+    bybitKeyExpiryUnknown:
+      'Kiko could not read when this Bybit key ends. A key with no IP restriction lasts about 90 days.',
+    bybitKeyMissingPermission:
+      'This key cannot read everything Kiko needs. Tick every read box Bybit offers for this key, or create a new read-only key with all of them, then connect again.',
+    bybitKeyRefused:
+      'Bybit refused this key. If you deleted it or changed your password, create a new key, then disconnect and connect again.',
+    bybitKeyRefusedExpired:
+      'Bybit no longer accepts this key. Its term of about 90 days may have ended. Try to renew it on Bybit: the key and secret then stay the same, so you do not enter them again. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    bybitKeyValidUntil: 'Bybit key works until {{date}}.',
+    // The first sentences are the kinds Kiko reads; the rest is clause L1, what stays wrong.
+    bybitKinds:
+      "Kiko reads your balances (Unified, Funding, Flexible Savings, On-Chain Earn), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet's record. It does not read P2P orders, other Earn products, derivatives or loans. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses, airdrops, loans, stocks, card purchases and rewards, or moves to a sub-account. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit's Funding record lists them, and a move that looks like one it already has stays out. Kiko can also rarely count a move twice. The past of your net worth can be off by those amounts.",
+    bybitMissingBalances: 'Bybit account response did not contain a balances list',
+    bybitRequestFailed: 'Bybit request failed: {{code}}',
+    bybitWalletRefused:
+      "Bybit refused this key for {{wallet}}, so Kiko did not update that balance. Check the key's permissions on Bybit.",
     changeBankAction: 'Change bank',
     changeExchangeAction: 'Change exchange or wallet',
     checking: 'Checking…',
@@ -855,6 +896,7 @@ export const en = {
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',
     noBinanceCredentials: 'No Binance credentials stored; connect Binance before syncing.',
+    noBybitCredentials: 'No Bybit credentials stored; connect Bybit before syncing.',
     noConnectionFound: 'No {{name}} connection found',
     noMonobankConnection: 'No Monobank account connected',
     noMonobankToken: 'No Monobank token found; connect an account before syncing.',

@@ -1,3 +1,4 @@
+import { i18n } from '@kiko/i18n/init';
 import * as Keychain from 'react-native-keychain';
 
 import {
@@ -6,6 +7,7 @@ import {
   freshTarget,
   makeDeps,
   okAnswer,
+  refusalAnswer,
   routedDeps,
   stateAfter,
 } from './bybit.provider-test-fixtures';
@@ -138,6 +140,24 @@ describe('the stored end of the key on every read', () => {
         accountId: target.accountId,
         expiredAtMs: END,
       });
+    },
+  );
+
+  it.each([
+    ['past the stored date', NOW - 1, 'accountDetail.bybitKeyRefusedExpired'],
+    ['before the stored date', NOW + 1, 'accountDetail.bybitKeyRefused'],
+    ['with no stored date', undefined, 'accountDetail.bybitKeyRefused'],
+  ] as const)(
+    'shows a key refused with code 10003 %s as the text of its class',
+    async (_t, end, key) => {
+      const { deps } = routedDeps({
+        [KEY_INFO_PATH]: refusalAnswer(10003),
+        [UNIFIED_PATH]: refusalAnswer(10003),
+      });
+
+      await expect(
+        bybitProvider.fetchBalances({ ...deps, readExpiredAtMs: async () => end }, freshTarget()),
+      ).rejects.toThrow(i18n.t(key));
     },
   );
 
