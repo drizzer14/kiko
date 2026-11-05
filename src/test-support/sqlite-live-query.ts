@@ -1,23 +1,17 @@
 import maybe, { foldMap } from 'fnts/maybe';
-import { useEffect, useRef, useState } from 'react';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 
 import { applyAllMigrations, databaseClientOver } from './real-sqlite';
 
 /**
  * A whole data layer for a navigator test: a real migrated `node:sqlite` database behind the
- * real repositories (`@kiko/db/client`), and a live-query hook that reads the real query on it and
- * reads again when a write to one of its tables commits. A test file mocks `@kiko/db/client` with
- * `clientModule()` and `@kiko/db/use-live-query` with `liveQueryModule()`, each through a
- * `require` of this module in its factory, and calls `openSqliteWorld` before each test.
- * The hook keeps the contract of the real one that a screen depends on: a disabled read answers
- * `[]` and not loading, a read is loading until it has answered for its own query, and a
- * `paused` read defers a fire to one read when it resumes.
+ * real repositories (`@kiko/db/client`). The REAL `useLiveQuery` runs on it: the `rawDatabase`
+ * double answers its `reactiveExecute` and fires the callback when a write to a listed table
+ * commits. A test file mocks `@kiko/db/client` with `clientModule()` through a `require` of this
+ * module in its factory, and calls `openSqliteWorld` before each test.
  */
 
 type Subscriber = { tables: readonly string[]; fire: () => void };
-
-type Settled<Row> = { key?: string; rows: Row[]; error?: Error; isFresh: boolean };
 
 const subscribers = new Set<Subscriber>();
 const committed = { engine: undefined as DatabaseSync | undefined };
@@ -109,118 +103,32 @@ export const openSqliteWorld = (): DatabaseSync => {
   return database;
 };
 
+// The one native call the real `useLiveQuery` makes: it registers a trigger on a table list and
+// answers with the way to stop it. The trigger query itself is never run.
+const reactiveExecute = ({
+  fireOn,
+  callback,
+}: {
+  fireOn: readonly { table: string }[];
+  callback: () => void;
+}): (() => void) => {
+  const subscriber: Subscriber = { tables: fireOn.map(({ table }) => table), fire: callback };
+
+  subscribers.add(subscriber);
+
+  return () => {
+    subscribers.delete(subscriber);
+  };
+};
+
 /** What a `jest.mock('@kiko/db/client', ...)` factory returns. */
-export const clientModule = () =>
-  databaseClientOver(() => {
+export const clientModule = () => ({
+  ...databaseClientOver(() => {
     if (committed.engine === undefined) {
       throw new Error('sqlite-live-query: openSqliteWorld was not called before the first query');
     }
 
     return observed(committed.engine);
-  });
-
-type LiveQuery<Row> = { toSQL(): { sql: string; params: unknown[] } } & PromiseLike<Row[]>;
-
-const useSqliteLiveQuery = <Row>(
-  query: LiveQuery<Row>,
-  tables: string[],
-  enabled = true,
-  { paused = false }: { cached?: boolean; paused?: boolean } = {},
-) => {
-  const { sql, params } = query.toSQL();
-  const paramsKey = JSON.stringify(params);
-  const key = `${sql}::${paramsKey}`;
-  const tablesKey = tables.join(',');
-  const [settled, setSettled] = useState<Settled<Row>>({ rows: [], isFresh: false });
-  const generation = useRef(0);
-  const applied = useRef(0);
-  const isPaused = useRef(paused);
-  const isDirty = useRef(false);
-  const read = useRef<(() => Promise<void>) | undefined>(undefined);
-
-  useEffect(() => {
-    isPaused.current = paused;
-
-    if (!paused && isDirty.current) {
-      isDirty.current = false;
-      read.current?.();
-    }
-  }, [paused]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: OVERRIDE(content-keyed subscription)
-  useEffect(() => {
-    if (!enabled) {
-      setSettled({ rows: [], isFresh: false });
-
-      return;
-    }
-
-    let alive = true;
-
-    const run = async (): Promise<void> => {
-      generation.current += 1;
-
-      const mine = generation.current;
-
-      let next: Settled<Row>;
-
-      try {
-        next = { key, rows: await query, isFresh: !isDirty.current };
-      } catch (caught) {
-        next = {
-          key,
-          rows: [],
-          error: caught instanceof Error ? caught : new Error(String(caught)),
-          isFresh: false,
-        };
-      }
-
-      if (mine <= applied.current || !alive) {
-        return;
-      }
-
-      applied.current = mine;
-      setSettled(next);
-    };
-
-    read.current = run;
-    isDirty.current = false;
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
-    run();
-
-    const subscriber: Subscriber = {
-      tables,
-      fire: () => {
-        if (isPaused.current) {
-          isDirty.current = true;
-
-          return;
-        }
-
-        // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
-        run();
-      },
-    };
-
-    subscribers.add(subscriber);
-
-    return () => {
-      alive = false;
-      subscribers.delete(subscriber);
-      read.current = undefined;
-    };
-  }, [sql, paramsKey, tablesKey, enabled]);
-
-  return {
-    data: enabled ? settled.rows : [],
-    error: settled.error,
-    isLoading: enabled && settled.key !== key,
-    isFresh: !enabled || (settled.key === key && settled.isFresh),
-  };
-};
-
-/** What a `jest.mock('@kiko/db/use-live-query', ...)` factory returns. */
-export const liveQueryModule = () => ({
-  ...jest.requireActual('@kiko/db/use-live-query'),
-  useLiveQuery: useSqliteLiveQuery,
+  }),
+  rawDatabase: { reactiveExecute },
 });

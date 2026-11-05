@@ -64,10 +64,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `marked-series-chain-worlds.ts`: the amount-chain worlds (`AMOUNT_CHAIN_WORLDS`), built from the
   same builders.
 - `marked-series-hook-result.ts`: what the series hook hands its screens for a ledger and marked
-  entries (`hookResultOf`, `hookStateOf`), made of the real detection functions.
+  entries (`hookStateOf`, with the `MarkedNames` type), made of the real detection functions.
 - `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
-  real migrated `node:sqlite` database (`clientModule`, `liveQueryModule`, `openSqliteWorld`;
-  a live read that re-reads on a committed write), and the rows of a `ledgerOf` ledger put into it.
+  real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
+  `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and the rows of a `ledgerOf` ledger put into it.
 - `form-header-items.ts`: the nav-bar items a form sets (`pressSave`, `saveItem`,
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an

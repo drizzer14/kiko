@@ -22,9 +22,10 @@ import SettingsStack from '.';
 /**
  * A mark set in the transaction form, reached through a link, changes what Back shows. The hook
  * (`useRecurringSeries`), the detection, the settings parser and every repository are the real
- * ones, over a real migrated SQLite database whose live reads fire on a committed write
- * (`sqlite-live-query`). Doubles: the menu row that opens the list, the layout mode, the sync
- * hooks, the held-currencies hook and the Home and Statistics screens of the Home stack.
+ * ones, over a real migrated SQLite database whose live reads (the real `useLiveQuery`) fire on
+ * a committed write (`sqlite-live-query`). Doubles: the menu row that opens the list, the layout
+ * mode, the sync hooks, the held-currencies hook and the Home and Statistics screens of the Home
+ * stack.
  */
 
 type Row = ReturnType<typeof monthly>[number];
@@ -42,9 +43,6 @@ jest.mock('@kiko/display-regions', () =>
   require('@kiko/test-support/layout-mode-spy').layoutModeSpyModule(),
 );
 jest.mock('@kiko/db/client', () => require('@kiko/test-support/sqlite-live-query').clientModule());
-jest.mock('@kiko/db/use-live-query', () =>
-  require('@kiko/test-support/sqlite-live-query').liveQueryModule(),
-);
 jest.mock('@kiko/screens/home', () => {
   const { Text } = require('react-native');
 
