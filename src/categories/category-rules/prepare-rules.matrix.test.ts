@@ -30,6 +30,8 @@ const storedSubject = (
     time,
     currency,
     mcc: null,
+    counterIban: null,
+    accountId: null,
   });
 
 const amountRule = (
@@ -87,6 +89,8 @@ describe('amount matcher', () => {
           time: NOON,
           currency: 'BTC',
           mcc: null,
+          counterIban: null,
+          accountId: null,
         }),
       ),
     ).toBe(true);
@@ -138,6 +142,7 @@ describe('draft subjects', () => {
       currency: 'UAH',
       direction: 'expense',
       time: NOON,
+      accountId: null,
       ...overrides,
     });
 
@@ -267,6 +272,8 @@ describe('the nameContains and mcc conditions', () => {
       time: NOON,
       currency: 'UAH' as const,
       mcc,
+      counterIban: null,
+      accountId: null,
     };
 
     return subjectOfStoredRow(row);
@@ -306,11 +313,8 @@ describe('the nameContains and mcc conditions', () => {
 });
 
 describe('the account and counterIban conditions', () => {
-  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
-  const asStoredRow = (raw: unknown) => raw as Parameters<typeof subjectOfStoredRow>[0];
-
-  const accountRule = (accountId: string) => asMatcher({ type: 'account', accountId });
-  const ibanRule = (iban: string) => asMatcher({ type: 'counterIban', iban });
+  const accountRule = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
+  const ibanRule = (iban: string): CategoryRuleMatcher => ({ type: 'counterIban', iban });
 
   const IBAN = 'UA733220010000026201112223334';
 
@@ -320,18 +324,16 @@ describe('the account and counterIban conditions', () => {
     mcc?: number | null;
     description?: string | null;
   }) =>
-    subjectOfStoredRow(
-      asStoredRow({
-        description: 'Silpo',
-        amountMinorUnits: -1000,
-        time: NOON,
-        currency: 'UAH',
-        mcc: null,
-        accountId: null,
-        counterIban: null,
-        ...columns,
-      }),
-    );
+    subjectOfStoredRow({
+      description: 'Silpo',
+      amountMinorUnits: -1000,
+      time: NOON,
+      currency: 'UAH',
+      mcc: null,
+      accountId: null,
+      counterIban: null,
+      ...columns,
+    });
 
   it('account matches its own id', () => {
     expect(matches([accountRule('account-1')], withColumns({ accountId: 'account-1' }))).toBe(true);
@@ -365,8 +367,8 @@ describe('the account and counterIban conditions', () => {
   });
 
   it.each([
-    ['a blank name', asMatcher({ type: 'nameContains', text: 'x' }), { description: '' }],
-    ['a null mcc', asMatcher({ type: 'mcc', code: 5411 }), { mcc: null }],
+    ['a blank name', { type: 'nameContains', text: 'x' } as const, { description: '' }],
+    ['a null mcc', { type: 'mcc', code: 5411 } as const, { mcc: null }],
     ['a null account', accountRule('account-1'), { accountId: null }],
     ['a null IBAN', ibanRule(IBAN), { counterIban: null }],
   ])('every new kind on a missing value does not match: %s', (_label, matcher, columns) => {

@@ -350,6 +350,7 @@ describe('buildDemoSnapshot', () => {
             subjectOfStoredRow({
               ...transaction,
               currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+              accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
             }),
           );
 

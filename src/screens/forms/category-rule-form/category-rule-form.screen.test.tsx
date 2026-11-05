@@ -884,10 +884,8 @@ describe('CategoryRuleFormScreen — the draft kept over a remount', () => {
 });
 
 describe('CategoryRuleFormScreen — an account condition', () => {
-  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
-
   const accountRuleOf = (accountId: string): RuleData =>
-    ruleOf('mine', 'food', [asMatcher({ type: 'account', accountId })]);
+    ruleOf('mine', 'food', [{ type: 'account', accountId }]);
 
   const MAIN_CARD: AccountData = {
     id: 'account-1',

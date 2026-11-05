@@ -126,9 +126,8 @@ describe('the nameContains and mcc conditions', () => {
 });
 
 describe('the account and counterIban conditions', () => {
-  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
-  const account = (accountId: string) => asMatcher({ type: 'account', accountId });
-  const iban = (value: string) => asMatcher({ type: 'counterIban', iban: value });
+  const account = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
+  const iban = (value: string): CategoryRuleMatcher => ({ type: 'counterIban', iban: value });
 
   const SPACED_LOWER_CASE_IBAN = 'ua73 3220 0100 0002 6201 1122 2333 4';
   const IBAN_KEY = 'UA733220010000026201112223334';

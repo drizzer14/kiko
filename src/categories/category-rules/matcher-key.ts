@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { ibanKeyOf } from '@kiko/transactions/iban';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type { CategoryRuleMatcher } from './category-rules.d';
@@ -18,6 +19,8 @@ const keyOfMatcher = (matcher: CategoryRuleMatcher): string =>
     .with({ type: 'direction' }, ({ direction }) => `direction:${direction}`)
     .with({ type: 'time' }, ({ operator, minuteOfDay }) => `time:${operator}:${minuteOfDay}`)
     .with({ type: 'mcc' }, ({ code }) => `mcc:${code}`)
+    .with({ type: 'account' }, ({ accountId }) => `account:${accountId}`)
+    .with({ type: 'counterIban' }, ({ iban }) => `counterIban:${ibanKeyOf(iban)}`)
     .exhaustive();
 
 // The one definition of "the same matcher", so the duplicate check and the priority count cannot

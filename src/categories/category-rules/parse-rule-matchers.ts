@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldr, eitherSync } from 'fnts/either';
 import { isCurrency } from '@kiko/currency/currency';
+import { IBAN_PATTERN, ibanKeyOf } from '@kiko/transactions/iban';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type { CategoryRuleMatcher } from './category-rules.d';
@@ -37,6 +38,18 @@ const isMerchantCode = (value: unknown): value is number =>
 const parseMccMatcher = (record: Record<string, unknown>): CategoryRuleMatcher | null =>
   isMerchantCode(record.code) ? { type: 'mcc', code: record.code } : null;
 
+const parseAccountMatcher = (record: Record<string, unknown>): CategoryRuleMatcher | null =>
+  typeof record.accountId === 'string' && record.accountId !== ''
+    ? { type: 'account', accountId: record.accountId }
+    : null;
+
+// Stored in the key form, so a value typed with spaces in lower case reads like every other.
+const parseIbanMatcher = (record: Record<string, unknown>): CategoryRuleMatcher | null => {
+  const iban = typeof record.iban === 'string' ? ibanKeyOf(record.iban) : '';
+
+  return IBAN_PATTERN.test(iban) ? { type: 'counterIban', iban } : null;
+};
+
 const parseAmountMatcher = (record: Record<string, unknown>): CategoryRuleMatcher | null => {
   const { operator, minorUnits, currency } = record;
 
@@ -71,6 +84,8 @@ const parseMatcher = (value: unknown): CategoryRuleMatcher | null => {
     .with('direction', () => parseDirectionMatcher(value))
     .with('time', () => parseTimeMatcher(value))
     .with('mcc', () => parseMccMatcher(value))
+    .with('account', () => parseAccountMatcher(value))
+    .with('counterIban', () => parseIbanMatcher(value))
     .otherwise(() => null);
 };
 

@@ -3,8 +3,10 @@ import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import type { MatcherDraft, MatcherDraftError } from './rule-draft.types';
 import { emptyMatcherDraft, fromMatcherDrafts, toMatcherDrafts } from './rule-draft';
 
+const NO_ACCOUNTS: ReadonlySet<string> = new Set();
+
 const roundTrip = (matchers: CategoryRuleMatcher[]) =>
-  fromMatcherDrafts(toMatcherDrafts(matchers, 'UAH'));
+  fromMatcherDrafts(toMatcherDrafts(matchers, 'UAH', NO_ACCOUNTS));
 
 describe('toMatcherDrafts and fromMatcherDrafts', () => {
   it.each([
@@ -48,6 +50,7 @@ describe('toMatcherDrafts and fromMatcherDrafts', () => {
     const [draft] = toMatcherDrafts(
       [{ type: 'amount', operator: 'eq', minorUnits: 123456789, currency: 'UAH' }],
       'UAH',
+      NO_ACCOUNTS,
     );
 
     expect(draft).toMatchObject({
@@ -59,7 +62,7 @@ describe('toMatcherDrafts and fromMatcherDrafts', () => {
   });
 
   it('starts every field the matcher does not use on its default, in the base currency', () => {
-    const [draft] = toMatcherDrafts([{ type: 'nameIs', text: 'Silpo' }], 'USD');
+    const [draft] = toMatcherDrafts([{ type: 'nameIs', text: 'Silpo' }], 'USD', NO_ACCOUNTS);
 
     expect(draft).toEqual({ ...emptyMatcherDraft('USD'), type: 'nameIs', text: 'Silpo' });
     expect(draft?.currency).toBe('USD');
@@ -69,6 +72,7 @@ describe('toMatcherDrafts and fromMatcherDrafts', () => {
     const [draft] = toMatcherDrafts(
       [{ type: 'amount', operator: 'eq', minorUnits: 100, currency: 'EUR' }],
       'USD',
+      NO_ACCOUNTS,
     );
 
     expect(draft?.currency).toBe('EUR');
@@ -111,7 +115,7 @@ describe('the nameContains and mcc rows', () => {
       matchers: [{ type: 'mcc', code: 42 }],
     });
 
-    const [draft] = toMatcherDrafts([{ type: 'mcc', code: 42 }], 'UAH');
+    const [draft] = toMatcherDrafts([{ type: 'mcc', code: 42 }], 'UAH', NO_ACCOUNTS);
 
     expect(draft).toMatchObject({ type: 'mcc', mccText: '0042' });
   });
@@ -153,24 +157,21 @@ describe('the nameContains and mcc rows', () => {
 });
 
 describe('the account and counterIban rows', () => {
-  const asDraft = (raw: unknown) => raw as MatcherDraft;
-  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
-  const asSeeder = (raw: unknown) =>
-    raw as (
-      matchers: readonly CategoryRuleMatcher[],
-      baseCurrency: 'UAH',
-      liveAccountIds: ReadonlySet<string>,
-    ) => MatcherDraft[];
+  const IBAN_KEY = 'UA733220010000026201112223334';
 
-  const seedWithAccounts = asSeeder(toMatcherDrafts);
+  const seedWithAccounts = (matcher: CategoryRuleMatcher, liveAccountIds: ReadonlySet<string>) =>
+    toMatcherDrafts([matcher], 'UAH', liveAccountIds);
 
-  const accountDraft = (accountId: string | null): MatcherDraft =>
-    asDraft({ ...emptyMatcherDraft('UAH'), type: 'account', accountId });
-  const ibanDraft = (ibanText: string): MatcherDraft =>
-    asDraft({ ...emptyMatcherDraft('UAH'), type: 'counterIban', ibanText });
-
-  const accountIdOf = (draft: MatcherDraft | undefined): unknown =>
-    (draft as unknown as { accountId: unknown } | undefined)?.accountId;
+  const accountDraft = (accountId: string | null): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'account',
+    accountId,
+  });
+  const ibanDraft = (ibanText: string): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'counterIban',
+    ibanText,
+  });
 
   it('no account picked gives errorAccount', () => {
     expect(fromMatcherDrafts([accountDraft(null)])).toEqual({
@@ -182,50 +183,39 @@ describe('the account and counterIban rows', () => {
   it('a picked account becomes a matcher', () => {
     expect(fromMatcherDrafts([accountDraft('account-1')])).toEqual({
       kind: 'valid',
-      matchers: [asMatcher({ type: 'account', accountId: 'account-1' })],
+      matchers: [{ type: 'account', accountId: 'account-1' }],
     });
   });
 
   it('an id no longer listed seeds as none', () => {
     const [draft] = seedWithAccounts(
-      [asMatcher({ type: 'account', accountId: 'gone' })],
-      'UAH',
+      { type: 'account', accountId: 'gone' },
       new Set(['account-1']),
     );
 
-    expect(draft).toMatchObject({ type: 'account' });
-    expect(accountIdOf(draft)).toBeNull();
+    expect(draft).toMatchObject({ type: 'account', accountId: null });
   });
 
   it('a live id seeds as itself', () => {
     const [draft] = seedWithAccounts(
-      [asMatcher({ type: 'account', accountId: 'account-1' })],
-      'UAH',
+      { type: 'account', accountId: 'account-1' },
       new Set(['account-1', 'account-2']),
     );
 
-    expect(draft).toMatchObject({ type: 'account' });
-    expect(accountIdOf(draft)).toBe('account-1');
+    expect(draft).toMatchObject({ type: 'account', accountId: 'account-1' });
   });
 
   it('a typed IBAN is stored normalized', () => {
     expect(fromMatcherDrafts([ibanDraft(' ua73 3220 0100 0002 6201 1122 2333 4 ')])).toEqual({
       kind: 'valid',
-      matchers: [asMatcher({ type: 'counterIban', iban: 'UA733220010000026201112223334' })],
+      matchers: [{ type: 'counterIban', iban: IBAN_KEY }],
     });
   });
 
   it('an IBAN rule seeds the text it was stored with', () => {
-    const [draft] = seedWithAccounts(
-      [asMatcher({ type: 'counterIban', iban: 'UA733220010000026201112223334' })],
-      'UAH',
-      new Set(),
-    );
+    const [draft] = seedWithAccounts({ type: 'counterIban', iban: IBAN_KEY }, NO_ACCOUNTS);
 
-    expect(draft).toMatchObject({ type: 'counterIban' });
-    expect((draft as unknown as { ibanText: unknown }).ibanText).toBe(
-      'UA733220010000026201112223334',
-    );
+    expect(draft).toMatchObject({ type: 'counterIban', ibanText: IBAN_KEY });
   });
 
   it.each([
@@ -243,14 +233,14 @@ describe('the account and counterIban rows', () => {
   it('judges only the fields of the type a row has', () => {
     expect(
       fromMatcherDrafts([
-        asDraft({ ...accountDraft('account-1'), ibanText: 'junk' }),
-        asDraft({ ...ibanDraft('UA733220010000026201112223334'), accountId: null }),
+        { ...accountDraft('account-1'), ibanText: 'junk' },
+        { ...ibanDraft(IBAN_KEY), accountId: null },
       ]),
     ).toEqual({
       kind: 'valid',
       matchers: [
-        asMatcher({ type: 'account', accountId: 'account-1' }),
-        asMatcher({ type: 'counterIban', iban: 'UA733220010000026201112223334' }),
+        { type: 'account', accountId: 'account-1' },
+        { type: 'counterIban', iban: IBAN_KEY },
       ],
     });
   });

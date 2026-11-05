@@ -19,6 +19,8 @@ export const MATCHER_TYPES = optionsOf<CategoryRuleMatcher['type']>({
   direction: null,
   time: null,
   mcc: null,
+  account: null,
+  counterIban: null,
 });
 export const AMOUNT_OPERATORS = optionsOf<AmountOperator>({
   eq: null,

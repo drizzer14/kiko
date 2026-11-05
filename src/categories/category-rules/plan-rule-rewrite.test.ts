@@ -25,6 +25,8 @@ const candidate = (overrides: Partial<RewriteCandidate> = {}): RewriteCandidate 
   setsBalance: false,
   changeGroupId: null,
   mcc: null,
+  counterIban: null,
+  accountId: null,
   ...overrides,
 });
 

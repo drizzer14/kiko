@@ -14,6 +14,8 @@ const silpoSubject = (description = 'Silpo') =>
     time: new Date(2026, 5, 1, 12, 0).getTime(),
     currency: 'UAH',
     mcc: null,
+    counterIban: null,
+    accountId: null,
   });
 
 const winnerIdOf = (rows: readonly StoredCategoryRule[], description = 'Silpo') =>
@@ -203,6 +205,8 @@ describe('rule priority of the new conditions', () => {
       time: new Date(2026, 5, 1, 12, 0).getTime(),
       currency: 'UAH' as const,
       mcc: 5411,
+      counterIban: null,
+      accountId: null,
     };
 
     return winningRule(prepareRules(rows), subjectOfStoredRow(row))?.id;
@@ -237,11 +241,8 @@ describe('rule priority of the new conditions', () => {
 });
 
 describe('rule priority of the account and counterIban conditions', () => {
-  const asMatcher = (raw: unknown) => raw as CategoryRuleMatcher;
-  const asStoredRow = (raw: unknown) => raw as Parameters<typeof subjectOfStoredRow>[0];
-
-  const accountRule = (accountId: string) => asMatcher({ type: 'account', accountId });
-  const ibanRule = (iban: string) => asMatcher({ type: 'counterIban', iban });
+  const accountRule = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
+  const ibanRule = (iban: string): CategoryRuleMatcher => ({ type: 'counterIban', iban });
 
   const IBAN = 'UA733220010000026201112223334';
 
@@ -250,13 +251,13 @@ describe('rule priority of the account and counterIban conditions', () => {
       description: 'Silpo',
       amountMinorUnits: -10000,
       time: new Date(2026, 5, 1, 12, 0).getTime(),
-      currency: 'UAH',
+      currency: 'UAH' as const,
       mcc: null,
       accountId: 'account-1',
       counterIban: IBAN,
     };
 
-    return winningRule(prepareRules(rows), subjectOfStoredRow(asStoredRow(row)))?.id;
+    return winningRule(prepareRules(rows), subjectOfStoredRow(row))?.id;
   };
 
   it('each new condition counts one', () => {
