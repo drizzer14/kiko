@@ -96,7 +96,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
   // of `goBack`; the series it removed stays on screen until then. Only this screen's own write
   // sets it: the same removal made elsewhere shows the neutral text.
   const [removedSeries, setRemovedSeries] = useState<RecurringSeries>();
-  const series = seriesOfRoute(detectedSeries, markedSeries, route.params) ?? removedSeries;
+  const series = removedSeries ?? seriesOfRoute(detectedSeries, markedSeries, route.params);
   const isVisible = useIsScreenVisible();
   // Paused under the form a charge opens: on Back the last rows show until the one re-read lands.
   const liveOptions = { paused: !isVisible } as const;

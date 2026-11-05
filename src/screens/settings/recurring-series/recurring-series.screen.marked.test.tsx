@@ -301,6 +301,26 @@ describe('RecurringSeriesScreen — removing a mark', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  it('holds the removed series over the detected one the same route now finds, until it goes back', async () => {
+    const detectedRoute = must(
+      hookStateOf(appleLedger(), []).series.find(({ id }) => id === MARKED_APPLE.id),
+      'detected cheap chain',
+    );
+    const { getByText, getByTestId, queryByTestId, update, navigation } = await renderScreen(
+      APPLE,
+      withoutAmount(routeOf(detectedRoute)),
+    );
+
+    expect(getByTestId('recurring-series-remove-mark')).toBeTruthy();
+
+    await fireEvent.press(getByText(removeMarkText()));
+    await update(hookStateOf(appleLedger(), []));
+
+    expect(getByTestId('recurring-series-remove-mark')).toBeTruthy();
+    expect(queryByTestId('recurring-series-hide')).toBeNull();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
   it('shows the neutral text for the same removal made elsewhere, with no write of its own', async () => {
     const { getByTestId, queryByTestId, update } = await renderScreen(APPLE, routeOf(MARKED_APPLE));
 
