@@ -27,9 +27,9 @@ const textOfRefusal = (refusal: BybitRefusalClass, code: number | undefined): st
 
 /**
  * The error of a sync the cooldown stopped. The cooldown keeps no cause, and this text fits a rate
- * refusal and a 403 alike: it names both and gives the 10 minutes of a 403. A rate refusal can
- * cool the account for less, so after one the text can state a longer wait than Kiko keeps, and
- * never a shorter one.
+ * refusal and a 403 alike: it names both and states the wait as "up to 10 minutes". No cooldown
+ * lasts longer than that (`retryAfterMsOf` keeps a reset time only within it), and a rate refusal
+ * can cool the account for less.
  */
 export const bybitCoolingFailure = (): Error => new Error(i18n.t('accountDetail.bybitForbidden'));
 

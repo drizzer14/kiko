@@ -15,7 +15,7 @@ describe('the Bybit copy', () => {
       expect(uk.accountDetail[key]).toMatch(
         /Якщо Bybit не пропонує подовження, створіть новий ключ/,
       );
-      expect(uk.accountDetail[key]).toMatch(/відʼєднайте й підключіть Bybit знову/);
+      expect(uk.accountDetail[key]).toMatch(/відключіть і підключіть Bybit знову/);
     },
   );
 
@@ -26,6 +26,36 @@ describe('the Bybit copy', () => {
     );
     expect(uk.accountDetail.bybitKeyEnded).toMatch(/він лишиться той самий/);
     expect(uk.accountDetail.bybitKeyRefusedExpired).toMatch(/ключ і секрет лишаться ті самі/);
+  });
+
+  it('the refused-key text names only a deleted key as a cause, in en and uk', () => {
+    expect(en.accountDetail.bybitKeyRefused).toBe(
+      'Bybit refused this key. If you deleted it, create a new key, then disconnect and connect again.',
+    );
+    expect(uk.accountDetail.bybitKeyRefused).toBe(
+      'Bybit відхилив цей ключ. Якщо ви його видалили, створіть новий ключ, потім відключіть і підключіть Bybit знову.',
+    );
+  });
+
+  it('the forbidden text gives the longest wait, since a rate refusal waits for less', () => {
+    expect(en.accountDetail.bybitForbidden).toMatch(
+      /Kiko waits before trying again, up to 10 minutes\.$/,
+    );
+    expect(uk.accountDetail.bybitForbidden).toMatch(
+      /Кіко зачекає, перш ніж спробувати знову, до 10 хвилин\.$/,
+    );
+  });
+
+  it('the clock text names the iOS switch as the uk Date & Time settings spell it', () => {
+    expect(uk.accountDetail.bybitClockOff).toMatch(
+      /Увімкніть «Задавати автоматично» в налаштуваннях дати й часу\.$/,
+    );
+  });
+
+  it('the switch-refused text says the account has holdings from another exchange', () => {
+    expect(en.accountDetail.exchangeSwitchRefused).toBe(
+      '{{exchange}} cannot connect here because this account still has holdings from another exchange or wallet. Add a new crypto account, or delete those holdings first.',
+    );
   });
 
   it('the 10024 text states the code, in en and uk, and offers no other step', () => {

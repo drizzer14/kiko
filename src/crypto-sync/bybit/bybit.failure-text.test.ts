@@ -33,13 +33,13 @@ describe('bybitFailureOf', () => {
     expect(new Set(texts).size).toBe(3);
   });
 
-  it('shows the text that fits both reasons for an HTTP 403, and its ten minute wait', () => {
+  it('shows the text that fits both reasons for an HTTP 403, and its longest wait', () => {
     const text = textOf(bybitFailureOf(new BybitRateLimitError(403, 600_000)));
 
     expect(text).toBe(i18n.t('accountDetail.bybitForbidden'));
     expect(text).toContain('too many requests');
     expect(text).toContain('does not serve your current network location');
-    expect(text).toContain('10 minutes');
+    expect(text).toContain('Kiko waits before trying again, up to 10 minutes.');
   });
 
   it.each([

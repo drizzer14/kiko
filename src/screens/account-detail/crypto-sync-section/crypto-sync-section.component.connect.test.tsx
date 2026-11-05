@@ -89,7 +89,7 @@ const holdingKeyedBy = (field: string): HoldingRow =>
 
 const CONNECT = 'Connect an exchange or wallet';
 const REFUSED_TAIL =
-  'cannot connect here because this account still holds holdings of another exchange or wallet. Add a new crypto account, or delete those holdings first.';
+  'cannot connect here because this account still has holdings from another exchange or wallet. Add a new crypto account, or delete those holdings first.';
 
 describe('CryptoSyncSection — connecting a crypto account', () => {
   beforeEach(() => {

@@ -810,7 +810,7 @@ export const en = {
     bybitComplianceRefused:
       'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
     bybitForbidden:
-      'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits 10 minutes before trying again.',
+      'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits before trying again, up to 10 minutes.',
     bybitKeyEnded:
       'Bybit key ended on {{date}}. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
     // English defines every plural form so both catalogues carry the same keys.
@@ -827,7 +827,7 @@ export const en = {
     bybitKeyMissingPermission:
       'This key cannot read everything Kiko needs. Tick every read box Bybit offers for this key, or create a new read-only key with all of them, then connect again.',
     bybitKeyRefused:
-      'Bybit refused this key. If you deleted it or changed your password, create a new key, then disconnect and connect again.',
+      'Bybit refused this key. If you deleted it, create a new key, then disconnect and connect again.',
     bybitKeyRefusedExpired:
       'Bybit no longer accepts this key. Its term of about 90 days may have ended. Try to renew it on Bybit: the key and secret then stay the same, so you do not enter them again. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
     bybitKeyValidUntil: 'Bybit key ends on {{date}}.',
@@ -887,7 +887,7 @@ export const en = {
     exchangeP2pReadFailed:
       '{{exchange}} P2P orders could not be read on the last sync. Kiko will try again on the next sync.',
     exchangeSwitchRefused:
-      '{{exchange}} cannot connect here because this account still holds holdings of another exchange or wallet. Add a new crypto account, or delete those holdings first.',
+      '{{exchange}} cannot connect here because this account still has holdings from another exchange or wallet. Add a new crypto account, or delete those holdings first.',
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
