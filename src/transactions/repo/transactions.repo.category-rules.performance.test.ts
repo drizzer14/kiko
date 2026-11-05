@@ -186,7 +186,9 @@ describe('inserting a batch of 10 000 rows against 200 rules', () => {
       expect(ruleWon.length).toBeGreaterThan(100);
       expect(ruleWon.length).toBeLessThan(INSERT_BATCH_SIZE);
       expect(countOf(statements, /^select .* from "category_rules"/i)).toBe(1);
-      expect(countOf(statements, /^select "id", "name", "currency" from "holdings"/i)).toBe(1);
+      expect(
+        countOf(statements, /^select "id", "name", "currency", "account_id" from "holdings"/i),
+      ).toBe(1);
     },
     TEST_TIMEOUT,
   );

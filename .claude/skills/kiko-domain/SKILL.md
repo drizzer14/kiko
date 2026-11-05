@@ -1011,6 +1011,17 @@ come from `src/categories/category-rules/matcher-options.ts`. The
 editor's amount draft converts through `Money.fromMajor` exactly; a
 draft with too many decimals for the currency is refused.
 
+**Rule IBAN spelling.** `IBAN_PATTERN` and `ibanKeyOf` live in `src/transactions/iban/iban.ts`
+(barrel `@kiko/transactions/iban`). The parser stores the key form (no whitespace, uppercase), so
+the stored, compared and displayed forms are one.
+
+**Rule on a deleted account.** A rule on an account id that no row holds stays stored and never
+matches (`src/categories/category-rules/prepare-rules.ts`); the card reads "Deleted account"
+(`src/screens/forms/category-form/rule-summary/rule-summary.ts`); a restore keeps the id. The form
+seeds an unknown id as none, so Save asks for a pick
+(`src/screens/forms/category-rule-form/rule-draft/rule-draft.ts`). An account deleted while the
+form is open is a known open item.
+
 ## Spending-exclusion pipeline
 
 An internal money movement (cash-out, own-account transfer, one leg of

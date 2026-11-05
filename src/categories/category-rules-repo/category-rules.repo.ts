@@ -59,6 +59,8 @@ export const candidateColumns = {
   setsBalance: transactions.setsBalance,
   changeGroupId: transactions.changeGroupId,
   mcc: transactions.mcc,
+  counterIban: transactions.counterIban,
+  accountId: holdings.accountId,
 };
 
 // `hasNoRealCategory` in SQL, narrowing only: `lower()` folds ASCII alone, so a key in another
@@ -300,6 +302,8 @@ const rowsForNamedRule = async (
         direction: null,
         minuteOfDay: null,
         mcc: null,
+        counterIban: null,
+        accountId: null,
       }),
     );
   const rewrittenRows: RewrittenRow[] = [];
@@ -441,6 +445,8 @@ const planSourceRow = async (
       operation: transactions.operation,
       currency: holdings.currency,
       mcc: transactions.mcc,
+      counterIban: transactions.counterIban,
+      accountId: holdings.accountId,
     })
     .from(transactions)
     .innerJoin(holdings, eq(holdings.id, transactions.holdingId))

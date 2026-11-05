@@ -46,12 +46,15 @@ const DOLLAR_RULE = ruleOf('dollar', 'dining', [
   { type: 'amount', operator: 'eq', minorUnits: 1200, currency: 'USD' },
 ]);
 
+const ACCOUNT_RULE = ruleOf('card', 'dining', [{ type: 'account', accountId: 'account-1' }]);
+
 type Draft = {
   description: string;
   amount: string;
   time: number;
   mode: FormMode;
   currency: Currency | null;
+  accountId: string | undefined;
   isEditing: boolean;
   ruleDescription: (description: string) => string;
 };
@@ -62,6 +65,7 @@ const BLANK_DRAFT: Draft = {
   time: NOON,
   mode: 'expense',
   currency: 'UAH',
+  accountId: undefined,
   isEditing: false,
   ruleDescription: (description) => description,
 };
@@ -127,6 +131,20 @@ describe('useCategoryPick', () => {
       await change({ currency: 'USD' });
 
       expect(result.current.selectedCategory).toBe('dining');
+    });
+
+    it('pre-selects once the picked holding’s account is the one a rule names', async () => {
+      const { result, change } = await setup([ACCOUNT_RULE]);
+
+      expect(result.current.selectedCategory).toBeNull();
+
+      await change({ accountId: 'account-1' });
+
+      expect(result.current.selectedCategory).toBe('dining');
+
+      await change({ accountId: 'account-2' });
+
+      expect(result.current.selectedCategory).toBeNull();
     });
 
     it('pre-selects by the label a blank description reads as', async () => {

@@ -11,6 +11,8 @@ const storedRow = (
   time: at(2026, 5, 1, 12, 0),
   currency: 'UAH',
   mcc: null,
+  counterIban: null,
+  accountId: null,
   ...overrides,
 });
 
@@ -92,8 +94,39 @@ describe('the mcc of a subject', () => {
         currency: 'USD',
         direction: 'income',
         time: at(2027, 2, 28, 18, 30),
+        accountId: null,
       }).mcc,
     ).toBeNull();
+  });
+});
+
+describe('the account and IBAN of a subject', () => {
+  const draftOf = (accountId: string | null) =>
+    subjectOfDraft({
+      description: 'Silpo',
+      absoluteMinorUnits: 12500,
+      currency: 'USD',
+      direction: 'income',
+      time: at(2027, 2, 28, 18, 30),
+      accountId,
+    });
+
+  it('a stored row carries the account of its holding', () => {
+    expect(subjectOfStoredRow(storedRow({ accountId: 'account-1' })).accountId).toBe('account-1');
+    expect(subjectOfStoredRow(storedRow({ accountId: null })).accountId).toBeNull();
+  });
+
+  it('a stored row carries its IBAN in the key form, or none', () => {
+    const spaced = storedRow({ counterIban: 'ua73 3220 0100 0002 6201 1122 2333 4' });
+
+    expect(subjectOfStoredRow(spaced).counterIban).toBe('UA733220010000026201112223334');
+    expect(subjectOfStoredRow(storedRow({ counterIban: null })).counterIban).toBeNull();
+  });
+
+  it('a draft carries the account of its picked holding and never an IBAN', () => {
+    expect(draftOf('account-1').accountId).toBe('account-1');
+    expect(draftOf(null).accountId).toBeNull();
+    expect(draftOf('account-1').counterIban).toBeNull();
   });
 });
 
@@ -104,6 +137,7 @@ describe('subjectOfDraft', () => {
     currency: 'USD' as const,
     direction: 'income' as const,
     time: at(2027, 2, 28, 18, 30),
+    accountId: 'account-1',
   };
 
   it('carries every draft field, normalizing the name', () => {
@@ -114,6 +148,8 @@ describe('subjectOfDraft', () => {
       direction: 'income',
       minuteOfDay: 1110,
       mcc: null,
+      counterIban: null,
+      accountId: 'account-1',
     });
   });
 

@@ -14,8 +14,12 @@ const MINUTES_AT_18 = 18 * 60;
 const formatAmount = (minorUnits: number, currency: Currency): string =>
   `${(minorUnits / 100).toFixed(2)} ${currency}`;
 
+const ACCOUNT_NAMES = new Map([['account-1', 'Main card']]);
+
+const accountNameOf = (accountId: string): string | null => ACCOUNT_NAMES.get(accountId) ?? null;
+
 const rowsOf = (matchers: CategoryRuleMatcher[], clock: TimeClock = CLOCK_24) =>
-  ruleRows(matchers, { t: i18n.t, clock, formatAmount });
+  ruleRows(matchers, { t: i18n.t, clock, formatAmount, accountNameOf });
 
 const summaryOf = (matchers: CategoryRuleMatcher[], clock: TimeClock = CLOCK_24): string =>
   ruleSummary(rowsOf(matchers, clock));
@@ -129,9 +133,35 @@ describe('ruleRows', () => {
 
         return '0.00100000 BTC';
       },
+      accountNameOf,
     });
 
     expect(received).toEqual([[100000, 'BTC']]);
+  });
+});
+
+describe('the account and counterIban rows', () => {
+  const IBAN = 'UA733220010000026201112223334';
+
+  const accountRowsOf = (matchers: CategoryRuleMatcher[]) =>
+    rowsOf(matchers).map(({ label, value }) => ({ label, value }));
+
+  it('shows the live account name', () => {
+    expect(accountRowsOf([{ type: 'account', accountId: 'account-1' }])).toEqual([
+      { label: 'Account', value: 'Main card' },
+    ]);
+  });
+
+  it('shows Deleted account for an id in no row', () => {
+    expect(accountRowsOf([{ type: 'account', accountId: 'gone' }])).toEqual([
+      { label: 'Account', value: 'Deleted account' },
+    ]);
+  });
+
+  it('shows the IBAN in full', () => {
+    expect(accountRowsOf([{ type: 'counterIban', iban: IBAN }])).toEqual([
+      { label: 'Counterparty IBAN', value: IBAN },
+    ]);
   });
 });
 

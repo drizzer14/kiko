@@ -147,6 +147,7 @@ export const TITLE_KEYS = new Set([
   'reminders.form.timeSheetTitle',
   'reminders.permission.preAlertTitle',
   'reminders.title',
+  'ruleForm.accountSheetTitle',
   'ruleForm.addTitle',
   'ruleForm.conditionSheetTitle',
   'ruleForm.editTitle',

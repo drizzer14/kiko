@@ -13,7 +13,9 @@ export type CategoryRuleMatcher =
   | { type: 'amount'; operator: AmountOperator; minorUnits: number; currency: Currency }
   | { type: 'direction'; direction: RuleDirection }
   | { type: 'time'; operator: TimeOperator; minuteOfDay: number }
-  | { type: 'mcc'; code: number };
+  | { type: 'mcc'; code: number }
+  | { type: 'account'; accountId: string }
+  | { type: 'counterIban'; iban: string };
 
 export type NameRuleKind = 'nameIs' | 'nameStartsWith';
 
@@ -63,6 +65,8 @@ export type RuleSubject = {
   direction: RuleDirection | null;
   minuteOfDay: number | null;
   mcc: number | null;
+  counterIban: string | null;
+  accountId: string | null;
 };
 
 export type RewriteCandidate = {
@@ -76,6 +80,8 @@ export type RewriteCandidate = {
   setsBalance: boolean;
   changeGroupId: string | null;
   mcc: number | null;
+  counterIban: string | null;
+  accountId: string | null;
 };
 
 export type RuleValidation =
