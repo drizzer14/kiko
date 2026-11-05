@@ -47,7 +47,7 @@ export const heldHolding = (
   createdAt: 0,
 });
 
-export type ProviderMocks = BybitDeps & {
+type ProviderMocks = BybitDeps & {
   readCredentials: jest.Mock;
   fetchKeyInfo: jest.Mock;
   fetchUnifiedBalance: jest.Mock;
