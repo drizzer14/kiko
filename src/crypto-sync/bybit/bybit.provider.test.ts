@@ -203,23 +203,17 @@ describe('bybitProvider', () => {
 
     // An empty answer would let a first Connect that the cooldown stopped report success on an
     // account no read has reached, with no text to say why. A holding a disconnect kept has lost
-    // its stamp, so it proves no read of the key now stored; a closed one proves nothing either.
+    // its stamp, so it proves no read of the key now stored. A holding with a stamp and no Bybit
+    // key proves no read of Bybit either.
     it.each([
       ['no holding', []],
-      ['only a holding no Bybit key names', [{ ...heldHolding('BTC:unified'), metadata: null }]],
+      [
+        'only a holding no Bybit key names',
+        [{ ...heldHolding('BTC:unified'), metadata: { syncedAt: 1 } }],
+      ],
       [
         'only a Bybit holding with no sync stamp',
         [{ ...heldHolding('BTC:unified'), metadata: { bybitAsset: 'BTC:unified' } }],
-      ],
-      [
-        'only a closed Bybit holding with no sync stamp',
-        [
-          {
-            ...heldHolding('BTC:unified'),
-            metadata: { bybitAsset: 'BTC:unified' },
-            closedAt: NOW - 1,
-          },
-        ],
       ],
     ])(
       'fails with the text of the refusal and makes no call for an account with %s',

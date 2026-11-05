@@ -282,10 +282,10 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
   fetchBalances: async (deps, target) => {
     // Checked before even reading credentials, so a cooling account makes no request. An account
     // with a stamped Bybit holding returns no balances, never throwing, so a later sync inside the
-    // cooldown leaves its stamp and balances as they were. An account with none has no read of
-    // Bybit behind it: an empty answer would let a first connect that the cooldown stopped report
-    // success with no text, so it fails with the refusal's text instead. A disconnect keeps the
-    // holdings and drops their stamp, so a kept one proves no read of the key stored now.
+    // cooldown leaves its stamp and balances as they were. With no stamp, nothing proves a read of
+    // Bybit: an empty answer would let a first connect that the cooldown stopped report success
+    // with no text, so it fails with the refusal's text instead. A disconnect keeps the holdings
+    // and drops their stamp, so a kept one proves no read of the key stored now.
     if (isBybitCoolingDown(target.accountId, deps.now())) {
       if (!target.holdings.some(isReadBybitHolding)) {
         throw bybitCoolingFailure();
