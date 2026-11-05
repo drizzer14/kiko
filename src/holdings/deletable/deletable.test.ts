@@ -129,10 +129,13 @@ describe('isSyncedHolding', () => {
     expect(isSyncedHolding({ metadata }, { institution: 'btc_wallet' })).toBe(true);
   });
 
+  // A map read with no institution check turns a miss into the key "undefined" or "null". Each
+  // metadata below holds that key, so only the check makes the holding manual.
   it('an institution that names no provider makes no holding synced', () => {
-    expect(
-      isSyncedHolding({ metadata: { bybitAsset: 'BTC:unified' } }, { institution: 'kraken' }),
-    ).toBe(false);
+    expect(isSyncedHolding({ metadata: { undefined: 'x' } }, { institution: 'kraken' })).toBe(
+      false,
+    );
+    expect(isSyncedHolding({ metadata: { null: 'x' } }, { institution: null })).toBe(false);
   });
 
   it('does not flag a non-string sync key', () => {

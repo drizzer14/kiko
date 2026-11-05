@@ -46,8 +46,9 @@ export const isSyncedAccount = (row: Pick<AccountRow, 'institution'>): boolean =
 
 /**
  * The metadata key that each synced institution writes on its holdings. A new id in either
- * registry fails to compile until its key is written here. A disconnect keeps the key on a
- * holding, so a key that is not the current provider's is an earlier provider's.
+ * registry fails to compile until its key is written here. A holding can carry a key that is not
+ * its account's provider's key, so only the key in this map for the account's institution makes
+ * the holding synced.
  */
 export const syncedMetadataFieldOf = {
   monobank: 'monobankId',
@@ -84,12 +85,13 @@ export const hasSyncedKey = (metadata: unknown): boolean => {
  * the holding itself carries the key of THAT institution in metadata.
  *
  * Both conditions are load-bearing. `accountsRepo.disconnect` deliberately
- * KEEPS the sync key (`monobankId` / `walletAddress` / `binanceAsset`) on the
+ * KEEPS the sync key (`monobankId` / `walletAddress` / `binanceAsset` / `bybitAsset`) on the
  * holding so a later reconnect re-adopts the same row instead of inserting a
  * duplicate that double-counts the balance. The key alone therefore does not
  * mean "synced" — only the key plus a live `institution` does. And the account
- * can connect to another provider after that: no sync of the new provider writes
- * a holding that keeps the old provider's key, so it reads as manual.
+ * can connect to another provider after that: a holding with only the old provider's key
+ * reads as manual, because the rule asks for the key of the current provider. A holding
+ * with both keys reads as synced.
  */
 export const isSyncedHolding = (
   holding: Pick<HoldingRow, 'metadata'>,

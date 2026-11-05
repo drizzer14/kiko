@@ -17,10 +17,10 @@ const isKeyedBy = (
 ): boolean => isRecord(metadata) && fields.some((field) => typeof metadata[field] === 'string');
 
 /**
- * The holdings that keep another exchange's or wallet's sync key (a disconnect keeps the keys).
- * Such a holding reads as manual under `pick`, so the refusal is not about a false synced state:
- * it keeps the holdings of one exchange or wallet on one account. An id that names no provider
- * conflicts with nothing.
+ * The holdings that carry a sync key that `pick` conflicts with. The test reads the keys only,
+ * not whether the holding is synced: a holding that also carries the key of `pick` is in the
+ * list too. The refusal keeps the holdings of one exchange or wallet on one account. An id that
+ * names no provider conflicts with nothing.
  */
 export const conflictingExchangeHoldings = <Holding extends Pick<HoldingRow, 'metadata'>>(
   pick: string,

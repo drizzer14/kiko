@@ -5,7 +5,13 @@ import { bybitProvider } from '../bybit';
 import { binanceProvider } from '../binance';
 import { bitcoinWalletProvider } from '../btc-wallet';
 
-import { balanceProviderIds, isBalanceProviderId, providerDisplayName } from './provider';
+import {
+  type BalanceProvider,
+  type BalanceProviderId,
+  balanceProviderIds,
+  isBalanceProviderId,
+  providerDisplayName,
+} from './provider';
 
 // The credentials modules import react-native-keychain, whose native binding is absent under
 // Jest; this test reads only the provider ids and keys, so the stub needs the ACCESSIBLE enum
@@ -14,13 +20,19 @@ jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
 
+// The type makes this list fail to compile when a provider id has no entry, so the test below
+// cannot skip a new provider.
+const providerById = {
+  btc_wallet: bitcoinWalletProvider,
+  binance: binanceProvider,
+  bybit: bybitProvider,
+} satisfies Record<BalanceProviderId, BalanceProvider<never>>;
+
 describe('syncedMetadataFieldOf', () => {
-  it.each([binanceProvider, bybitProvider, bitcoinWalletProvider])(
-    'names the key of each synced institution: $id',
-    (provider) => {
-      expect(syncedMetadataFieldOf[provider.id]).toBe(provider.metadataField);
-    },
-  );
+  it.each(balanceProviderIds)('names the key of each synced institution: %s', (id) => {
+    expect(providerById[id].id).toBe(id);
+    expect(syncedMetadataFieldOf[id]).toBe(providerById[id].metadataField);
+  });
 
   it('names the key that a Monobank sync writes', () => {
     expect(syncedMetadataFieldOf.monobank).toBe('monobankId');
