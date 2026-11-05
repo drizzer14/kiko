@@ -1398,9 +1398,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   or account delete removes the keys first (`removeHoldingDatabaseTransaction`,
   `accountsRepo.remove`); `funding_match_rows` (`account_id`, NO ACTION) is
   deleted child-first the same way, in `accountsRepo.remove`
-  (`src/accounts/accounts.repo.ts`) and in `disconnectExchange`; a table with no FK (`transaction_templates`) has no
-  delete-order constraint. A write that moves a holding's balance anchor (a
-  closing balance that applies, a hand-set balance, the bank figure of a sync)
+  (`src/accounts/accounts.repo.ts`) and in `disconnectExchange`; a table with no FK
+  (`transaction_templates`) has no delete-order constraint. A write that moves a holding's
+  balance anchor (a closing balance that applies, a hand-set balance, the bank figure of a sync)
   clears all its keys in the same write
   (`clearDeletedImportKeysDatabaseTransaction`): the sync clears but never
   reads them, so it never revives a row. A restore (`restoreDataSnapshot`) deletes the
