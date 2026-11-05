@@ -156,6 +156,24 @@ const spyOnStatements = (): string[] => {
   return statements;
 };
 
+const transactionSelects = (statements: string[]): string[] =>
+  statements.filter((sql) => /^select/i.test(sql) && /from "transactions"/i.test(sql));
+
+const countThenSave = async (draft: Parameters<typeof categoryRulesRepo.countRuleRewrite>[0]) => {
+  const counted = await categoryRulesRepo.countRuleRewrite(draft);
+  const statements = spyOnStatements();
+  const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+  return { counted, changed, selects: transactionSelects(statements) };
+};
+
+const expectSourceFreed = async (): Promise<void> => {
+  await applySilpoRule('source');
+
+  expect(categoriesOf().source).toBe('food');
+  expect(flagOf('source')).toBe(0);
+};
+
 const insertFillerRows = (count: number): void => {
   mockDatabase.exec('BEGIN');
 
@@ -1723,9 +1741,6 @@ describe('a name rule of a store-number name', () => {
 describe('the merchant-code and name-contains conditions', () => {
   const codeRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
 
-  const transactionSelects = (statements: string[]): string[] =>
-    statements.filter((sql) => /^select/i.test(sql) && /from "transactions"/i.test(sql));
-
   it('an mcc rule rewrites by the id-keyset page path', async () => {
     insertTransaction({ id: 'coded', description: 'Anything', mcc: 5411 });
     insertTransaction({ id: 'other-code', description: 'Anything', mcc: 5812 });
@@ -1737,11 +1752,11 @@ describe('the merchant-code and name-contains conditions', () => {
       categorySetByHand: true,
     });
 
-    const draft = { id: null, category: 'travel', matchers: [codeRule(5411)] };
-    const counted = await categoryRulesRepo.countRuleRewrite(draft);
-    const statements = spyOnStatements();
-    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
-    const selects = transactionSelects(statements);
+    const { counted, changed, selects } = await countThenSave({
+      id: null,
+      category: 'travel',
+      matchers: [codeRule(5411)],
+    });
 
     expect([counted, changed]).toEqual([1, 1]);
     expect(categoriesOf()).toEqual({
@@ -1808,10 +1823,7 @@ describe('the merchant-code and name-contains conditions', () => {
       insertRule(SILPO_WITH_CODE);
       insertSilpo('source', { category: 'shops', categorySetByHand: true });
 
-      await applySilpoRule('source');
-
-      expect(categoriesOf().source).toBe('food');
-      expect(flagOf('source')).toBe(0);
+      await expectSourceFreed();
     });
   });
 });
@@ -1821,9 +1833,6 @@ describe('the account and counterparty IBAN conditions', () => {
 
   const accountRule = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
   const ibanRule = (iban: string): CategoryRuleMatcher => ({ type: 'counterIban', iban });
-
-  const transactionSelects = (statements: string[]): string[] =>
-    statements.filter((sql) => /^select/i.test(sql) && /from "transactions"/i.test(sql));
 
   beforeEach(() => {
     mockDatabase.exec(`
@@ -1844,11 +1853,11 @@ describe('the account and counterparty IBAN conditions', () => {
       categorySetByHand: true,
     });
 
-    const draft = { id: null, category: 'travel', matchers: [accountRule('account')] };
-    const counted = await categoryRulesRepo.countRuleRewrite(draft);
-    const statements = spyOnStatements();
-    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
-    const selects = transactionSelects(statements);
+    const { counted, changed, selects } = await countThenSave({
+      id: null,
+      category: 'travel',
+      matchers: [accountRule('account')],
+    });
 
     expect([counted, changed]).toEqual([2, 2]);
     expect(categoriesOf()).toEqual({
@@ -1876,9 +1885,11 @@ describe('the account and counterparty IBAN conditions', () => {
     });
     insertTransaction({ id: 'none', description: 'Anything' });
 
-    const draft = { id: null, category: 'transfers', matchers: [ibanRule(OWN_IBAN)] };
-    const counted = await categoryRulesRepo.countRuleRewrite(draft);
-    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+    const { counted, changed } = await countThenSave({
+      id: null,
+      category: 'transfers',
+      matchers: [ibanRule(OWN_IBAN)],
+    });
 
     expect([counted, changed]).toEqual([2, 2]);
     expect(categoriesOf()).toEqual({
@@ -1895,9 +1906,11 @@ describe('the account and counterparty IBAN conditions', () => {
     mockDatabase.exec('PRAGMA foreign_keys = OFF');
     mockDatabase.exec("DELETE FROM holdings WHERE id = 'usd-card'");
 
-    const draft = { id: null, category: 'travel', matchers: [accountRule('account')] };
-    const counted = await categoryRulesRepo.countRuleRewrite(draft);
-    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+    const { counted, changed } = await countThenSave({
+      id: null,
+      category: 'travel',
+      matchers: [accountRule('account')],
+    });
 
     expect([counted, changed]).toEqual([0, 0]);
     expect(categoriesOf()).toEqual({ live: null, orphan: null });
@@ -1906,9 +1919,11 @@ describe('the account and counterparty IBAN conditions', () => {
   it('a rule on an account no row names matches no row', async () => {
     insertTransaction({ id: 'card-row', description: 'Anything', holdingId: 'uah-card' });
 
-    const draft = { id: null, category: 'travel', matchers: [accountRule('deleted-account')] };
-    const counted = await categoryRulesRepo.countRuleRewrite(draft);
-    const { changed } = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+    const { counted, changed } = await countThenSave({
+      id: null,
+      category: 'travel',
+      matchers: [accountRule('deleted-account')],
+    });
 
     expect([counted, changed]).toEqual([0, 0]);
     expect(categoriesOf()).toEqual({ 'card-row': null });
@@ -1926,42 +1941,44 @@ describe('the account and counterparty IBAN conditions', () => {
       matchers: [{ type: 'nameIs', text: 'Silpo' }, ibanRule(OWN_IBAN)],
     };
 
-    it('the source row is judged with its account and IBAN', async () => {
-      insertRule(SILPO_ON_ACCOUNT);
-      insertRule(SILPO_FROM_IBAN);
-      insertSilpo('source', { category: 'shops', counterIban: OWN_IBAN });
-      insertSilpo('same-account', { category: 'shops', counterIban: OWN_IBAN });
-      insertSilpo('plain', { holdingId: 'wallet' });
-
+    const expectSourceKeptByRule = async (): Promise<void> => {
       const updated = await applySilpoRule('source');
 
       expect(updated).toBe(2);
-      expect(categoriesOf()).toEqual({
-        plain: 'food',
-        'same-account': 'shops',
-        source: 'food',
-      });
+      expect(categoriesOf()).toEqual({ plain: 'food', 'same-row': 'shops', source: 'food' });
       expect(flagOf('source')).toBe(1);
+    };
+
+    it('the source row is judged with its account', async () => {
+      insertRule(SILPO_ON_ACCOUNT);
+      insertSilpo('source', { category: 'shops' });
+      insertSilpo('same-row', { category: 'shops' });
+      insertSilpo('plain', { holdingId: 'wallet' });
+
+      await expectSourceKeptByRule();
+    });
+
+    it('the source row is judged with its IBAN', async () => {
+      insertRule(SILPO_FROM_IBAN);
+      insertSilpo('source', { category: 'shops', counterIban: OWN_IBAN });
+      insertSilpo('same-row', { category: 'shops', counterIban: OWN_IBAN });
+      insertSilpo('plain');
+
+      await expectSourceKeptByRule();
     });
 
     it('frees a source row on another account, which the account rule does not win', async () => {
       insertRule(SILPO_ON_ACCOUNT);
       insertSilpo('source', { category: 'shops', holdingId: 'wallet', categorySetByHand: true });
 
-      await applySilpoRule('source');
-
-      expect(categoriesOf().source).toBe('food');
-      expect(flagOf('source')).toBe(0);
+      await expectSourceFreed();
     });
 
     it('frees a source row with no IBAN, which the IBAN rule does not win', async () => {
       insertRule(SILPO_FROM_IBAN);
       insertSilpo('source', { category: 'shops', categorySetByHand: true });
 
-      await applySilpoRule('source');
-
-      expect(categoriesOf().source).toBe('food');
-      expect(flagOf('source')).toBe(0);
+      await expectSourceFreed();
     });
   });
 });
