@@ -31,8 +31,8 @@ import {
   partsOfHoldingKey,
 } from './bybit.holding-keys';
 import { isBybitCoolingDown } from './bybit.cooldown';
+import { bybitFailureOf } from './bybit.failure-text';
 import { readBybitCredentials } from './bybit.credentials';
-import { bybitFailureOf, failWithText } from './bybit.failure-text';
 import { fundReadOf, unifiedReadOf, type WalletRead } from './bybit.balance-read';
 
 type WalletFetch<Body> = (
@@ -305,7 +305,9 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     // and nothing is written. A read that threw never gets past this line, so an empty list
     // below is a wallet that answered and holds nothing.
     const unified = unifiedReadOf(
-      await failWithText(() => deps.fetchUnifiedBalance(apiKey, secret, options)),
+      await deps.fetchUnifiedBalance(apiKey, secret, options).catch((error: unknown) => {
+        throw bybitFailureOf(error);
+      }),
     );
     const fundOutcome = await walletOutcome('fund', async () =>
       fundReadOf(await deps.fetchFundBalance(apiKey, secret, options)),

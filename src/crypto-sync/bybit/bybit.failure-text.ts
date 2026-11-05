@@ -1,6 +1,5 @@
 import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
-import either, { bifoldMap } from 'fnts/either';
 
 import { BybitRateLimitError, type BybitRefusalClass, BybitRefusalError } from './bybit.client';
 
@@ -44,13 +43,3 @@ export const bybitFailureOf = (error: unknown): unknown =>
       ({ refusal, code }) => new Error(textOfRefusal(refusal, code)),
     )
     .otherwise(() => error);
-
-/** A read whose typed refusal rejects as the localized error of `bybitFailureOf`. */
-export const failWithText = async <Value>(read: () => Promise<Value>): Promise<Value> =>
-  bifoldMap(
-    await either<unknown, Value>(read),
-    (error): never => {
-      throw bybitFailureOf(error);
-    },
-    (value) => value,
-  );

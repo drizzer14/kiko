@@ -1,7 +1,7 @@
 import { i18n } from '@kiko/i18n/init';
 import { act } from '@testing-library/react-native';
 
-import { bybitFailureOf, failWithText } from './bybit.failure-text';
+import { bybitFailureOf } from './bybit.failure-text';
 import { BybitRateLimitError, BybitRefusalError } from './bybit.client';
 
 const textOf = (error: unknown): string => (error instanceof Error ? error.message : '');
@@ -88,29 +88,5 @@ describe('bybitFailureOf', () => {
         i18n.t('accountDetail.bybitComplianceRefused'),
       );
     });
-  });
-});
-
-describe('failWithText', () => {
-  it('returns what the read returned', async () => {
-    await expect(failWithText(async () => 7)).resolves.toBe(7);
-  });
-
-  it('rejects with the text of a refusal', async () => {
-    await expect(
-      failWithText(async () => {
-        throw new BybitRefusalError('clock', 10002);
-      }),
-    ).rejects.toThrow(i18n.t('accountDetail.bybitClockOff'));
-  });
-
-  it('rejects with an error that is no refusal as it is', async () => {
-    const lost = new TypeError('Network request failed');
-
-    await expect(
-      failWithText(async () => {
-        throw lost;
-      }),
-    ).rejects.toBe(lost);
   });
 });
