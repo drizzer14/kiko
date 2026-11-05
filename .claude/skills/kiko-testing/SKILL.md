@@ -51,6 +51,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   stack reader, for a navigator test a spy cannot replace.
 - `transaction-form-data-layer.ts`: the data layer the real transaction form reads and writes,
   for a navigator test that renders it.
+- `recurring-mark-live-queries.ts`: the settings and whole-ledger reads of the transaction form's
+  mark field (`createMarkLiveQueries`, `taggedQuery`) and the Netflix fixtures its three suites
+  share.
 - `form-header-items.ts`: the nav-bar items a form sets (`pressSave`, `saveItem`,
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
