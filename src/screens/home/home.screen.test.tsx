@@ -289,6 +289,7 @@ type Account = {
   archivedAt?: number | null;
   icon?: string | null;
   color?: string | null;
+  institution?: string | null;
 };
 type Holding = {
   id?: string;
@@ -1850,7 +1851,7 @@ describe('HomeScreen', () => {
   });
 
   describe('a row’s View account and View holding actions', () => {
-    const holdRowOf = async (overrides: Partial<Transaction>) => {
+    const holdRowOf = async (overrides: Partial<Transaction>, world: LiveData = {}) => {
       seed({
         transactions: [
           transaction({
@@ -1861,6 +1862,7 @@ describe('HomeScreen', () => {
             ...overrides,
           }),
         ],
+        ...world,
       });
       const screen = await render(
         <HomeScreen
@@ -1882,6 +1884,51 @@ describe('HomeScreen', () => {
       expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
       expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
       expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+    });
+
+    // Each pair is a synced key and the institution that owns it: a connect writes both.
+    const SYNCED_KINDS = [
+      ['bybitAsset', 'bybit'],
+      ['binanceAsset', 'binance'],
+      ['monobankId', 'monobank'],
+      ['walletAddress', 'btc_wallet'],
+    ] as const;
+    const worldOf = (key: string, institution: string | null): LiveData => ({
+      accounts: [{ ...MONOBANK, institution }],
+      holdings: [{ ...UAH_HOLDING, metadata: { [key]: 'synced-key' } }],
+    });
+
+    it.each(SYNCED_KINDS)(
+      '%s: a manual row on a connected holding offers no Duplicate',
+      async (key, institution) => {
+        const { getByTestId, queryByTestId } = await holdRowOf(
+          { source: 'manual' },
+          worldOf(key, institution),
+        );
+
+        expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+        expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+        expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
+        expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+      },
+    );
+
+    it.each(SYNCED_KINDS)('%s: the same row offers Duplicate after a disconnect', async (key) => {
+      const { getByTestId } = await holdRowOf({ source: 'manual' }, worldOf(key, null));
+
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+    });
+
+    it('a manual row of a holding with no synced key, on a connected account, offers Duplicate', async () => {
+      const { getByTestId } = await holdRowOf(
+        { source: 'manual' },
+        {
+          accounts: [{ ...MONOBANK, institution: 'monobank' }],
+          holdings: [{ ...UAH_HOLDING, metadata: { iban: 'UA00' } }],
+        },
+      );
+
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
     });
 
     it('lists both, and no Duplicate or Delete, on a synced row', async () => {

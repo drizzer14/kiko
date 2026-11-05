@@ -34,6 +34,7 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { syncedHoldingIds } from '@kiko/holdings/deletable';
 import { activeHoldings } from '@kiko/rates/active-holdings';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
@@ -321,6 +322,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     () => new Map(holdings.map((holding) => [holding.id, holding.currency])),
     [holdings],
   );
+  // The holdings a sync owns right now: a manual row on one offers no Duplicate, because the
+  // copy would be refused at save. The list's value is paused while Home is hidden, and the gate
+  // at save holds in that gap.
+  const syncedIds = useMemo(
+    () => syncedHoldingIds(holdings, new Map(accounts.map((account) => [account.id, account]))),
+    [holdings, accounts],
+  );
 
   const active = activeHoldings(holdings, accounts);
   const total = guardedNetWorth(active, baseCurrency, rateTable, now, priceBook);
@@ -557,6 +565,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
+          onSyncedHolding={syncedIds.has(item.holdingId)}
           onViewAccount={handleViewAccount}
           onViewHolding={handleViewHolding}
           selected={item.id === editedTransactionId}
@@ -568,6 +577,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       defaultCategoryKey,
       holdingNameById,
       holdingCurrencyById,
+      syncedIds,
       categoryKeyForRow,
       handleRowPress,
       handleRowDuplicate,

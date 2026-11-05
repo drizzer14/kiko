@@ -795,3 +795,40 @@ describe('a Convert or a split with a leg on a coin whose read overwrote it, on 
     });
   });
 });
+
+// The account stays connected, so the gate refuses the row (O92): no copy of the row of row 15 can
+// exist, and Home and the line stay at the read.
+describe('row 34, a manual row on the connected coin, on real SQLite', () => {
+  const REFUSAL = new Error('transactions/synced-holding');
+
+  it('row 34, a manual row on the connected coin is refused, and Home and the line stay at the read', async () => {
+    await readAt(at(0, 10), [unifiedCoin('BTC', '0.1')]);
+
+    await expect(typedRowAt(at(1, 9), HALF_OF_A_COIN)).rejects.toThrow(REFUSAL);
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
+    expect(storedRowIds()).toEqual([]);
+    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.1, 0.1, 0.1]);
+  });
+
+  it('row 34, the other sign: a row of -0.5 is refused, and Home and the line stay at 1', async () => {
+    await readAt(at(0, 10), BALANCE_OF_ONE);
+
+    await expect(typedRowAt(at(1, 9), -HALF_OF_A_COIN)).rejects.toThrow(REFUSAL);
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(ONE_COIN);
+    expect(storedRowIds()).toEqual([]);
+    expect(await lineFrom(-1, 3)).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('row 34, with the coin set aside: a manual row is refused, and Home and the line stay at the read', async () => {
+    await readAt(at(0, 10), BALANCE_OF_ONE);
+    await readAt(at(1, 8), SET_ASIDE);
+
+    await expect(typedRowAt(at(1, 9), HALF_OF_A_COIN)).rejects.toThrow(REFUSAL);
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(ONE_COIN);
+    expect(storedRowIds()).toEqual([]);
+    expect(await lineFrom(-1, 3)).toEqual([1, 1, 1, 1, 1]);
+  });
+});

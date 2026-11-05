@@ -1,24 +1,9 @@
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
-import { isSyncedHolding } from '@kiko/holdings/deletable';
+import { syncedHoldingIds } from '@kiko/holdings/deletable';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
-
-// Every holding whose account is currently sync-connected — its balance is
-// sync-owned, so it can never be the target of a manual write. Shared by
-// every holding picker on this screen that must exclude a synced/syncable
-// holding (the return-row picker, the primary-leg picker, and Convert's own
-// counterpart picker), so the exclusion rule can never drift between them.
-export const syncedHoldingIds = (
-  holdings: readonly HoldingRow[],
-  accountById: ReadonlyMap<string, AccountRow>,
-): ReadonlySet<string> =>
-  new Set(
-    holdings
-      .filter((candidate) => isSyncedHolding(candidate, accountById.get(candidate.accountId)))
-      .map((candidate) => candidate.id),
-  );
 
 // The return-row picker's options: every OPEN holding in the payer's own
 // currency (v1 keeps a split single-currency), except any holding already

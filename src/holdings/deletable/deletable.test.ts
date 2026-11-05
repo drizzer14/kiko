@@ -1,7 +1,10 @@
 import {
+  hasSyncedKey,
   isSyncedAccount,
   isSyncedHolding,
+  syncedHoldingIds,
   isSyncedTransaction,
+  SYNCED_HOLDING_REFUSAL,
   isImportedTransaction,
   isDeletableTransaction,
 } from './deletable';
@@ -103,5 +106,45 @@ describe('isSyncedHolding', () => {
     expect(
       isSyncedHolding({ metadata: { syncedAt: 1_704_326_400_000 } }, { institution: 'btc_wallet' }),
     ).toBe(false);
+  });
+});
+
+describe('hasSyncedKey', () => {
+  it.each(['monobankId', 'walletAddress', 'binanceAsset', 'bybitAsset'])(
+    'is true for a %s key',
+    (field) => {
+      expect(hasSyncedKey({ [field]: 'key-1' })).toBe(true);
+    },
+  );
+
+  it('is false for no metadata, a non-object and a key that is not a string', () => {
+    expect(hasSyncedKey(null)).toBe(false);
+    expect(hasSyncedKey(undefined)).toBe(false);
+    expect(hasSyncedKey('bybitAsset')).toBe(false);
+    expect(hasSyncedKey({ bybitAsset: 1 })).toBe(false);
+    expect(hasSyncedKey({ iban: 'UA00' })).toBe(false);
+  });
+});
+
+describe('syncedHoldingIds', () => {
+  it('names the keyed holdings of a connected account and no other', () => {
+    const accountById = new Map([
+      ['connected', { institution: 'bybit' }],
+      ['detached', { institution: null }],
+    ]);
+    const holdings = [
+      { id: 'keyed', accountId: 'connected', metadata: { bybitAsset: 'BTC:unified' } },
+      { id: 'plain', accountId: 'connected', metadata: null },
+      { id: 'kept-key', accountId: 'detached', metadata: { bybitAsset: 'ETH:unified' } },
+      { id: 'orphan', accountId: 'gone', metadata: { bybitAsset: 'SOL:unified' } },
+    ];
+
+    expect(syncedHoldingIds(holdings, accountById)).toEqual(new Set(['keyed']));
+  });
+});
+
+describe('SYNCED_HOLDING_REFUSAL', () => {
+  it('is the message the repository throws and the form reads', () => {
+    expect(SYNCED_HOLDING_REFUSAL).toBe('transactions/synced-holding');
   });
 });

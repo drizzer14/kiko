@@ -339,6 +339,22 @@ describe('reading how a catalogue key is used in source', () => {
   });
 });
 
+// A holding a sync owns takes no copy (O92), so the sentence that says what "Duplicate" does
+// names the exception, in each language.
+describe('the Duplicate sentence of the edit-transaction help', () => {
+  const lastSentenceOf = (values: Map<string, string>): string | undefined =>
+    values.get('help.topics.editTransaction.steps.3')?.split('. ').at(-1);
+
+  it('the Duplicate sentence names the synced exception, in en and uk', () => {
+    expect(lastSentenceOf(valueByPath(en))).toBe(
+      'On one you added yourself, "Duplicate" makes a copy dated now, unless its holding is synced.',
+    );
+    expect(lastSentenceOf(valueByPath(uk))).toBe(
+      'Для доданої вами транзакції «Дублювати» створює копію з поточною датою, якщо її актив не синхронізується.',
+    );
+  });
+});
+
 describe('the choices a help step names', () => {
   const enValues = valueByPath(en);
   const ukValues = valueByPath(uk);

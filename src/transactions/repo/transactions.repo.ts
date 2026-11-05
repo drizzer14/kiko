@@ -38,6 +38,13 @@ import {
   removeDepositContributionDatabaseTransaction,
   removeHoldingDatabaseTransaction,
 } from '@kiko/holdings/repo';
+import {
+  SYNCED_HOLDING_REFUSAL,
+  hasSyncedKey,
+  isSyncedAccount,
+  isSyncedHolding,
+  isDeletableTransaction,
+} from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import {
@@ -57,7 +64,6 @@ import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { readAllRulesDatabaseTransaction } from '@kiko/categories/category-rules-repo';
 import { type DepositContribution, isOverwrittenRow } from '@kiko/holdings/holding-metadata';
-import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
 
 import type {
   BalanceChange,
@@ -242,11 +248,37 @@ const moveBalanceOfRowDatabaseTransaction = async (
   );
 };
 
+/** Refuse a new manual row on a holding a sync owns right now. The sync owns that holding's
+ * balance, so a row typed onto it would be a copy that the next read overwrites and that stays
+ * in the list and in spending. Only a holding with a sync's key reads its account, so every
+ * other holding costs no extra statement. The throw rolls back the rest of the caller's write.
+ * A form left open while its account connected reaches this at Save. */
+const refuseSyncedHoldingDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holding: HoldingRow,
+): Promise<void> => {
+  if (!hasSyncedKey(holding.metadata)) {
+    return;
+  }
+
+  const accountRows = await databaseTransaction
+    .select({ institution: accounts.institution })
+    .from(accounts)
+    .where(eq(accounts.id, holding.accountId))
+    .limit(1);
+
+  if (isSyncedHolding(holding, accountRows.at(0))) {
+    throw new Error(SYNCED_HOLDING_REFUSAL);
+  }
+};
+
 // Insert a manual transaction and adjust its holding's balance by its full
 // amount, whatever its date, on an EXISTING transaction handle: every
 // transaction updates the balance. `recordManual` wraps this in its own
 // `write(...)`; `recordExchange` calls it directly for the source leg and for a
-// plain destination leg, keeping both legs in one transaction.
+// plain destination leg, keeping both legs in one transaction. A holding a sync owns
+// right now refuses the row (`refuseSyncedHoldingDatabaseTransaction`), so all four writers
+// that reach here are gated.
 //
 // The row carries its OWN category here — a picked category is never lost to
 // a blank description or a cancelled override sheet. `applyNameRule`
@@ -277,6 +309,10 @@ const recordManualTransaction = async (
   if (holding !== undefined && isLedgerlessHoldingType(holding.type)) {
     throw new Error('transactions/ledgerless-holding');
   }
+
+  await foldMap(maybe(holding), (found) =>
+    refuseSyncedHoldingDatabaseTransaction(databaseTransaction, found),
+  );
 
   const rowId = id();
 
@@ -2488,12 +2524,14 @@ export const transactionsRepo = {
    */
   recordExchangeCounterpart: (input: ExchangeCounterpartInput) =>
     write(async (databaseTransaction) => {
-      // Defense in depth: the picker already excludes a synced/syncable
-      // holding, but this write is reachable directly, so it
-      // re-reads the counterpart's OWN holding+account here, inside the
-      // transaction, rather than trust a caller-supplied flag — a sync
-      // already owns that holding's balance, and a manual leg written onto
-      // it would silently desync from the next sync run.
+      // The picker excludes a synced/syncable holding, but a Convert form left open while that
+      // holding connected still sends it, and this write is reachable directly. So it re-reads
+      // the counterpart's OWN holding+account here, inside the transaction, rather than trust a
+      // caller-supplied flag — a sync already owns that holding's balance, and a manual leg
+      // written onto it would silently desync from the next sync run. It runs first, so a
+      // Convert never reaches the gate of `recordManualTransaction` with a connected
+      // counterpart, and it alone covers the `contribution` path, which calls no gate. It throws
+      // the gate's own refusal, so the form can tell it from any other failed write.
       const counterpartHoldingRows = await databaseTransaction
         .select({ accountId: holdings.accountId, metadata: holdings.metadata })
         .from(holdings)
@@ -2513,9 +2551,7 @@ export const transactionsRepo = {
         counterpartHolding !== undefined &&
         isSyncedHolding(counterpartHolding, counterpartAccountRows.at(0))
       ) {
-        throw new Error(
-          `recordExchangeCounterpart: counterpart holding ${input.counterpartHoldingId} is synced`,
-        );
+        throw new Error(SYNCED_HOLDING_REFUSAL);
       }
 
       if (

@@ -9,12 +9,13 @@ import {
   isExchangeSourceType,
 } from '@kiko/holdings/exchange-destination';
 import type { Currency } from '@kiko/currency/currency';
+import { syncedHoldingIds } from '@kiko/holdings/deletable';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import { toAmountFields } from '../hydration';
-import { buildExchangeOptions, syncedHoldingIds } from '../holding-options';
+import { buildExchangeOptions } from '../holding-options';
 
 // Convert-mode's derived view: eligibility, direction, the counterpart picker
 // options, the read-only fixed side's display value, and the direction-

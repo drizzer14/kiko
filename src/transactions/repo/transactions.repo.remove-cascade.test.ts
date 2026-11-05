@@ -129,6 +129,16 @@ const setBalance = (holdingId: string, balanceMinorUnits: number): void => {
   run('UPDATE holdings SET balance_minor_units = ? WHERE id = ?', balanceMinorUnits, holdingId);
 };
 
+// A write onto a holding of the connected account, made as the app made it before the account
+// connected: the write gate (O92) refuses a row on a holding a sync owns, so the account is
+// disconnected for the write and connected again after it. The world a delete then meets is the
+// real one of a row typed before the reconnect.
+const writtenBeforeTheConnect = async (write: () => Promise<unknown>): Promise<void> => {
+  run("UPDATE accounts SET institution = NULL WHERE id = 'synced'");
+  await write();
+  run("UPDATE accounts SET institution = 'monobank' WHERE id = 'synced'");
+};
+
 const balancesOf = (): Record<string, number> =>
   Object.fromEntries(
     (
@@ -364,14 +374,16 @@ describe('deleting a leg of a manual Exchange', () => {
     });
     const before = stateOf();
 
-    await transactionsRepo.recordExchange({
-      sourceHoldingId: 'uah',
-      valueOutMinorUnits: 40_000,
-      destinationHoldingId: 'synced-usd',
-      destinationType: 'card',
-      valueInMinorUnits: 1_000,
-      time: MOVED,
-    });
+    await writtenBeforeTheConnect(() =>
+      transactionsRepo.recordExchange({
+        sourceHoldingId: 'uah',
+        valueOutMinorUnits: 40_000,
+        destinationHoldingId: 'synced-usd',
+        destinationType: 'card',
+        valueInMinorUnits: 1_000,
+        time: MOVED,
+      }),
+    );
     await transactionsRepo.remove(idOfRowOn('synced-usd'));
 
     expect(stateOf()).toEqual(before);
@@ -829,10 +841,17 @@ describe('deleting a row of a split payment', () => {
     setBalance('bank', 700);
     const before = stateOf();
 
-    await transactionsRepo.recordManualWithReturns({
-      payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
-      returns: [{ holdingId: 'bank', amountMinorUnits: 50_000 }],
-    });
+    await writtenBeforeTheConnect(() =>
+      transactionsRepo.recordManualWithReturns({
+        payment: {
+          holdingId: 'uah',
+          amountMinorUnits: -50_000,
+          time: MOVED,
+          category: 'groceries',
+        },
+        returns: [{ holdingId: 'bank', amountMinorUnits: 50_000 }],
+      }),
+    );
     await transactionsRepo.remove(idOfRowOn('uah'));
 
     expect(stateOf()).toEqual(before);

@@ -64,6 +64,7 @@ const renderRow = (
   onPress = jest.fn(),
   onDuplicate = jest.fn(),
   selected = false,
+  onSyncedHolding = false,
 ) =>
   render(
     <TransactionRow
@@ -78,6 +79,7 @@ const renderRow = (
       onViewAccount={onViewAccount}
       onViewHolding={onViewHolding}
       selected={selected}
+      onSyncedHolding={onSyncedHolding}
     />,
     { wrapper: GestureRootWrapper },
   );
@@ -230,6 +232,25 @@ describe('TransactionRow', () => {
     expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
     expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
     expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+  });
+
+  it('offers no Duplicate on a manual row of a synced holding, and keeps the View actions and Delete', async () => {
+    const onDuplicate = jest.fn();
+    const { getByTestId, queryByTestId } = await renderRow(
+      baseItem,
+      jest.fn(),
+      onDuplicate,
+      false,
+      true,
+    );
+
+    await holdCard();
+
+    expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+    expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+    expect(getByTestId(VIEW_HOLDING_ACTION_TEST_ID)).toBeTruthy();
+    expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+    expect(onDuplicate).not.toHaveBeenCalled();
   });
 
   describe('an imported row', () => {

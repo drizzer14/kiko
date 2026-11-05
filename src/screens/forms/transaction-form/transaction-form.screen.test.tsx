@@ -730,6 +730,43 @@ describe('TransactionFormScreen — add mode', () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
+
+  // The gate refuses a manual row on a holding that connected after the form opened (O92). The
+  // generic advice would be false: a retry fails the same way until the holding is disconnected.
+  it('a save the gate refuses names the synced holding and leaves the form open', async () => {
+    mockRecordManual.mockRejectedValueOnce(new Error('transactions/synced-holding'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Could not save',
+        'A holding on this form is synced now, so Kiko cannot add a transaction to it.',
+      ),
+    );
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('any other failed save still says to try again', async () => {
+    mockRecordManual.mockRejectedValueOnce(new Error('transactions/ledgerless-holding'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
 });
 
 describe('TransactionFormScreen — category pre-select from name rules', () => {
@@ -3787,6 +3824,82 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await waitFor(() => expect(mockRecordExchangeCounterpart).toHaveBeenCalled());
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRemove).not.toHaveBeenCalled();
+  });
+
+  // The holding picked in "To" can connect while the form is open: the picker then drops it, and
+  // the writer refuses it (O94). The text says to select another holding, because that saves.
+  describe('a Convert whose picked holding connects while the form is open', () => {
+    const pickCashUsd = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
+      await fireEvent.press(utils.getByText('Exchange'));
+      await fireEvent.press(utils.getByLabelText('To'));
+      await fireEvent.press(utils.getByText('Cash USD'));
+      await fireEvent.changeText(utils.getByLabelText('Value in'), '5');
+    };
+
+    it('a Convert refused for its picked holding says to select another, and leaves the form open', async () => {
+      mockRecordExchangeCounterpart.mockRejectedValueOnce(new Error('transactions/synced-holding'));
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      const utils = await renderEdit('expense-synced');
+
+      await pickCashUsd(utils);
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() =>
+        expect(alertSpy).toHaveBeenCalledWith(
+          'Could not save',
+          'The holding you selected is synced now, so Kiko cannot add this exchange to it. Select another holding.',
+        ),
+      );
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      alertSpy.mockRestore();
+    });
+
+    it('any other failed Convert still says to try again', async () => {
+      mockRecordExchangeCounterpart.mockRejectedValueOnce(new Error('boom'));
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      const utils = await renderEdit('expense-synced');
+
+      await pickCashUsd(utils);
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() =>
+        expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+      );
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      alertSpy.mockRestore();
+    });
+
+    it('a picked holding that connects drops from the picker, and Save still sends it', async () => {
+      const utils = await renderEdit('expense-manual');
+
+      await pickCashUsd(utils);
+      setLiveData(
+        CONVERT_HOLDINGS.map((candidate) =>
+          candidate.id === 'cash-usd-1'
+            ? { ...candidate, metadata: { monobankId: 'mono-7' } }
+            : candidate,
+        ),
+        CONVERT_TRANSACTIONS['expense-manual'],
+        CATEGORIES,
+        [{ id: 'acc-wallet', name: 'Wallet', institution: 'monobank' }],
+      );
+      await utils.rerender(
+        <TransactionFormScreen
+          route={transactionFormRoute({ transactionId: 'expense-manual' })}
+          navigation={navigationProp}
+        />,
+      );
+
+      expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
+
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() =>
+        expect(mockRecordExchangeCounterpart).toHaveBeenCalledWith(
+          expect.objectContaining({ counterpartHoldingId: 'cash-usd-1' }),
+        ),
+      );
+    });
   });
 });
 

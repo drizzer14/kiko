@@ -696,6 +696,10 @@ export const en = {
       selectTemplate: 'Select a template',
       split: 'Split',
       splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
+      syncedCounterpartSaveError:
+        'The holding you selected is synced now, so Kiko cannot add this exchange to it. Select another holding.',
+      syncedHoldingSaveError:
+        'A holding on this form is synced now, so Kiko cannot add a transaction to it.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
       tabManual: 'Manual',
       tabTemplate: 'Template',
@@ -1232,7 +1236,7 @@ export const en = {
         steps: {
           '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
           '2': 'Tap it, make your changes, and tap "Save". If you changed the category, choose "Apply" to use it for every transaction with that name, or "Just for this one". In a synced or imported transaction, you can change only the category and the loan link.',
-          '3': 'Touch and hold a transaction, then tap "View account" or "View holding" to open that page. On the page of the holding the transaction belongs to, of the two, only "View account" is offered. On a transaction you added or imported, tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
+          '3': 'Touch and hold a transaction, then tap "View account" or "View holding" to open that page. On the page of the holding the transaction belongs to, of the two, only "View account" is offered. On a transaction you added or imported, tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now, unless its holding is synced.',
         },
         title: 'Edit, Duplicate, or Delete a Transaction',
       },
