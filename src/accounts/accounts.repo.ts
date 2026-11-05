@@ -31,6 +31,7 @@ import type { Money } from '@kiko/currency/money';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { Currency } from '@kiko/currency/currency';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
+import { clearBybitCredentials } from '@kiko/crypto-sync/bybit';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
 import type { BalanceProviderId } from '@kiko/crypto-sync/provider';
 import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
@@ -39,15 +40,15 @@ import { cascadeLinkedRowsDatabaseTransaction } from '@kiko/transactions/repo';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
 
-// A failed first Connect stores its Monobank token or Binance key pair under
-// the account's id before any sync makes the account synced, so a deletable
-// account can still own one. Cleared after the delete commits, like a
+// A failed first Connect stores its Monobank token or exchange key pair (Binance,
+// Bybit) under the account's id before any sync makes the account synced, so a
+// deletable account can still own one. Cleared after the delete commits, like a
 // disconnect does: the account is gone by then, so nothing else could ever
 // clear them, and a clear that fails first would leave a live account behind.
 // Never rejects: the delete has committed, so a failed clear is logged, not
 // shown as a failed delete that would skip the reminders re-plan.
 const clearKeychainItems = async (accountId: string): Promise<void> => {
-  for (const clear of [clearToken, clearCredentials]) {
+  for (const clear of [clearToken, clearCredentials, clearBybitCredentials]) {
     await logOnFailure('[accounts] a Keychain item could not be cleared', () => clear(accountId));
   }
 };

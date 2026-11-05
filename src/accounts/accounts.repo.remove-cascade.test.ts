@@ -22,6 +22,11 @@ jest.mock('@kiko/crypto-sync/binance', () => ({
   clearCredentials: (accountId: string) => mockClearCredentials(accountId),
 }));
 
+const mockClearBybitCredentials = jest.fn();
+jest.mock('@kiko/crypto-sync/bybit', () => ({
+  clearBybitCredentials: (accountId: string) => mockClearBybitCredentials(accountId),
+}));
+
 import { DatabaseSync } from 'node:sqlite';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
@@ -76,6 +81,7 @@ const exchangeUahIntoDeposit = (): Promise<void> =>
 beforeEach(() => {
   mockClearToken.mockReset();
   mockClearCredentials.mockReset();
+  mockClearBybitCredentials.mockReset();
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
   mockDatabase.exec('PRAGMA foreign_keys = ON');
@@ -326,6 +332,7 @@ describe('an account delete that cannot finish', () => {
     expect(stateOf()).toEqual(before);
     expect(accountExists('account')).toBe(true);
     expect(mockClearToken).not.toHaveBeenCalled();
+    expect(mockClearBybitCredentials).not.toHaveBeenCalled();
   });
 
   it('refuses a synced account and leaves the legs of its holdings’ partners alone', async () => {

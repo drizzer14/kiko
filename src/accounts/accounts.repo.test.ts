@@ -23,6 +23,11 @@ jest.mock('@kiko/crypto-sync/binance', () => ({
   clearCredentials: (accountId: string) => mockClearCredentials(accountId),
 }));
 
+const mockClearBybitCredentials = jest.fn();
+jest.mock('@kiko/crypto-sync/bybit', () => ({
+  clearBybitCredentials: (accountId: string) => mockClearBybitCredentials(accountId),
+}));
+
 import {
   accounts,
   deletedImportKeys,
@@ -1166,6 +1171,7 @@ describe('accountsRepo.remove', () => {
     expect(captured.deletedFrom).toEqual([]);
     expect(mockClearToken).not.toHaveBeenCalled();
     expect(mockClearCredentials).not.toHaveBeenCalled();
+    expect(mockClearBybitCredentials).not.toHaveBeenCalled();
   });
 
   // A failed first Connect leaves a manual-looking account whose Keychain item
@@ -1184,12 +1190,36 @@ describe('accountsRepo.remove', () => {
     mockClearCredentials.mockImplementation(async () => {
       order.push(`credentials after ${captured.deletedFrom.length} deletes`);
     });
+    mockClearBybitCredentials.mockImplementation(async () => {
+      order.push(`bybit credentials after ${captured.deletedFrom.length} deletes`);
+    });
 
     await accountsRepo.remove('acc-1');
 
     expect(mockClearToken).toHaveBeenCalledWith('acc-1');
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
-    expect(order).toEqual(['token after 7 deletes', 'credentials after 7 deletes']);
+    expect(mockClearBybitCredentials).toHaveBeenCalledWith('acc-1');
+    expect(order).toEqual([
+      'token after 7 deletes',
+      'credentials after 7 deletes',
+      'bybit credentials after 7 deletes',
+    ]);
+  });
+
+  it('still clears the Bybit item when the Binance clear fails', async () => {
+    const { databaseTransaction } = makeRemoveDatabaseTransaction({
+      account: { id: 'acc-1', institution: null },
+      holdings: [],
+    });
+    mockDatabaseTransaction = databaseTransaction;
+    mockClearCredentials.mockRejectedValueOnce(new Error('keychain delete failed'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(accountsRepo.remove('acc-1')).resolves.toBeUndefined();
+
+    expect(mockClearBybitCredentials).toHaveBeenCalledWith('acc-1');
+
+    warn.mockRestore();
   });
 
   // The account is already gone when the clear runs, so a failed clear is not a
@@ -1240,5 +1270,6 @@ describe('accountsRepo.remove', () => {
 
     expect(mockClearToken).not.toHaveBeenCalled();
     expect(mockClearCredentials).not.toHaveBeenCalled();
+    expect(mockClearBybitCredentials).not.toHaveBeenCalled();
   });
 });

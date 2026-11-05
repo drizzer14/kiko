@@ -99,7 +99,8 @@ const isNumber = (value: unknown): value is number =>
 /**
  * The metadata fields that mark a holding as owned by a sync, one per
  * source: `monobankId` (a Monobank card/jar), `walletAddress` (a BTC
- * public-address wallet), `binanceAsset` (a Binance spot balance). The
+ * public-address wallet), `binanceAsset` (a Binance spot balance), `bybitAsset`
+ * (a Bybit wallet balance, keyed `<COIN>:<wallet>`). The
  * single source of truth for `isSyncedHolding` and for the metadata-key
  * upserts in the holdings repo.
  *
@@ -107,7 +108,12 @@ const isNumber = (value: unknown): value is number =>
  * removed — those bank-CONNECT providers were deleted entirely, and no user
  * release ever shipped a holding with one of those keys.
  */
-export const syncedMetadataFields = ['monobankId', 'walletAddress', 'binanceAsset'] as const;
+export const syncedMetadataFields = [
+  'monobankId',
+  'walletAddress',
+  'binanceAsset',
+  'bybitAsset',
+] as const;
 
 export type SyncedMetadataField = (typeof syncedMetadataFields)[number];
 
