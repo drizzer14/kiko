@@ -174,11 +174,11 @@ describe('MatcherRow', () => {
       const { getByText } = await renderRow({
         draft: draftOf({ type: 'account', accountId: null }),
         accounts: ACCOUNTS,
-        error: 'Choose an account.',
+        error: 'Select an account.',
       });
 
       expect(getByText('Select an account')).toBeTruthy();
-      expect(getByText('Choose an account.')).toBeTruthy();
+      expect(getByText('Select an account.')).toBeTruthy();
     });
 
     it('an IBAN row shows a field that types in capitals', async () => {

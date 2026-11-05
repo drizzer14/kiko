@@ -8,6 +8,7 @@ import {
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { dayKeyOf } from '@kiko/prices/price-book';
+import { ibanKeyOf } from '@kiko/transactions/iban';
 import type { Currency } from '@kiko/currency/currency';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
 
@@ -35,15 +36,12 @@ const PAYMENT_KEYWORDS = [
 const MIN_LENDER_NAME_LENGTH = 3;
 
 /**
- * Strips whitespace (including the grouping spaces a user or a bank
- * feed may insert every 4 characters) and uppercases, so a cosmetic
- * difference between what the user typed on the loan form and what a bank's
- * own `counterIban` carries never false-negatives rule 3's IBAN signal.
- * Exported so the loan form's own save path (`use-loan-fields.ts`) can
- * persist an already-normalized `lenderIban`, rather than duplicating this
- * logic in a second place.
+ * The IBAN spelling shared with the category rules (`ibanKeyOf`), so a cosmetic difference
+ * between what the user typed on the loan form and what a bank's own `counterIban` carries never
+ * false-negatives rule 3's IBAN signal. Exported so the loan form's own save path
+ * (`use-loan-fields.ts`) can persist an already-normalized `lenderIban`.
  */
-export const normalizeIban = (value: string): string => value.replace(/\s+/g, '').toUpperCase();
+export const normalizeIban = ibanKeyOf;
 
 /** A loan holding as the matcher needs it — mirrors `loan-payments.ts`'s
  * `LoanHolding`, parsing `LoanMeta` internally so a caller hands it plain

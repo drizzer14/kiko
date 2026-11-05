@@ -33,8 +33,6 @@ export type MatcherDraftError =
   | 'errorMcc'
   | 'errorAccount'
   | 'errorIban'
-  | 'errorAccount'
-  | 'errorIban'
   | 'errorAmountNegative'
   | 'errorAmountTooLarge'
   | 'errorAmountWholeOnly'

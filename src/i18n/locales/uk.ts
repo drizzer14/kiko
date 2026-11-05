@@ -255,7 +255,7 @@ export const uk: typeof en = {
     errorNoMatchers: 'Додайте хоча б одну умову.',
     errorName: 'Введіть назву.',
     errorMcc: 'Введіть чотиризначний код.',
-    errorAccount: 'Виберіть рахунок.',
+    errorAccount: 'Оберіть рахунок.',
     errorIban: 'Введіть правильний IBAN.',
     errorAmountNegative: 'Введіть суму від 0.',
     errorAmountTooLarge: 'Ця сума завелика.',

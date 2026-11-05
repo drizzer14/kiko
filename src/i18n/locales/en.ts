@@ -283,7 +283,7 @@ export const en = {
     errorNoMatchers: 'Add at least one condition.',
     errorName: 'Enter a name.',
     errorMcc: 'Enter a four-digit code.',
-    errorAccount: 'Choose an account.',
+    errorAccount: 'Select an account.',
     errorIban: 'Enter a valid IBAN.',
     errorAmountNegative: 'Enter an amount of 0 or more.',
     errorAmountTooLarge: 'This amount is too large.',
