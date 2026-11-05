@@ -139,6 +139,12 @@ export type ExchangeTrades = {
  */
 export type ParsedKeyExpiry = { expiredAtMs?: number; deadlineDay?: number; readAtMs?: number };
 
+/**
+ * What one wallet's last balance read left to show: the coins it set aside for a loan, how many
+ * Earn positions it left out, and whether the exchange refused the key for it.
+ */
+export type ParsedWalletNotes = { borrowed: string[]; earnLeftOut: number; refused: boolean };
+
 /** The JSON stored in `sync_state.exchange_state`. */
 export type ExchangeState = {
   version: 1;
@@ -150,6 +156,8 @@ export type ExchangeState = {
   balanceSyncedAt?: number;
   /** The end of the connected key, replaced by each good read of the key; Bybit only. */
   keyExpiry?: ParsedKeyExpiry;
+  /** The notes of each wallet a balance read reached, by wallet; Bybit only. */
+  balanceNotes?: Record<string, Partial<ParsedWalletNotes>>;
   /** Each record a rule refused for good, once; only a disconnect clears it. */
   notImported?: string[];
 };
@@ -200,6 +208,7 @@ export type ParsedExchangeState =
       oversizedCoins: Required<CoinLists>;
       balanceSyncedAt: number | undefined;
       keyExpiry: ParsedKeyExpiry | undefined;
+      balanceNotes: Record<string, ParsedWalletNotes>;
       notImported: string[];
       unreadable: string[];
     };
@@ -467,6 +476,17 @@ const keyExpiryEntryOf = (stored: unknown): ReadEntry<ParsedKeyExpiry | undefine
     nothing,
   );
 
+/**
+ * A count of positions is a whole number from zero; any other value reads as none. A field that is
+ * unreadable reads as its empty value, since a note shown by mistake would be worse than none.
+ */
+const walletNotesOf = (stored: unknown): ParsedWalletNotes | undefined =>
+  foldMap(maybe(recordOrUndefined(stored)), (entry) => ({
+    borrowed: stringListOrUndefined(entry.borrowed) ?? [],
+    earnLeftOut: timeOrUndefined(entry.earnLeftOut) ?? 0,
+    refused: entry.refused === true,
+  }));
+
 /** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */
 export type StoredExchangeState = Metadata & { walks: Metadata };
 
@@ -496,6 +516,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     nothing,
   );
   const keyExpiry = keyExpiryEntryOf(stored.keyExpiry);
+  const balanceNotes = recordOf('balanceNotes', stored.balanceNotes, walletNotesOf);
   const notImported = notImportedOf(stored.notImported);
 
   return {
@@ -509,6 +530,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     oversizedCoins: oversizedCoins.value,
     balanceSyncedAt: balanceSyncedAt.value,
     keyExpiry: keyExpiry.value,
+    balanceNotes: balanceNotes.value,
     notImported: notImported.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
@@ -518,6 +540,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...oversizedByWallet.unreadable,
       ...balanceSyncedAt.unreadable,
       ...keyExpiry.unreadable,
+      ...balanceNotes.unreadable,
       ...notImported.unreadable,
     ],
   };

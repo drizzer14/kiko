@@ -39,6 +39,7 @@ const EMPTY_STATE: ReadableState = {
   oversizedCoins: { balance: [], history: [] },
   balanceSyncedAt: undefined,
   keyExpiry: undefined,
+  balanceNotes: {},
   notImported: [],
   unreadable: [],
 };

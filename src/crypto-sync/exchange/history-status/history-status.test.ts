@@ -1,6 +1,7 @@
 import { notImportedEntry, parseExchangeState } from '../walk-state';
 
 import {
+  balanceNotesOf,
   balanceSyncedAtOf,
   keyExpiryOf,
   notImportedCountsOf,
@@ -104,6 +105,40 @@ describe('keyExpiryOf', () => {
     expect(keyExpiryOf(stateWith({}))).toBeUndefined();
     expect(keyExpiryOf(stateWith({ keyExpiry: 'x' }))).toBeUndefined();
     expect(keyExpiryOf(parseExchangeState('not json'))).toBeUndefined();
+  });
+});
+
+describe('balanceNotesOf', () => {
+  it('lists the borrowed coins of every wallet once, sorted, and sums the left-out Earn positions', () => {
+    const state = stateWith({
+      balanceNotes: {
+        unified: { borrowed: ['USDT', 'BTC'], earnLeftOut: 2 },
+        fund: { borrowed: ['BTC', 'ETH'] },
+        earn: { earnLeftOut: 1 },
+      },
+    });
+
+    expect(balanceNotesOf(state)).toEqual({
+      borrowed: ['BTC', 'ETH', 'USDT'],
+      refusedWallets: [],
+      earnLeftOut: 3,
+    });
+  });
+
+  it('names each wallet the key was refused for, in the order of the wallet keys', () => {
+    const state = stateWith({
+      balanceNotes: { unified: { refused: true }, fund: { refused: true }, earn: {} },
+    });
+
+    expect(balanceNotesOf(state).refusedWallets).toEqual(['fund', 'unified']);
+  });
+
+  it('reads no note for a state with none, an unreadable entry or a state that is lost', () => {
+    const none = { borrowed: [], refusedWallets: [], earnLeftOut: 0 };
+
+    expect(balanceNotesOf(stateWith({}))).toEqual(none);
+    expect(balanceNotesOf(stateWith({ balanceNotes: 'x' }))).toEqual(none);
+    expect(balanceNotesOf(parseExchangeState('not json'))).toEqual(none);
   });
 });
 

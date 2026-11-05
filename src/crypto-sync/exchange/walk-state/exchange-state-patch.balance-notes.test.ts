@@ -147,15 +147,19 @@ describe('the balance notes patch', () => {
     ).toBeUndefined();
   });
 
-  describe('a build that does not know the notes', () => {
-    const withNotes = stateWith({ fund: { refused: true } });
+  // The parse names only the keys it reads, so a build that reads none of the notes (every build
+  // before this key existed) reads a state that holds them as one without them. A key no build
+  // names shows the mechanism.
+  describe('a build that does not name a key', () => {
+    const withLaterKey = stateWith(undefined, { laterBuildKey: { fund: { refused: true } } });
 
-    it('reads the state as it reads one without them, with nothing unreadable', () => {
-      expect(parseExchangeState(withNotes)).toEqual(parseExchangeState(stateWith()));
-      expect(parseExchangeState(withNotes)).toMatchObject({ kind: 'parsed', unreadable: [] });
+    it('reads the state as it reads one without the key, with nothing unreadable', () => {
+      expect(parseExchangeState(withLaterKey)).toEqual(parseExchangeState(stateWith()));
+      expect(parseExchangeState(withLaterKey)).toMatchObject({ kind: 'parsed', unreadable: [] });
     });
 
     it('writes another patch with the notes still in the column', () => {
+      const withNotes = stateWith({ fund: { refused: true } });
       const text = exchangeStatePatched(withNotes, [{ kind: 'balanceSyncedAt', value: 5 }]);
 
       expect(storedOf(text)).toEqual({

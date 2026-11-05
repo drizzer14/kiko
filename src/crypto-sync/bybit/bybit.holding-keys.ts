@@ -7,6 +7,9 @@ const BYBIT_WALLETS = ['unified', 'fund', 'earn'] as const;
 
 export type BybitWallet = (typeof BYBIT_WALLETS)[number];
 
+const isBybitWallet = (value: string): value is BybitWallet =>
+  (BYBIT_WALLETS as readonly string[]).includes(value);
+
 /**
  * The key stored under `metadata.bybitAsset`, one holding per Bybit coin and wallet:
  * `<COIN>:unified`, `<COIN>:fund`, `<COIN>:earn`. The coin is always part of the key, BTC too,
@@ -40,6 +43,13 @@ const WALLET_LABELS: Record<BybitWallet, string> = {
   fund: 'Funding',
   earn: 'Earn',
 };
+
+/**
+ * The wallet a stored key names, as its holdings carry it ("Funding" for `fund`). A key no wallet
+ * owns reads as itself, so a note stored by a later build still shows under its own key.
+ */
+export const walletLabelOf = (wallet: string): string =>
+  isBybitWallet(wallet) ? WALLET_LABELS[wallet] : wallet;
 
 /**
  * The default name of a holding the sync creates for a coin: "Bybit Unified · USDT". 'Bybit' and

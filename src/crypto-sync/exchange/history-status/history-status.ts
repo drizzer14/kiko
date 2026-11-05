@@ -6,6 +6,7 @@ import {
   notImportedKindOf,
   type ParsedExchangeState,
   type ParsedKeyExpiry,
+  type ParsedWalletNotes,
 } from '../walk-state';
 
 type CoinKind = 'untrackedCoins' | 'oversizedCoins';
@@ -44,6 +45,33 @@ export const keyExpiryOf = (state: ParsedExchangeState): ParsedKeyExpiry | undef
     .returnType<ParsedKeyExpiry | undefined>()
     .with({ kind: 'parsed' }, ({ keyExpiry }) => keyExpiry)
     .with({ kind: 'malformed' }, () => undefined)
+    .exhaustive();
+
+/**
+ * What the last balance reads left to show, over every wallet: the sorted coins set aside for a
+ * loan, the wallets the exchange refused the key for (sorted by wallet key), and how many Earn
+ * positions were left out. A wallet that failed keeps the notes it had, so these stand until a
+ * read of that wallet replaces them.
+ */
+export type BalanceNotes = { borrowed: string[]; refusedWallets: string[]; earnLeftOut: number };
+
+const NO_NOTES: BalanceNotes = { borrowed: [], refusedWallets: [], earnLeftOut: 0 };
+
+const notesOfParsed = (balanceNotes: Record<string, ParsedWalletNotes>): BalanceNotes => {
+  const wallets = Object.entries(balanceNotes).sort(([left], [right]) => left.localeCompare(right));
+
+  return {
+    borrowed: [...new Set(wallets.flatMap(([, notes]) => notes.borrowed))].sort(),
+    refusedWallets: wallets.filter(([, notes]) => notes.refused).map(([wallet]) => wallet),
+    earnLeftOut: wallets.reduce((total, [, notes]) => total + notes.earnLeftOut, 0),
+  };
+};
+
+export const balanceNotesOf = (state: ParsedExchangeState): BalanceNotes =>
+  match(state)
+    .returnType<BalanceNotes>()
+    .with({ kind: 'parsed' }, ({ balanceNotes }) => notesOfParsed(balanceNotes))
+    .with({ kind: 'malformed' }, () => NO_NOTES)
     .exhaustive();
 
 export type NotImportedCount = { kind: NotImportedKind; count: number };

@@ -1,7 +1,13 @@
 import { CURATED_COIN_CODES } from '@kiko/currency/coins';
 
+import {
+  bybitKeyOf,
+  coinHoldingName,
+  holdingKeyOf,
+  partsOfHoldingKey,
+  walletLabelOf,
+} from './bybit.holding-keys';
 import { BYBIT_FIAT_CODES } from './bybit.tracked-coin';
-import { bybitKeyOf, coinHoldingName, holdingKeyOf, partsOfHoldingKey } from './bybit.holding-keys';
 
 describe('holdingKeyOf', () => {
   it('writes <COIN>:<wallet> for each wallet, BTC too', () => {
@@ -52,6 +58,20 @@ describe('bybitKeyOf', () => {
     ['metadata that is no record', 'BTC:unified'],
   ])('reads no key from %s', (_title, metadata) => {
     expect(bybitKeyOf({ metadata })).toBeUndefined();
+  });
+});
+
+describe('walletLabelOf', () => {
+  it.each([
+    ['unified', 'Unified'],
+    ['fund', 'Funding'],
+    ['earn', 'Earn'],
+  ])('names the wallet key "%s" as "%s", the name its holdings carry', (wallet, label) => {
+    expect(walletLabelOf(wallet)).toBe(label);
+  });
+
+  it('reads a key no wallet owns as itself', () => {
+    expect(walletLabelOf('margin')).toBe('margin');
   });
 });
 
