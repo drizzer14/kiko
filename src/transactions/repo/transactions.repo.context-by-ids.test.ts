@@ -101,7 +101,7 @@ describe('transactionsRepo.listWithContextByIdsQuery', () => {
     expect(idsOf(await contextRowsByIds(['present']))).toEqual(['present']);
   });
 
-  it('reads more ids than one statement binds, in chunks, newest first across them', async () => {
+  it('resolves more ids than IN_CLAUSE_CHUNK_SIZE, newest first', async () => {
     insertRow('early', 'card', 0);
     insertRow('late', 'card', 90);
     insertRow('between', 'card', 40);
@@ -114,6 +114,20 @@ describe('transactionsRepo.listWithContextByIdsQuery', () => {
 
     expect(ids.length).toBeGreaterThan(IN_CLAUSE_CHUNK_SIZE * 2);
     expect(idsOf(await contextRowsByIds(ids))).toEqual(['late', 'between', 'early']);
+  });
+
+  it('is a builder with a toSQL that binds one parameter for 65 503 ids', () => {
+    const ids = Array.from({ length: 65_503 }, (_unused, index) => `id-${index}`);
+    const query = (
+      transactionsRepo as unknown as {
+        listWithContextByIdsQuery: (given: readonly string[]) => {
+          toSQL: () => { params: unknown[] };
+        };
+      }
+    ).listWithContextByIdsQuery(ids);
+
+    expect(typeof query.toSQL).toBe('function');
+    expect(query.toSQL().params).toHaveLength(1);
   });
 
   it('leaves out the rows of a deleted holding', async () => {

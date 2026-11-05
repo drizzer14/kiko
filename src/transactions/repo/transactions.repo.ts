@@ -2323,6 +2323,14 @@ export const transactionsRepo = {
       )
       .orderBy(desc(transactions.time)),
   /**
+   * The context rows of the given ids, newest first. An id list of any length binds one
+   * parameter, and the result is a builder because `useLiveQuery` needs `toSQL`.
+   */
+  listWithContextByIdsQuery: (ids: readonly string[]) =>
+    contextRowsQuery()
+      .where(sql`${transactions.id} IN (SELECT value FROM json_each(${JSON.stringify(ids)}))`)
+      .orderBy(desc(transactions.time)),
+  /**
    * The earliest and latest time of the whole ledger (`listWithContextBetweenQuery`
    * with no bounds), in one row; both are null for an empty ledger — Home's
    * date-range field shows the span of the whole ledger while it reads only a
