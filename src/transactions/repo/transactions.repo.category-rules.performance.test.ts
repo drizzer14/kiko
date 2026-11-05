@@ -11,8 +11,20 @@ jest.mock('@kiko/db/client', () => {
   return { database: client.database, write: client.write };
 });
 
+jest.mock('@kiko/transactions/merchant-name', () => {
+  const actual = jest.requireActual('@kiko/transactions/merchant-name') as {
+    merchantNameOf: (name: string) => unknown;
+  };
+
+  return { ...actual, merchantNameOf: jest.fn((name: string) => actual.merchantNameOf(name)) };
+});
+
 import {
   type CategoryRuleMatcher,
+  type PreparedRules,
+  type RewriteCandidate,
+  hasNoRealCategory,
+  isRewriteEligible,
   matchesRule,
   parseRuleMatchers,
   planRuleRewrite,
@@ -21,6 +33,7 @@ import {
 } from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
 import { IN_CLAUSE_CHUNK_SIZE } from '@kiko/db';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { buildRulesPerformanceFixture } from '@kiko/categories/category-rules/__fixtures__/rules-performance-fixture';
@@ -369,4 +382,129 @@ describe('rewriting 50 000 rows for a rule with a new condition', () => {
     },
     TEST_TIMEOUT,
   );
+});
+
+describe('listing the review groups of 50 000 rows', () => {
+  type ReviewRow = RewriteCandidate & {
+    exchangeCounterpartHoldingId: string | null;
+    untrackedCounterpart: string | null;
+  };
+  type ReviewGroupCount = { key: string; rowCount: number };
+  type ReviewCandidateQuery = PromiseLike<ReviewRow[]> & {
+    toSQL: () => { sql: string; params: unknown[] };
+  };
+
+  const planReviewGroups = (
+    plannedRules: PreparedRules,
+    candidates: readonly ReviewRow[],
+    knownCategoryKeys: ReadonlySet<string>,
+  ): ReviewGroupCount[] =>
+    (
+      jest.requireActual('@kiko/categories/category-rules') as {
+        planReviewGroups: (
+          prepared: PreparedRules,
+          rows: readonly ReviewRow[],
+          knownCategoryKeys: ReadonlySet<string>,
+        ) => ReviewGroupCount[];
+      }
+    ).planReviewGroups(plannedRules, candidates, knownCategoryKeys);
+
+  const reviewCandidateRowsQuery = (): ReviewCandidateQuery =>
+    (
+      categoryRulesRepo as unknown as { reviewCandidateRowsQuery: () => ReviewCandidateQuery }
+    ).reviewCandidateRowsQuery();
+
+  const candidateRows: ReviewRow[] = rows.map((row) => ({
+    ...row,
+    exchangeCounterpartHoldingId: null,
+    untrackedCounterpart: null,
+  }));
+
+  const knownCategoryKeys = (): ReadonlySet<string> =>
+    new Set(
+      (mockDatabase.prepare('SELECT key FROM categories').all() as { key: string }[]).map((row) =>
+        row.key.toLowerCase(),
+      ),
+    );
+
+  // Found by scanning every rule for every row, so it shares neither the name index nor the order
+  // of the checks of the code under test.
+  const bruteForceKept = (known: ReadonlySet<string>): ReviewRow[] =>
+    candidateRows.filter(
+      (row) =>
+        hasNoRealCategory(row, known) &&
+        isRewriteEligible(row) &&
+        !prepared.ordered.some((rule) => matchesRule(rule, subjectOfStoredRow(row))),
+    );
+
+  it(
+    'plans the review list from one candidate read',
+    async () => {
+      seedLedger();
+
+      const known = knownCategoryKeys();
+      const statements = spyOnStatements();
+      const read = await reviewCandidateRowsQuery();
+      const groups = planReviewGroups(prepared, read, known);
+
+      expect(countOf(statements, /^select .* from "transactions"/i)).toBe(1);
+      expect(countOf(statements, /^(insert|update|delete)/i)).toBe(0);
+      expect(read.length).toBeGreaterThan(0);
+      expect(read.length).toBeLessThan(rows.length);
+      expect(groups.length).toBeGreaterThan(0);
+      expect(groups).toEqual(planReviewGroups(prepared, candidateRows, known));
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'planReviewGroups keeps only what the brute-force filter keeps',
+    () => {
+      const known = knownCategoryKeys();
+      const kept = bruteForceKept(known);
+      const keptByKey = new Map<string, number>();
+
+      for (const row of kept) {
+        const { key } = merchantNameOf(row.description);
+
+        keptByKey.set(key, (keptByKey.get(key) ?? 0) + 1);
+      }
+
+      const groups = planReviewGroups(prepared, candidateRows, known);
+
+      expect(kept.length).toBeGreaterThan(0);
+      expect(kept.length).toBeLessThan(rows.length);
+      expect(new Map(groups.map((group) => [group.key, group.rowCount]))).toEqual(keptByKey);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'calls merchantNameOf once per distinct description',
+    () => {
+      jest.mocked(merchantNameOf).mockClear();
+      planReviewGroups(prepared, candidateRows, knownCategoryKeys());
+
+      const described = jest.mocked(merchantNameOf).mock.calls.map(([name]) => name);
+
+      expect(described.length).toBeGreaterThan(0);
+      expect(new Set(described).size).toBe(described.length);
+      expect(described.length).toBeLessThanOrEqual(
+        new Set(rows.map((row) => row.description)).size,
+      );
+    },
+    TEST_TIMEOUT,
+  );
+
+  it('reviewCandidateRowsQuery scans the table with no temp B-tree', () => {
+    const { sql: statement, params } = reviewCandidateRowsQuery().toSQL();
+    const plan = (
+      mockDatabase
+        .prepare(`EXPLAIN QUERY PLAN ${statement}`)
+        .all(...(params as (string | number)[])) as { detail: string }[]
+    ).map((step) => step.detail);
+
+    expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
+    expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
+  });
 });
