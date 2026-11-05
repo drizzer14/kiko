@@ -438,7 +438,8 @@ It writes nothing on a transaction, and it predicts nothing.
 | Period | A picker: weekly, monthly, every 3 months, every 6 months, yearly, as the user approved. The last two are a mark's own and detection never returns them | Section 5.1 names both as false misses. They touch only the stopped cutoff (section 7) and the text (section 6). `addMonths` (`interest.ts:41`) already steps any count of months |
 | A mark on a merchant detection also finds | On its chain the mark wins: the user's period, on that chain's charges. Removing a mark clears only that mark, so the series return as detection finds them, unless the key is hidden: the hide stays until "Show again" | One map, one entry per key, which holds a hide flag and marks (section 8). Detection stores nothing (section 11), so nothing is lost |
 | One mark per chain (**the user's answer to Q6: "One per chain"**) | A key holds a list of marks, each its own chain. A pick on a row inside a marked chain rewrites that chain's period in place, on every mark of its piece, and moves no stored amount. A pick on a row of another piece adds that chain's mark at the row's amount, and marks on other chains stay; so a re-mark at a new price adds a chain. A stored amount whose chain the row left stays, as stated above. Two stored amounts that a later row bridges land in one piece: one series, with the period of the lowest stored amount, a tie going to the earlier period in the picker's order, order-free; removing that series removes every mark in the piece | The user's answer. One mark per key would have dropped Apple 99's mark on marking Apple 399, with nothing shown |
-| The form on a row of another chain | The field reads "Not marked". The value is the period of the marked chain whose amounts span the row's stored amount, and a fold cannot change the chain: it keeps at least one row per amount, and the chain reads only the amounts. A pick adds that chain's own mark; "Not marked" there writes nothing | Reading it takes the group's charges: section 9.6 |
+| The form on a detected row (item 13; was: "Not marked") | **USER 2026-11-05 "A: Everywhere".** A row that a shown detected series holds reads "Detected: weekly / monthly / yearly", from every place the form opens. A row of a hidden key, or a row outside the found series, reads "Not marked". The first row of the sheet writes nothing; a period pick adds a mark (the next row) | Section 9.6, "The detected period": one shared pure function with the list, the row's own group only |
+| The form on a row of another chain | The field reads "Not marked", or "Detected: ..." when a shown detected series holds the row (the row above). The value is the period of the marked chain whose amounts span the row's stored amount, and a fold cannot change the chain: it keeps at least one row per amount, and the chain reads only the amounts. A pick adds that chain's own mark; "Not marked" there writes nothing | Reading it takes the group's charges: section 9.6 |
 | Text | Section 6, "A marked series". Stopped and quiet as any series, on section 7's table, on the chain. "Marked" shows only where the charges do not fit the period, the table gives no slot, or the period has no table row. The stored amount is never shown: a line shows an amount only as the last real charge's | `recurrenceLine` is a pure `.exhaustive()` match (plan), so `Recurrence` gains one kind |
 | Mark and hide together | One map, one entry per key, which holds both, and neither touches the other. A hide affects detected series only: a marked chain stays when its key is hidden (section 8.1). Marking a hidden merchant keeps the hide, and the "Hidden" line stays until "Show again". A marked series offers "Remove mark" in place of "Not a recurring charge"; a detected series, also one beside a marked series, offers hide | Section 8's store. `recordReminderOfferDismissal` shows the read-modify-write inside one `write()` |
 | Reversal | "Remove mark" on the series screen, on the "Marked, No Charges" row, and "Not marked" in the form's picker, each for that chain's marks: `removeRecurringMarks(key, marks)`, which compares inside its `write()`, clears only those marks, writes nothing on an entry holding none of them, and drops an entry left with neither marks nor a hide. "Show again" is `showRecurringMerchantAgain(key)`, which clears only the hide, by the same drop. So "Not marked" on a hidden key, whose field reads "Not marked", keeps the hide. A removed mark goes nowhere, and a new mark on any row restores it | As `selectLoanPayment`, where picking "None" on the field is the removal (`transaction-form.screen.tsx:966`). `SelectField` fires `onSelect` on the row already selected (`handleSelect`, `select-field.component.tsx:57-62,120`), so that tap does reach the handler |
@@ -638,8 +639,29 @@ charge of the group. So `useRowMark` adds `recurringLedgerQuery`, `enabled` (`us
 entry holds a mark in the row's currency**. With none, the field reads "Not marked" and a pick adds a mark, with no ledger read, so a
 row under an unmarked name costs what it did. With one, a second whole-ledger read runs while the form shows, and `chargeGroupsOf`
 once on its result, with no rule, because a pick must know whether it rewrites a chain or adds one. Its cost is in section 10.3's
-device check. was: no second ledger read on the form, ever. now: none under an unmarked name, and one under a name marked in that
-currency. The matched-transfer row is still offered and left out rather than read for.
+device check. was: no second ledger read on the form, ever. then (task 4/4): none under an unmarked name, and one under a name
+marked in that currency. The matched-transfer row is still offered and left out rather than read for.
+
+**The detected period (item 13, USER 2026-11-05 "A: Everywhere").** was (task 4/4): "a row under an unmarked name costs what it
+did": no ledger read in the field, and "Not marked" on a row that a detected series holds. now: `useRowMark` enables
+`recurringLedgerQuery` for **every row it offers**, whatever its marks, runs `chargeGroupsOf` once per ledger fire, and then
+`seriesOfGroups` on the row's own `[key, currency]` group alone (`seriesOfGroups` maps each group on its own, so one group gives
+that group's series exactly), the marked pass for that key (`markedSeriesOf`, `detectedBesideMarked`) and the hide. One pure
+function, shared with the list, decides it, so the form and the list agree on every row. A row that a shown detected series
+holds reads "Detected: weekly", "Detected: monthly" or "Detected: yearly" (section 13). A row in a marked chain reads its marked
+period, as before. A row in no shown series reads "Not marked", and so does a row of a hidden key or a row outside the found
+series (an outlier amount). The same from every place the form opens (8.2, "The two form paths"). A pick on the first row of the
+sheet (which reads "Detected: ..." on a detected row) writes nothing, as "Not marked" writes nothing. A period pick adds a mark
+through today's add path, and the overlap rule then drops the detected series.
+**Cost:** each offered debit now pays for two whole-ledger reads while the form shows: the funding caption's `listAllQuery`, as
+before, and this one. Before, only a debit under a marked name paid for both. On the Mac (section 10.2; node with JIT, under
+load): the narrow read takes 15.0 to 16.0 ms at 10,000 rows, 68.0 ms at 50,000 and 133.0 to 148.0 ms at 100,000. The whole
+reference detection, an upper bound of `chargeGroupsOf` plus one group, takes 160.0 to 198.1 ms, 881.6 to 920.5 ms and 1823.5 to
+2113.3 ms at the same sizes. `chargeGroupsOf`'s own share is not measured. **iPhone not measured**, nor Hermes. The form must
+render, take input and save while the read and the detection are still to come: the field states no value and stays
+`disabled` until then (its one wait, below), and nothing else on the form waits for it. The device measure and its stall
+trigger are in the plan (task 3/3). A stall falls back to option B (the field reuses the funding caption's rows, one read
+fewer), which does not reduce the detection's own CPU.
 
 **The field's one wait.** `useRowMark` is ready when the settings read neither loads nor holds an `error` and, while the ledger read
 is enabled, the same of that read. Until then, and through a pick's write (`isSubmitting` of `useSubmitOnce`), the field states no
@@ -746,6 +768,8 @@ keyed on the local day, detects nothing.
 opening the list to the list showing; the time from opening a series to the series showing; and, from task 4/4, the time from
 opening a transaction under a marked name to its mark field enabling (section 9.6). No pass line is set here, since no device figure
 exists to set one from. The numbers go in the coordinator's report with the user's own read of whether it stalls.
+was: the field-enable time under a marked name only. now (item 13): under any name the field offers, measured at 10,000 rows
+and at the user's ledger size, with the stall trigger of plan task 3/3.
 
 ### 10.4 Pins, and the fix if one fails
 
@@ -830,14 +854,15 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `recurringCharges.title` | Recurring Charges | Регулярні платежі |
 | `recurringCharges.emptyTitle` | No recurring charges yet | Регулярних платежів ще немає |
 | `recurringCharges.emptyMessage` | Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring. | Кіко шукає у ваших транзакціях платежі, що повторюються, як-от підписки й оренда, і показує ті, що вже відбулися. Щомісячний платіж зʼявиться після третього списання, а імпорт виписки може додати попередні. Також можна відкрити транзакцію й позначити її як регулярну. |
-| `recurringCharges.monthlyOnDay` | Charged monthly, on day {{day}} | Списувалося щомісяця, {{day}} числа |
-| `recurringCharges.monthlyAroundDay` | Charged monthly, around day {{day}} | Списувалося щомісяця, близько {{day}} числа |
-| `recurringCharges.monthlyLastDay` | Charged monthly, on the last day | Списувалося щомісяця, в останній день |
-| `recurringCharges.monthly` | Charged monthly | Списувалося щомісяця |
-| `recurringCharges.weekly` | Charged weekly | Списувалося щотижня |
-| `recurringCharges.weeklyOn.monday` ... `.sunday` | Charged weekly, on Mondays ... | Списувалося щотижня, у понеділок / у вівторок / у середу / у четвер / у пʼятницю / у суботу / у неділю |
-| `recurringCharges.yearly` | Charged yearly | Списувалося щороку |
-| `recurringCharges.yearlyOn` | Charged yearly, on {{date}} | Списувалося щороку, {{date}} |
+| `recurringCharges.monthlyOnDay` | Monthly, on day {{day}} | Щомісяця, {{day}} числа |
+| `recurringCharges.monthlyAroundDay` | Monthly, around day {{day}} | Щомісяця, близько {{day}} числа |
+| `recurringCharges.monthlyLastDay` | Monthly, on the last day | Щомісяця, в останній день |
+| `recurringCharges.monthly` | Monthly | Щомісяця |
+| `recurringCharges.weekly` | Weekly | Щотижня |
+| `recurringCharges.weeklyOn.monday` ... `.sunday` | Weekly, on Mondays ... | Щотижня, у понеділок / у вівторок / у середу / у четвер / у пʼятницю / у суботу / у неділю |
+| `recurringCharges.yearly` | Yearly | Щороку |
+| `recurringCharges.yearlyOn` | Yearly, on {{date}} | Щороку, {{date}} |
+| `recurringCharges.paidSoFar` (visual round 1) | All paid so far | Усього сплачено |
 | `recurringCharges.lastCharge` | Last charge {{date}} | Останнє списання {{date}} |
 | `recurringCharges.noChargeSince` | No charge since {{date}} | Немає списань з {{date}} |
 | `recurringCharges.holdingQuietSince` | {{holding}}: no newer transactions since {{date}} | «{{holding}}»: немає новіших транзакцій за {{date}} |
@@ -859,6 +884,9 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `forms.transaction.markRecurring` | Mark as recurring | Позначити як регулярний |
 | `forms.transaction.markRecurringSheetTitle` | Mark as Recurring | Позначити як регулярний |
 | `forms.transaction.notMarkedRecurring` | Not marked | Не позначено |
+| `forms.transaction.detectedRecurring.weekly` (item 13) | Detected: weekly | Виявлено: щотижня |
+| `forms.transaction.detectedRecurring.monthly` (item 13) | Detected: monthly | Виявлено: щомісяця |
+| `forms.transaction.detectedRecurring.yearly` (item 13) | Detected: yearly | Виявлено: щороку |
 
 `forms.transaction.markRecurringSheetTitle` and `recurringCharges.markedEmptyHeading` are
 `TITLE_KEYS` members (read `src/i18n/locales/title-keys.ts`), so their wording is title case.
@@ -868,7 +896,9 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 `recurringCharges.title` and the section headings join `title-keys.ts`. Removed or renamed keys: none; no key here has shipped.
 A sheet title and a field label are two keys, per kiko-translator's casing by role, though uk reads the same.
 
-The uk recurrence lines are a past frame, since «Списання щомісяця, 15 числа» has no tense and reads as a schedule, which defeats
+The recurrence rows above are the visual round 1 texts (section 17.8, "Texts lgtm" 2026-11-05); the item 13 rows have the
+user's "Texts lgtm" of 2026-11-05. The detected texts are sentence case, so they are not `TITLE_KEYS` members. The next
+paragraph is the task 1/4 reasoning and no longer holds (17.8). was: The uk recurrence lines are a past frame, since «Списання щомісяця, 15 числа» has no tense and reads as a schedule, which defeats
 the reason for ruling Q1. They are drafts: `kiko-translator` rules decide them in the step that adds them. `{{holding}}:` opens its line so uk needs
 no case form of a stored name.
 
@@ -1108,4 +1138,5 @@ verb. No key is added for a charge with no category: it folds into the default c
 | P3, Type in Exchange mode | proposal A: Type full width above "Value Out" | "B: Pair with Value Out": Type shares a row with "Value Out"; AX1 and above stack (17.6) |
 
 Texts: "Texts lgtm" for `.superpowers/sdd/1.4-recurring/texts-visual-1.md` (2026-11-05), so 17.8's rows are approved.
-Item 13 ("Not marked" on a detected row) is ruled design (9.6) and goes to the user as options before any code; no rule here.
+Item 13 ("Not marked" on a detected row): USER 2026-11-05 "A: Everywhere", with "Texts lgtm" for its three keys. The rule
+is in section 9.6 ("The detected period"), 8.2 and 13. Detection itself does not change: the form calls the same functions.
