@@ -388,7 +388,7 @@ even when it has no rows now. No confirm is needed: no row changes and the undo 
 key and never touches a mark.** It affects detected series only: on a key that holds marks (a detected series beside a marked one,
 section 8.2), every marked chain stays, and "Show again" clears only the hide, so nothing the user marked is lost.
 
-**Store: one nullable JSON column on `settings`**, `recurringMerchantChoices: Record<key, Choice>`, where `Choice` is
+**Store: one nullable JSON column on `settings`**, `recurringMerchantChoices: Record<key, RecurringMerchantChoice>`, where `RecurringMerchantChoice` is
 `{ name, hidden: true }` and, from task 4/4, `{ name, hidden?: true, marks?: RecurringMark[] }`, and each mark is
 `{ currency, amountMinorUnits, period }`. One entry per key holds both: a hide flag for the detected series under that key, and
 `marks`. Each is read and cleared on its own, and an entry with neither drops. `name` is the last write's spelling. It is a JSON map
@@ -404,7 +404,7 @@ with no edit there.
 **Keys are user text, so readers use a `Map`.** `reminderOfferDismissals` is keyed by `accounts.id`. This map is keyed by a merchant
 name, and `normalizeTransactionName` only lowercases, so `constructor` and `__proto__` are real keys. On a plain object
 `choices['constructor']` is a function, and assigning `__proto__` loses the entry. So nothing reads or assigns the plain object:
-the one parser, `recurringMerchantChoicesOf`, returns a `ReadonlyMap<string, Choice>` from `Object.entries` of the stored value, and
+the one parser, `recurringMerchantChoicesOf`, returns a `ReadonlyMap<string, RecurringMerchantChoice>` from `Object.entries` of the stored value, and
 a write stores `Object.fromEntries(map)`, which defines an own key where an assignment would not. A `Map` over `Object.hasOwn`: one
 missed `hasOwn` is a silent wrong read, and a `Map` has no such read to miss. Worlds: the plan's "Marked flows".
 
@@ -567,7 +567,8 @@ one (two monthly Apple series: never guess), the screen shows `EmptyState` with 
 about the merchant: nothing on this path says a charge stopped repeating.
 
 The lookup reads the series before the hide filter, so between the hide write and `goBack` the screen keeps its series
-and never flashes that state (section 8; a pin).
+and never flashes that state (section 8; a pin). `goBack` runs only if the screen is still focused when the hide write
+resolves, so a late write never closes a form the user opened or pops the list.
 
 **With marks (task 4/4), the route gains an optional `markedAmountMinorUnits`, absent on a route opened on a detected series. It is
 the series' lowest stored amount, a lookup key never shown.** A route that holds it finds the marked series of the route's key and
@@ -596,7 +597,7 @@ default, so the focus-hook rule does not apply; they use `useIsScreenVisible` an
 | Read | Tables | Options |
 |---|---|---|
 | `transactionsRepo.recurringLedgerQuery()`, narrow columns, whole ledger, no order | `transactions` | `paused`, **not `cached`** |
-| `holdingsRepo.allQuery()`, `accountsRepo.listQuery()`, `settingsRepo.getQuery()` (the hook does not read settings until task 3/4) | their own | `paused` |
+| `holdingsRepo.allQuery()`, `accountsRepo.listQuery()`, `settingsRepo.recurringMerchantChoicesQuery()` (the one column, so a settings write elsewhere refreshes no detection; the hook does not read settings until task 3/4) | their own | `paused` |
 | Series screen: `listWithContextByIdsQuery(ids)`, plus categories and settings for the row | `transactions`, `holdings`, `accounts`, `categories`, `settings` | `paused` |
 
 `paused: !useIsScreenVisible()` on every read. Not `cached`: `cached` only makes a mount read the LRU, and a
