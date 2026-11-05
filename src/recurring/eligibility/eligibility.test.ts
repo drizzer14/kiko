@@ -8,7 +8,7 @@ import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 import { fundingPurchasesOf } from '@kiko/test-support/recurring-ledger';
 import { ledgerRowsOf, ownIbansOf } from '@kiko/statistics/spending-ledger';
 
-import * as eligibility from './eligibility';
+import { isOfferedForMark, isRecurringCandidate, recurringExcludedIds } from './eligibility';
 
 type LedgerRow = Pick<
   TransactionRow,
@@ -98,14 +98,14 @@ const worldOf = (change: WorldChange = {}): World => ({
 });
 
 const chargeIdsOf = ({ rows, holdings, accounts }: World): string[] => {
-  const excludedIds = eligibility.recurringExcludedIds(rows, holdings, accounts);
+  const excludedIds = recurringExcludedIds(rows, holdings, accounts);
 
   return rows
     .filter((row) => {
       const holding = holdings.find(({ id }) => id === row.holdingId);
       const account = accounts.find(({ id }) => id === holding?.accountId);
 
-      return !excludedIds.has(row.id) && eligibility.isRecurringCandidate(row, holding, account);
+      return !excludedIds.has(row.id) && isRecurringCandidate(row, holding, account);
     })
     .map(({ id }) => id);
 };
@@ -228,25 +228,6 @@ describe('which rows count as charges', () => {
     });
   });
 });
-
-type OfferedForMark = (
-  row: LedgerRow,
-  holding: Holding | undefined,
-  account: Account | undefined,
-  ownIbans: ReadonlySet<string>,
-  now: number,
-) => boolean;
-
-// A missing export fails the test that reaches for it, not the whole file.
-const isOfferedForMark = (...callArguments: Parameters<OfferedForMark>): boolean => {
-  const found = (eligibility as unknown as Record<string, unknown>).isOfferedForMark;
-
-  if (typeof found !== 'function') {
-    throw new Error('./eligibility does not export the function isOfferedForMark');
-  }
-
-  return (found as OfferedForMark)(...callArguments);
-};
 
 const NOW = new Date(2026, 10, 3, 12, 0).getTime();
 const TOMORROW_EARLY = new Date(2026, 10, 4, 0, 10).getTime();
@@ -450,14 +431,14 @@ describe('isOfferedForMark against the whole-ledger composition', () => {
         ...mccExcludedTransferTransactionIds(ledger, ownIbans),
         ...descriptionExcludedTransferTransactionIds(ledger),
       ]);
-      const excludedIds = eligibility.recurringExcludedIds(rows, holdings, accounts);
+      const excludedIds = recurringExcludedIds(rows, holdings, accounts);
 
       for (const row of rows) {
         const holding = holdings.find(({ id }) => id === row.holdingId);
         const account = accounts.find(({ id }) => id === holding?.accountId);
         const isBlind = excludedIds.has(row.id) && !perRowIds.has(row.id);
         const isOnTime = startOfDay(row.time) <= startOfDay(NOW);
-        const isCandidate = eligibility.isRecurringCandidate(row, holding, account);
+        const isCandidate = isRecurringCandidate(row, holding, account);
         const expected = isBlind
           ? isCandidate && isOnTime
           : isCandidate && !excludedIds.has(row.id) && isOnTime;

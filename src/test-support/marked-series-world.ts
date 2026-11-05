@@ -1,7 +1,20 @@
+import {
+  type RecurringMark,
+  type RecurringPeriod,
+  type RecurringSeries,
+  chargeGroupsOf,
+  seriesOfGroups,
+  RECURRING_PERIODS,
+} from '@kiko/recurring/detection';
+import {
+  type MarkedEntry,
+  type MarkedChain,
+  markedSeriesOf,
+  detectedBesideMarked,
+} from '@kiko/recurring/marked-series';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
-import type { RecurringInput, RecurringPeriod, RecurringSeries } from '@kiko/recurring/detection';
 
 import {
   type Ledger,
@@ -14,19 +27,6 @@ import {
 
 type Random = () => number;
 
-export type Mark = { currency: Currency; amountMinorUnits: number; period: RecurringPeriod };
-export type MarkedEntry = { key: string; name: string; marks: readonly Mark[] };
-export type MarkedChain = {
-  key: string;
-  name: string;
-  currency: Currency;
-  period: RecurringPeriod;
-  marks: readonly Mark[];
-};
-export type MarkedSeries = RecurringSeries & {
-  marks?: readonly Mark[];
-  markedSpan?: { lowest: number; highest: number };
-};
 export type MarkSpec = [period: RecurringPeriod, amount: number, currency?: Currency];
 export type ExpectedShown = ExpectedSeries & {
   isMarked: boolean;
@@ -37,23 +37,12 @@ export type ExpectedShown = ExpectedSeries & {
 };
 export type ExpectedChain = { period: RecurringPeriod; amounts: number[]; currency?: Currency };
 export type Outcome = {
-  detected: MarkedSeries[];
-  marked: MarkedSeries[];
+  detected: RecurringSeries[];
+  marked: RecurringSeries[];
   withoutCharges: MarkedChain[];
   // The marked series, then the detected ones that share no row with them.
-  shown: MarkedSeries[];
+  shown: RecurringSeries[];
 };
-
-type ChargeGroups = unknown;
-type ModuleName = '@kiko/recurring/detection' | '@kiko/recurring/marked-series';
-
-export const PERIODS: readonly RecurringPeriod[] = [
-  'weekly',
-  'monthly',
-  'everyThreeMonths',
-  'everySixMonths',
-  'yearly',
-];
 
 const MINOR_UNITS_PER_MAJOR = 100;
 const MIN_RANDOM_AMOUNT = 50;
@@ -63,64 +52,6 @@ const SINGLE_MARK_SHARE = 0.5;
 const GHOST_SHARE = 0.25;
 const MAX_EXTRA_KEYS = 2;
 const MAX_EXTRA_MARKS = 2;
-
-// A missing export fails the test that reaches for it, not the whole file.
-const exportOf = <Callable>(moduleName: ModuleName, exportName: string): Callable => {
-  const loaded = (() => {
-    try {
-      return jest.requireActual(moduleName) as Record<string, unknown>;
-    } catch (error) {
-      throw new Error(`${moduleName} cannot be loaded: ${(error as Error).message}`);
-    }
-  })();
-  const found = loaded[exportName];
-
-  if (typeof found !== 'function') {
-    throw new Error(`${moduleName} does not export the function ${exportName}`);
-  }
-
-  return found as Callable;
-};
-
-export const chargeGroupsOf = (input: RecurringInput, now: number): ChargeGroups =>
-  exportOf<(input: RecurringInput, now: number) => ChargeGroups>(
-    '@kiko/recurring/detection',
-    'chargeGroupsOf',
-  )(input, now);
-
-export const seriesOfGroups = (groups: ChargeGroups, now: number): MarkedSeries[] =>
-  exportOf<(groups: ChargeGroups, now: number) => MarkedSeries[]>(
-    '@kiko/recurring/detection',
-    'seriesOfGroups',
-  )(groups, now);
-
-export const amountPiecesOf = (amounts: readonly number[]): number[][] =>
-  exportOf<(amounts: readonly number[]) => number[][]>(
-    '@kiko/recurring/detection',
-    'amountPiecesOf',
-  )(amounts);
-
-export const markedSeriesOf = (
-  groups: ChargeGroups,
-  marked: readonly MarkedEntry[],
-  now: number,
-): { series: MarkedSeries[]; withoutCharges: MarkedChain[] } =>
-  exportOf<
-    (
-      groups: ChargeGroups,
-      marked: readonly MarkedEntry[],
-      now: number,
-    ) => { series: MarkedSeries[]; withoutCharges: MarkedChain[] }
-  >('@kiko/recurring/marked-series', 'markedSeriesOf')(groups, marked, now);
-
-export const detectedBesideMarked = (
-  detected: readonly MarkedSeries[],
-  marked: readonly MarkedSeries[],
-): MarkedSeries[] =>
-  exportOf<(detected: readonly MarkedSeries[], marked: readonly MarkedSeries[]) => MarkedSeries[]>(
-    '@kiko/recurring/marked-series',
-    'detectedBesideMarked',
-  )(detected, marked);
 
 export const outcomeOf = (
   ledger: Ledger,
@@ -139,7 +70,7 @@ export const outcomeOf = (
   };
 };
 
-export const markOf = ([period, amount, currency = 'UAH']: MarkSpec): Mark => ({
+const markOf = ([period, amount, currency = 'UAH']: MarkSpec): RecurringMark => ({
   currency,
   amountMinorUnits: Math.round(amount * MINOR_UNITS_PER_MAJOR),
   period,
@@ -156,7 +87,7 @@ const ascending = (left: number, right: number): number => left - right;
 const compareText = (left: string, right: string): number =>
   Number(left > right) - Number(left < right);
 
-const markAmountsOf = (series: MarkedSeries): number[] =>
+const markAmountsOf = (series: RecurringSeries): number[] =>
   (series.marks ?? []).map(({ amountMinorUnits }) => amountMinorUnits).sort(ascending);
 
 type Sortable = { from: string; period: string; count: number; isMarked: boolean };
@@ -168,7 +99,7 @@ const compareSortable = (left: Sortable, right: Sortable): number =>
   Number(left.isMarked) - Number(right.isMarked);
 
 /** What a shown series reads as; an unmarked one holds no marks. */
-export const shownViewsOf = (series: readonly MarkedSeries[]) =>
+export const shownViewsOf = (series: readonly RecurringSeries[]) =>
   series
     .flatMap((entry) =>
       viewsOf([entry]).map((view) => ({
@@ -181,7 +112,7 @@ export const shownViewsOf = (series: readonly MarkedSeries[]) =>
     .sort(compareSortable);
 
 /** The same on local days, so builds in two device zones compare. */
-export const shownDayViewsOf = (series: readonly MarkedSeries[]) =>
+export const shownDayViewsOf = (series: readonly RecurringSeries[]) =>
   series
     .flatMap((entry) =>
       dayViewsOf([entry]).map((view) => ({
@@ -241,23 +172,23 @@ const currencyOfHolding = (ledger: Ledger, holdingId: string): Currency =>
   foldMap(maybe(ledger.holdings.find(({ id }) => id === holdingId)), ({ currency }) => currency) ??
   'UAH';
 
-const markOfRow = (ledger: Ledger, row: LedgerRow, random: Random): Mark => ({
+const markOfRow = (ledger: Ledger, row: LedgerRow, random: Random): RecurringMark => ({
   currency: currencyOfHolding(ledger, row.holdingId),
   amountMinorUnits: -row.amountMinorUnits,
-  period: pickFrom(random, PERIODS),
+  period: pickFrom(random, RECURRING_PERIODS),
 });
 
-const randomMark = (ledger: Ledger, rows: readonly LedgerRow[], random: Random): Mark =>
+const randomMark = (ledger: Ledger, rows: readonly LedgerRow[], random: Random): RecurringMark =>
   random() < REAL_AMOUNT_SHARE
     ? markOfRow(ledger, pickFrom(random, rows), random)
     : {
         currency: pickFrom(random, ['UAH', 'USD'] as const),
         amountMinorUnits:
           between(random, MIN_RANDOM_AMOUNT, MAX_RANDOM_AMOUNT) * MINOR_UNITS_PER_MAJOR,
-        period: pickFrom(random, PERIODS),
+        period: pickFrom(random, RECURRING_PERIODS),
       };
 
-const distinctMarks = (marks: readonly Mark[]): Mark[] => [
+const distinctMarks = (marks: readonly RecurringMark[]): RecurringMark[] => [
   ...new Map(marks.map((mark) => [`${mark.currency}:${mark.amountMinorUnits}`, mark])).values(),
 ];
 
@@ -314,6 +245,9 @@ export const randomEntriesOf = (
   });
 
   return random() < GHOST_SHARE
-    ? [...entries, entryOf('Ghost Shop', [[pickFrom(random, PERIODS), MIN_RANDOM_AMOUNT]])]
+    ? [
+        ...entries,
+        entryOf('Ghost Shop', [[pickFrom(random, RECURRING_PERIODS), MIN_RANDOM_AMOUNT]]),
+      ]
     : entries;
 };

@@ -28,7 +28,7 @@ export type MarkedWorld = {
   withoutCharges?: ExpectedChain[];
 };
 
-export type ExclusionWorld = MarkedWorld & { rowId: string; isExcluded: boolean };
+type ExclusionWorld = MarkedWorld & { rowId: string; isExcluded: boolean };
 
 type Day = readonly [year: number, month: number, day: number];
 type DayAmount = readonly [year: number, month: number, day: number, amount: number];

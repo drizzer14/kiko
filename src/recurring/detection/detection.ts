@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import {
   merchantNameOf,
   smallestSpelling,
@@ -11,25 +12,16 @@ import { addMonths, daysBetween } from '@kiko/holdings/interest';
 import { isRecurringCandidate, recurringExcludedIds } from '@kiko/recurring/eligibility';
 
 import type {
+  Charge,
   Recurrence,
+  ChargeGroup,
+  ChargeGroups,
   DetectedPeriod,
   RecurringInput,
+  RecurringPeriod,
   RecurringSeries,
   RecurringLedgerRow,
 } from './detection.types.d';
-
-type Charge = {
-  id: string;
-  time: number;
-  // The debit's absolute minor units.
-  amount: number;
-  source: RecurringLedgerRow['source'];
-  holdingId: string;
-  holdingName: string;
-  description: string;
-};
-
-type ChargeGroup = { key: string; currency: Currency; charges: Charge[] };
 
 type PeriodRule = {
   period: DetectedPeriod;
@@ -43,9 +35,11 @@ type PeriodRule = {
   allowedJumps: (charges: number) => number;
   stepForward: (time: number, slots: number) => number;
   recurrenceOf: (newestFirst: readonly Charge[]) => Recurrence;
-  // How long after its last charge a series reads as stopped, grace included.
-  stoppedAfter: { months: number; days: number };
 };
+
+// What a series is built from: its charges oldest first, the period it reads under and its date
+// line.
+type SeriesParts = { charges: readonly Charge[]; period: RecurringPeriod; recurrence: Recurrence };
 
 type Found = { charges: Charge[]; rule: PeriodRule };
 
@@ -56,11 +50,6 @@ type PassOptions = { withAmounts: boolean; minimumCharges?: number };
 type KeptCharge = { charge: Charge; absorbed: Set<Charge['source']> };
 
 type DatedRow = { row: RecurringLedgerRow; time: number };
-
-type Context = {
-  today: number;
-  newestTimeByHoldingId: ReadonlyMap<string, number>;
-};
 
 const AMOUNT_STEP = 1.25;
 const WEEKLY_AMOUNT_STEP = 1.1;
@@ -84,6 +73,7 @@ const WEEKLY_RECURRENCE_SAMPLE = 4;
 const WEEKDAY_SHARE = 3;
 
 const NO_RECURRENCE: Recurrence = { kind: 'none' };
+const MARKED_RECURRENCE: Recurrence = { kind: 'marked' };
 
 const SOURCE_RANK: Record<RecurringLedgerRow['source'], number> = {
   monobank: 0,
@@ -187,7 +177,6 @@ const MONTHLY: PeriodRule = {
   allowedJumps: (charges) => 1 + Math.floor(charges / CHARGES_PER_EXTRA_JUMP),
   stepForward: addMonths,
   recurrenceOf: monthlyRecurrenceOf,
-  stoppedAfter: { months: 1, days: 7 },
 };
 
 const YEARLY: PeriodRule = {
@@ -200,7 +189,6 @@ const YEARLY: PeriodRule = {
   allowedJumps: () => 0,
   stepForward: (time, years) => addMonths(time, MONTHS_PER_YEAR * years),
   recurrenceOf: yearlyRecurrenceOf,
-  stoppedAfter: { months: MONTHS_PER_YEAR, days: 14 },
 };
 
 const WEEKLY: PeriodRule = {
@@ -213,15 +201,32 @@ const WEEKLY: PeriodRule = {
   allowedJumps: () => 0,
   stepForward: weekStepOf,
   recurrenceOf: weeklyRecurrenceOf,
-  // Two weeks and 3 days of grace.
-  stoppedAfter: { months: 0, days: 2 * WEEK_DAYS + 3 },
 };
 
 const PERIOD_RULES: readonly PeriodRule[] = [WEEKLY, MONTHLY, YEARLY];
 
+/** The picker's order, which also settles a tie between two marks of one amount. */
+export const RECURRING_PERIODS: readonly RecurringPeriod[] = [
+  'weekly',
+  'monthly',
+  'everyThreeMonths',
+  'everySixMonths',
+  'yearly',
+];
+
+// How long after its last charge a series reads as stopped, grace included.
+const STOPPED_AFTER: Record<RecurringPeriod, { months: number; days: number }> = {
+  // Two weeks and 3 days of grace.
+  weekly: { months: 0, days: 2 * WEEK_DAYS + 3 },
+  monthly: { months: 1, days: 7 },
+  everyThreeMonths: { months: 3, days: 14 },
+  everySixMonths: { months: 6, days: 14 },
+  yearly: { months: MONTHS_PER_YEAR, days: 14 },
+};
+
 // Steps back with local calendar fields: a local day is not always 24 hours.
-const stoppedCutoffOf = (rule: PeriodRule, today: number): number => {
-  const { months, days } = rule.stoppedAfter;
+const stoppedCutoffOf = (period: RecurringPeriod, today: number): number => {
+  const { months, days } = STOPPED_AFTER[period];
   const monthsBack = new Date(addMonths(today, -months));
 
   return new Date(
@@ -294,25 +299,41 @@ const foundIn = (charges: Charge[]): Found[] =>
 
 const monthlyFound = (charges: Charge[]): Found[] => [{ charges, rule: MONTHLY }];
 
-// Sorted by magnitude and cut where the next exceeds the previous by more than the step; each
-// piece is back in time order.
-const amountPiecesOf = (charges: readonly Charge[]): Charge[][] => {
-  const ascending = [...charges].sort(
-    (left, right) => left.amount - right.amount || compareCharges(left, right),
-  );
-  const pieces: Charge[][] = [];
+/**
+ * The amounts sorted and cut where the next exceeds the previous by more than the step. The
+ * pieces ascend and no amount sits in two of them, so a piece's lowest and highest amounts tell
+ * which charges it holds.
+ */
+export const amountPiecesOf = (amounts: readonly number[]): number[][] => {
+  const pieces: number[][] = [];
 
-  for (const charge of ascending) {
+  for (const amount of [...amounts].sort((left, right) => left - right)) {
     const piece = pieces.at(-1);
 
-    if (piece !== undefined && charge.amount <= piece[piece.length - 1].amount * AMOUNT_STEP) {
-      piece.push(charge);
+    if (piece !== undefined && amount <= piece[piece.length - 1] * AMOUNT_STEP) {
+      piece.push(amount);
     } else {
-      pieces.push([charge]);
+      pieces.push([amount]);
     }
   }
 
-  return pieces.map((piece) => piece.sort(compareCharges));
+  return pieces;
+};
+
+// The charges of each piece of `amountPiecesOf`, in the time order they arrive in. Placing them by
+// amount, not sorting them again, keeps this to the one sort inside the cut.
+const chargePiecesOf = (charges: readonly Charge[]): Charge[][] => {
+  const pieces = amountPiecesOf(charges.map(({ amount }) => amount));
+  const pieceIndexByAmount = new Map(
+    pieces.flatMap((piece, index) => piece.map((amount) => [amount, index] as const)),
+  );
+  const chargePieces: Charge[][] = pieces.map(() => []);
+
+  for (const charge of charges) {
+    chargePieces[pieceIndexByAmount.get(charge.amount) ?? 0].push(charge);
+  }
+
+  return chargePieces;
 };
 
 const monthIndexOf = (time: number): number => {
@@ -406,7 +427,7 @@ const firstFound = (
 };
 
 const splitByAmount = (charges: Charge[]): Found[] => {
-  const found = amountPiecesOf(charges).flatMap((piece) =>
+  const found = chargePiecesOf(charges).flatMap((piece) =>
     firstFound([foundIn, rescuedFrom], piece),
   );
   const covered = total(found.map((entry) => entry.charges.length));
@@ -458,7 +479,7 @@ const foldedBucket = (bucket: readonly Charge[]): Charge[] => {
   return kept.map((entry) => entry.charge);
 };
 
-const foldTwins = (charges: readonly Charge[]): Charge[] =>
+export const foldTwins = (charges: readonly Charge[]): Charge[] =>
   [...groupedBy(charges, ({ amount }) => amount).values()]
     .flatMap(foldedBucket)
     .sort(compareCharges);
@@ -470,14 +491,34 @@ const nameOf = (charges: readonly Charge[]): string =>
     ),
   );
 
-const seriesOf = (
-  { charges, rule }: Found,
-  { key, currency }: ChargeGroup,
-  { today, newestTimeByHoldingId }: Context,
+// A marked series reads its date line from the table of its period only when its own charges fit
+// that period; its amounts are not tested, the chain already chose them. A period with no table
+// (every 3 and every 6 months), a charge list that does not fit, and a table with no honest day
+// all read as the user's word alone.
+export const markedRecurrenceOf = (
+  period: RecurringPeriod,
+  charges: readonly Charge[],
+): Recurrence => {
+  const rule = PERIOD_RULES.find((candidate) => candidate.period === period);
+
+  if (rule === undefined || !passes(charges, rule, { withAmounts: false })) {
+    return MARKED_RECURRENCE;
+  }
+
+  return match(rule.recurrenceOf([...charges].reverse()))
+    .with({ kind: 'none' }, () => MARKED_RECURRENCE)
+    .otherwise((recurrence) => recurrence);
+};
+
+export const seriesOfCharges = (
+  { charges, period, recurrence }: SeriesParts,
+  { key, currency }: Pick<ChargeGroup, 'key' | 'currency'>,
+  { newestTimeByHoldingId }: ChargeGroups,
+  today: number,
 ): RecurringSeries => {
   const newestFirst = [...charges].reverse();
   const latest = newestFirst[0];
-  const cutoff = stoppedCutoffOf(rule, today);
+  const cutoff = stoppedCutoffOf(period, today);
   const isStopped = startOfLocalDay(latest.time) < cutoff;
   const newestRowTime = newestTimeByHoldingId.get(latest.holdingId) ?? latest.time;
   const isQuiet = isStopped && startOfLocalDay(newestRowTime) < cutoff;
@@ -487,8 +528,8 @@ const seriesOf = (
     merchantKey: key,
     name: nameOf(charges),
     currency,
-    period: rule.period,
-    recurrence: rule.recurrenceOf(newestFirst),
+    period,
+    recurrence,
     chargeIds: newestFirst.map(({ id }) => id),
     lastChargeTime: latest.time,
     lastChargeAmountMinorUnits: latest.amount,
@@ -497,6 +538,22 @@ const seriesOf = (
     quiet: isQuiet ? { since: newestRowTime, holdingName: latest.holdingName } : null,
   };
 };
+
+const seriesOf = (
+  { charges, rule }: Found,
+  group: ChargeGroup,
+  groups: ChargeGroups,
+  today: number,
+): RecurringSeries =>
+  seriesOfCharges(
+    { charges, period: rule.period, recurrence: rule.recurrenceOf([...charges].reverse()) },
+    group,
+    groups,
+    today,
+  );
+
+export const byNewestCharge = (left: RecurringSeries, right: RecurringSeries): number =>
+  right.lastChargeTime - left.lastChargeTime || compareText(left.id, right.id);
 
 const hasLeft = ({ lastChargeTime }: RecurringSeries, today: number): boolean =>
   today > startOfLocalDay(addMonths(lastChargeTime, LEAVES_AFTER_MONTHS));
@@ -516,7 +573,12 @@ const newestTimeByHoldingIdOf = (dated: readonly DatedRow[]): Map<string, number
     new Map<string, number>(),
   );
 
-const chargeGroupsOf = (
+// The same key reads a group from `ChargeGroups`, so a mark finds exactly the charges of its
+// merchant and currency.
+export const groupKeyOf = (key: string, currency: Currency): string =>
+  JSON.stringify([key, currency]);
+
+const groupedChargesOf = (
   input: RecurringInput,
   dated: readonly DatedRow[],
 ): Map<string, ChargeGroup> => {
@@ -546,7 +608,7 @@ const chargeGroupsOf = (
       continue;
     }
 
-    const groupKey = JSON.stringify([key, holding.currency]);
+    const groupKey = groupKeyOf(key, holding.currency);
     const group = groups.get(groupKey) ?? { key, currency: holding.currency, charges: [] };
 
     group.charges.push({
@@ -565,23 +627,34 @@ const chargeGroupsOf = (
 };
 
 /**
- * The charges that repeated in the user's own rows, grouped by merchant key and currency. It
- * states what the rows show: no next date, no sum, and no output date on a later local day than
- * `now`'s, which is all that is read of `now`.
+ * The charges of the whole ledger by merchant key and currency. `now` is read only through its
+ * local day: a row on a later local day is neither a charge nor activity.
  */
-export const detectRecurringSeries = (input: RecurringInput, now: number): RecurringSeries[] => {
-  const today = startOfLocalDay(now);
-  const dated = datedRowsOf(input.rows, today);
-  const context: Context = { today, newestTimeByHoldingId: newestTimeByHoldingIdOf(dated) };
+export const chargeGroupsOf = (input: RecurringInput, now: number): ChargeGroups => {
+  const dated = datedRowsOf(input.rows, startOfLocalDay(now));
 
-  return [...chargeGroupsOf(input, dated).values()]
+  return {
+    groups: groupedChargesOf(input, dated),
+    newestTimeByHoldingId: newestTimeByHoldingIdOf(dated),
+  };
+};
+
+/**
+ * The charges that repeated, grouped by merchant key and currency. It states what the rows show:
+ * no next date, no sum, and no output date on a later local day than `now`'s.
+ */
+export const seriesOfGroups = (chargeGroups: ChargeGroups, now: number): RecurringSeries[] => {
+  const today = startOfLocalDay(now);
+
+  return [...chargeGroups.groups.values()]
     .flatMap((group) =>
       firstFound(GROUP_STEPS, foldTwins(group.charges)).map((found) =>
-        seriesOf(found, group, context),
+        seriesOf(found, group, chargeGroups, today),
       ),
     )
     .filter((series) => !hasLeft(series, today))
-    .sort(
-      (left, right) => right.lastChargeTime - left.lastChargeTime || compareText(left.id, right.id),
-    );
+    .sort(byNewestCharge);
 };
+
+export const detectRecurringSeries = (input: RecurringInput, now: number): RecurringSeries[] =>
+  seriesOfGroups(chargeGroupsOf(input, now), now);

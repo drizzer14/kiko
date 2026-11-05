@@ -1,4 +1,10 @@
 import {
+  type RecurringMark,
+  type RecurringSeries,
+  amountPiecesOf,
+  detectRecurringSeries,
+} from '@kiko/recurring/detection';
+import {
   nowOf,
   timesOf,
   dayKeyOf,
@@ -12,14 +18,11 @@ import {
   outcomeOf,
   chainViewsOf,
   shownViewsOf,
-  amountPiecesOf,
   shownDayViewsOf,
   randomEntriesOf,
   expectedChainViewsOf,
   expectedShownViewsOf,
   type Outcome,
-  type MarkedEntry,
-  type MarkedSeries,
 } from '@kiko/test-support/marked-series-world';
 import {
   exclusionWorlds,
@@ -29,10 +32,11 @@ import {
 import { sweep } from '@kiko/test-support/property-sweep';
 import { seededRandom } from '@kiko/test-support/seeded-random';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
-import { detectRecurringSeries } from '@kiko/recurring/detection';
 import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
 import { AMOUNT_CHAIN_WORLDS } from '@kiko/test-support/marked-series-chain-worlds';
 import { isRecurringCandidate, recurringExcludedIds } from '@kiko/recurring/eligibility';
+
+import { type MarkedEntry, markedChainOfAmount } from './marked-series';
 
 const SEED_SPREAD = 104_729;
 const AMOUNT_STEP = 1.25;
@@ -57,10 +61,10 @@ const currencyOfHolding = (ledger: Ledger, holdingId: string): string | undefine
 const amountOfRow = (ledger: Ledger, rowId: string): number =>
   -(ledger.rows.find(({ id }) => id === rowId)?.amountMinorUnits ?? 0);
 
-const idsOf = (series: readonly MarkedSeries[]): string[] =>
+const idsOf = (series: readonly RecurringSeries[]): string[] =>
   series.flatMap(({ chargeIds }) => chargeIds);
 
-const shownDetectedOf = (outcome: Outcome): MarkedSeries[] =>
+const shownDetectedOf = (outcome: Outcome): RecurringSeries[] =>
   outcome.shown.filter(({ marks }) => marks === undefined);
 
 const ascending = (left: number, right: number): number => left - right;
@@ -476,5 +480,89 @@ describe('amountPiecesOf', () => {
       expect(amountPiecesOf([...amounts].reverse())).toEqual(original);
       expect(amountPiecesOf(shuffled(amounts, seededRandom(seed * SEED_SPREAD)))).toEqual(original);
     }
+  });
+});
+
+describe('markedChainOfAmount', () => {
+  const markOf = (
+    period: RecurringMark['period'],
+    amountMinorUnits: number,
+    currency: RecurringMark['currency'] = 'UAH',
+  ): RecurringMark => ({ currency, amountMinorUnits, period });
+
+  const chargesOf = (...amounts: number[]) =>
+    amounts.map((amountMinorUnits) => ({ amountMinorUnits }));
+
+  it('finds the chain whose lowest and highest amounts span the amount', () => {
+    const marks = [markOf('monthly', 10_000), markOf('everyThreeMonths', 40_000)];
+    const charges = chargesOf(10_000, 11_000, 12_500, 40_000);
+
+    expect(markedChainOfAmount(charges, marks, 11_000, 'UAH')).toEqual({
+      period: 'monthly',
+      marks: [marks[0]],
+    });
+    expect(markedChainOfAmount(charges, marks, 40_000, 'UAH')).toEqual({
+      period: 'everyThreeMonths',
+      marks: [marks[1]],
+    });
+  });
+
+  it('finds a stored amount that no charge sits at', () => {
+    const marks = [markOf('yearly', 10_000)];
+
+    expect(markedChainOfAmount(chargesOf(12_000), marks, 10_000, 'UAH')).toEqual({
+      period: 'yearly',
+      marks,
+    });
+    expect(markedChainOfAmount(chargesOf(12_000), marks, 12_000, 'UAH')).toEqual({
+      period: 'yearly',
+      marks,
+    });
+  });
+
+  it('finds a charge between two stored amounts, in the period of the lower one', () => {
+    const marks = [markOf('everyThreeMonths', 13_000), markOf('monthly', 10_000)];
+
+    expect(markedChainOfAmount(chargesOf(11_500), marks, 11_500, 'UAH')).toEqual({
+      period: 'monthly',
+      marks: [markOf('monthly', 10_000), markOf('everyThreeMonths', 13_000)],
+    });
+  });
+
+  it('gives the same chain for any order of the marks and of the charges', () => {
+    const marks = [markOf('monthly', 10_000), markOf('weekly', 10_000), markOf('yearly', 12_000)];
+    const charges = chargesOf(10_500, 12_000, 11_000);
+    const original = markedChainOfAmount(charges, marks, 11_000, 'UAH');
+
+    expect(original).toEqual({ period: 'weekly', marks: [marks[1], marks[0], marks[2]] });
+    expect(
+      markedChainOfAmount([...charges].reverse(), [...marks].reverse(), 11_000, 'UAH'),
+    ).toEqual(original);
+  });
+
+  it('gives null for an amount outside every chain, and for a chain with no stored amount', () => {
+    const marks = [markOf('monthly', 10_000)];
+    const charges = chargesOf(10_000, 40_000);
+
+    expect(markedChainOfAmount(charges, marks, 10_000, 'UAH')).not.toBeNull();
+    expect(markedChainOfAmount(charges, marks, 25_000, 'UAH')).toBeNull();
+    expect(markedChainOfAmount(charges, marks, 40_000, 'UAH')).toBeNull();
+    expect(markedChainOfAmount(charges, marks, 9000, 'UAH')).toBeNull();
+    expect(markedChainOfAmount(charges, [], 10_000, 'UAH')).toBeNull();
+  });
+
+  it('does not read the marks of another currency', () => {
+    const marks = [markOf('monthly', 10_000), markOf('yearly', 12_000, 'USD')];
+    const charges = chargesOf(15_000);
+
+    expect(markedChainOfAmount(charges, marks, 15_000, 'UAH')).toBeNull();
+    expect(markedChainOfAmount(charges, marks, 15_000, 'USD')).toEqual({
+      period: 'yearly',
+      marks: [marks[1]],
+    });
+    expect(markedChainOfAmount(charges, marks, 10_000, 'UAH')).toEqual({
+      period: 'monthly',
+      marks: [marks[0]],
+    });
   });
 });
