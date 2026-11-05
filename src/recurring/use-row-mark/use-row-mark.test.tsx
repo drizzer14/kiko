@@ -1,9 +1,3 @@
-import type {
-  RecurringMark,
-  RecurringPeriod,
-  chargeGroupsOf,
-  seriesOfGroups,
-} from '@kiko/recurring/detection';
 import {
   type SettingsRows,
   BANK,
@@ -23,6 +17,9 @@ import {
 } from '@kiko/test-support/recurring-mark-live-queries';
 import type { Currency } from '@kiko/currency/currency';
 import { act, renderHook } from '@testing-library/react-native';
+import type { chargeGroupsOf, seriesOfGroups } from '@kiko/recurring/detection';
+
+import { useRowMark } from './use-row-mark';
 
 const mockLive = createMarkLiveQueries();
 const { landSettings, landLedger } = mockLive;
@@ -59,17 +56,8 @@ jest.mock('@kiko/recurring/detection', () => {
   };
 });
 
-type Chain = { period: RecurringPeriod; marks: readonly RecurringMark[] } | null;
-type RowMark = { chain: Chain; isReady: boolean };
 type Holdings = (typeof CARD)[];
 type Accounts = (typeof BANK)[];
-type UseRowMark = (
-  row: { amountMinorUnits: number; description: string },
-  currency: Currency,
-  isOffered: boolean,
-  holdings: Holdings,
-  accounts: Accounts,
-) => RowMark;
 type Scenario = {
   settingsRows?: SettingsRows;
   currency?: Currency;
@@ -99,16 +87,12 @@ const MARKED_UNDER_CONSTRUCTOR = settingsRowsOf('constructor', {
   marks: [markOf('yearly', 10_000)],
 });
 
-// Reached at run time, so a suite loads and each pin fails on its own while the hook is missing.
-const useRowMarkOf = (): UseRowMark =>
-  (jest.requireActual('./use-row-mark') as { useRowMark: UseRowMark }).useRowMark;
-
 const renderRowMark = async (
   amountMinorUnits: number,
   { currency = 'UAH', description = 'Netflix', isOffered = true }: Scenario = {},
 ) =>
   renderHook(() =>
-    useRowMarkOf()({ amountMinorUnits, description }, currency, isOffered, HOLDINGS, ACCOUNTS),
+    useRowMark({ amountMinorUnits, description }, currency, isOffered, HOLDINGS, ACCOUNTS),
   );
 
 const fireAgain = async (rerender: (props?: object) => Promise<void> | void): Promise<void> => {

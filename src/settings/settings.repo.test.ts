@@ -389,29 +389,14 @@ const transactionsFingerprint = (): { count: number; checksum: string } => {
   return { count: rows.length, checksum: JSON.stringify(rows) };
 };
 
-type StoredChoice = { name: string; hidden?: true; marks?: readonly RecurringMark[] };
-
-type MarkWriters = {
-  markRecurringCharge: (key: string, name: string, mark: RecurringMark) => Promise<void>;
-  setRecurringChainPeriod: (
-    key: string,
-    marks: readonly RecurringMark[],
-    period: RecurringPeriod,
-  ) => Promise<void>;
-  removeRecurringMarks: (key: string, marks: readonly RecurringMark[]) => Promise<void>;
-};
-
-const writerOf = <Name extends keyof MarkWriters>(name: Name): MarkWriters[Name] =>
-  Reflect.get(settingsRepo, name) as MarkWriters[Name];
-
 const mark = (key: string, name: string, stored: RecurringMark) =>
-  writerOf('markRecurringCharge')(key, name, stored);
+  settingsRepo.markRecurringCharge(key, name, stored);
 
 const setPeriod = (key: string, marks: readonly RecurringMark[], period: RecurringPeriod) =>
-  writerOf('setRecurringChainPeriod')(key, marks, period);
+  settingsRepo.setRecurringChainPeriod(key, marks, period);
 
 const unmark = (key: string, marks: readonly RecurringMark[]) =>
-  writerOf('removeRecurringMarks')(key, marks);
+  settingsRepo.removeRecurringMarks(key, marks);
 
 const markOf = (
   amountMinorUnits: number,
@@ -419,11 +404,9 @@ const markOf = (
   currency: RecurringMark['currency'] = 'UAH',
 ): RecurringMark => ({ currency, amountMinorUnits, period });
 
-const readStoredChoices = async (): Promise<ReadonlyMap<string, StoredChoice>> => readChoices();
-
 const storeEntries = (entries: object): void => storeRawChoices(JSON.stringify(entries));
 
-const markedEntriesOf = (choices: ReadonlyMap<string, StoredChoice>): MarkedEntry[] =>
+const markedEntriesOf = (choices: ReadonlyMap<string, RecurringMerchantChoice>): MarkedEntry[] =>
   [...choices].flatMap(([key, { name, marks = [] }]) =>
     marks.length > 0 ? [{ key, name, marks }] : [],
   );
@@ -431,7 +414,7 @@ const markedEntriesOf = (choices: ReadonlyMap<string, StoredChoice>): MarkedEntr
 const markedSeriesUnder = async (description: string) => {
   const ledger = ledgerOf([chargeOf('charge-1', at(2026, 10, 15), 250, { description })]);
 
-  return outcomeOf(ledger, markedEntriesOf(await readStoredChoices()), nowOf()).marked;
+  return outcomeOf(ledger, markedEntriesOf(await readChoices()), nowOf()).marked;
 };
 
 const GOOD_MARK = markOf(9_900);
@@ -603,7 +586,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
       const expected = new Map([['apple', { name: 'Apple', marks: [APPLE_99] }]]);
 
       expect(storedEntries()).toEqual(expected);
-      expect(await readStoredChoices()).toEqual(expected);
+      expect(await readChoices()).toEqual(expected);
     });
 
     it('keeps the hide beside the mark when a hidden key is marked, in one entry', async () => {
@@ -943,7 +926,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
     it.each(BAD_MARKS)('drops a mark with %s alone beside a good mark', async (_title, bad) => {
       storeEntries({ apple: { name: 'Apple', marks: [bad, GOOD_MARK] } });
 
-      expect((await readStoredChoices()).get('apple')).toEqual({
+      expect((await readChoices()).get('apple')).toEqual({
         name: 'Apple',
         marks: [GOOD_MARK],
       });
@@ -961,7 +944,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
 
       storeEntries({ apple: { name: 'Apple', marks: [edge] } });
 
-      expect((await readStoredChoices()).get('apple')).toEqual({ name: 'Apple', marks: [edge] });
+      expect((await readChoices()).get('apple')).toEqual({ name: 'Apple', marks: [edge] });
     });
 
     it.each([
@@ -978,7 +961,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         good: { name: 'Good', marks: [GOOD_MARK] },
       });
 
-      const choices = await readStoredChoices();
+      const choices = await readChoices();
 
       expect(choices.has('bare')).toBe(false);
       expect(choices.get('hidden')).toStrictEqual({ name: 'Hidden', hidden: true });
@@ -988,7 +971,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
     it('reads a hidden flag that is not true as no hide beside good marks', async () => {
       storeEntries({ apple: { name: 'Apple', hidden: false, marks: [GOOD_MARK] } });
 
-      expect((await readStoredChoices()).get('apple')).toStrictEqual({
+      expect((await readChoices()).get('apple')).toStrictEqual({
         name: 'Apple',
         marks: [GOOD_MARK],
       });
@@ -997,7 +980,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
     it('drops an entry whose name is not text even beside good marks', async () => {
       storeEntries({ apple: { name: 7, marks: [GOOD_MARK] } });
 
-      expect((await readStoredChoices()).has('apple')).toBe(false);
+      expect((await readChoices()).has('apple')).toBe(false);
     });
 
     const PERIOD_PAIRS = RECURRING_PERIODS.flatMap((earlier, index) =>
@@ -1016,7 +999,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
 
         storeEntries({ apple: { name: 'Apple', marks: isReversed ? stored.reverse() : stored } });
 
-        expect((await readStoredChoices()).get('apple')?.marks).toEqual([markOf(9_900, earlier)]);
+        expect((await readChoices()).get('apple')?.marks).toEqual([markOf(9_900, earlier)]);
       },
     );
 
@@ -1025,7 +1008,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
 
       storeEntries({ apple: { name: 'Apple', marks: [dollars, GOOD_MARK] } });
 
-      expect((await readStoredChoices()).get('apple')?.marks).toEqual([GOOD_MARK, dollars]);
+      expect((await readChoices()).get('apple')?.marks).toEqual([GOOD_MARK, dollars]);
     });
 
     const SORTED_MARKS = [
@@ -1047,7 +1030,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
           apple: { name: 'Apple', marks: order.map((index) => SORTED_MARKS[index]) },
         });
 
-        expect((await readStoredChoices()).get('apple')?.marks).toEqual(SORTED_MARKS);
+        expect((await readChoices()).get('apple')?.marks).toEqual(SORTED_MARKS);
       },
     );
   });

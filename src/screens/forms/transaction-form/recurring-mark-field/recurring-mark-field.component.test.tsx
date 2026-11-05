@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import { i18n } from '@kiko/i18n/init';
+import type { ReactElement } from 'react';
 import {
   type SettingsRows,
   BANK,
@@ -18,11 +19,12 @@ import {
   settingsRowsOf,
   taggedQuery as mockTaggedQuery,
 } from '@kiko/test-support/recurring-mark-live-queries';
-import type { ComponentType, ReactElement } from 'react';
 import type { RecurringLedgerRow } from '@kiko/recurring/detection';
 import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+
+import RecurringMarkField from '.';
 
 const mockLive = createMarkLiveQueries();
 const { landSettings, landLedger } = mockLive;
@@ -37,11 +39,6 @@ jest.mock('@kiko/transactions/repo', () => ({
 }));
 jest.mock('@kiko/settings', () => mockSettingsModuleWith(mockWrites.repo));
 
-type FieldProps = {
-  existing: RecurringLedgerRow;
-  holdings: (typeof CARD)[];
-  accounts: (typeof BANK)[];
-};
 type World = {
   settingsRows: SettingsRows;
   ledger: RecurringLedgerRow[];
@@ -84,25 +81,17 @@ const HIDDEN: World = { ...UNMARKED, settingsRows: HIDDEN_KEY };
 const asConstructor = (ledger: RecurringLedgerRow[]): RecurringLedgerRow[] =>
   ledger.map((row) => ({ ...row, description: 'constructor' }));
 
-// Reached at run time, so the suite loads and each pin fails on its own while the field is missing.
-const fieldComponent = (): ComponentType<FieldProps> =>
-  (jest.requireActual('.') as { default: ComponentType<FieldProps> }).default;
-
 const fieldOf = ({
   amount,
   description = 'Netflix 4412',
   holdingId = 'card',
-}: Pick<World, 'amount' | 'description' | 'holdingId'>): ReactElement => {
-  const Field = fieldComponent();
-
-  return (
-    <Field
-      existing={chargeRowOf('stored', 0, amount, { description, holdingId, source: 'manual' })}
-      holdings={HOLDINGS}
-      accounts={ACCOUNTS}
-    />
-  );
-};
+}: Pick<World, 'amount' | 'description' | 'holdingId'>): ReactElement => (
+  <RecurringMarkField
+    existing={chargeRowOf('stored', 0, amount, { description, holdingId, source: 'manual' })}
+    holdings={HOLDINGS}
+    accounts={ACCOUNTS}
+  />
+);
 
 const showField = async (world: World) => {
   landSettings(world.settingsRows);

@@ -10,6 +10,7 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import { settingsRepo } from '@kiko/settings';
 import {
   expectNavBarSaveOnly,
   headerItems,
@@ -203,6 +204,7 @@ type Transaction = {
   loanLinkSource?: 'auto' | 'manual' | null;
   exchangeCounterpartHoldingId?: string | null;
   untrackedCounterpart?: string | null;
+  exchangePairId?: string | null;
   changeGroupId?: string | null;
   setsBalance?: boolean;
 };
@@ -4767,13 +4769,62 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
     jest.clearAllMocks();
   });
 
-  it('reads no settings row, so the form needs nothing but its own reads', async () => {
-    setLiveData(HOLDINGS, ROW);
-    await renderEdit('txn-1');
+  // The mark field's one settings read is the choices column, gated on the row it offers on. The
+  // form never reads the whole row, which the tips removal took out.
+  describe("the form's one settings read", () => {
+    type LiveQueryCall = [{ toSQL: () => { sql: string } }, string[], boolean | undefined];
 
-    const subscribedTables = mockUseLiveQuery.mock.calls.map(([, tables]) => tables[0]);
+    const BANK: Account = { id: 'bank', name: 'Bank', kind: 'bank', archivedAt: null };
+    const CARD: Holding = {
+      id: 'h1',
+      currency: 'UAH',
+      balanceMinorUnits: 5000,
+      type: 'card',
+      name: 'Card',
+      accountId: 'bank',
+    };
+    const OFFERED_DEBIT: Transaction = {
+      ...ROW,
+      changeGroupId: null,
+      loanHoldingId: null,
+      untrackedCounterpart: null,
+      exchangePairId: null,
+      setsBalance: false,
+    };
+    const CREDIT: Transaction = { ...OFFERED_DEBIT, amountMinorUnits: 1234 };
 
-    expect(subscribedTables).not.toContain('settings');
+    const CHOICES_COLUMN_SQL = settingsRepo.recurringMerchantChoicesQuery().toSQL().sql;
+    const WHOLE_ROW_SQL = settingsRepo.getQuery().toSQL().sql;
+
+    const liveQueryCalls = (): LiveQueryCall[] => mockUseLiveQuery.mock.calls as LiveQueryCall[];
+    const settingsReads = (): LiveQueryCall[] =>
+      liveQueryCalls().filter(([, tables]) => tables[0] === 'settings');
+
+    it('never reads the whole settings row', async () => {
+      setLiveData([CARD], OFFERED_DEBIT, CATEGORIES, [BANK]);
+      await renderEdit('txn-1');
+
+      expect(settingsReads().length).toBeGreaterThan(0);
+      expect(liveQueryCalls().map(([query]) => query.toSQL().sql)).not.toContain(WHOLE_ROW_SQL);
+    });
+
+    it('subscribes on settings only to the choices column, enabled on an offered row', async () => {
+      setLiveData([CARD], OFFERED_DEBIT, CATEGORIES, [BANK]);
+      await renderEdit('txn-1');
+
+      // One call per render, so the set of what was read stands for all of them.
+      expect([...new Set(settingsReads().map(([query]) => query.toSQL().sql))]).toEqual([
+        CHOICES_COLUMN_SQL,
+      ]);
+      expect([...new Set(settingsReads().map(([, , enabled]) => enabled))]).toEqual([true]);
+    });
+
+    it('runs no enabled settings read for a twin that is not offered, a credit', async () => {
+      setLiveData([CARD], CREDIT, CATEGORIES, [BANK]);
+      await renderEdit('txn-1');
+
+      expect([...new Set(settingsReads().map(([, , enabled]) => enabled))]).toEqual([false]);
+    });
   });
 
   it('shows the save-error alert and stays on the form when the sheet "Apply" write fails', async () => {

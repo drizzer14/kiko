@@ -2,17 +2,14 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
-import { settingsRepo } from '@kiko/settings';
+import type { RecurringMark } from '@kiko/recurring/detection';
+import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
 import { monthly, ledgerOf, nowOf, type Ledger } from '@kiko/test-support/recurring-ledger';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import RecurringChargesScreen from './recurring-charges.screen';
 
 type ScreenProps = ComponentProps<typeof RecurringChargesScreen>;
-
-type StoredMark = { currency: 'UAH'; amountMinorUnits: number; period: string };
-
-type StoredEntry = { name: string; hidden?: true; marks?: StoredMark[] };
 
 // The reads are the only stand-ins: the series come from the real hook, the real detection and
 // the real parser of the stored entries.
@@ -82,13 +79,15 @@ const APPLE = ledgerOf([
   ...monthly(10, 20, 399, { prefix: 'dear', description: 'Apple' }),
 ]);
 
-const markAt = (amount: number): StoredMark => ({
+const markAt = (amount: number): RecurringMark => ({
   currency: 'UAH',
   amountMinorUnits: amount * 100,
   period: 'monthly',
 });
 
-const storedAs = (entries: Record<string, StoredEntry>) => [{ recurringMerchantChoices: entries }];
+const storedAs = (entries: Record<string, RecurringMerchantChoice>) => [
+  { recurringMerchantChoices: entries },
+];
 
 const NO_ENTRY = storedAs({});
 
@@ -232,7 +231,7 @@ describe('RecurringChargesScreen — the list as marks come and go', () => {
   });
 
   it('lists a mark with no charge under "Marked, No Charges", and takes it away with the mark', async () => {
-    const ghost = {
+    const ghost: Record<string, RecurringMerchantChoice> = {
       ghost: { name: 'Ghost', marks: [{ ...markAt(77), period: 'yearly' }] },
     };
     const screen = await open(NETFLIX, storedAs(ghost));

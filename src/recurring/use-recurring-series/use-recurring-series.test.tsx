@@ -47,14 +47,12 @@ jest.mock('@kiko/recurring/detection', () => {
 
 import type {
   RecurringMark,
-  RecurringSeries,
   RecurringLedgerRow,
   chargeGroupsOf,
   seriesOfGroups,
 } from '@kiko/recurring/detection';
 import { startOfLocalDay } from '@kiko/dates';
 import type { AccountRow, HoldingRow } from '@kiko/db';
-import type { MarkedChain } from '@kiko/recurring/marked-series';
 
 import { useRecurringSeries } from './use-recurring-series';
 
@@ -584,11 +582,6 @@ describe('useRecurringSeries — the marks', () => {
     { recurringMerchantChoices: { ghost: { name: 'Ghost', marks: [GHOST_MARK] } } },
   ];
 
-  type MarkedFields = { markedSeries?: RecurringSeries[]; withoutCharges?: MarkedChain[] };
-
-  // Read by name, so the file type-checks before the hook returns these two.
-  const markedFieldsOf = (hook: object): MarkedFields => hook as MarkedFields;
-
   const readsOf = (table: string): unknown[][] =>
     mockUseLiveQuery.mock.calls.filter((call) => (call[1] as string[])[0] === table);
 
@@ -603,10 +596,10 @@ describe('useRecurringSeries — the marks', () => {
     settingsRows = MARKED_NETFLIX;
 
     const { result } = await renderHook(() => useRecurringSeries());
-    const marked = markedFieldsOf(result.current);
+    const marked = result.current;
 
-    expect(names(marked.markedSeries ?? [])).toEqual(['Netflix']);
-    expect(marked.markedSeries?.[0]?.marks).toEqual([NETFLIX_MARK]);
+    expect(names(marked.markedSeries)).toEqual(['Netflix']);
+    expect(marked.markedSeries[0]?.marks).toEqual([NETFLIX_MARK]);
     expect(names(result.current.series)).toEqual(['Spotify']);
     expect(marked.withoutCharges).toEqual([]);
   });
@@ -620,15 +613,15 @@ describe('useRecurringSeries — the marks', () => {
     const { result } = await renderHook(() => useRecurringSeries());
 
     expect(names(result.current.series)).toEqual(['Netflix', 'Spotify']);
-    expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
-    expect(markedFieldsOf(result.current).withoutCharges).toEqual([]);
+    expect(result.current.markedSeries).toEqual([]);
+    expect(result.current.withoutCharges).toEqual([]);
   });
 
   it('hands over a mark with no charge as a chain without charges', async () => {
     settingsRows = MARKED_GHOST;
 
     const { result } = await renderHook(() => useRecurringSeries());
-    const marked = markedFieldsOf(result.current);
+    const marked = result.current;
 
     expect(marked.markedSeries).toEqual([]);
     expect(marked.withoutCharges).toEqual([
@@ -642,7 +635,7 @@ describe('useRecurringSeries — the marks', () => {
       const { result, rerender } = await renderHook(() => useRecurringSeries());
 
       expect(names(result.current.series)).toEqual(['Netflix']);
-      expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
+      expect(result.current.markedSeries).toEqual([]);
 
       const ledgerReadsBefore = readsOf('transactions').length;
       const holdingReadsBefore = readsOf('holdings').length;
@@ -650,7 +643,7 @@ describe('useRecurringSeries — the marks', () => {
       pendingSettingsRows = MARKED_NETFLIX;
       await setVisible(rerender, true);
 
-      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
+      expect(names(result.current.markedSeries)).toEqual(['Netflix']);
       expect(result.current.series).toEqual([]);
       expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
       expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
@@ -676,7 +669,7 @@ describe('useRecurringSeries — the marks', () => {
 
       expect(mockChargeGroupsOf).toHaveBeenCalledTimes(2);
       expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
-      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
+      expect(names(result.current.markedSeries)).toEqual(['Netflix']);
       expect(names(result.current.series)).toEqual(['Spotify']);
     });
 
@@ -691,7 +684,7 @@ describe('useRecurringSeries — the marks', () => {
       await setVisible(rerender, true);
 
       expect(names(result.current.series)).toEqual(['Netflix']);
-      expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
+      expect(result.current.markedSeries).toEqual([]);
       expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
       expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
       expect(ledgerReruns).toBe(0);
@@ -704,11 +697,11 @@ describe('useRecurringSeries — the marks', () => {
       pendingSettingsRows = MARKED_NETFLIX;
       await setVisible(rerender, false);
 
-      expect(markedFieldsOf(result.current).markedSeries).toEqual([]);
+      expect(result.current.markedSeries).toEqual([]);
 
       await setVisible(rerender, true);
 
-      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
+      expect(names(result.current.markedSeries)).toEqual(['Netflix']);
       expect(mockChargeGroupsOf).toHaveBeenCalledTimes(1);
       expect(mockSeriesOfGroups).toHaveBeenCalledTimes(1);
     });
@@ -739,7 +732,7 @@ describe('useRecurringSeries — the marks', () => {
 
       expect(mockChargeGroupsOf).toHaveBeenCalledTimes(2);
       expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
-      expect(names(markedFieldsOf(result.current).markedSeries ?? [])).toEqual(['Netflix']);
+      expect(names(result.current.markedSeries)).toEqual(['Netflix']);
     });
   });
 });
