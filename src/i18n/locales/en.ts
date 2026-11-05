@@ -1294,6 +1294,7 @@ export const en = {
           '2': 'Kiko finds charges that repeat in your transactions and shows the day they were charged and the last charge. It shows only what already happened, never a future charge.',
           '3': 'Tap a charge to see each of its past transactions, then tap one to open it.',
           '4': 'If a name doesn\'t really repeat, tap "Not a recurring charge". You can bring it back from "Hidden" at the end of the list.',
+          '5': 'If Kiko missed one, open one of its transactions and choose how often it\'s charged under "Mark as recurring". The mark covers charges close to that transaction\'s amount, so after a big price change, mark a newer charge too. You can remove a mark from the same field or from the charge.',
         },
         title: 'View Recurring Charges',
       },

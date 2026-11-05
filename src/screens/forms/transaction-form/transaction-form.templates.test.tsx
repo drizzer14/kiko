@@ -67,6 +67,7 @@ jest.mock('@kiko/transactions/repo', () => ({
       __kind: 'latestManualHolding',
       toSQL: () => ({ sql: '', params: [] }),
     }),
+    recurringLedgerQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 const mockCreateTemplate = jest.fn();

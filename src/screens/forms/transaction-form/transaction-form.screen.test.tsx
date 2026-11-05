@@ -131,6 +131,7 @@ jest.mock('@kiko/transactions/repo', () => ({
       __kind: 'latestManualHolding',
       toSQL: () => ({ sql: '', params: [] }),
     }),
+    recurringLedgerQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
