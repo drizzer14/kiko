@@ -29,8 +29,9 @@ type WalletNotes = { borrowed: string[]; earnLeftOut?: number };
 
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
- * trade symbol, the trades' rotation, balance snapshot or unread symbols, one coin list, or the
- * balance sync stamp, or entries to add to the not-imported list. A patch names fields, never
+ * trade symbol, the trades' rotation, balance snapshot or unread symbols, one coin list, the notes
+ * of the wallets a balance read reached, or the balance sync stamp, or entries to add to the
+ * not-imported list. A patch names fields, never
  * whole entries, so a field it does not name is never written from a parse.
  *
  * The oversized balance list has its own patch and no `coinList` form, so no write can set

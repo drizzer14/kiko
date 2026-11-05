@@ -78,6 +78,18 @@ describe('bybitProvider', () => {
     expect(deps.fetchUnifiedBalance).not.toHaveBeenCalled();
   });
 
+  it('names the missing pair in a fixed message', async () => {
+    const deps = makeDeps();
+    deps.readCredentials.mockResolvedValue(undefined);
+
+    const failure = await bybitProvider.fetchBalances(deps, freshTarget()).catch((error) => error);
+
+    expect(failure).toMatchObject({
+      name: 'BybitNoCredentialsError',
+      message: 'Bybit credentials missing',
+    });
+  });
+
   it('reads the credentials of the target account, then the key check, UNIFIED and FUND', async () => {
     const deps = makeDeps();
     const target = freshTarget();
