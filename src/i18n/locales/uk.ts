@@ -715,12 +715,14 @@ export const uk: typeof en = {
     binanceApiKeyPlaceholder: 'API ключ Binance',
     binanceApiSecretPlaceholder: 'API секрет Binance',
     binanceConnected: 'Binance підключено',
+    binanceCoolingDown: 'Забагато запитів до Binance. Спробуйте пізніше.',
     binanceFundingResponseNotArray: 'Відповідь Binance funding не була масивом',
     binanceKeychainDisclosure:
       'Ваш API-ключ Binance зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Binance і ніколи не надсилається до Кіко чи на будь-який сервер.',
     binanceMissingBalancesArray: 'Відповідь рахунку Binance не містила масиву балансів',
     binanceMissingRowsArray: 'Відповідь Binance simple-earn не містила масиву rows',
     binanceRequestFailed: 'Запит до Binance не вдався: {{status}}{{detail}}',
+    binanceSyncStillRunning: 'Кіко ще завершує останню синхронізацію Binance. Спробуйте пізніше.',
     blockExplorerRequestFailed: 'Запит до оглядача блокчейну не вдався: {{status}}',
     btcAddressPlaceholder: 'BTC-адреса',
     changeBankAction: 'Змінити банк',
@@ -777,6 +779,7 @@ export const uk: typeof en = {
     monobankRateLimited:
       'Monobank дозволяє не більше одного запиту на 60 секунд. Зачекайте хвилину й спробуйте ще раз.',
     monobankRequestFailed: 'Запит до Monobank не вдався: {{status}}',
+    monobankSyncStillRunning: 'Кіко ще завершує останню синхронізацію Monobank. Спробуйте пізніше.',
     monobankTimeout: 'Monobank не відповів вчасно. Спробуйте ще раз.',
     monobankTokenPlaceholder: 'Токен Monobank',
     never: 'Ніколи',

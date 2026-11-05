@@ -807,12 +807,14 @@ export const en = {
     binanceApiKeyPlaceholder: 'Binance API key',
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
+    binanceCoolingDown: 'Too many requests to Binance. Try again later.',
     binanceFundingResponseNotArray: 'Binance funding response was not an array',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
     binanceMissingRowsArray: 'Binance simple-earn response did not contain a rows array',
     binanceRequestFailed: 'Binance request failed: {{status}}{{detail}}',
+    binanceSyncStillRunning: 'Kiko is still finishing the last Binance sync. Try again later.',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
     changeBankAction: 'Change bank',
@@ -872,6 +874,7 @@ export const en = {
     monobankRateLimited:
       'Monobank allows at most 1 request per 60 seconds. Wait a minute, then try again.',
     monobankRequestFailed: 'Monobank request failed: {{status}}',
+    monobankSyncStillRunning: 'Kiko is still finishing the last Monobank sync. Try again later.',
     monobankTimeout: 'Monobank did not respond in time. Please try again.',
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',

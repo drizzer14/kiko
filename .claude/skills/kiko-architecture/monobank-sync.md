@@ -476,9 +476,13 @@ gate throttles requests inside a run; the lock forbids two runs at once.
 Do NOT remove or weaken either to "simplify" the other. **Join** (not
 queue) semantics are safe because the three triggers are equivalent
 syncs of the same token: `useAutoSync`/`useSyncAll` only fire for an
-already-connected account, so no run competes with a first-time Connect
-(a `targetAccountId` sync), and a re-sync that joins an in-flight run of
+already-connected account, and a re-sync that joins an in-flight run of
 the same connected token gets exactly the result it would have computed.
+A run of the account can outlive a Disconnect, and the join would hand a
+Connect that run, so `MonobankConnectField` refuses through
+`isMonobankSyncRunning`. The join is safe for the auto-sync and sync-all
+triggers only. Residual: a run queued before a Disconnect can start after
+the check.
 
 ### Three sync signals; the spinner is DECOUPLED from the whole run
 

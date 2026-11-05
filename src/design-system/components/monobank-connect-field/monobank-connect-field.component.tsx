@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
 import { fetchClientInfo } from '@kiko/monobank/client';
+import { isMonobankSyncRunning } from '@kiko/monobank/sync';
 import { useIsMounted } from '@kiko/design-system/use-is-mounted';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
@@ -14,6 +15,9 @@ import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
 import { styles } from './monobank-connect-field.styles';
 
 type MonobankConnectFieldProps = {
+  // The account the screen's `onConnect` syncs; the field reads it only to stop a Connect while a
+  // sync of that account is still running.
+  accountId: string;
   // Runs the connect: store the validated token to the Keychain (keyed by the
   // account id the screen owns) and start the first Monobank sync. Resolves
   // whether it succeeded. The field passes the RAW token here and holds it only
@@ -27,11 +31,16 @@ type MonobankConnectFieldProps = {
 // (link + secure token field + paste icon) plus an explicit Connect button and a
 // live status line. It validates the token in place with fetchClientInfo (so it
 // can show "Connected as {name}") and then hands the RAW token to `onConnect`,
-// which stores it and starts the sync. The field owns no account id and writes no
-// Keychain item itself — the secret's storage stays in the screen closure keyed by
-// the pre-generated account id, so a validated-but-unstorable token surfaces as a
-// `false` result here rather than an unhandled rejection.
-const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect, reminder }) => {
+// which stores it and starts the sync. The field takes the account id only to check for a
+// running sync and writes no Keychain item itself — the secret's storage stays in the screen
+// closure keyed by the account id (the create form's pre-generated id, or the existing account's
+// id on the detail screen), so a validated-but-unstorable token surfaces
+// as a `false` result here rather than an unhandled rejection.
+const MonobankConnectField: FC<MonobankConnectFieldProps> = ({
+  accountId,
+  onConnect,
+  reminder,
+}) => {
   const { t } = useTranslation();
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
@@ -59,6 +68,14 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect, remind
 
     if (trimmed === '') {
       setShowTokenRequiredError(true);
+
+      return;
+    }
+
+    // A run of this account outlives a Disconnect, and the sync's join would hand this Connect that
+    // run: it would report a connection whose token the run never read.
+    if (isMonobankSyncRunning(accountId)) {
+      setStatus({ kind: 'saveError', message: t('accountDetail.monobankSyncStillRunning') });
 
       return;
     }

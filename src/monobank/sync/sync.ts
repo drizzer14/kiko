@@ -1079,9 +1079,13 @@ type SyncResult = { importedTransactions: number };
  * ALREADY-connected account, so there is no competing run when the first-time
  * Connect (a `targetAccountId` sync) executes, and a re-sync joining an in-flight
  * run of the same account's token yields exactly the result it would have
- * computed itself.
+ * computed itself. A run can outlive a Disconnect, though: it read its token once
+ * and the gate paces every request 60 s apart (a source with several windows takes longer),
+ * so a Connect checks `isMonobankSyncRunning` first.
  */
 const inFlightSyncs = new Map<string, Promise<SyncResult>>();
+
+export const isMonobankSyncRunning = (accountId: string): boolean => inFlightSyncs.has(accountId);
 
 export const runSync = (overrides: Partial<SyncDeps> = {}): Promise<SyncResult> => {
   const key = overrides.targetAccountId ?? 'institution:monobank';
