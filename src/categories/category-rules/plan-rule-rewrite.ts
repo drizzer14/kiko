@@ -35,7 +35,6 @@ export const hasNoRealCategory = (
   knownCategoryKeys: ReadonlySet<string>,
 ): boolean =>
   row.category === null ||
-  row.category === '' ||
   isSameCategory(row.category, 'other') ||
   !knownCategoryKeys.has(categoryKeyOf(row.category));
 

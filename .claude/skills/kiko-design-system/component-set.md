@@ -212,7 +212,8 @@ new component can land between reviews of this skill:
   ignores presses and reports `accessibilityState.busy`, and is NOT
   dimmed like `disabled` (the spinner already says why). A button whose
   press awaits a slow write (the transaction form's category-override
-  sheet: Apply and "Just for this one") passes its `useSubmitOnce`
+  sheet: Apply, "All starting with X", "Just for this one", and the
+  prefix confirm's Move/Add; each passes its own `useSubmitOnce`
   `isSubmitting` as `loading`, and the surface it sits on stays open
   until the write is done — never a hand-rolled spinner beside a button.
   `loading` alone blocks the presses, so a button that passes both props

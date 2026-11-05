@@ -13,9 +13,14 @@ jest.mock('@kiko/db/client', () => {
 
 import { database } from '@kiko/db';
 import { i18n } from '@kiko/i18n/init';
+import {
+  parseRuleMatchers,
+  type CategoryRuleMatcher,
+  type NameRuleKind,
+} from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { parseRuleMatchers, type CategoryRuleMatcher } from '@kiko/categories/category-rules';
+import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import {
   categoryRulesRepo,
@@ -1348,5 +1353,376 @@ describe('the rewrite queries', () => {
 
     expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
     expect(plan.join('\n')).not.toMatch(/transactions_exchange_pair_id/);
+  });
+});
+
+describe('a name rule of a store-number name', () => {
+  type NameRulePreview = { count: number; names: string[] };
+  type PreviewInput = {
+    text: string;
+    kind: NameRuleKind;
+    category: string;
+    sourceTransactionId?: string | null;
+  };
+  type ApplyInput = {
+    name: string;
+    kind?: NameRuleKind;
+    category: string;
+    sourceTransactionId: string | null;
+  };
+
+  const previewNameRule = (input: PreviewInput): Promise<NameRulePreview> =>
+    categoryRulesRepo.previewNameRule({ sourceTransactionId: null, ...input });
+  const applyNameRule = (input: ApplyInput): Promise<number> =>
+    categoryRulesRepo.applyNameRule(input);
+
+  const insertAtb = (
+    id: string,
+    description: string,
+    seed: Partial<TransactionSeed> = {},
+  ): void => {
+    insertTransaction({ id, description, category: 'groceries', ...seed });
+  };
+  const seedAtbRows = (): void => {
+    insertAtb('first', 'ATB 0212');
+    insertAtb('second', 'atb  0212');
+    insertAtb('third', 'ATB 0340');
+    insertAtb('market', 'ATB Market');
+    insertAtb('bank', 'ATBANK');
+    insertAtb('hand', 'ATB 1', { categorySetByHand: true });
+    insertAtb('balance', 'ATB Balance', { setsBalance: true });
+    insertAtb('silpo', 'Silpo');
+  };
+  const PREFIX_TO_FOOD: PreviewInput = { text: 'ATB', kind: 'nameStartsWith', category: 'food' };
+  const applyPrefixToFood = (sourceTransactionId: string | null = null): Promise<number> =>
+    applyNameRule({
+      name: PREFIX_TO_FOOD.text,
+      kind: 'nameStartsWith',
+      category: 'food',
+      sourceTransactionId,
+    });
+  const matchersOf = (rule: StoredRule): CategoryRuleMatcher[] =>
+    parseRuleMatchers(rule.matchers) ?? [];
+  const changedIdsSince = (before: Record<string, string | null>): string[] =>
+    Object.entries(categoriesOf())
+      .filter(([id, category]) => before[id] !== category)
+      .map(([id]) => id)
+      .sort();
+
+  describe('previewNameRule', () => {
+    it('counts exactly the rows applyNameRule then changes', async () => {
+      seedAtbRows();
+      const before = categoriesOf();
+
+      const preview = await previewNameRule(PREFIX_TO_FOOD);
+      await applyPrefixToFood();
+      const changed = changedIdsSince(before);
+      const changedNames = (
+        mockDatabase
+          .prepare(
+            `SELECT description FROM transactions WHERE id IN (${changed.map(() => '?').join(',')})`,
+          )
+          .all(...changed) as { description: string }[]
+      ).map((row) => normalizeTransactionName(row.description));
+
+      expect(changed).toEqual(['bank', 'first', 'market', 'second', 'third']);
+      expect(preview.count).toBe(changed.length);
+      expect([...new Set(changedNames)].sort()).toEqual(
+        preview.names.map(normalizeTransactionName).sort(),
+      );
+    });
+
+    it('writes nothing and adds no rule', async () => {
+      seedAtbRows();
+      insertRule({
+        id: 'older',
+        category: 'shops',
+        matchers: [{ type: 'nameIs', text: 'ATB 0212' }],
+      });
+      const rowsBefore = mockDatabase.prepare('SELECT * FROM transactions ORDER BY id').all();
+      const rulesBefore = storedRules();
+      const statements = spyOnStatements();
+
+      await previewNameRule(PREFIX_TO_FOOD);
+
+      expect(statements.filter((sql) => /^\s*(insert|update|delete)\b/i.test(sql))).toEqual([]);
+      expect(mockDatabase.prepare('SELECT * FROM transactions ORDER BY id').all()).toEqual(
+        rowsBefore,
+      );
+      expect(storedRules()).toEqual(rulesBefore);
+    });
+
+    it('lists each normalized name once in full, most rows first', async () => {
+      seedAtbRows();
+
+      const { names } = await previewNameRule(PREFIX_TO_FOOD);
+
+      expect(names).toEqual(['ATB 0212', 'ATB 0340', 'ATB Market', 'ATBANK']);
+    });
+
+    it('does not list a name a hand-set, balance-setting or already moved row alone holds', async () => {
+      seedAtbRows();
+      insertAtb('moved', 'ATB Moved', { category: 'food' });
+
+      const { names } = await previewNameRule(PREFIX_TO_FOOD);
+
+      expect(names).toEqual(['ATB 0212', 'ATB 0340', 'ATB Market', 'ATBANK']);
+      expect(names).not.toContain('ATB 1');
+      expect(names).not.toContain('ATB Balance');
+      expect(names).not.toContain('ATB Moved');
+    });
+
+    it('of a one-name store-number rule counts its own rows', async () => {
+      seedAtbRows();
+
+      const preview = await previewNameRule({
+        text: 'ATB 0212',
+        kind: 'nameIs',
+        category: 'food',
+      });
+
+      expect(preview).toEqual({ count: 2, names: ['ATB 0212'] });
+    });
+
+    it.each<NameRuleKind>(['nameIs', 'nameStartsWith'])(
+      'of a blank text is zero with no names, kind %s',
+      async (kind) => {
+        seedAtbRows();
+
+        expect(await previewNameRule({ text: '   ', kind, category: 'food' })).toEqual({
+          count: 0,
+          names: [],
+        });
+      },
+    );
+
+    it("includes a blank row's label as a name", async () => {
+      insertTransaction({ id: 'blank', description: '', category: 'groceries' });
+      insertAtb('named', 'Silpo');
+
+      const preview = await previewNameRule({
+        text: 'UAH card expense',
+        kind: 'nameStartsWith',
+        category: 'food',
+      });
+
+      expect(preview).toEqual({ count: 1, names: ['UAH card expense'] });
+    });
+  });
+
+  describe('previewNameRule beside the source row Apply moves', () => {
+    const descriptionsOf = (ids: readonly string[]): string[] =>
+      ids.map(
+        (rowId) =>
+          (
+            mockDatabase
+              .prepare('SELECT description FROM transactions WHERE id = ?')
+              .get(rowId) as { description: string }
+          ).description,
+      );
+
+    // The preview, then the apply with the same source: the one number and the one set of names.
+    const previewThenApply = async (sourceTransactionId: string | null) => {
+      const before = categoriesOf();
+      const preview = await previewNameRule({ ...PREFIX_TO_FOOD, sourceTransactionId });
+      const updated = await applyPrefixToFood(sourceTransactionId);
+      const changed = changedIdsSince(before);
+
+      return { preview, updated, changed };
+    };
+
+    const stronger: RuleSeed = {
+      id: 'stronger',
+      category: 'shops',
+      matchers: [
+        { type: 'nameIs', text: 'ATB 0212' },
+        { type: 'direction', direction: 'expense' },
+      ],
+    };
+
+    it.each<[string, Partial<TransactionSeed>, RuleSeed[]]>([
+      ['a hand-set source', { categorySetByHand: true }, []],
+      ['a balance-setting source', { setsBalance: true }, []],
+      ['a source a stronger rule wins', { category: 'shops' }, [stronger]],
+    ])('counts %s as the row Apply moves', async (_title, seed, rules) => {
+      rules.forEach(insertRule);
+      insertAtb('source', 'ATB 0212', seed);
+      insertAtb('plain', 'ATB 0340');
+
+      const { preview, updated, changed } = await previewThenApply('source');
+
+      expect(changed).toEqual(['plain', 'source']);
+      expect(updated).toBe(2);
+      expect(preview).toEqual({ count: 2, names: ['ATB 0212', 'ATB 0340'] });
+      expect(preview.names).toEqual(descriptionsOf(['source', 'plain']));
+    });
+
+    it('counts a hand-set source alone as the one row Apply moves', async () => {
+      insertAtb('source', 'ATB 0212', { categorySetByHand: true });
+
+      const { preview, updated, changed } = await previewThenApply('source');
+
+      expect(changed).toEqual(['source']);
+      expect(updated).toBe(1);
+      expect(preview).toEqual({ count: 1, names: ['ATB 0212'] });
+    });
+
+    it('counts a source the rule already wins once', async () => {
+      insertAtb('source', 'ATB 0212');
+      insertAtb('plain', 'ATB 0340');
+
+      const { preview, updated, changed } = await previewThenApply('source');
+
+      expect(changed).toEqual(['plain', 'source']);
+      expect(updated).toBe(2);
+      expect(preview).toEqual({ count: 2, names: ['ATB 0212', 'ATB 0340'] });
+    });
+
+    it('leaves out a source already in the target category', async () => {
+      insertAtb('source', 'ATB 0212', { category: 'food', categorySetByHand: true });
+      insertAtb('plain', 'ATB 0340');
+
+      const { preview, updated, changed } = await previewThenApply('source');
+
+      expect(changed).toEqual(['plain']);
+      expect(updated).toBe(1);
+      expect(preview).toEqual({ count: 1, names: ['ATB 0340'] });
+    });
+
+    it('adds no row for a null source', async () => {
+      insertAtb('source', 'ATB 0212', { categorySetByHand: true });
+      insertAtb('plain', 'ATB 0340');
+
+      const { preview, updated, changed } = await previewThenApply(null);
+
+      expect(changed).toEqual(['plain']);
+      expect(updated).toBe(1);
+      expect(preview).toEqual({ count: 1, names: ['ATB 0340'] });
+    });
+
+    it('adds no row for a source that does not exist', async () => {
+      insertAtb('plain', 'ATB 0340');
+
+      const { preview, updated } = await previewThenApply('missing');
+
+      expect(updated).toBe(1);
+      expect(preview).toEqual({ count: 1, names: ['ATB 0340'] });
+    });
+
+    it('names a blank source by its label', async () => {
+      insertTransaction({ id: 'source', description: '', categorySetByHand: true });
+
+      const preview = await previewNameRule({
+        text: 'UAH card',
+        kind: 'nameStartsWith',
+        category: 'food',
+        sourceTransactionId: 'source',
+      });
+
+      expect(preview).toEqual({ count: 1, names: ['UAH card expense'] });
+    });
+  });
+
+  describe('applyNameRule', () => {
+    it('with no kind still writes nameIs', async () => {
+      seedAtbRows();
+
+      await applyNameRule({ name: 'ATB 0212', category: 'food', sourceTransactionId: null });
+
+      expect(storedRules().map(matchersOf)).toEqual([[{ type: 'nameIs', text: 'ATB 0212' }]]);
+      expect(categoriesOf()).toMatchObject({ first: 'food', second: 'food', third: 'groceries' });
+    });
+
+    it('stores nameStartsWith with the trimmed text as typed', async () => {
+      seedAtbRows();
+
+      await applyNameRule({
+        name: '  Atb ',
+        kind: 'nameStartsWith',
+        category: 'food',
+        sourceTransactionId: null,
+      });
+
+      expect(storedRules().map(matchersOf)).toEqual([[{ type: 'nameStartsWith', text: 'Atb' }]]);
+    });
+
+    it('moves an existing prefix rule to the new category and keeps its id', async () => {
+      seedAtbRows();
+      insertRule({
+        id: 'prefix',
+        category: 'groceries',
+        matchers: [{ type: 'nameStartsWith', text: 'ATB' }],
+      });
+      insertRule({
+        id: 'whole',
+        category: 'shops',
+        matchers: [{ type: 'nameIs', text: 'ATB' }],
+      });
+
+      await applyPrefixToFood();
+
+      const rules = storedRules();
+
+      expect(rules.map((rule) => rule.id)).toEqual(['prefix', 'whole']);
+      expect(rules.find((rule) => rule.id === 'prefix')).toMatchObject({
+        category: 'food',
+        created_at: 500,
+      });
+      expect(rules.find((rule) => rule.id === 'whole')).toMatchObject({ category: 'shops' });
+    });
+
+    it('adds a prefix rule that takes rows from an older one-matcher rule by updatedAt and counts them', async () => {
+      insertRule({
+        id: 'older',
+        category: 'shops',
+        matchers: [{ type: 'nameIs', text: 'ATB 0212' }],
+      });
+      insertAtb('ruled', 'ATB 0212', { category: 'shops' });
+      insertAtb('plain', 'ATB 0340');
+
+      const updated = await applyPrefixToFood();
+
+      expect(updated).toBe(2);
+      expect(categoriesOf()).toEqual({ plain: 'food', ruled: 'food' });
+      expect(storedRules().map((rule) => rule.id)).toContain('older');
+      expect(storedRules()).toHaveLength(2);
+    });
+
+    it('leaves a row a rule with more conditions wins', async () => {
+      insertRule({
+        id: 'stronger',
+        category: 'shops',
+        matchers: [
+          { type: 'nameIs', text: 'ATB 0212' },
+          { type: 'direction', direction: 'expense' },
+        ],
+      });
+      insertAtb('expense', 'ATB 0212', { category: 'shops' });
+      insertAtb('income', 'ATB 0212', { amountMinorUnits: 100 });
+
+      await applyPrefixToFood();
+
+      expect(categoriesOf()).toEqual({ expense: 'shops', income: 'food' });
+    });
+
+    it('sets no hand flag on a row moved by a prefix rule', async () => {
+      seedAtbRows();
+
+      await applyPrefixToFood();
+
+      expect(categoriesOf()).toMatchObject({ third: 'food', hand: 'groceries' });
+      expect(flagOf('third')).toBe(0);
+      expect(flagOf('hand')).toBe(1);
+    });
+
+    it('frees the source row as Apply does', async () => {
+      seedAtbRows();
+
+      const updated = await applyPrefixToFood('hand');
+
+      expect(updated).toBe(6);
+      expect(categoriesOf()).toMatchObject({ hand: 'food', third: 'food' });
+      expect(flagOf('hand')).toBe(0);
+    });
   });
 });

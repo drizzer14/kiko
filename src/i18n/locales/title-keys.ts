@@ -33,6 +33,8 @@ export const TITLE_KEYS = new Set([
   'categoryForm.addTitle',
   'categoryPage.deleteRuleTitle',
   'categoryPage.rulesHeading',
+  'categoryRulePreview.addTitle',
+  'categoryRulePreview.confirmTitle',
   'columnMapping.amountColumnSheetTitle',
   'columnMapping.balanceColumnSheetTitle',
   'columnMapping.counterpartyColumnSheetTitle',

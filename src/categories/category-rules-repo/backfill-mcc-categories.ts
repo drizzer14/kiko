@@ -45,7 +45,13 @@ const idsByCategory = (planned: readonly { id: string; category: string }[]) => 
   const grouped = new Map<string, string[]>();
 
   for (const { id, category } of planned) {
-    grouped.set(category, [...(grouped.get(category) ?? []), id]);
+    const ids = grouped.get(category);
+
+    if (ids === undefined) {
+      grouped.set(category, [id]);
+    } else {
+      ids.push(id);
+    }
   }
 
   return grouped;
@@ -53,8 +59,7 @@ const idsByCategory = (planned: readonly { id: string; category: string }[]) => 
 
 // One transaction, re-reading the mark and every row inside it: the rows and the mark commit
 // together, so a crash or a failed write leaves the mark unset and the next open starts over. A
-// row's own flag is never touched, and `categorySetByHand` in the WHERE keeps a row picked by
-// hand out of the write even if it was picked after the read.
+// row's own flag is never touched.
 const backfillIn = async (databaseTransaction: typeof database): Promise<void> => {
   if (await isBackfillDone(databaseTransaction)) {
     return;
@@ -77,7 +82,7 @@ const backfillIn = async (databaseTransaction: typeof database): Promise<void> =
       await databaseTransaction
         .update(transactions)
         .set({ category })
-        .where(and(inArray(transactions.id, idChunk), eq(transactions.categorySetByHand, false)));
+        .where(inArray(transactions.id, idChunk));
     }
   }
 
