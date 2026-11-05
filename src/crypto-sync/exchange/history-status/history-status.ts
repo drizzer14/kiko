@@ -35,6 +35,23 @@ export const untrackedCoinsOf = (
   isTracked: (ticker: string) => boolean,
 ): string[] => unionOfKind(state, 'untrackedCoins').filter((ticker) => !isTracked(ticker));
 
+/**
+ * The tickers a balance read found and the exchange does not track: the sorted balance list alone,
+ * without a ticker the exchange tracks now. The history list is left out because a coin there has
+ * no balance claim behind it, and no balance read clears that list.
+ */
+export const untrackedBalanceCoinsOf = (
+  state: ParsedExchangeState,
+  isTracked: (ticker: string) => boolean,
+): string[] =>
+  match(state)
+    .returnType<string[]>()
+    .with({ kind: 'parsed' }, ({ untrackedCoins }) =>
+      [...new Set(untrackedCoins.balance)].sort().filter((ticker) => !isTracked(ticker)),
+    )
+    .with({ kind: 'malformed' }, () => [])
+    .exhaustive();
+
 /** The tickers the account detail lists as too large to store: the sorted union of both lists. */
 export const oversizedCoinsOf = (state: ParsedExchangeState): string[] =>
   unionOfKind(state, 'oversizedCoins');

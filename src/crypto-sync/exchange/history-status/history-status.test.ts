@@ -6,6 +6,7 @@ import {
   keyExpiryOf,
   notImportedCountsOf,
   oversizedCoinsOf,
+  untrackedBalanceCoinsOf,
   untrackedCoinsOf,
 } from './history-status';
 
@@ -47,6 +48,35 @@ describe('untrackedCoinsOf', () => {
     const state = stateWith({ untrackedCoins: { balance: 'PEPE', history: ['XYZ'] } });
 
     expect(untrackedCoinsOf(state, () => false)).toEqual(['XYZ']);
+  });
+});
+
+describe('untrackedBalanceCoinsOf', () => {
+  it('the balance coins leave out the history list', () => {
+    const state = stateWith({
+      untrackedCoins: { balance: ['PEPE', 'ABC'], history: ['PEPE', 'XYZ'] },
+    });
+
+    expect(untrackedBalanceCoinsOf(state, () => false)).toEqual(['ABC', 'PEPE']);
+  });
+
+  it('leaves out a ticker that is a curated code now', () => {
+    const state = stateWith({
+      untrackedCoins: { balance: ['PEPE', 'USDC'], history: ['XYZ', 'DAI'] },
+    });
+
+    expect(untrackedBalanceCoinsOf(state, tracksNothingButCurated)).toEqual(['PEPE']);
+  });
+
+  it('lists nothing for a history list alone, for no list, and for a state that cannot be read', () => {
+    expect(
+      untrackedBalanceCoinsOf(
+        stateWith({ untrackedCoins: { balance: [], history: ['PEPE'] } }),
+        () => false,
+      ),
+    ).toEqual([]);
+    expect(untrackedBalanceCoinsOf(stateWith({}), () => false)).toEqual([]);
+    expect(untrackedBalanceCoinsOf(parseExchangeState('not json'), () => false)).toEqual([]);
   });
 });
 

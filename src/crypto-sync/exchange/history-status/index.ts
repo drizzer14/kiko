@@ -5,5 +5,6 @@ export {
   type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,
+  untrackedBalanceCoinsOf,
   untrackedCoinsOf,
 } from './history-status';

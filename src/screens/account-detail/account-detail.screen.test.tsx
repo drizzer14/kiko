@@ -2857,10 +2857,7 @@ describe('AccountDetailScreen — a Bybit account with no holding and a balance 
     expect(queryByText(EMPTY_MESSAGE)).toBeNull();
   });
 
-  it.each([
-    ['a coin on the balance list', { balance: ['PEPE'], history: [] }],
-    ['a coin on the history list', { balance: [], history: ['PEPE'] }],
-  ])(
+  it.each([['a coin on the balance list', { balance: ['PEPE'], history: [] }]])(
     'shows the not-read block, never No holdings yet, for an account that holds only %s Bybit does not track',
     async (_title, untrackedCoins) => {
       setLiveData({
@@ -2878,6 +2875,78 @@ describe('AccountDetailScreen — a Bybit account with no holding and a balance 
       expect(queryByText(EMPTY_TITLE)).toBeNull();
     },
   );
+
+  // O83: no balance claim stands behind a coin on the history list, and no balance read clears
+  // that list, so it cannot hold the block. The caption under Synchronization still names it
+  // (the section suites pin that line).
+  it('shows No holdings yet for an account whose untracked coin is on the history list alone', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: [
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            untrackedCoins: { balance: [], history: ['PEPE'] },
+          }),
+        },
+      ],
+    });
+
+    const { getByTestId, getByText, queryByText } = await renderScreen();
+
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText(EMPTY_TITLE),
+    ).toBeTruthy();
+    expect(getByText(EMPTY_MESSAGE)).toBeTruthy();
+    expect(queryByText(NOT_READ_TITLE)).toBeNull();
+  });
+
+  it('shows the not-read block for a coin on the history list alone when a Funding wallet was not read', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: [
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            untrackedCoins: { balance: [], history: ['PEPE'] },
+            balanceNotes: { unified: {}, fund: { notRead: true } },
+          }),
+        },
+      ],
+    });
+
+    const { getByTestId, queryByText } = await renderScreen();
+
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText(NOT_READ_TITLE),
+    ).toBeTruthy();
+    expect(queryByText(EMPTY_TITLE)).toBeNull();
+  });
+
+  it('keeps No holdings yet when the history list holds only a coin Bybit tracks now', async () => {
+    setLiveData({
+      accounts: [bybitAccount],
+      holdings: [],
+      syncState: [
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            untrackedCoins: { balance: [], history: ['BTC'] },
+          }),
+        },
+      ],
+    });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText(EMPTY_TITLE)).toBeTruthy();
+    expect(queryByText(NOT_READ_TITLE)).toBeNull();
+  });
 
   it('keeps No holdings yet when the stored untracked coin is one Bybit tracks now', async () => {
     setLiveData({

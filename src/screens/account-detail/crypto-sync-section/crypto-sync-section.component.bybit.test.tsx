@@ -504,6 +504,15 @@ describe('CryptoSyncSection for a Bybit account', () => {
     expect(getByText(untrackedLine('GBP, PEPE', BYBIT_NAME))).toBeTruthy();
   });
 
+  it('names a coin on the history list alone in the not-tracked line', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {},
+      untrackedCoins: { balance: [], history: ['PEPE'] },
+    });
+
+    expect(getByText(untrackedLine('PEPE', BYBIT_NAME))).toBeTruthy();
+  });
+
   it('reads the same stored list by the rule of each exchange: Binance quotes GBP, Bybit does not', async () => {
     const lists = { walks: {}, untrackedCoins: { balance: ['GBP', 'PEPE'], history: [] } };
     const binance = await renderState('binance', lists);

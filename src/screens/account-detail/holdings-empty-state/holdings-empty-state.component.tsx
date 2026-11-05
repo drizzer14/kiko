@@ -6,7 +6,7 @@ import { isBalanceProviderId } from '@kiko/crypto-sync/provider';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
-import { balanceNotesOf, untrackedCoinsOf } from '@kiko/crypto-sync/exchange/history-status';
+import { balanceNotesOf, untrackedBalanceCoinsOf } from '@kiko/crypto-sync/exchange/history-status';
 
 import { hasKeyLines, isTrackedAssetOf } from '../crypto-sync-section/binance-history-status';
 
@@ -15,10 +15,12 @@ import type { HoldingsEmptyStateProps } from './holdings-empty-state.props';
 // The block under the Holdings heading when the account has no active holding. A Bybit account
 // whose last balance read set a coin aside, was refused a wallet, could not read a wallet, or
 // listed a coin Kiko does not track is not empty, so it says so instead of "No holdings yet" under
-// lines that name them. It reads the account's own `sync_state` row, gated on its own isLoading:
-// while that read is on its first load a Bybit account shows nothing, because either block would
-// be a guess. Every other account has no notes to read, so its read stays off and its block shows
-// at once.
+// lines that name them. The untracked coins it counts are the balance list alone, not the union
+// of `untrackedCoinsOf`: a coin on the history list has no balance claim behind it and no balance
+// read clears that list (O83). The caption under Synchronization keeps the union. It reads the
+// account's own `sync_state` row, gated on its own isLoading: while that read is on its first
+// load a Bybit account shows nothing, because either block would be a guess. Every other account
+// has no notes to read, so its read stays off and its block shows at once.
 const HoldingsEmptyState: FC<HoldingsEmptyStateProps> = ({
   accountId,
   institution,
@@ -41,7 +43,7 @@ const HoldingsEmptyState: FC<HoldingsEmptyStateProps> = ({
   // The provider is named again for its own tracked-coin rule: a disabled read gives no rows, so
   // an account of any other provider reaches neither list.
   const untrackedCoins = isBalanceProviderId(exchange)
-    ? untrackedCoinsOf(state, isTrackedAssetOf(exchange))
+    ? untrackedBalanceCoinsOf(state, isTrackedAssetOf(exchange))
     : [];
   const hasBalanceNotes =
     untrackedCoins.length > 0 ||
