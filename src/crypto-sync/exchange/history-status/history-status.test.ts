@@ -109,7 +109,7 @@ describe('keyExpiryOf', () => {
 });
 
 describe('balanceNotesOf', () => {
-  it('lists the borrowed coins of every wallet once, sorted', () => {
+  it('lists each borrowed coin with its wallet, sorted by coin and then by wallet key', () => {
     const state = stateWith({
       balanceNotes: {
         unified: { borrowed: ['USDT', 'BTC'] },
@@ -118,7 +118,12 @@ describe('balanceNotesOf', () => {
     });
 
     expect(balanceNotesOf(state)).toEqual({
-      borrowed: ['BTC', 'ETH', 'USDT'],
+      borrowed: [
+        { wallet: 'fund', coin: 'BTC' },
+        { wallet: 'unified', coin: 'BTC' },
+        { wallet: 'fund', coin: 'ETH' },
+        { wallet: 'unified', coin: 'USDT' },
+      ],
       openOrder: [],
       refusedCoins: [],
       refusedWallets: [],
@@ -126,7 +131,7 @@ describe('balanceNotesOf', () => {
     });
   });
 
-  it('lists the open-order coins of every wallet once, sorted, apart from the borrowed coins', () => {
+  it('lists each open-order coin with its wallet, apart from the borrowed coins', () => {
     const state = stateWith({
       balanceNotes: {
         unified: { borrowed: ['LTC'], openOrder: ['USDT', 'BTC'] },
@@ -135,15 +140,20 @@ describe('balanceNotesOf', () => {
     });
 
     expect(balanceNotesOf(state)).toEqual({
-      borrowed: ['LTC'],
-      openOrder: ['BTC', 'ETH', 'USDT'],
+      borrowed: [{ wallet: 'unified', coin: 'LTC' }],
+      openOrder: [
+        { wallet: 'fund', coin: 'BTC' },
+        { wallet: 'unified', coin: 'BTC' },
+        { wallet: 'fund', coin: 'ETH' },
+        { wallet: 'unified', coin: 'USDT' },
+      ],
       refusedCoins: [],
       refusedWallets: [],
       notReadWallets: [],
     });
   });
 
-  it('lists the refused coins of every wallet once, sorted, apart from the other coins', () => {
+  it('lists each refused coin with its wallet, apart from the other coins', () => {
     const state = stateWith({
       balanceNotes: {
         unified: { borrowed: ['LTC'], refusedCoins: ['USDT', 'BTC'] },
@@ -152,12 +162,28 @@ describe('balanceNotesOf', () => {
     });
 
     expect(balanceNotesOf(state)).toEqual({
-      borrowed: ['LTC'],
-      openOrder: ['SOL'],
-      refusedCoins: ['BTC', 'ETH', 'USDT'],
+      borrowed: [{ wallet: 'unified', coin: 'LTC' }],
+      openOrder: [{ wallet: 'fund', coin: 'SOL' }],
+      refusedCoins: [
+        { wallet: 'fund', coin: 'BTC' },
+        { wallet: 'unified', coin: 'BTC' },
+        { wallet: 'fund', coin: 'ETH' },
+        { wallet: 'unified', coin: 'USDT' },
+      ],
       refusedWallets: [],
       notReadWallets: [],
     });
+  });
+
+  it('lists a coin once per wallet, whatever its stored list repeats', () => {
+    const state = stateWith({
+      balanceNotes: { unified: { openOrder: ['BTC', 'BTC'] }, fund: { openOrder: ['BTC'] } },
+    });
+
+    expect(balanceNotesOf(state).openOrder).toEqual([
+      { wallet: 'fund', coin: 'BTC' },
+      { wallet: 'unified', coin: 'BTC' },
+    ]);
   });
 
   it('names each wallet the key was refused for, in the order of the wallet keys', () => {

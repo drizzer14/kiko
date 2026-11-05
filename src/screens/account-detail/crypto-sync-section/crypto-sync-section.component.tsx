@@ -133,6 +133,10 @@ const KeyExpiryLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
   );
 };
 
+// The coin names its wallet: the same coin can be set aside in one wallet and held in another.
+const coinLabelOf = ({ wallet, coin }: { wallet: string; coin: string }): string =>
+  `${coin} (${walletLabelOf(wallet)})`;
+
 // What the last balance reads left out: a coin set aside for a loan or an open order, a coin Bybit
 // sent in a shape that could not be read, a wallet the key was refused for or that was not read.
 // Split out like `CoinLines`.
@@ -148,21 +152,21 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
 
   return (
     <>
-      {borrowed.map((coin) => (
-        <Text key={coin} variant="caption" tone="textSecondary">
-          {t('accountDetail.bybitCoinBorrowed', { coin })}
+      {borrowed.map((note) => (
+        <Text key={coinLabelOf(note)} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinBorrowed', { coin: coinLabelOf(note) })}
         </Text>
       ))}
 
-      {openOrder.map((coin) => (
-        <Text key={coin} variant="caption" tone="textSecondary">
-          {t('accountDetail.bybitCoinOpenOrder', { coin })}
+      {openOrder.map((note) => (
+        <Text key={coinLabelOf(note)} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinOpenOrder', { coin: coinLabelOf(note) })}
         </Text>
       ))}
 
-      {refusedCoins.map((coin) => (
-        <Text key={coin} variant="caption" tone="textSecondary">
-          {t('accountDetail.bybitCoinRefused', { coin })}
+      {refusedCoins.map((note) => (
+        <Text key={coinLabelOf(note)} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinRefused', { coin: coinLabelOf(note) })}
         </Text>
       ))}
 

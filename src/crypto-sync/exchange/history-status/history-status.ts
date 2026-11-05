@@ -48,16 +48,23 @@ export const keyExpiryOf = (state: ParsedExchangeState): ParsedKeyExpiry | undef
     .exhaustive();
 
 /**
- * What the last balance reads left to show, over every wallet: the sorted coins set aside for a
- * loan, the sorted coins set aside for an open order, the sorted coins the exchange sent in a shape
- * that could not be read, the wallets the exchange refused the key for, and the wallets whose read
- * failed for another reason (both sorted by wallet key). A wallet that failed keeps the notes it
- * had, so these stand until a read of that wallet replaces them.
+ * A coin a wallet's read set aside. It keeps its wallet because the same coin can be set aside in
+ * one wallet and held in another, and a line that named only the coin would speak for both.
+ */
+type WalletCoin = { wallet: string; coin: string };
+
+/**
+ * What the last balance reads left to show, over every wallet: the coins set aside for a loan, the
+ * coins set aside for an open order and the coins the exchange sent in a shape that could not be
+ * read (each by coin, then by wallet key, once per wallet), the wallets the exchange refused the
+ * key for, and the wallets whose read failed for another reason (both sorted by wallet key). A
+ * wallet that failed keeps the notes it had, so these stand until a read of that wallet replaces
+ * them.
  */
 type BalanceNotes = {
-  borrowed: string[];
-  openOrder: string[];
-  refusedCoins: string[];
+  borrowed: WalletCoin[];
+  openOrder: WalletCoin[];
+  refusedCoins: WalletCoin[];
   refusedWallets: string[];
   notReadWallets: string[];
 };
@@ -70,13 +77,24 @@ const NO_NOTES: BalanceNotes = {
   notReadWallets: [],
 };
 
+const byCoinThenWallet = (left: WalletCoin, right: WalletCoin): number =>
+  left.coin.localeCompare(right.coin) || left.wallet.localeCompare(right.wallet);
+
+const walletCoinsOf = (
+  wallets: [string, ParsedWalletNotes][],
+  kind: 'borrowed' | 'openOrder' | 'refusedCoins',
+): WalletCoin[] =>
+  wallets
+    .flatMap(([wallet, notes]) => [...new Set(notes[kind])].map((coin) => ({ wallet, coin })))
+    .sort(byCoinThenWallet);
+
 const notesOfParsed = (balanceNotes: Record<string, ParsedWalletNotes>): BalanceNotes => {
   const wallets = Object.entries(balanceNotes).sort(([left], [right]) => left.localeCompare(right));
 
   return {
-    borrowed: [...new Set(wallets.flatMap(([, notes]) => notes.borrowed))].sort(),
-    openOrder: [...new Set(wallets.flatMap(([, notes]) => notes.openOrder))].sort(),
-    refusedCoins: [...new Set(wallets.flatMap(([, notes]) => notes.refusedCoins))].sort(),
+    borrowed: walletCoinsOf(wallets, 'borrowed'),
+    openOrder: walletCoinsOf(wallets, 'openOrder'),
+    refusedCoins: walletCoinsOf(wallets, 'refusedCoins'),
     refusedWallets: wallets.filter(([, notes]) => notes.refused).map(([wallet]) => wallet),
     notReadWallets: wallets.filter(([, notes]) => notes.notRead).map(([wallet]) => wallet),
   };

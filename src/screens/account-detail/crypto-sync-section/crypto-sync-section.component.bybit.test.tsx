@@ -294,31 +294,33 @@ describe('the notes of a Bybit account', () => {
     expect(getByText('Bybit refused this key for Funding', { exact: false })).toBeTruthy();
   });
 
-  it('lists each coin set aside for a loan once, and says its balance is from an earlier sync', async () => {
+  it('names the wallet of each coin set aside for a loan, and says its balance is from an earlier sync', async () => {
     const { getByText, queryAllByText } = await renderState('bybit', {
       walks: {},
-      balanceNotes: { unified: { borrowed: ['BTC', 'ETH'] }, fund: { borrowed: ['ETH'] } },
+      balanceNotes: { unified: { borrowed: ['BTC', 'ETH'] }, fund: {} },
     });
     const line = (coin: string) =>
       `${coin}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.`;
 
-    expect(getByText(line('BTC'))).toBeTruthy();
-    expect(queryAllByText(line('ETH'))).toHaveLength(1);
+    expect(getByText(line('BTC (Unified)'))).toBeTruthy();
+    expect(queryAllByText(line('ETH (Unified)'))).toHaveLength(1);
+    expect(queryAllByText(line('ETH'))).toHaveLength(0);
   });
 
-  it('lists each coin with an open order once', async () => {
+  it('names the wallet of each coin with an open order', async () => {
     const { getByText, queryAllByText } = await renderState('bybit', {
       walks: {},
-      balanceNotes: { unified: { openOrder: ['BTC', 'ETH'] }, fund: { openOrder: ['ETH'] } },
+      balanceNotes: { unified: { openOrder: ['BTC', 'ETH'] }, fund: {} },
     });
     const line = (coin: string) =>
       `${coin}: Bybit may hold part of this coin for an open order, so Kiko does not read its balance now. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.`;
 
-    expect(getByText(line('BTC'))).toBeTruthy();
-    expect(queryAllByText(line('ETH'))).toHaveLength(1);
+    expect(getByText(line('BTC (Unified)'))).toBeTruthy();
+    expect(queryAllByText(line('ETH (Unified)'))).toHaveLength(1);
+    expect(queryAllByText(line('ETH'))).toHaveLength(0);
   });
 
-  it('lists each coin Bybit refused once, and says its balance is from an earlier sync', async () => {
+  it('shows one line per wallet for a coin Bybit refused in both, and says its balance is from an earlier sync', async () => {
     const { getByText, queryAllByText } = await renderState('bybit', {
       walks: {},
       balanceNotes: { unified: { refusedCoins: ['BTC', 'ETH'] }, fund: { refusedCoins: ['ETH'] } },
@@ -326,8 +328,21 @@ describe('the notes of a Bybit account', () => {
     const line = (coin: string) =>
       `${coin}: Kiko could not read this coin's amounts from Bybit, so it left the coin out. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.`;
 
-    expect(getByText(line('BTC'))).toBeTruthy();
-    expect(queryAllByText(line('ETH'))).toHaveLength(1);
+    expect(getByText(line('BTC (Unified)'))).toBeTruthy();
+    expect(queryAllByText(line('ETH (Unified)'))).toHaveLength(1);
+    expect(queryAllByText(line('ETH (Funding)'))).toHaveLength(1);
+  });
+
+  it('names Unified in the line of a coin held for an open order beside a Funding holding of that coin', async () => {
+    const { getByText, queryByText } = await renderState('bybit', {
+      walks: {},
+      balanceNotes: { unified: { openOrder: ['BTC'] }, fund: {} },
+    });
+
+    expect(
+      getByText('BTC (Unified): Bybit may hold part of this coin', { exact: false }),
+    ).toBeTruthy();
+    expect(queryByText('BTC: Bybit may hold', { exact: false })).toBeNull();
   });
 
   it('a coin refused for an empty loan field shows the read text, never the oversized text', async () => {
@@ -337,20 +352,10 @@ describe('the notes of a Bybit account', () => {
     });
 
     expect(
-      getByText("BTC: Kiko could not read this coin's amounts", { exact: false }),
+      getByText("BTC (Unified): Kiko could not read this coin's amounts", { exact: false }),
     ).toBeTruthy();
     expect(queryByText(i18n.t('accountDetail.oversizedAmount', { coin: 'BTC' }))).toBeNull();
     expect(queryByText('could not import an amount exactly', { exact: false })).toBeNull();
-  });
-
-  it('shows the borrowed line alone for a coin with a loan and locked', async () => {
-    const { getByText, queryByText } = await renderState('bybit', {
-      walks: {},
-      balanceNotes: { unified: { borrowed: ['BTC'] }, fund: {} },
-    });
-
-    expect(getByText('BTC: Bybit shows a loan', { exact: false })).toBeTruthy();
-    expect(queryByText('Bybit may hold part of this coin', { exact: false })).toBeNull();
   });
 
   it('shows no note line for a read with nothing to note', async () => {
@@ -395,7 +400,9 @@ describe('the notes of a Bybit account', () => {
           'Bybit не дозволив цьому ключу читати Funding, тож Кіко не оновив цей баланс. Перевірте дозволи ключа на Bybit.',
         ),
       ).toBeTruthy();
-      expect(getByText('BTC: Bybit показує позику під цю монету', { exact: false })).toBeTruthy();
+      expect(
+        getByText('BTC (Unified): Bybit показує позику під цю монету', { exact: false }),
+      ).toBeTruthy();
     });
 
     it('gives the not-read wallet line in Ukrainian, with its first-sync sentence', async () => {
@@ -419,7 +426,7 @@ describe('the notes of a Bybit account', () => {
 
       expect(
         getByText(
-          'BTC: Bybit може тримати частину цієї монети для відкритого замовлення, тож Кіко зараз не читає її баланс. Баланс, показаний тут, узято з попередньої синхронізації. Якщо попередньої синхронізації не було, цієї монети немає у вашому балансі.',
+          'BTC (Unified): Bybit може тримати частину цієї монети для відкритого замовлення, тож Кіко зараз не читає її баланс. Баланс, показаний тут, узято з попередньої синхронізації. Якщо попередньої синхронізації не було, цієї монети немає у вашому балансі.',
         ),
       ).toBeTruthy();
     });
@@ -432,7 +439,7 @@ describe('the notes of a Bybit account', () => {
 
       expect(
         getByText(
-          'BTC: Кіко не зміг прочитати суми цієї монети з Bybit, тож не врахував її. Баланс, показаний тут, узято з попередньої синхронізації. Якщо попередньої синхронізації не було, цієї монети немає у вашому балансі.',
+          'BTC (Unified): Кіко не зміг прочитати суми цієї монети з Bybit, тож не врахував її. Баланс, показаний тут, узято з попередньої синхронізації. Якщо попередньої синхронізації не було, цієї монети немає у вашому балансі.',
         ),
       ).toBeTruthy();
     });
