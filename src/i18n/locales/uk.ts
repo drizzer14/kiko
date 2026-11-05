@@ -313,7 +313,8 @@ export const uk: typeof en = {
     rowCount_many: '{{count}} транзакцій',
     rowCount_other: '{{count}} транзакції',
     startsWith: 'Починається з «{{name}}»',
-    suggestion: '{{category}}, {{agreeing}} із {{total}}',
+    suggestion: '{{category}}, {{agreeing}} з {{total}}',
+    suggestionFor: 'Запропоновано «{{category}}» для «{{name}}», {{agreeing}} з {{total}}',
     title: 'Розподіл без категорії',
   },
   forms: {

@@ -32,8 +32,6 @@ export const useReviewActions = () => {
   const run = useCallback(async (): Promise<void> => {
     const job = jobRef.current;
 
-    jobRef.current = null;
-
     if (job === null) {
       return;
     }

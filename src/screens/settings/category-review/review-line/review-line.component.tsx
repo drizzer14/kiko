@@ -58,6 +58,12 @@ const ReviewLine: FC<ReviewLineProps> = ({ group, disabled, suggestion, onChoose
             fullWidth={false}
             icon={suggestion.icon}
             disabled={disabled}
+            accessibilityLabel={t('categoryReview.suggestionFor', {
+              category: suggestion.title,
+              name: group.rule.text,
+              agreeing: suggestion.agreeing,
+              total: suggestion.total,
+            })}
             onPress={() => onAccept(group, suggestion.key)}
           >
             {t('categoryReview.suggestion', {

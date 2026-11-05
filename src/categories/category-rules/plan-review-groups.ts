@@ -103,13 +103,10 @@ const addVotes = (
   votesByMerchant.set(merchantKey, votes);
 };
 
-// The most rows win; a tie goes to the smaller key by code unit, so the pick never depends on
-// the order the evidence arrived in.
 const topVoteOf = (
   top: readonly [string, number],
   vote: readonly [string, number],
-): readonly [string, number] =>
-  vote[1] > top[1] || (vote[1] === top[1] && compareByCodeUnit(vote[0], top[0]) < 0) ? vote : top;
+): readonly [string, number] => (vote[1] > top[1] ? vote : top);
 
 const suggestionOf = (votes: Votes): ReviewSuggestion | null => {
   const total = [...votes.values()].reduce((sum, count) => sum + count, 0);
