@@ -161,6 +161,7 @@ const buildRows = (): RewriteCandidate[] => {
       categorySetByHand: random() < 0.1,
       setsBalance: false,
       changeGroupId: null,
+      mcc: index % 4 === 0 ? 5411 : null,
     };
   });
 };

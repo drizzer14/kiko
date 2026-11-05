@@ -2,7 +2,15 @@ import { AMOUNT_OPERATORS, DIRECTIONS, MATCHER_TYPES, TIME_OPERATORS } from './m
 
 describe('matcher options', () => {
   it('lists every matcher type in the order the editor offers them', () => {
-    expect(MATCHER_TYPES).toEqual(['nameIs', 'nameStartsWith', 'amount', 'direction', 'time']);
+    expect(MATCHER_TYPES).toEqual([
+      'nameIs',
+      'nameStartsWith',
+      'nameContains',
+      'amount',
+      'direction',
+      'time',
+      'mcc',
+    ]);
   });
 
   it('lists every amount operator from equal to at most', () => {

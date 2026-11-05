@@ -29,6 +29,7 @@ const storedSubject = (
     amountMinorUnits: minorUnitsOf(amountMajor, currency),
     time,
     currency,
+    mcc: null,
   });
 
 const amountRule = (
@@ -85,6 +86,7 @@ describe('amount matcher', () => {
           amountMinorUnits: -satoshi,
           time: NOON,
           currency: 'BTC',
+          mcc: null,
         }),
       ),
     ).toBe(true);
@@ -250,5 +252,55 @@ describe('name matchers', () => {
 
   it('a name rule and an amount rule both have to hold', () => {
     expect(matches([nameIs('silpo'), amountRule('gt', 100)], named('Silpo'))).toBe(false);
+  });
+});
+
+describe('the nameContains and mcc conditions', () => {
+  const nameContains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
+
+  const named = (description: string | null) => storedSubject(-10, 'UAH', description);
+  const withMcc = (mcc: number | null) => {
+    const row = {
+      description: 'Silpo',
+      amountMinorUnits: -1000,
+      time: NOON,
+      currency: 'UAH' as const,
+      mcc,
+    };
+
+    return subjectOfStoredRow(row);
+  };
+
+  it('nameContains matches inside a normalized name', () => {
+    expect(matches([nameContains('market')], named('Silpo Market 12'))).toBe(true);
+    expect(matches([nameContains('silpo')], named('Silpo Market 12'))).toBe(true);
+    expect(matches([nameContains('12')], named('Silpo Market 12'))).toBe(true);
+  });
+
+  it('nameContains matches across case and spacing', () => {
+    expect(matches([nameContains('  SILPO   market ')], named('mega silpo MARKET 5'))).toBe(true);
+    expect(matches([nameContains('Сільпо')], named('  МЕГА   СІЛЬПО  '))).toBe(true);
+  });
+
+  it('a blank name matches no nameContains', () => {
+    expect(matches([nameContains('x')], named(''))).toBe(false);
+    expect(matches([nameContains('x')], named('   '))).toBe(false);
+    expect(matches([nameContains('x')], named(null))).toBe(false);
+  });
+
+  it('mcc matches its own code', () => {
+    expect(matches([mccRule(5411)], withMcc(5411))).toBe(true);
+    expect(matches([mccRule(0)], withMcc(0))).toBe(true);
+  });
+
+  it('mcc on a null value does not match', () => {
+    expect(matches([mccRule(5411)], withMcc(null))).toBe(false);
+    expect(matches([mccRule(0)], withMcc(null))).toBe(false);
+  });
+
+  it('mcc does not match another code', () => {
+    expect(matches([mccRule(5411)], withMcc(5412))).toBe(false);
+    expect(matches([mccRule(5411)], withMcc(0))).toBe(false);
   });
 });

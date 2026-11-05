@@ -10,7 +10,7 @@ import {
 } from './plan-rule-rewrite';
 import { prepareRules } from './prepare-rules';
 import { ruleRow } from './__fixtures__/rule-row';
-import type { CategoryRuleMatcher, MccBackfillRow, RewriteCandidate } from './category-rules.d';
+import type { CategoryRuleMatcher, RewriteCandidate } from './category-rules.d';
 
 const nameIs = (text: string): CategoryRuleMatcher => ({ type: 'nameIs', text });
 
@@ -24,6 +24,7 @@ const candidate = (overrides: Partial<RewriteCandidate> = {}): RewriteCandidate 
   categorySetByHand: false,
   setsBalance: false,
   changeGroupId: null,
+  mcc: null,
   ...overrides,
 });
 
@@ -243,14 +244,14 @@ describe('hasNoRealCategory', () => {
 describe('planMccBackfill', () => {
   const knownKeys = new Set(['groceries', 'other', 'travel', 'shopping', 'food']);
 
-  const backfillRow = (overrides: Partial<MccBackfillRow> = {}): MccBackfillRow => ({
+  const backfillRow = (overrides: Partial<RewriteCandidate> = {}): RewriteCandidate => ({
     ...candidate({ id: 'row-1', category: 'other' }),
     mcc: 5300,
     ...overrides,
   });
 
   const planFor = (
-    rows: readonly MccBackfillRow[],
+    rows: readonly RewriteCandidate[],
     rules: Parameters<typeof prepareRules>[0] = [],
     known: ReadonlySet<string> = knownKeys,
   ) => planMccBackfill(prepareRules(rules), rows, known);

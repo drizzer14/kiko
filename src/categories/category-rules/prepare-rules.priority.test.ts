@@ -13,6 +13,7 @@ const silpoSubject = (description = 'Silpo') =>
     amountMinorUnits: -10000,
     time: new Date(2026, 5, 1, 12, 0).getTime(),
     currency: 'UAH',
+    mcc: null,
   });
 
 const winnerIdOf = (rows: readonly StoredCategoryRule[], description = 'Silpo') =>
@@ -188,6 +189,50 @@ describe('rule priority', () => {
   it('returns nothing when no rule matches', () => {
     expect(winnerIdOf([ruleRow({ matchers: [nameIs('atb')] })])).toBeUndefined();
     expect(winnerIdOf([])).toBeUndefined();
+  });
+});
+
+describe('rule priority of the new conditions', () => {
+  const nameContains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
+
+  const codedWinnerIdOf = (rows: readonly StoredCategoryRule[]) => {
+    const row = {
+      description: 'Silpo',
+      amountMinorUnits: -10000,
+      time: new Date(2026, 5, 1, 12, 0).getTime(),
+      currency: 'UAH' as const,
+      mcc: 5411,
+    };
+
+    return winningRule(prepareRules(rows), subjectOfStoredRow(row))?.id;
+  };
+
+  it('a new condition counts one and two conditions beat one', () => {
+    const rows = [
+      ruleRow({ id: 'code', category: 'food', matchers: [mccRule(5411)], updatedAt: 900 }),
+      ruleRow({ id: 'name', category: 'shops', matchers: [nameStartsWith('sil')], updatedAt: 100 }),
+      ruleRow({
+        id: 'both',
+        category: 'dining',
+        matchers: [nameContains('silpo'), mccRule(5411)],
+        updatedAt: 50,
+      }),
+    ];
+
+    expect(codedWinnerIdOf(rows)).toBe('both');
+    expect(codedWinnerIdOf(rows.slice(0, 2))).toBe('code');
+    expect(codedWinnerIdOf([...rows].reverse())).toBe('both');
+  });
+
+  it('a matcher written twice counts once', () => {
+    const rows = [
+      ruleRow({ id: 'repeated', matchers: [mccRule(5411), mccRule(5411)], updatedAt: 100 }),
+      ruleRow({ id: 'single', matchers: [nameContains('silpo')], updatedAt: 200 }),
+    ];
+
+    expect(codedWinnerIdOf(rows)).toBe('single');
+    expect(codedWinnerIdOf([...rows].reverse())).toBe('single');
   });
 });
 

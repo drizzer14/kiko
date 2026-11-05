@@ -3,6 +3,7 @@ import {
   type CategoryRuleMatcher,
   AMOUNT_ROW_LABEL_KEYS,
   DIRECTION_LABEL_KEYS,
+  MCC_DIGITS,
   TIME_ROW_LABEL_KEYS,
   wallClockOf,
 } from '@kiko/categories/category-rules';
@@ -34,6 +35,10 @@ const describeMatcher = (
       label: t('ruleForm.nameStartsWith'),
       value: t('categoryPage.quotedName', { name: text }),
     }))
+    .with({ type: 'nameContains' }, ({ text }) => ({
+      label: t('ruleForm.nameContains'),
+      value: t('categoryPage.quotedName', { name: text }),
+    }))
     .with({ type: 'amount' }, ({ operator, minorUnits, currency }) => ({
       label: t(AMOUNT_ROW_LABEL_KEYS[operator]),
       value: formatAmount(minorUnits, currency),
@@ -45,6 +50,10 @@ const describeMatcher = (
     .with({ type: 'time' }, ({ operator, minuteOfDay }) => ({
       label: t(TIME_ROW_LABEL_KEYS[operator]),
       value: formatTime(wallClockOf(minuteOfDay), clock),
+    }))
+    .with({ type: 'mcc' }, ({ code }) => ({
+      label: t('ruleForm.mcc'),
+      value: String(code).padStart(MCC_DIGITS, '0'),
     }))
     .exhaustive();
 

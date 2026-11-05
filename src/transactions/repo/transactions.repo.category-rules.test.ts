@@ -241,6 +241,34 @@ describe('a rule at insert', () => {
   });
 });
 
+describe('an mcc rule at insert', () => {
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
+
+  it('an mcc rule wins a new synced row', async () => {
+    insertRule('coded', 'travel', [mccRule(5411)]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('coded-row', { description: 'Anything', category: 'shops', mcc: 5411 }),
+      syncItem('other-code', { description: 'Anything', category: 'shops', mcc: 5812 }),
+    ]);
+
+    expect(categoryOf('coded-row')).toBe('travel');
+    expect(categoryOf('other-code')).toBe('shops');
+  });
+
+  it('a row with no code is left for the MCC fallback', async () => {
+    insertRule('coded', 'travel', [mccRule(5411)]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('null-code', { category: 'shops', mcc: null }),
+      syncItem('no-code', { category: 'groceries', mcc: undefined }),
+    ]);
+
+    expect(categoryOf('null-code')).toBe('shops');
+    expect(categoryOf('no-code')).toBe('groceries');
+  });
+});
+
 describe('a rule at insert on a row with no description', () => {
   const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
   const blankItem = (externalId: string, overrides: Partial<SyncItem> = {}): SyncItem =>

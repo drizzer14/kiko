@@ -1,10 +1,14 @@
 import { match } from 'ts-pattern';
+import {
+  type CategoryRuleMatcher,
+  MCC_DIGITS,
+  MINUTES_PER_HOUR,
+} from '@kiko/categories/category-rules';
 import { parseAmount } from '@kiko/currency/parse';
 import { Money, toMajor } from '@kiko/currency/money';
 import { type Currency, currencyScale } from '@kiko/currency/currency';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
-import { type CategoryRuleMatcher, MINUTES_PER_HOUR } from '@kiko/categories/category-rules';
 
 import type { DraftConversion, MatcherDraft, MatcherDraftError } from './rule-draft.types';
 
@@ -23,15 +27,21 @@ export const emptyMatcherDraft = (baseCurrency: Currency): MatcherDraft => ({
   direction: 'expense',
   timeOperator: 'before',
   minuteOfDay: DEFAULT_MINUTE_OF_DAY,
+  mccText: '',
 });
 
 const draftOf = (matcher: CategoryRuleMatcher, blank: MatcherDraft): MatcherDraft =>
   match<CategoryRuleMatcher, MatcherDraft>(matcher)
-    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, ({ type, text }) => ({
-      ...blank,
-      type,
-      text,
-    }))
+    .with(
+      { type: 'nameIs' },
+      { type: 'nameStartsWith' },
+      { type: 'nameContains' },
+      ({ type, text }) => ({
+        ...blank,
+        type,
+        text,
+      }),
+    )
     .with({ type: 'amount' }, ({ operator, minorUnits, currency }) => ({
       ...blank,
       type: 'amount',
@@ -46,6 +56,11 @@ const draftOf = (matcher: CategoryRuleMatcher, blank: MatcherDraft): MatcherDraf
       timeOperator: operator,
       minuteOfDay,
     }))
+    .with({ type: 'mcc' }, ({ code }) => ({
+      ...blank,
+      type: 'mcc',
+      mccText: String(code).padStart(MCC_DIGITS, '0'),
+    }))
     .exhaustive();
 
 /** The rows an edit starts from, one per stored matcher, in their stored order. */
@@ -54,10 +69,21 @@ export const toMatcherDrafts = (
   baseCurrency: Currency,
 ): MatcherDraft[] => matchers.map((matcher) => draftOf(matcher, emptyMatcherDraft(baseCurrency)));
 
-const nameOutcome = (type: 'nameIs' | 'nameStartsWith', text: string): DraftOutcome =>
+const nameOutcome = (
+  type: 'nameIs' | 'nameStartsWith' | 'nameContains',
+  text: string,
+): DraftOutcome =>
   normalizeTransactionName(text) === ''
     ? { error: 'errorName' }
     : { matcher: { type, text: text.trim() } };
+
+const MCC_PATTERN = new RegExp(`^\\d{${MCC_DIGITS}}$`);
+
+// Exactly four digits: the field keeps only digits, so a shorter text is an unfinished code.
+const mccOutcome = ({ mccText }: MatcherDraft): DraftOutcome =>
+  MCC_PATTERN.test(mccText)
+    ? { matcher: { type: 'mcc', code: Number(mccText) } }
+    : { error: 'errorMcc' };
 
 // A currency of no decimals gets its own message: "up to 0 decimal places" reads wrong.
 const decimalsError = (digits: number): MatcherDraftError =>
@@ -102,12 +128,13 @@ const amountOutcome = ({ amountText, amountOperator, currency }: MatcherDraft): 
 
 const outcomeOf = (draft: MatcherDraft): DraftOutcome =>
   match<MatcherDraft['type'], DraftOutcome>(draft.type)
-    .with('nameIs', 'nameStartsWith', (type) => nameOutcome(type, draft.text))
+    .with('nameIs', 'nameStartsWith', 'nameContains', (type) => nameOutcome(type, draft.text))
     .with('amount', () => amountOutcome(draft))
     .with('direction', () => ({ matcher: { type: 'direction', direction: draft.direction } }))
     .with('time', () => ({
       matcher: { type: 'time', operator: draft.timeOperator, minuteOfDay: draft.minuteOfDay },
     }))
+    .with('mcc', () => mccOutcome(draft))
     .exhaustive();
 
 /**

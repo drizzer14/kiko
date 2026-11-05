@@ -8,6 +8,7 @@ const keyOfMatcher = (matcher: CategoryRuleMatcher): string =>
     .with(
       { type: 'nameIs' },
       { type: 'nameStartsWith' },
+      { type: 'nameContains' },
       ({ type, text }) => `${type}:${normalizeTransactionName(text)}`,
     )
     .with(
@@ -16,6 +17,7 @@ const keyOfMatcher = (matcher: CategoryRuleMatcher): string =>
     )
     .with({ type: 'direction' }, ({ direction }) => `direction:${direction}`)
     .with({ type: 'time' }, ({ operator, minuteOfDay }) => `time:${operator}:${minuteOfDay}`)
+    .with({ type: 'mcc' }, ({ code }) => `mcc:${code}`)
     .exhaustive();
 
 // The one definition of "the same matcher", so the duplicate check and the priority count cannot

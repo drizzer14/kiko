@@ -10,6 +10,7 @@ import {
   DIRECTIONS,
   DIRECTION_LABEL_KEYS,
   MATCHER_TYPES,
+  MCC_DIGITS,
   TIME_OPERATORS,
   TIME_OPERATOR_LABEL_KEYS,
   labelsOf,
@@ -49,13 +50,15 @@ const MatcherRow: FC<MatcherRowProps> = ({
   const typeLabels: Record<MatcherType, string> = {
     nameIs: t('ruleForm.nameIs'),
     nameStartsWith: t('ruleForm.nameStartsWith'),
+    nameContains: t('ruleForm.nameContains'),
     amount: t('ruleForm.amount'),
     direction: t('ruleForm.direction'),
     time: t('ruleForm.time'),
+    mcc: t('ruleForm.mcc'),
   };
 
   const inputs = match(draft.type)
-    .with('nameIs', 'nameStartsWith', () => (
+    .with('nameIs', 'nameStartsWith', 'nameContains', () => (
       <TextField
         label={t('forms.fields.name')}
         value={draft.text}
@@ -128,6 +131,16 @@ const MatcherRow: FC<MatcherRowProps> = ({
           {t('ruleForm.timeHint')}
         </Text>
       </>
+    ))
+    .with('mcc', () => (
+      <TextField
+        label={t('ruleForm.mcc')}
+        value={draft.mccText}
+        onChangeText={(text) => onChange({ mccText: text.replace(/\D/g, '').slice(0, MCC_DIGITS) })}
+        keyboardType="number-pad"
+        required
+        error={error}
+      />
     ))
     .exhaustive();
 

@@ -50,6 +50,7 @@ const rowErrorMessage = (error: MatcherDraftError | undefined, t: TFunction): st
   foldMap(maybe(error), (refusal) =>
     match(refusal)
       .with('errorName', () => t('ruleForm.errorName'))
+      .with('errorMcc', () => t('ruleForm.errorMcc'))
       .with('errorAmountNegative', () => t('ruleForm.errorAmountNegative'))
       .with('errorAmountTooLarge', () => t('ruleForm.errorAmountTooLarge'))
       .with('errorAmountWholeOnly', () => t('ruleForm.errorAmountWholeOnly'))

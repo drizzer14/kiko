@@ -57,11 +57,17 @@ const byPriority = (first: RankedCandidate, second: RankedCandidate): number =>
 // Texts are normalized once here so evaluating a row never normalizes a rule again.
 const withNormalizedText = (matcher: CategoryRuleMatcher): CategoryRuleMatcher =>
   match(matcher)
-    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, (named) => ({
+    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, { type: 'nameContains' }, (named) => ({
       ...named,
       text: normalizeTransactionName(named.text),
     }))
-    .with({ type: 'amount' }, { type: 'direction' }, { type: 'time' }, (other) => other)
+    .with(
+      { type: 'amount' },
+      { type: 'direction' },
+      { type: 'time' },
+      { type: 'mcc' },
+      (other) => other,
+    )
     .exhaustive();
 
 const isNameIs = (
@@ -171,6 +177,7 @@ const MATCHER_MATCHES: {
 } = {
   nameIs: ({ text }, subject) => subject.normalizedName === text,
   nameStartsWith: ({ text }, subject) => subject.normalizedName.startsWith(text),
+  nameContains: ({ text }, subject) => subject.normalizedName.includes(text),
   amount: ({ operator, minorUnits, currency }, subject) =>
     subject.currency === currency &&
     subject.absoluteMinorUnits !== null &&
@@ -178,6 +185,8 @@ const MATCHER_MATCHES: {
   direction: ({ direction }, subject) => subject.direction === direction,
   time: ({ operator, minuteOfDay }, subject) =>
     subject.minuteOfDay !== null && TIME_HOLDS[operator](subject.minuteOfDay, minuteOfDay),
+  // A null code never equals a number, so a row with no code matches no code rule.
+  mcc: ({ code }, subject) => subject.mcc === code,
 };
 
 const matcherMatches = (matcher: CategoryRuleMatcher, subject: RuleSubject): boolean =>

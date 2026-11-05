@@ -12,6 +12,7 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import {
+  type CategoryRuleMatcher,
   matchesRule,
   parseRuleMatchers,
   planRuleRewrite,
@@ -81,8 +82,8 @@ const seedHoldingsAndRules = (): void => {
 const seedLedger = (): void => {
   const insertRow = mockDatabase.prepare(
     `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category,
-       source, category_set_by_hand)
-     VALUES (?, ?, ?, ?, ?, ?, 'manual', ?)`,
+       source, category_set_by_hand, mcc)
+     VALUES (?, ?, ?, ?, ?, ?, 'manual', ?, ?)`,
   );
 
   mockDatabase.exec('BEGIN');
@@ -95,6 +96,7 @@ const seedLedger = (): void => {
       row.description,
       row.category,
       row.categorySetByHand ? 1 : 0,
+      row.mcc,
     );
   });
   mockDatabase.exec('COMMIT');
@@ -264,6 +266,104 @@ describe('rewriting 50 000 rows for a saved rule', () => {
       );
       // A page is read until one comes back short, so an exact multiple costs one empty page.
       expect(pageReadsOf(statements)).toBe(Math.floor(rows.length / REWRITE_PAGE_SIZE) + 1);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe('rewriting 50 000 rows for a rule with a new condition', () => {
+  const MERCHANT_CODE = 5411;
+  const CONTAINED_TEXT = 'rozetka 1';
+
+  // A one-matcher rule stored under its own id, then saved again with a category no row has, so it
+  // is the newest of its strength once saved, as in the rewrite above.
+  const withOwnRule = (ruleId: string, matcher: CategoryRuleMatcher) => {
+    const matchers = JSON.stringify([matcher]);
+
+    mockDatabase
+      .prepare(
+        'INSERT INTO category_rules (id, category, matchers, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(ruleId, 'seeded', matchers, 9_000, 9_000);
+
+    const plan = planRuleRewrite(
+      prepareRules([
+        ...rules,
+        {
+          id: ruleId,
+          category: REWRITTEN_CATEGORY,
+          matchers,
+          createdAt: 9_000,
+          updatedAt: Date.now(),
+        },
+      ]),
+      ruleId,
+      rows,
+    );
+    const rewrite = async (): Promise<number> =>
+      (
+        await categoryRulesRepo.saveRule({
+          id: ruleId,
+          category: REWRITTEN_CATEGORY,
+          matchers: [matcher],
+          applyToExisting: true,
+        })
+      ).changed;
+
+    return { plan, rewrite };
+  };
+
+  const changedRowIds = (before: Map<string, string | null>): string[] =>
+    [...categoriesById()]
+      .filter(([rowId, category]) => before.get(rowId) !== category)
+      .map(([rowId]) => rowId);
+
+  it(
+    'updates exactly the planned rows of an mcc rule, a page at a time',
+    async () => {
+      seedLedger();
+
+      const { plan, rewrite } = withOwnRule('rule-own-mcc', { type: 'mcc', code: MERCHANT_CODE });
+      const before = categoriesById();
+      const statements = spyOnStatements();
+      const updated = await rewrite();
+
+      expect(plan.length).toBeGreaterThan(0);
+      expect(updated).toBe(plan.length);
+      expect(changedRowIds(before).sort()).toEqual([...plan].sort());
+      expect(countOf(statements, /^update "transactions"/i)).toBe(
+        Math.ceil(plan.length / IN_CLAUSE_CHUNK_SIZE),
+      );
+      // A code is read from the row itself, so every row is paged, and an exact multiple of the
+      // page length costs one empty page.
+      expect(pageReadsOf(statements)).toBe(Math.floor(rows.length / REWRITE_PAGE_SIZE) + 1);
+      expect(blankPageReadsOf(statements)).toEqual([]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'updates exactly the planned rows of a nameContains rule with no page of the ledger',
+    async () => {
+      seedLedger();
+
+      const { plan, rewrite } = withOwnRule('rule-own-contains', {
+        type: 'nameContains',
+        text: CONTAINED_TEXT,
+      });
+      const before = categoriesById();
+      const statements = spyOnStatements();
+      const updated = await rewrite();
+
+      expect(plan.length).toBeGreaterThan(0);
+      expect(updated).toBe(plan.length);
+      expect(changedRowIds(before).sort()).toEqual([...plan].sort());
+      expect(countOf(statements, /^update "transactions"/i)).toBe(
+        Math.ceil(plan.length / IN_CLAUSE_CHUNK_SIZE),
+      );
+      // Only the blank rows' page is read; this ledger has none.
+      expect(pageReadsOf(statements)).toBe(1);
+      expect(blankPageReadsOf(statements)).toHaveLength(1);
     },
     TEST_TIMEOUT,
   );

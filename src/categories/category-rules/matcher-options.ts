@@ -14,9 +14,11 @@ const optionsOf = <Option extends string>(flags: Record<Option, null>): readonly
 export const MATCHER_TYPES = optionsOf<CategoryRuleMatcher['type']>({
   nameIs: null,
   nameStartsWith: null,
+  nameContains: null,
   amount: null,
   direction: null,
   time: null,
+  mcc: null,
 });
 export const AMOUNT_OPERATORS = optionsOf<AmountOperator>({
   eq: null,

@@ -293,6 +293,20 @@ describe('a sync item adopts its import twin', () => {
     expect(storedRows()).toMatchObject([{ id: 'i1', category: 'gifts' }]);
   });
 
+  it('an mcc rule wins through the adoption path', async () => {
+    run(
+      `INSERT INTO category_rules (id, category, matchers)
+       VALUES ('coded', 'gifts', '[{"type":"mcc","code":5812}]')`,
+    );
+    insertRow({ id: 'i1', time: T, category: null });
+
+    await sync([
+      syncItem('k1', T, { description: 'Anything', category: 'restaurants', mcc: 5812 }),
+    ]);
+
+    expect(storedRows()).toMatchObject([{ id: 'i1', category: 'gifts', mcc: 5812 }]);
+  });
+
   it('inserts a purchase no import row is near, as it always did', async () => {
     const inserted = await sync([syncItem('k1', T)]);
 
