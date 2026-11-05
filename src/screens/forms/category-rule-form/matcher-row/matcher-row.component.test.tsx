@@ -5,6 +5,7 @@ import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import type { CurrencyGroup } from '@kiko/currency/currency-group';
 
 import { emptyMatcherDraft } from '../rule-draft';
+import type { MatcherDraft } from '../rule-draft/rule-draft.types';
 
 import MatcherRow from './matcher-row.component';
 import type { MatcherRowProps } from './matcher-row.props';
@@ -87,6 +88,67 @@ describe('MatcherRow', () => {
       });
 
       expect(getByText('Enter a name.')).toBeTruthy();
+    });
+  });
+
+  describe('the nameContains and mcc conditions', () => {
+    const draftFromRaw = (raw: unknown): MatcherDraft => raw as MatcherDraft;
+
+    it('an mcc row shows a number-pad field limited to four digits', async () => {
+      const onChange = jest.fn();
+      const { getByLabelText } = await renderRow({
+        draft: draftFromRaw({ ...emptyMatcherDraft('UAH'), type: 'mcc', mccText: '0042' }),
+        onChange,
+      });
+      const field = getByLabelText('Merchant code (MCC)');
+
+      expect(field.props.value).toBe('0042');
+      expect(field.props.keyboardType).toBe('number-pad');
+
+      await fireEvent.changeText(field, '54111');
+      await fireEvent.changeText(field, '5a4b');
+
+      expect(onChange).toHaveBeenNthCalledWith(1, { mccText: '5411' });
+      expect(onChange).toHaveBeenNthCalledWith(2, { mccText: '54' });
+    });
+
+    it('a nameContains row shows the name field', async () => {
+      const onChange = jest.fn();
+      const { getByLabelText, queryByLabelText } = await renderRow({
+        draft: draftFromRaw({
+          ...emptyMatcherDraft('UAH'),
+          type: 'nameContains',
+          text: 'Market',
+        }),
+        onChange,
+      });
+
+      expect(getByLabelText('Name').props.value).toBe('Market');
+      expect(queryByLabelText('Amount')).toBeNull();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'Silpo Market');
+
+      expect(onChange).toHaveBeenCalledWith({ text: 'Silpo Market' });
+    });
+
+    it('the type picker lists both new conditions', async () => {
+      const onChange = jest.fn();
+      const { getByTestId, getAllByText } = await renderRow({
+        draft: draftOf({ type: 'nameIs' }),
+        onChange,
+      });
+
+      await fireEvent.press(getByTestId('matcher-type-0'));
+
+      expect(getAllByText('Name contains').length).toBeGreaterThan(0);
+      expect(getAllByText('Merchant code (MCC)').length).toBeGreaterThan(0);
+
+      await fireEvent.press(getByTestId('matcher-type-0-option-nameContains'));
+      await fireEvent.press(getByTestId('matcher-type-0'));
+      await fireEvent.press(getByTestId('matcher-type-0-option-mcc'));
+
+      expect(onChange).toHaveBeenNthCalledWith(1, { type: 'nameContains' });
+      expect(onChange).toHaveBeenNthCalledWith(2, { type: 'mcc' });
     });
   });
 

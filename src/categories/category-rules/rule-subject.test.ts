@@ -74,6 +74,32 @@ describe('subjectOfStoredRow', () => {
   });
 });
 
+const mccOf = (subject: object): unknown => (subject as { mcc?: unknown }).mcc;
+
+describe('the mcc of a subject', () => {
+  it('a stored row carries its mcc', () => {
+    const coded = { ...storedRow(), mcc: 5411 };
+    const uncoded = { ...storedRow(), mcc: null };
+
+    expect(mccOf(subjectOfStoredRow(coded))).toBe(5411);
+    expect(mccOf(subjectOfStoredRow(uncoded))).toBeNull();
+  });
+
+  it('a draft carries none', () => {
+    expect(
+      mccOf(
+        subjectOfDraft({
+          description: 'Silpo',
+          absoluteMinorUnits: 12500,
+          currency: 'USD',
+          direction: 'income',
+          time: at(2027, 2, 28, 18, 30),
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
 describe('subjectOfDraft', () => {
   const draft = {
     description: ' Silpo ',
