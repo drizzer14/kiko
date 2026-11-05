@@ -250,6 +250,20 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
             selected={isShown('TransactionTemplates')}
             style={groupedRowStyle}
           />
+
+          <Divider
+            testID="settings-divider-templates-recurring-charges"
+            style={groupedDividerStyle}
+          />
+
+          <SettingsRow
+            testID="settings-row-recurring-charges"
+            icon={entrySymbol.recurringCharges}
+            label={t('settings.recurringCharges')}
+            onPress={() => openInPane('RecurringCharges')}
+            selected={isShown('RecurringCharges')}
+            style={groupedRowStyle}
+          />
         </Card>
 
         <Card testID="settings-card-help" padding={3} selected={isShown('Help')}>

@@ -36,7 +36,7 @@ import {
   type RecurrenceView,
 } from './detection-test-helper';
 import { detectRecurringSeries } from './detection';
-import type { RecurringSeries } from './detection.d';
+import type { RecurringSeries } from './detection.types.d';
 
 type MatrixRow = [title: string, world: () => Ledger, expected: ExpectedSeries[]];
 type ExclusionWorld = [title: string, build: (excluded: boolean) => Ledger];

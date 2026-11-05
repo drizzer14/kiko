@@ -1,2 +1,2 @@
 export * from './detection';
-export * from './detection.d';
+export * from './detection.types.d';

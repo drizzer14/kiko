@@ -5,11 +5,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { TITLE_KEYS } from '@kiko/i18n/locales/title-keys';
 import { flattenCatalog } from '@kiko/i18n/locales/flatten-catalog';
 
-import { HELP_GROUPS, HELP_TOPICS, helpTopicById, type HelpTopicId } from './help-topics';
+import { HELP_GROUPS, HELP_TOPICS, helpTopicById } from './help-topics';
 
 const SOURCE_ROOT = join(__dirname, '..');
-
-const topicById = (topicId: string) => helpTopicById(topicId as HelpTopicId);
 
 const catalogPaths = new Set(flattenCatalog(en).map(({ path }) => path));
 
@@ -170,7 +168,7 @@ describe('help topic registry', () => {
     ['restoreData', 4],
     ['systemSettings', 4],
   ] as const)('gives the %s topic %i steps', (topicId, count) => {
-    expect(topicById(topicId).stepKeys).toHaveLength(count);
+    expect(helpTopicById(topicId).stepKeys).toHaveLength(count);
   });
 
   it.each([
@@ -193,7 +191,7 @@ describe('help topic registry', () => {
     ['restoreData', 'openImportData'],
     ['systemSettings', 'openSystem'],
   ] as const)('gives the %s topic the %s action', (topicId, action) => {
-    expect(topicById(topicId)).toMatchObject({ id: topicId, action });
+    expect(helpTopicById(topicId)).toMatchObject({ id: topicId, action });
   });
 });
 
@@ -498,7 +496,7 @@ describe('the Ukrainian wording of the help topics', () => {
   it.each(TOPIC_TITLES)(
     'titles the %s topic «%s» and labels its row the same',
     (topicId, title) => {
-      const topic = topicById(topicId);
+      const topic = helpTopicById(topicId);
 
       expect(ukValues.get(topic.titleKey)).toBe(title);
       expect(ukValues.get(topic.rowLabelKey)).toBe(title);

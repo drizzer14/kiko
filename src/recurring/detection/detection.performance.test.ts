@@ -10,7 +10,7 @@ import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { buildRulesPerformanceFixture } from '@kiko/categories/category-rules/__fixtures__/rules-performance-fixture';
 
 import { detectRecurringSeries } from './detection';
-import type { RecurringInput, RecurringLedgerRow } from './detection.d';
+import type { RecurringInput, RecurringLedgerRow } from './detection.types.d';
 import { at, chargeOf, holdingOf, bankAccountOf, type Currency } from './detection-test-helper';
 
 // The reads of `time` may not pass `rows x (log2(rows) + K)`, the cost of sorting by time. K is

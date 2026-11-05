@@ -1074,6 +1074,7 @@ export const en = {
       openCategories: 'Open categories',
       openExportData: 'Open data export',
       openImportData: 'Open data import',
+      openRecurringCharges: 'Open recurring charges',
       openReminders: 'Open reminders',
       openStatistics: 'Open statistics',
       openSystem: 'Open system settings',
@@ -1272,6 +1273,14 @@ export const en = {
           '4': 'In "Transaction templates", tap a template to edit it, or touch and hold it to delete it.',
         },
         title: 'Use Transaction Templates',
+      },
+      viewRecurringCharges: {
+        rowLabel: 'View recurring charges',
+        steps: {
+          '1': 'Open the "Settings" tab and tap "Recurring charges".',
+          '2': 'Kiko finds charges that repeat in your transactions and shows the day they were charged and the last charge. It shows only what already happened, never a future charge.',
+        },
+        title: 'View Recurring Charges',
       },
       viewStatistics: {
         rowLabel: 'Read your statistics',

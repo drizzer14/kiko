@@ -16,6 +16,7 @@ import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import CategoryFormScreen from '@kiko/screens/forms/category-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import CategoryRuleFormScreen from '@kiko/screens/forms/category-rule-form';
+import RecurringChargesScreen from '@kiko/screens/settings/recurring-charges';
 import TransactionTemplatesScreen from '@kiko/screens/settings/transaction-templates';
 
 import {
@@ -112,6 +113,12 @@ const SettingsStack: FC = () => {
         name="TransactionTemplates"
         component={TransactionTemplatesScreen}
         options={{ title: t('transactionTemplates.title') }}
+      />
+
+      <Stack.Screen
+        name="RecurringCharges"
+        component={RecurringChargesScreen}
+        options={{ title: t('recurringCharges.title') }}
       />
 
       {/* The template forms, and the create forms their empty holding picker opens: they sit

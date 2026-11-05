@@ -9,7 +9,7 @@ import type {
   RecurringPeriod,
   RecurringSeries,
   RecurringLedgerRow,
-} from './detection.d';
+} from './detection.types.d';
 
 type Random = () => number;
 export type LedgerRow = RecurringLedgerRow;

@@ -128,6 +128,7 @@ export const TITLE_KEYS = new Set([
   'help.topics.trackLoan.title',
   'help.topics.trackProperty.title',
   'help.topics.useTemplates.title',
+  'help.topics.viewRecurringCharges.title',
   'help.topics.viewStatistics.title',
   'holdingDetail.shareChanges',
   'holdingDetail.transactionsHeading',

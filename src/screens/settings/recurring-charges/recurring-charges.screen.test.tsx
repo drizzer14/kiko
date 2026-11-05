@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentProps } from 'react';
 import { render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -8,11 +8,9 @@ import { formatMoney } from '@kiko/currency/format';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
-type ScreenProps = { navigation: unknown; route: unknown };
+import RecurringChargesScreen from './recurring-charges.screen';
 
-// Read at call time, so a missing screen fails each test at run time, not the typecheck.
-const screenModule = (): ComponentType<ScreenProps> =>
-  jest.requireActual('./recurring-charges.screen').default;
+type ScreenProps = ComponentProps<typeof RecurringChargesScreen>;
 
 let mockResult: { series: RecurringSeries[]; isLoading: boolean } = {
   series: [],
@@ -25,12 +23,11 @@ jest.mock('@kiko/recurring/use-recurring-series', () => ({
 
 const renderScreen = async (result: typeof mockResult) => {
   mockResult = result;
-  const Screen = screenModule();
 
   return render(
-    <Screen
-      navigation={asNavigationProp<unknown>(navigationSpy())}
-      route={asRouteProp<unknown>('RecurringCharges')}
+    <RecurringChargesScreen
+      navigation={asNavigationProp<ScreenProps['navigation']>(navigationSpy())}
+      route={asRouteProp<ScreenProps['route']>('RecurringCharges')}
     />,
   );
 };

@@ -19,13 +19,11 @@ import HelpTopicScreen from './help-topic.screen';
 
 type HelpTopicProps = ComponentProps<typeof HelpTopicScreen>;
 
-const renderScreen = (topicId: string, navigation: NavigationSpy = navigationSpy()) =>
+const renderScreen = (topicId: HelpTopicId, navigation: NavigationSpy = navigationSpy()) =>
   render(
     <HelpTopicScreen
       navigation={asNavigationProp<HelpTopicProps['navigation']>(navigation)}
-      route={asRouteProp<HelpTopicProps['route']>('HelpTopic', {
-        topicId: topicId as HelpTopicId,
-      })}
+      route={asRouteProp<HelpTopicProps['route']>('HelpTopic', { topicId })}
     />,
   );
 

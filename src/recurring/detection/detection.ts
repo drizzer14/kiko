@@ -16,7 +16,7 @@ import type {
   RecurringPeriod,
   RecurringSeries,
   RecurringLedgerRow,
-} from './detection.d';
+} from './detection.types.d';
 
 type Charge = {
   id: string;
