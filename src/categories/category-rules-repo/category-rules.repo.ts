@@ -495,23 +495,23 @@ const giveSourceRowCategory = async (
 };
 
 // The rows `applyNameRule` changes, seen before it writes: the rewrite's rows, plus the row the
-// user is editing when the rewrite leaves it out (a hand-set, balance-setting or out-ranked row,
-// which Apply moves anyway) and it does not hold the category yet.
+// user is editing when the rewrite leaves it out, which Apply moves anyway, and it does not hold
+// the category yet.
 const withSourceRow = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
   rewrittenRows: readonly RewrittenRow[],
   sourceTransactionId: string | null,
   savedRule: { id: string; category: string },
-): Promise<RewrittenRow[]> => {
+): Promise<readonly RewrittenRow[]> => {
   if (sourceTransactionId === null || rewrittenRows.some((row) => row.id === sourceTransactionId)) {
-    return [...rewrittenRows];
+    return rewrittenRows;
   }
 
   const plan = await planSourceRow(databaseTransaction, prepared, sourceTransactionId, savedRule);
 
   if (plan === undefined || !plan.isMoved) {
-    return [...rewrittenRows];
+    return rewrittenRows;
   }
 
   return [...rewrittenRows, { id: sourceTransactionId, name: plan.name }];

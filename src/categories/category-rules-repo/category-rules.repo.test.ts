@@ -1511,16 +1511,6 @@ describe('a name rule of a store-number name', () => {
   });
 
   describe('previewNameRule beside the source row Apply moves', () => {
-    const descriptionsOf = (ids: readonly string[]): string[] =>
-      ids.map(
-        (rowId) =>
-          (
-            mockDatabase
-              .prepare('SELECT description FROM transactions WHERE id = ?')
-              .get(rowId) as { description: string }
-          ).description,
-      );
-
     // The preview, then the apply with the same source: the one number and the one set of names.
     const previewThenApply = async (sourceTransactionId: string | null) => {
       const before = categoriesOf();
@@ -1554,7 +1544,6 @@ describe('a name rule of a store-number name', () => {
       expect(changed).toEqual(['plain', 'source']);
       expect(updated).toBe(2);
       expect(preview).toEqual({ count: 2, names: ['ATB 0212', 'ATB 0340'] });
-      expect(preview.names).toEqual(descriptionsOf(['source', 'plain']));
     });
 
     it('counts a hand-set source alone as the one row Apply moves', async () => {
