@@ -1813,6 +1813,7 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A124 | The wiring and the last point (PLANNER CALL 87) | `statistics.screen.test.tsx`: "hands each row's source to the net-worth line"; `net-worth-series.test.ts`: "ends on the net worth Home shows for a Bybit coin with a row after its read" |
 | A125 | The whole path on real SQLite (O78) | `bybit.past-line.set-aside.real-sqlite.test.ts`: rows 2, 3, 8, 10, 11 and 13 through `runBalanceSync` and `addManyDedup`; `disconnect.real-sqlite.test.ts`: "a disconnect keeps the read time of a Bybit holding and drops its stamp" |
 | A126 | The block reads the balance list (PLANNER CALL 88) | `account-detail.screen.test.tsx`: the table's four rows; `history-status.test.ts`: "the balance coins leave out the history list" |
+| A127 | The create form shows the provider's refusal text on a failed first Connect (set 7 step 2). Binance's form has the same gap, and another track owns it | `account-form.screen.test.tsx` over the real Bybit provider: "a refusal of the first Connect shows the text of that refusal in the form, and not the generic text" |
 
 ### Property suites
 
