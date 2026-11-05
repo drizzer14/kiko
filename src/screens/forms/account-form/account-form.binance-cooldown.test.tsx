@@ -1,0 +1,134 @@
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
+import type { AccountFormDraft } from '@kiko/navigation/types';
+import { setBinanceCooldownUntil } from '@kiko/crypto-sync/binance';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
+import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
+
+import AccountFormScreen from './account-form.screen';
+
+type AccountFormProps = ComponentProps<typeof AccountFormScreen>;
+
+const mockCreateIfAbsent = jest.fn();
+const mockCryptoSync = jest.fn();
+const mockFetchAccount = jest.fn();
+const mockSaveCredentials = jest.fn();
+
+jest.mock('@kiko/db/use-live-query', () => ({
+  useLiveQuery: () => ({ data: [] }),
+}));
+jest.mock('@kiko/settings/settings.repo', () => ({
+  settingsRepo: { getQuery: () => ({ table: 'settings' }) },
+}));
+jest.mock('@kiko/accounts/accounts.repo', () => ({
+  accountsRepo: {
+    byIdQuery: () => ({ table: 'accounts' }),
+    exists: async () => false,
+    createIfAbsent: (...args: unknown[]) => mockCreateIfAbsent(...args),
+  },
+}));
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
+jest.mock('@kiko/sync/refresh-market-data', () =>
+  require('@kiko/test-support/account-form-test-support').refreshMarketDataModule(jest.fn()),
+);
+jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
+jest.mock('@kiko/sync/use-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule('useSync', jest.fn()),
+);
+jest.mock('@kiko/sync/use-crypto-sync', () =>
+  require('@kiko/test-support/account-form-test-support').idleSyncModule(
+    'useCryptoSync',
+    (...args: unknown[]) => mockCryptoSync(...args),
+  ),
+);
+jest.mock('react-native-keychain', () => ({
+  ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
+}));
+jest.mock('@react-native-clipboard/clipboard', () => ({ getString: async () => '' }));
+jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
+  fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
+}));
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
+  saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
+  clearCredentialsIfWrittenBy: async () => undefined,
+}));
+
+const COOLING_TEXT = 'Too many requests to Binance. Try again later.';
+
+// The form reopened from its saved draft keeps the id it made for the account, so the test knows
+// which id the real Binance field receives.
+const connectFromPendingId = async (pendingAccountId: string) => {
+  const draft: AccountFormDraft = {
+    saved: true,
+    name: 'My Crypto',
+    icon: null,
+    iconIsDirty: false,
+    color: null,
+    kind: 'crypto',
+    currency: 'USD',
+    accountCurrency: null,
+    initialValue: '',
+    bankId: null,
+    brokerId: null,
+    exchangeId: 'binance',
+    pendingAccountId,
+  };
+  const view = await render(
+    <AccountFormScreen
+      navigation={asNavigationProp<AccountFormProps['navigation']>(navigationSpy())}
+      route={asRouteProp<AccountFormProps['route']>('AccountForm', { draft })}
+    />,
+  );
+
+  await fireEvent.changeText(view.getByPlaceholderText('Binance API key'), 'api-key-fixture');
+  await fireEvent.changeText(view.getByPlaceholderText('Binance API secret'), 'secret-fixture');
+  await act(async () => {
+    await fireEvent.press(view.getByText('Connect Binance'));
+  });
+
+  return view;
+};
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  holdCurrencies([]);
+  mockCreateIfAbsent.mockResolvedValue('new-account-id');
+  mockCryptoSync.mockResolvedValue(true);
+  mockFetchAccount.mockResolvedValue({ balances: [] });
+  mockSaveCredentials.mockResolvedValue(Symbol('saved'));
+});
+
+describe('the crypto create form — a first Binance Connect during a cooldown', () => {
+  it('shows the cooling text and creates no row, stores no pair and runs no sync', async () => {
+    setBinanceCooldownUntil('cooldown-form-blocked', Date.now() + 60_000);
+
+    const view = await connectFromPendingId('cooldown-form-blocked');
+
+    expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
+    expect(mockFetchAccount).not.toHaveBeenCalled();
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(mockCreateIfAbsent).not.toHaveBeenCalled();
+    expect(mockCryptoSync).not.toHaveBeenCalled();
+    expect(view.queryByText('Binance connected')).toBeNull();
+  });
+
+  it('creates the row under the pending id and syncs it once no cooldown holds', async () => {
+    const view = await connectFromPendingId('cooldown-form-free');
+
+    await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+    expect(mockCreateIfAbsent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'cooldown-form-free', bankId: 'binance' }),
+    );
+    expect(mockCryptoSync).toHaveBeenCalledWith({
+      providerId: 'binance',
+      targetAccountId: 'cooldown-form-free',
+    });
+    expect(await view.findByText('Binance connected')).toBeTruthy();
+    expect(view.queryByText(COOLING_TEXT)).toBeNull();
+  });
+});

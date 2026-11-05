@@ -2,6 +2,7 @@ import {
   type BinanceCredentials,
   type BinanceWriteToken,
   fetchAccount,
+  isBinanceCoolingDown,
   saveCredentials,
 } from '@kiko/crypto-sync/binance';
 import { match } from 'ts-pattern';
@@ -146,6 +147,14 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
 
     if (apiKey.trim() === '' || secret.trim() === '') {
       setAttemptedConnect(true);
+
+      return;
+    }
+
+    // Connect is reachable only on an account with no connection, and a cooling account makes no
+    // request: the sync would skip quietly and the field would report a connection it never read.
+    if (isBinanceCoolingDown(accountId, Date.now())) {
+      setStatus({ kind: 'saveError', message: t('accountDetail.binanceCoolingDown') });
 
       return;
     }

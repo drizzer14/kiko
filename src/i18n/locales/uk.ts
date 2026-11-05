@@ -698,6 +698,7 @@ export const uk: typeof en = {
     binanceApiKeyPlaceholder: 'API ключ Binance',
     binanceApiSecretPlaceholder: 'API секрет Binance',
     binanceConnected: 'Binance підключено',
+    binanceCoolingDown: 'Забагато запитів до Binance. Спробуйте пізніше.',
     binanceFundingResponseNotArray: 'Відповідь Binance funding не була масивом',
     binanceKeychainDisclosure:
       'Ваш API-ключ Binance зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Binance і ніколи не надсилається до Кіко чи на будь-який сервер.',

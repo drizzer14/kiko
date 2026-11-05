@@ -2,6 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { createRef, type ComponentProps, type ReactElement, type ReactNode } from 'react';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { setBinanceCooldownUntil } from '@kiko/crypto-sync/binance';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
@@ -214,6 +215,56 @@ describe('BinanceCredentialsField', () => {
     const { findByText } = await renderAndConnect(onConnect);
 
     expect(await findByText('Could not connect Binance')).toBeTruthy();
+  });
+
+  describe('while the account is cooling down', () => {
+    const COOLING_TEXT = 'Too many requests to Binance. Try again later.';
+
+    const renderForAccount = (accountId: string): Promise<View> =>
+      render(<BinanceCredentialsField accountId={accountId} onConnect={onConnect} />);
+
+    it('shows the cooling text and makes no request, write or sync', async () => {
+      setBinanceCooldownUntil('cooling-field-blocked', Date.now() + 60_000);
+      const view = await renderForAccount('cooling-field-blocked');
+
+      await fillBoth(view.getByPlaceholderText);
+      await pressConnect(view);
+
+      expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
+      expect(mockFetchAccount).not.toHaveBeenCalled();
+      expect(mockSaveCredentials).not.toHaveBeenCalled();
+      expect(onConnect).not.toHaveBeenCalled();
+      expect(view.queryByText('Binance connected')).toBeNull();
+    });
+
+    it('runs the whole Connect once the cooldown has ended', async () => {
+      setBinanceCooldownUntil('cooling-field-over', Date.now() - 1);
+      const view = await renderForAccount('cooling-field-over');
+
+      await fillBoth(view.getByPlaceholderText);
+      await pressConnect(view);
+
+      expect(await view.findByText('Binance connected')).toBeTruthy();
+      expect(view.queryByText(COOLING_TEXT)).toBeNull();
+      expect(mockFetchAccount).toHaveBeenCalledTimes(1);
+      expect(mockSaveCredentials).toHaveBeenCalledWith('cooling-field-over', typedPair);
+      expect(onConnect).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the typed pair, so a later press connects once the cooldown ends', async () => {
+      setBinanceCooldownUntil('cooling-field-retry', Date.now() + 60_000);
+      const view = await renderForAccount('cooling-field-retry');
+
+      await fillBoth(view.getByPlaceholderText);
+      await pressConnect(view);
+      expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
+
+      setBinanceCooldownUntil('cooling-field-retry', Date.now() - 1);
+      await pressConnect(view);
+
+      expect(await view.findByText('Binance connected')).toBeTruthy();
+      expect(mockFetchAccount).toHaveBeenCalledWith('api-key-fixture', 'secret-fixture');
+    });
   });
 
   describe('once unmounted', () => {

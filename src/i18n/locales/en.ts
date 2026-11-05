@@ -790,6 +790,7 @@ export const en = {
     binanceApiKeyPlaceholder: 'Binance API key',
     binanceApiSecretPlaceholder: 'Binance API secret',
     binanceConnected: 'Binance connected',
+    binanceCoolingDown: 'Too many requests to Binance. Try again later.',
     binanceFundingResponseNotArray: 'Binance funding response was not an array',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
