@@ -22,6 +22,7 @@ import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
 
 import { isReminderOfferDismissed, settingsRepo } from './settings.repo';
+import type { RecurringMerchantChoice } from './recurring-merchant-choices';
 import { EMPTY_HISTORY_BACKFILL_STATE, parseHistoryBackfillState } from './history-backfill-state';
 
 /**
@@ -332,30 +333,9 @@ describe('isReminderOfferDismissed', () => {
   });
 });
 
-type Choice = { name: string; hidden: true };
+const hide = (key: string, name: string) => settingsRepo.hideRecurringMerchant(key, name);
 
-type ChoiceFunctions = {
-  hideRecurringMerchant: (key: string, name: string) => Promise<void>;
-  showRecurringMerchantAgain: (key: string) => Promise<void>;
-  recurringMerchantChoicesQuery: () => Promise<readonly object[]>;
-  recurringMerchantChoicesOf: (stored: unknown) => ReadonlyMap<string, Choice>;
-};
-
-// The functions are read by name at run time while they do not exist yet, so the file
-// type-checks; a missing one fails the case that calls it, saying which.
-const choiceFunction = <Name extends keyof ChoiceFunctions>(name: Name): ChoiceFunctions[Name] => {
-  const found = (settingsRepo as unknown as Partial<ChoiceFunctions>)[name];
-
-  if (typeof found !== 'function') {
-    throw new Error(`settingsRepo.${name} is missing`);
-  }
-
-  return found as ChoiceFunctions[Name];
-};
-
-const hide = (key: string, name: string) => choiceFunction('hideRecurringMerchant')(key, name);
-
-const showAgain = (key: string) => choiceFunction('showRecurringMerchantAgain')(key);
+const showAgain = (key: string) => settingsRepo.showRecurringMerchantAgain(key);
 
 const COLUMN = 'recurring_merchant_choices';
 
@@ -391,11 +371,10 @@ const storedText = (): string | null =>
 const storedEntries = (): Map<string, unknown> =>
   new Map(Object.entries(JSON.parse(storedText() ?? '{}') as object));
 
-const readChoices = async (): Promise<ReadonlyMap<string, Choice>> => {
-  const rows = await choiceFunction('recurringMerchantChoicesQuery')();
-  const [column] = Object.values(rows[0] ?? {}) as unknown[];
+const readChoices = async (): Promise<ReadonlyMap<string, RecurringMerchantChoice>> => {
+  const rows = await settingsRepo.recurringMerchantChoicesQuery();
 
-  return choiceFunction('recurringMerchantChoicesOf')(column);
+  return settingsRepo.recurringMerchantChoicesOf(rows[0]?.recurringMerchantChoices);
 };
 
 const transactionsFingerprint = (): { count: number; checksum: string } => {

@@ -12,6 +12,10 @@ import {
   parseHistoryBackfillState,
   serializeHistoryBackfillState,
 } from './history-backfill-state';
+import {
+  type RecurringMerchantChoice,
+  recurringMerchantChoicesOf,
+} from './recurring-merchant-choices';
 
 /** Settings is a single row, keyed at id = 1. */
 export const SETTINGS_ID = 1;
@@ -62,6 +66,34 @@ const changeHistoryBackfillState = (
     await databaseTransaction
       .update(settings)
       .set({ historyBackfillState: serializeHistoryBackfillState(change(state)) })
+      .where(eq(settings.id, SETTINGS_ID));
+  });
+
+/**
+ * Changes the recurring merchant choices and keeps the rest. Read-modify-write inside one
+ * `write()`, since the column holds the whole map as one JSON blob; the change returns `null` to
+ * write nothing. The map is stored through `Object.fromEntries`, never by assigning a key onto
+ * the stored object, because a key is user text (`__proto__`).
+ */
+const changeRecurringMerchantChoices = (
+  change: (
+    choices: Map<string, RecurringMerchantChoice>,
+  ) => Map<string, RecurringMerchantChoice> | null,
+) =>
+  write(async (databaseTransaction) => {
+    const rows = await databaseTransaction
+      .select({ recurringMerchantChoices: settings.recurringMerchantChoices })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID));
+    const changed = change(new Map(recurringMerchantChoicesOf(rows[0]?.recurringMerchantChoices)));
+
+    if (changed === null) {
+      return;
+    }
+
+    await databaseTransaction
+      .update(settings)
+      .set({ recurringMerchantChoices: Object.fromEntries(changed) })
       .where(eq(settings.id, SETTINGS_ID));
   });
 
@@ -168,6 +200,19 @@ export const settingsRepo = {
       settled: { ...state.settled, ...additions },
     })),
   changeHistoryBackfillState,
+  /** The one column the choices are read from; `recurringMerchantChoicesOf` parses it. */
+  recurringMerchantChoicesQuery: () =>
+    database
+      .select({ recurringMerchantChoices: settings.recurringMerchantChoices })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID)),
+  recurringMerchantChoicesOf,
+  /** Hides a merchant's detected series; hiding a key again keeps one entry, the last name. */
+  hideRecurringMerchant: (key: string, name: string) =>
+    changeRecurringMerchantChoices((choices) => choices.set(key, { name, hidden: true })),
+  /** Clears the hide, and writes nothing for a key that holds none. */
+  showRecurringMerchantAgain: (key: string) =>
+    changeRecurringMerchantChoices((choices) => (choices.delete(key) ? choices : null)),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction

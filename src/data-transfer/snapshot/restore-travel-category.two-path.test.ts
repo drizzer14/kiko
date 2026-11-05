@@ -33,6 +33,7 @@ import { i18n } from '@kiko/i18n/init';
 import {
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   applyAllMigrations,
   applyMigrationsThrough,
 } from '@kiko/test-support/real-sqlite';
@@ -188,6 +189,7 @@ const releaseThirteenWorld = (): DatabaseSync => {
   applyMigrationsThrough(target, RELEASE_1_3_TAIL);
   addMccCategoriesBackfilledColumn(target);
   addFundingMatchRowsTable(target);
+  addRecurringMerchantChoicesColumn(target);
   addLedger(target);
 
   return target;
