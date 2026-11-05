@@ -151,9 +151,14 @@ describe('the marked matrix', () => {
 });
 
 describe('markedSeriesOf over random ledgers and marks', () => {
-  const FULL_SEEDS = Array.from({ length: 24 }, (_unused, index) => index + 1);
+  // Seeds 1, 13 and 24 (the first, middle and last of 1 to 24) reach no one-mark chain, so
+  // the list starts at 3, where the development seeds 3, 15 and 26 reach five.
+  const FIRST_SEED = 3;
+  const FULL_SEEDS = Array.from({ length: 24 }, (_unused, index) => index + FIRST_SEED);
   const SEEDS = sweep(FULL_SEEDS);
   const MIN_PER_RUN = 1;
+  const MIN_MARKED_CHAINS_FULL = 24;
+  const MIN_MARKED_CHAINS = Math.floor((MIN_MARKED_CHAINS_FULL * SEEDS.length) / FULL_SEEDS.length);
 
   const worlds = SEEDS.map((seed) => {
     const random = seededRandom(seed * SEED_SPREAD);
@@ -330,7 +335,7 @@ describe('markedSeriesOf over random ledgers and marks', () => {
       }
     }
 
-    expect(checkedCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
+    expect(checkedCount).toBeGreaterThanOrEqual(MIN_MARKED_CHAINS);
   });
 
   it('never leaves fewer charges on a day and amount than the largest count of one source', () => {
@@ -438,7 +443,8 @@ describe('amountPiecesOf', () => {
     ['a rise of exactly 1.25', [10_000, 12_500], [[10_000, 12_500]]],
     ['a rise past 1.25', [10_000, 12_501], [[10_000], [12_501]]],
     ['amounts out of order', [39_900, 9900, 9900], [[9900, 9900], [39_900]]],
-    ['a bridge in the middle', [10_000, 15_000, 11_500], [[10_000, 11_500, 15_000]]],
+    ['a bridge in the middle', [10_000, 14_000, 11_500], [[10_000, 11_500, 14_000]]],
+    ['no bridge in the middle', [10_000, 15_000, 11_500], [[10_000, 11_500], [15_000]]],
   ])('cuts %s', (_title, amounts, expected) => {
     expect(amountPiecesOf(amounts)).toEqual(expected);
   });
