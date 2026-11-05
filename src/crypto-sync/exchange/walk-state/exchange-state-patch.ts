@@ -24,6 +24,9 @@ export type WalkMarkPatch = {
 
 type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 
+/** What one wallet's balance read leaves to show: the coins it did not read, and Earn's count. */
+type WalletNotes = { borrowed: string[]; earnLeftOut?: number };
+
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
  * trade symbol, the trades' rotation, balance snapshot or unread symbols, one coin list, or the
@@ -52,6 +55,13 @@ export type ExchangeStatePatch =
       wallets: Record<string, string[]>;
       /** Whether every wallet read, so no ticker stored before wallets were named can remain. */
       complete: boolean;
+    }
+  | {
+      kind: 'balanceNotes';
+      /** The notes of each wallet whose read succeeded; a wallet that failed is absent. */
+      wallets: Record<string, WalletNotes>;
+      /** The wallets whose read the exchange refused for the key's permissions. */
+      refused: string[];
     }
   | { kind: 'balanceSyncedAt'; value: number }
   | { kind: 'notImported'; entries: string[] };
@@ -144,6 +154,40 @@ const withOversizedBalance = (
   };
 };
 
+const notesOfWallet = ({ borrowed, earnLeftOut }: WalletNotes): Metadata => ({
+  ...(borrowed.length > 0 ? { borrowed: sortedUnique(borrowed) } : {}),
+  ...((earnLeftOut ?? 0) > 0 ? { earnLeftOut } : {}),
+});
+
+/**
+ * The notes of the wallets that read replace those wallets' stored entries whole, a refused mark
+ * with them, and the entry of any other wallet stays as stored. A wallet whose read was refused
+ * keeps its other notes and gains the mark, which only a later read of that wallet clears. The
+ * notes sit under their own top-level key, which a build that does not read them leaves
+ * untouched (the parse names only the keys it reads, and a patch spreads the stored raw state).
+ */
+const withBalanceNotes = (
+  stored: StoredExchangeState,
+  { wallets, refused }: Extract<ExchangeStatePatch, { kind: 'balanceNotes' }>,
+): StoredExchangeState => {
+  const replaced = {
+    ...recordOrEmpty(stored.balanceNotes),
+    ...Object.fromEntries(
+      Object.entries(wallets).map(([wallet, notes]) => [wallet, notesOfWallet(notes)]),
+    ),
+  };
+
+  return {
+    ...stored,
+    balanceNotes: {
+      ...replaced,
+      ...Object.fromEntries(
+        refused.map((wallet) => [wallet, { ...recordOrEmpty(replaced[wallet]), refused: true }]),
+      ),
+    },
+  };
+};
+
 const isText = (value: unknown): value is string => typeof value === 'string';
 
 /**
@@ -181,6 +225,7 @@ const patchedState = (
     .with({ kind: 'oversizedBalance' }, (oversizedPatch) =>
       withOversizedBalance(stored, oversizedPatch),
     )
+    .with({ kind: 'balanceNotes' }, (notesPatch) => withBalanceNotes(stored, notesPatch))
     .with({ kind: 'balanceSyncedAt' }, ({ value }) => ({ ...stored, balanceSyncedAt: value }))
     .with({ kind: 'notImported' }, (notImportedPatch) => withNotImported(stored, notImportedPatch))
     .exhaustive();
