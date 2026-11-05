@@ -173,7 +173,8 @@ SQLCipher database key in `src/db/keys/db-key.ts`, and the Binance credentials
 read the value there).
 
 A credential that travels in a request URL (an `api_token` query parameter;
-no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`)
+no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`,
+`X-BAPI-API-KEY`)
 is a disk leak path through NSURLCache (`Cache.db` stores the response under
 its URL, together with the request object and its headers). Always send the
 request header `Cache-Control: no-store` on every such request (every
@@ -277,7 +278,7 @@ unknown interruption levels.
 ## ATS — no new arbitrary-loads domain, pinning stays intact
 
 Ask: does this diff add a new network host, and if it sends a
-credential header (`X-Token`, `X-MBX-APIKEY`, `Authorization`, an
+credential header (`X-Token`, `X-MBX-APIKEY`, `X-BAPI-API-KEY`, `Authorization`, an
 api-key-ish header, or the `api_token` query parameter, quoted or not), is that host under `NSPinnedDomains` with at
 least two SPKI pins? Mechanized: `npm run check:plist` resolves every
 credential-bearing client's `@env`-configured host and fails if it is

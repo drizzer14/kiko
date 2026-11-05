@@ -139,6 +139,26 @@ describe('disconnectCryptoAccount over the real repos', () => {
     });
   });
 
+  it('for Binance, clears the stored funding match rows of the account and no other', async () => {
+    connectedBinanceAccount();
+    mockDatabase.exec(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('acc-2', 'Other', 'crypto', 'binance')",
+    );
+    mockDatabase.exec(
+      `INSERT INTO funding_match_rows
+         (account_id, side, record_key, coin, direction, amount, time_start, time_end)
+       VALUES ('acc-1', 'ledger', 'k', 'USDT', 'I', '1', 1, 2),
+              ('acc-1', 'source', 'k', 'USDT', 'I', '1', 1, 2),
+              ('acc-2', 'ledger', 'k', 'USDT', 'I', '1', 1, 2)`,
+    );
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(
+      mockDatabase.prepare('SELECT account_id AS accountId FROM funding_match_rows').all(),
+    ).toEqual([{ accountId: 'acc-2' }]);
+  });
+
   // The paused caption promises this fix: "Disconnect and reconnect to fix this. Your holdings
   // and transactions are kept."
   it.each([

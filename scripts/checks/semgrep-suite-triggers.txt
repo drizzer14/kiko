@@ -1,0 +1,40 @@
+# Paths whose change makes a scoped `make verify` run stage 2b (the real-semgrep suites).
+# scripts/checks/verify.sh skips 2b only when KIKO_VERIFY_SCOPED=1 and no changed path matches.
+#
+# Format, one entry per line (blank lines and lines starting with # are ignored):
+#   a line ending in /   a prefix: every path under it triggers
+#   a line starting !    an exclude, a bash `case` pattern where * also matches /: a path that
+#                        matches one is not a trigger, whatever else matches it
+#   any other line       an exact path
+# A missing, empty or comments-only file, or one with no trigger line (excludes alone), runs 2b.
+#
+# The seven suites are read from scripts/checks/semgrep-jest-suites.txt and are not repeated here:
+# a listed suite is a trigger too.
+#
+# The config and mock lines (package.json to tsconfig.json, .env.test, jest/, __mocks__/,
+# patches/) come from `is_every_suite_path` in scripts/checks/jest-affected.sh, the group of
+# paths that can change every suite. That group names tsconfig*.json; only tsconfig.json exists,
+# so the line here is tsconfig.json.
+# src/i18n/locales/en.ts is the one real app file the suites read: pre-write-guard-rules through
+# the plural-count rule, and guard-replay by copying it into its scratch repository.
+#
+# Markdown under harness/ is excluded: none of the seven suites reads it, and a full verify
+# before main still runs them.
+scripts/
+rules/
+harness/
+!harness/*.md
+githooks/
+patches/
+__mocks__/
+jest/
+__tests__/test-support/
+package.json
+package-lock.json
+jest.config.js
+babel.config.js
+tsconfig.json
+.env.test
+biome.json
+Makefile
+src/i18n/locales/en.ts

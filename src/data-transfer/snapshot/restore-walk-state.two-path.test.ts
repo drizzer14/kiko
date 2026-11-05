@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
@@ -64,6 +65,7 @@ const databaseBeforeCopy = (): DatabaseSync => {
   addAccountCurrencyColumn(target);
   addTransactionOperationColumn(target);
   addMccCategoriesBackfilledColumn(target);
+  addFundingMatchRowsTable(target);
   // A restore inserts the settings row when a file has none, and marks the import times as
   // rezoned, so the database has it the same.
   target.exec('INSERT INTO settings (id, import_times_rezoned) VALUES (1, 1);');

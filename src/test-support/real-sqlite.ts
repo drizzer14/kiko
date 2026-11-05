@@ -98,6 +98,14 @@ export const addMccCategoriesBackfilledColumn = (database: DatabaseSync): void =
   database.exec(firstStatementOf('0065_add_mcc_categories_backfilled'));
 };
 
+/**
+ * Adds the empty `funding_match_rows` table to a database migrated below 0066, so a read through
+ * today's schema works on it. Only the table: it is the migration's one statement.
+ */
+export const addFundingMatchRowsTable = (database: DatabaseSync): void => {
+  database.exec(firstStatementOf('0066_add_funding_match_rows'));
+};
+
 const journalIndexOf = (entries: MigrationJournalEntry[], tag: string): number => {
   const index = entries.findIndex((entry) => entry.tag === tag);
 

@@ -29,6 +29,7 @@ describe('isUnreadableWindowError', () => {
 describe('the Binance walk config', () => {
   it('carries the metadata field, key reader, page size, refused weights and rate-limit check', () => {
     expect(BINANCE_WALK_CONFIG.metadataField).toBe('binanceAsset');
+    expect(BINANCE_WALK_CONFIG.source).toBe('binance');
     expect(BINANCE_WALK_CONFIG.totalPageSize).toBe(HISTORY_TOTAL_PAGE_SIZE);
     expect(BINANCE_WALK_CONFIG.holdingKeyOf).toBe(binanceKeyOf);
     expect(BINANCE_WALK_CONFIG.refusedCallWeights).toEqual({

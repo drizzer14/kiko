@@ -67,6 +67,7 @@ import m0062 from './0062_add_account_currency.sql';
 import m0063 from './0063_add_transaction_operation.sql';
 import m0064 from './0064_seed_travel_category.sql';
 import m0065 from './0065_add_mcc_categories_backfilled.sql';
+import m0066 from './0066_add_funding_match_rows.sql';
 
 export default {
   journal,
@@ -137,5 +138,6 @@ export default {
     m0063,
     m0064,
     m0065,
+    m0066,
   },
 };

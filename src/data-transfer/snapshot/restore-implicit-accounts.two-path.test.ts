@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
   addAccountCurrencyColumn,
+  addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
@@ -111,6 +112,7 @@ const databaseBefore0050 = (): DatabaseSync => {
   addAccountCurrencyColumn(target);
   addTransactionOperationColumn(target);
   addMccCategoriesBackfilledColumn(target);
+  addFundingMatchRowsTable(target);
   target.exec('PRAGMA foreign_keys = ON;');
 
   return target;
