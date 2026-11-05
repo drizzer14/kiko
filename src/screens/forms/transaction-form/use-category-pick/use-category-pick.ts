@@ -16,6 +16,8 @@ type UseCategoryPickParams = {
   mode: FormMode;
   // The picked holding's currency, null while no holding is picked.
   currency: Currency | null;
+  // The picked holding's account, undefined while no holding is picked.
+  accountId: string | undefined;
   // The name a rule reads for a description: a blank one reads as the label the row will show.
   ruleDescription: (description: string) => string;
   // What a form restored from its saved draft opens with, so a remount keeps the category and
@@ -33,6 +35,7 @@ export const useCategoryPick = ({
   time,
   mode,
   currency,
+  accountId,
   ruleDescription,
   initial,
 }: UseCategoryPickParams) => {
@@ -74,7 +77,14 @@ export const useCategoryPick = ({
   // The ONE rule lookup: the category the rules give the draft with this description, or null.
   const categoryForDescription = (name: string): string | null =>
     categoryForDraft(
-      { description: ruleDescription(name), amount, time, mode, currency },
+      {
+        description: ruleDescription(name),
+        amount,
+        time,
+        mode,
+        currency,
+        accountId: accountId ?? null,
+      },
       preparedRules,
     );
 

@@ -21,6 +21,7 @@ const draftOf = (overrides: Partial<CategoryDraft> = {}): CategoryDraft => ({
   time: MORNING,
   mode: 'expense',
   currency: 'UAH',
+  accountId: null,
   ...overrides,
 });
 
@@ -41,6 +42,8 @@ describe('subjectOfFormDraft', () => {
       direction: 'expense',
       minuteOfDay: 8 * 60 + 15,
       mcc: null,
+      counterIban: null,
+      accountId: null,
     });
   });
 
@@ -102,6 +105,22 @@ describe('categoryForDraft', () => {
 
   it('gives none in exchange mode even for a name a rule matches', () => {
     expect(categoryForDraft(draftOf({ mode: 'exchange' }), prepared)).toBeNull();
+  });
+
+  it('an account rule pre-selects a draft on its holding’s account', () => {
+    const onAccount = prepareRules([ruleOf('card', [{ type: 'account', accountId: 'account-1' }])]);
+
+    expect(categoryForDraft(draftOf({ accountId: 'account-1' }), onAccount)).toBe('groceries');
+    expect(categoryForDraft(draftOf({ accountId: 'account-2' }), onAccount)).toBeNull();
+    expect(categoryForDraft(draftOf({ accountId: null }), onAccount)).toBeNull();
+  });
+
+  it('an IBAN rule never pre-selects a draft', () => {
+    const onIban = prepareRules([
+      ruleOf('transfer', [{ type: 'counterIban', iban: 'UA733220010000026201112223334' }]),
+    ]);
+
+    expect(categoryForDraft(draftOf({ accountId: 'account-1' }), onIban)).toBeNull();
   });
 });
 

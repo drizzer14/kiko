@@ -16,6 +16,7 @@ const renderRow = (overrides: Partial<MatcherRowProps> = {}) =>
     <MatcherRow
       draft={emptyMatcherDraft('UAH')}
       currencyGroups={CURRENCY_GROUPS}
+      accounts={[]}
       position={0}
       canRemove={false}
       onChange={jest.fn()}
@@ -142,6 +143,67 @@ describe('MatcherRow', () => {
 
       expect(onChange).toHaveBeenNthCalledWith(1, { type: 'nameContains' });
       expect(onChange).toHaveBeenNthCalledWith(2, { type: 'mcc' });
+    });
+  });
+
+  describe('the account and counterIban conditions', () => {
+    const ACCOUNTS = [
+      { id: 'account-1', label: 'Main card' },
+      { id: 'account-3', label: 'Cash wallet' },
+    ];
+
+    it('an account row lists the accounts it is given and reports the pick', async () => {
+      const onChange = jest.fn();
+      const { getByTestId, getAllByText } = await renderRow({
+        draft: draftOf({ type: 'account', accountId: 'account-1' }),
+        accounts: ACCOUNTS,
+        onChange,
+      });
+
+      await fireEvent.press(getByTestId('matcher-account-0'));
+
+      expect(getAllByText('Main card').length).toBeGreaterThan(0);
+      expect(getAllByText('Cash wallet').length).toBeGreaterThan(0);
+
+      await fireEvent.press(getByTestId('matcher-account-0-option-account-3'));
+
+      expect(onChange).toHaveBeenCalledWith({ accountId: 'account-3' });
+    });
+
+    it('an account row with none picked shows the placeholder and its error', async () => {
+      const { getByText } = await renderRow({
+        draft: draftOf({ type: 'account', accountId: null }),
+        accounts: ACCOUNTS,
+        error: 'Choose an account.',
+      });
+
+      expect(getByText('Select an account')).toBeTruthy();
+      expect(getByText('Choose an account.')).toBeTruthy();
+    });
+
+    it('an IBAN row shows a field that types in capitals', async () => {
+      const onChange = jest.fn();
+      const { getByLabelText } = await renderRow({
+        draft: draftOf({ type: 'counterIban', ibanText: 'UA73' }),
+        onChange,
+      });
+      const field = getByLabelText('Counterparty IBAN');
+
+      expect(field.props.value).toBe('UA73');
+      expect(field.props.autoCapitalize).toBe('characters');
+
+      await fireEvent.changeText(field, 'UA7332');
+
+      expect(onChange).toHaveBeenCalledWith({ ibanText: 'UA7332' });
+    });
+
+    it('the type picker lists both conditions', async () => {
+      const { getByTestId, getAllByText } = await renderRow({ draft: draftOf({ type: 'nameIs' }) });
+
+      await fireEvent.press(getByTestId('matcher-type-0'));
+
+      expect(getAllByText('Account').length).toBeGreaterThan(0);
+      expect(getAllByText('Counterparty IBAN').length).toBeGreaterThan(0);
     });
   });
 

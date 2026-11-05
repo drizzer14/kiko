@@ -1,5 +1,6 @@
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
+import { ibanKeyOf } from '@kiko/transactions/iban';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type {
@@ -61,11 +62,16 @@ const withNormalizedText = (matcher: CategoryRuleMatcher): CategoryRuleMatcher =
       ...named,
       text: normalizeTransactionName(named.text),
     }))
+    .with({ type: 'counterIban' }, (counterIban) => ({
+      ...counterIban,
+      iban: ibanKeyOf(counterIban.iban),
+    }))
     .with(
       { type: 'amount' },
       { type: 'direction' },
       { type: 'time' },
       { type: 'mcc' },
+      { type: 'account' },
       (other) => other,
     )
     .exhaustive();
@@ -187,6 +193,9 @@ const MATCHER_MATCHES: {
     subject.minuteOfDay !== null && TIME_HOLDS[operator](subject.minuteOfDay, minuteOfDay),
   // A null code never equals a number, so a row with no code matches no code rule.
   mcc: ({ code }, subject) => subject.mcc === code,
+  // A null id or IBAN never equals a text, so a row with no holding or no IBAN matches neither.
+  account: ({ accountId }, subject) => subject.accountId === accountId,
+  counterIban: ({ iban }, subject) => subject.counterIban === iban,
 };
 
 const matcherMatches = (matcher: CategoryRuleMatcher, subject: RuleSubject): boolean =>

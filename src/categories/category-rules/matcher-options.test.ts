@@ -10,6 +10,8 @@ describe('matcher options', () => {
       'direction',
       'time',
       'mcc',
+      'account',
+      'counterIban',
     ]);
   });
 

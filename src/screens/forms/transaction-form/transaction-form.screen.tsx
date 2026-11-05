@@ -570,6 +570,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     time,
     mode,
     currency: holding?.currency ?? null,
+    accountId: holding?.accountId,
     ruleDescription: (typed) =>
       resolveRuleDescription({ description: typed, holding, existing, holdings, mode, t }),
     initial: { category: opening.selectedCategory, isPicked: opening.userPickedCategory },

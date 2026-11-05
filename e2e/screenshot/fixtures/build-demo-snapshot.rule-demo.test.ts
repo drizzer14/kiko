@@ -93,6 +93,7 @@ describe.each(['uk', 'en'] as const)('the live rule demo rows of the %s demo fil
   const candidates: RewriteCandidate[] = snapshot.transactions.map((transaction) => ({
     ...transaction,
     currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+    accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
   }));
   const savedRule: StoredCategoryRule = {
     id: 'rule-draft',
@@ -106,6 +107,7 @@ describe.each(['uk', 'en'] as const)('the live rule demo rows of the %s demo fil
     subjectOfStoredRow({
       ...transaction,
       currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+      accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
     });
 
   it('holds all six rows, each once, on the UAH Monobank card', () => {

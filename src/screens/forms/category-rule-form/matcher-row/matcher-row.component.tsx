@@ -39,6 +39,7 @@ type MatcherType = CategoryRuleMatcher['type'];
 const MatcherRow: FC<MatcherRowProps> = ({
   draft,
   currencyGroups,
+  accounts,
   position,
   canRemove,
   onChange,
@@ -55,6 +56,8 @@ const MatcherRow: FC<MatcherRowProps> = ({
     direction: t('ruleForm.direction'),
     time: t('ruleForm.time'),
     mcc: t('ruleForm.mcc'),
+    account: t('ruleForm.account'),
+    counterIban: t('ruleForm.counterIban'),
   };
 
   const inputs = match(draft.type)
@@ -138,6 +141,31 @@ const MatcherRow: FC<MatcherRowProps> = ({
         value={draft.mccText}
         onChangeText={(text) => onChange({ mccText: text.replace(/\D/g, '').slice(0, MCC_DIGITS) })}
         keyboardType="number-pad"
+        required
+        error={error}
+      />
+    ))
+    .with('account', () => (
+      <SelectField<string>
+        label={t('ruleForm.account')}
+        sheetTitle={t('ruleForm.accountSheetTitle')}
+        options={accounts.map((account) => account.id)}
+        selected={draft.accountId}
+        onSelect={(accountId) => onChange({ accountId })}
+        labels={Object.fromEntries(accounts.map((account) => [account.id, account.label]))}
+        placeholder={t('ruleForm.selectAccount')}
+        required
+        error={error}
+        testID={`matcher-account-${position}`}
+      />
+    ))
+    .with('counterIban', () => (
+      <TextField
+        label={t('ruleForm.counterIban')}
+        value={draft.ibanText}
+        onChangeText={(ibanText) => onChange({ ibanText })}
+        autoCapitalize="characters"
+        autoCorrect={false}
         required
         error={error}
       />

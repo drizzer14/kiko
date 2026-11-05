@@ -1,5 +1,6 @@
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
+import { ibanKeyOf } from '@kiko/transactions/iban';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type {
@@ -99,15 +100,11 @@ const namesCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean => {
   const prefixes = normalizedTextsOf(matchers, 'nameStartsWith');
   const containedTexts = normalizedTextsOf(matchers, 'nameContains');
   const reference = exactNames[0] ?? longestOf(prefixes);
-  const exactNameHoldsEvery =
-    foldMap(maybe(exactNames[0]), (exactName) =>
-      containedTexts.every((text) => exactName.includes(text)),
-    ) ?? true;
 
   return (
     new Set(exactNames).size <= 1 &&
     prefixes.every((prefix) => reference.startsWith(prefix)) &&
-    exactNameHoldsEvery
+    exactNames.every((name) => containedTexts.every((text) => name.includes(text)))
   );
 };
 
@@ -115,12 +112,22 @@ const namesCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean => {
 const mccsCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
   new Set(ofType(matchers, 'mcc').map(({ code }) => code)).size <= 1;
 
+// A row has one holding, so two accounts can never both name it.
+const accountsCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
+  new Set(ofType(matchers, 'account').map(({ accountId }) => accountId)).size <= 1;
+
+// One IBAN in two spellings is one value, so the spelling never makes two.
+const ibansCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
+  new Set(ofType(matchers, 'counterIban').map(({ iban }) => ibanKeyOf(iban))).size <= 1;
+
 export const canEverMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
   directionsCanMatch(matchers) &&
   amountsCanMatch(matchers) &&
   timesCanMatch(matchers) &&
   namesCanMatch(matchers) &&
-  mccsCanMatch(matchers);
+  mccsCanMatch(matchers) &&
+  accountsCanMatch(matchers) &&
+  ibansCanMatch(matchers);
 
 // Sorted and deduplicated, so the same matchers in another order, or with one written twice, are
 // the same set.

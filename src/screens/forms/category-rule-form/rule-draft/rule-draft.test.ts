@@ -3,8 +3,10 @@ import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import type { MatcherDraft, MatcherDraftError } from './rule-draft.types';
 import { emptyMatcherDraft, fromMatcherDrafts, toMatcherDrafts } from './rule-draft';
 
+const NO_ACCOUNTS: ReadonlySet<string> = new Set();
+
 const roundTrip = (matchers: CategoryRuleMatcher[]) =>
-  fromMatcherDrafts(toMatcherDrafts(matchers, 'UAH'));
+  fromMatcherDrafts(toMatcherDrafts(matchers, 'UAH', NO_ACCOUNTS));
 
 describe('toMatcherDrafts and fromMatcherDrafts', () => {
   it.each([
@@ -48,6 +50,7 @@ describe('toMatcherDrafts and fromMatcherDrafts', () => {
     const [draft] = toMatcherDrafts(
       [{ type: 'amount', operator: 'eq', minorUnits: 123456789, currency: 'UAH' }],
       'UAH',
+      NO_ACCOUNTS,
     );
 
     expect(draft).toMatchObject({
@@ -59,7 +62,7 @@ describe('toMatcherDrafts and fromMatcherDrafts', () => {
   });
 
   it('starts every field the matcher does not use on its default, in the base currency', () => {
-    const [draft] = toMatcherDrafts([{ type: 'nameIs', text: 'Silpo' }], 'USD');
+    const [draft] = toMatcherDrafts([{ type: 'nameIs', text: 'Silpo' }], 'USD', NO_ACCOUNTS);
 
     expect(draft).toEqual({ ...emptyMatcherDraft('USD'), type: 'nameIs', text: 'Silpo' });
     expect(draft?.currency).toBe('USD');
@@ -69,6 +72,7 @@ describe('toMatcherDrafts and fromMatcherDrafts', () => {
     const [draft] = toMatcherDrafts(
       [{ type: 'amount', operator: 'eq', minorUnits: 100, currency: 'EUR' }],
       'USD',
+      NO_ACCOUNTS,
     );
 
     expect(draft?.currency).toBe('EUR');
@@ -111,7 +115,7 @@ describe('the nameContains and mcc rows', () => {
       matchers: [{ type: 'mcc', code: 42 }],
     });
 
-    const [draft] = toMatcherDrafts([{ type: 'mcc', code: 42 }], 'UAH');
+    const [draft] = toMatcherDrafts([{ type: 'mcc', code: 42 }], 'UAH', NO_ACCOUNTS);
 
     expect(draft).toMatchObject({ type: 'mcc', mccText: '0042' });
   });
@@ -148,6 +152,96 @@ describe('the nameContains and mcc rows', () => {
     expect(fromMatcherDrafts([backToCode])).toEqual({
       kind: 'valid',
       matchers: [{ type: 'mcc', code: 5411 }],
+    });
+  });
+});
+
+describe('the account and counterIban rows', () => {
+  const IBAN_KEY = 'UA733220010000026201112223334';
+
+  const seedWithAccounts = (matcher: CategoryRuleMatcher, liveAccountIds: ReadonlySet<string>) =>
+    toMatcherDrafts([matcher], 'UAH', liveAccountIds);
+
+  const accountDraft = (accountId: string | null): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'account',
+    accountId,
+  });
+  const ibanDraft = (ibanText: string): MatcherDraft => ({
+    ...emptyMatcherDraft('UAH'),
+    type: 'counterIban',
+    ibanText,
+  });
+
+  it('no account picked gives errorAccount', () => {
+    expect(fromMatcherDrafts([accountDraft(null)])).toEqual({
+      kind: 'invalid',
+      errors: new Map([[0, 'errorAccount']]),
+    });
+  });
+
+  it('a picked account becomes a matcher', () => {
+    expect(fromMatcherDrafts([accountDraft('account-1')])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'account', accountId: 'account-1' }],
+    });
+  });
+
+  it('an id no longer listed seeds as none', () => {
+    const [draft] = seedWithAccounts(
+      { type: 'account', accountId: 'gone' },
+      new Set(['account-1']),
+    );
+
+    expect(draft).toMatchObject({ type: 'account', accountId: null });
+  });
+
+  it('a live id seeds as itself', () => {
+    const [draft] = seedWithAccounts(
+      { type: 'account', accountId: 'account-1' },
+      new Set(['account-1', 'account-2']),
+    );
+
+    expect(draft).toMatchObject({ type: 'account', accountId: 'account-1' });
+  });
+
+  it('a typed IBAN is stored normalized', () => {
+    expect(fromMatcherDrafts([ibanDraft(' ua73 3220 0100 0002 6201 1122 2333 4 ')])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'counterIban', iban: IBAN_KEY }],
+    });
+  });
+
+  it('an IBAN rule seeds the text it was stored with', () => {
+    const [draft] = seedWithAccounts({ type: 'counterIban', iban: IBAN_KEY }, NO_ACCOUNTS);
+
+    expect(draft).toMatchObject({ type: 'counterIban', ibanText: IBAN_KEY });
+  });
+
+  it.each([
+    ['a blank text', ''],
+    ['spaces only', '   '],
+    ['text that is no IBAN', 'ATB Market'],
+    ['a short body', 'UA7332200100'],
+  ])('a bad IBAN gives errorIban: %s', (_label, ibanText) => {
+    expect(fromMatcherDrafts([ibanDraft(ibanText)])).toEqual({
+      kind: 'invalid',
+      errors: new Map([[0, 'errorIban']]),
+    });
+  });
+
+  it('judges only the fields of the type a row has', () => {
+    expect(
+      fromMatcherDrafts([
+        { ...accountDraft('account-1'), ibanText: 'junk' },
+        { ...ibanDraft(IBAN_KEY), accountId: null },
+      ]),
+    ).toEqual({
+      kind: 'valid',
+      matchers: [
+        { type: 'account', accountId: 'account-1' },
+        { type: 'counterIban', iban: IBAN_KEY },
+      ],
     });
   });
 });

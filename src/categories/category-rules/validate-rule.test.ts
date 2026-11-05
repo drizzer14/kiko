@@ -5,6 +5,8 @@ import type { AmountOperator, CategoryRuleMatcher, PreparedRule } from './catego
 
 const nameIs = (text: string): CategoryRuleMatcher => ({ type: 'nameIs', text });
 const startsWith = (text: string): CategoryRuleMatcher => ({ type: 'nameStartsWith', text });
+const contains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+const code = (value: number): CategoryRuleMatcher => ({ type: 'mcc', code: value });
 const direction = (value: 'expense' | 'income'): CategoryRuleMatcher => ({
   type: 'direction',
   direction: value,
@@ -94,9 +96,6 @@ describe('canEverMatch', () => {
 });
 
 describe('the nameContains and mcc conditions', () => {
-  const contains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
-  const code = (value: number): CategoryRuleMatcher => ({ type: 'mcc', code: value });
-
   it('two mcc codes can never match', () => {
     expect(validateRule([code(5411), code(5412)], [], null)).toEqual({
       kind: 'neverMatches',
@@ -126,6 +125,58 @@ describe('the nameContains and mcc conditions', () => {
   });
 });
 
+describe('the account and counterIban conditions', () => {
+  const account = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
+  const iban = (value: string): CategoryRuleMatcher => ({ type: 'counterIban', iban: value });
+
+  const SPACED_LOWER_CASE_IBAN = 'ua73 3220 0100 0002 6201 1122 2333 4';
+  const IBAN_KEY = 'UA733220010000026201112223334';
+  const OTHER_IBAN_KEY = 'UA213223130000026007233566001';
+
+  it('two accounts can never match', () => {
+    expect(canEverMatch([account('account-1'), account('account-2')])).toBe(false);
+    expect(validateRule([account('account-1'), account('account-2')], [], null)).toEqual({
+      kind: 'neverMatches',
+      conflict: 'other',
+    });
+  });
+
+  it('one account written twice can match', () => {
+    expect(canEverMatch([account('account-1'), account('account-1')])).toBe(true);
+  });
+
+  it('two IBANs can never match', () => {
+    expect(canEverMatch([iban(IBAN_KEY), iban(OTHER_IBAN_KEY)])).toBe(false);
+    expect(validateRule([iban(IBAN_KEY), iban(OTHER_IBAN_KEY)], [], null)).toEqual({
+      kind: 'neverMatches',
+      conflict: 'other',
+    });
+  });
+
+  it('one IBAN in two spellings can match', () => {
+    expect(canEverMatch([iban(IBAN_KEY), iban(SPACED_LOWER_CASE_IBAN)])).toBe(true);
+  });
+
+  it('an account beside an IBAN can match', () => {
+    expect(canEverMatch([account('account-1'), iban(IBAN_KEY)])).toBe(true);
+  });
+
+  it('matcherSetKey treats two spellings of one IBAN as one', () => {
+    expect(matcherSetKey([iban(SPACED_LOWER_CASE_IBAN)])).toBe(matcherSetKey([iban(IBAN_KEY)]));
+    expect(matcherSetKey([iban(IBAN_KEY), iban(SPACED_LOWER_CASE_IBAN)])).toBe(
+      matcherSetKey([iban(IBAN_KEY)]),
+    );
+  });
+
+  it.each([
+    ['two accounts', [account('account-1')], [account('account-2')]],
+    ['two IBANs', [iban(IBAN_KEY)], [iban(OTHER_IBAN_KEY)]],
+    ['an account against an IBAN of the same text', [account(IBAN_KEY)], [iban(IBAN_KEY)]],
+  ])('matcherSetKey tells %s apart', (_label, first, second) => {
+    expect(matcherSetKey(first)).not.toBe(matcherSetKey(second));
+  });
+});
+
 describe('matcherSetKey', () => {
   it('ignores matcher order', () => {
     expect(matcherSetKey([nameIs('silpo'), direction('expense'), clockAfter(6)])).toBe(
@@ -136,10 +187,19 @@ describe('matcherSetKey', () => {
   it('normalizes names', () => {
     expect(matcherSetKey([nameIs('  SILPO  ')])).toBe(matcherSetKey([nameIs('silpo')]));
     expect(matcherSetKey([startsWith('Сільпо')])).toBe(matcherSetKey([startsWith('СІЛЬПО')]));
+    expect(matcherSetKey([contains('  MARKET ')])).toBe(matcherSetKey([contains('market')]));
+  });
+
+  it('reads one merchant code as one key', () => {
+    expect(matcherSetKey([code(5411)])).toBe(matcherSetKey([code(5411)]));
   });
 
   it.each([
     ['nameIs against nameStartsWith', [nameIs('silpo')], [startsWith('silpo')]],
+    ['nameContains against nameIs', [contains('silpo')], [nameIs('silpo')]],
+    ['nameContains against nameStartsWith', [contains('silpo')], [startsWith('silpo')]],
+    ['different contained text', [contains('silpo')], [contains('atb')]],
+    ['different merchant codes', [code(5411)], [code(5412)]],
     ['different name text', [nameIs('silpo')], [nameIs('atb')]],
     ['different operators', [amount('gt', 5)], [amount('gte', 5)]],
     ['different amounts', [amount('gt', 5)], [amount('gt', 6)]],
