@@ -2,8 +2,6 @@
 // REAL repos on a real `node:sqlite` engine (the shipped migrations), where the walk state, the
 // institution, the holdings and the rows it must leave alone all sit side by side.
 let mockDatabase: DatabaseSync;
-const mockClearCredentials = jest.fn(async (_id: string) => {});
-const mockClearBybitCredentials = jest.fn(async (_id: string) => {});
 
 jest.mock('@kiko/db/client', () => {
   const actual = jest.requireActual('@kiko/db/client');
@@ -12,13 +10,12 @@ jest.mock('@kiko/db/client', () => {
 
   return { ...actual, database: client.database, write: client.write };
 });
-jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
-  clearCredentials: (id: string) => mockClearCredentials(id),
-}));
-
-jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
-  clearBybitCredentials: (id: string) => mockClearBybitCredentials(id),
-}));
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () =>
+  require('./disconnect.test-fixtures').binanceCredentialsModule(),
+);
+jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () =>
+  require('./disconnect.test-fixtures').bybitCredentialsModule(),
+);
 
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -31,6 +28,7 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { seedWalkMarks, walkMarksOf } from '@kiko/test-support/walk-marks';
 
 import { disconnectCryptoAccount } from './disconnect';
+import { mockClearBybitCredentials, mockClearCredentials } from './disconnect.test-fixtures';
 
 const NOW = 1_800_000_000_000;
 
@@ -43,6 +41,13 @@ const storedState = (): string =>
       .prepare("SELECT exchange_state FROM sync_state WHERE account_id = 'acc-1'")
       .get() as { exchange_state: string }
   ).exchange_state;
+
+const institutionOfAccount = (): string | null =>
+  (
+    mockDatabase.prepare("SELECT institution FROM accounts WHERE id = 'acc-1'").get() as {
+      institution: string | null;
+    }
+  ).institution;
 
 const connectedBinanceAccount = (): void => {
   mockDatabase.exec('PRAGMA foreign_keys = ON;');
@@ -87,13 +92,7 @@ describe('disconnectCryptoAccount over the real repos', () => {
       rescan: HISTORY_FLOOR_MS,
       pending: [],
     });
-    expect(
-      (
-        mockDatabase.prepare("SELECT institution FROM accounts WHERE id = 'acc-1'").get() as {
-          institution: string | null;
-        }
-      ).institution,
-    ).toBeNull();
+    expect(institutionOfAccount()).toBeNull();
     expect(rowCount('holdings')).toBe(1);
     expect(rowCount('transactions')).toBe(1);
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
@@ -127,13 +126,7 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(walkMarksOf(mockDatabase, 'acc-1', 'capital')).toEqual({
       cursor: Date.UTC(2017, 0, 1),
     });
-    expect(
-      (
-        mockDatabase.prepare("SELECT institution FROM accounts WHERE id = 'acc-1'").get() as {
-          institution: string | null;
-        }
-      ).institution,
-    ).toBeNull();
+    expect(institutionOfAccount()).toBeNull();
     expect(rowCount('holdings')).toBe(1);
     expect(mockClearBybitCredentials).toHaveBeenCalledWith('acc-1');
     expect(mockClearCredentials).not.toHaveBeenCalled();

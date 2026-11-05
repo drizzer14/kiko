@@ -2,8 +2,6 @@ const mockDisconnectAccount = jest.fn(async (_id: string) => {});
 const mockDisconnectExchange = jest.fn(
   async (_id: string, _exchangeId: string, _floorMs: number) => {},
 );
-const mockClearCredentials = jest.fn(async (_id: string) => {});
-const mockClearBybitCredentials = jest.fn(async (_id: string) => {});
 
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
@@ -12,18 +10,18 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
       mockDisconnectExchange(id, exchangeId, floorMs),
   },
 }));
-jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
-  clearCredentials: (id: string) => mockClearCredentials(id),
-}));
-
-jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
-  clearBybitCredentials: (id: string) => mockClearBybitCredentials(id),
-}));
+jest.mock('@kiko/crypto-sync/binance/binance.credentials', () =>
+  require('./disconnect.test-fixtures').binanceCredentialsModule(),
+);
+jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () =>
+  require('./disconnect.test-fixtures').bybitCredentialsModule(),
+);
 
 import { HISTORY_FLOOR_MS } from '@kiko/crypto-sync/binance';
 import { BYBIT_RESTART_FLOOR_MS } from '@kiko/crypto-sync/bybit';
 
 import { disconnectCryptoAccount } from './disconnect';
+import { mockClearBybitCredentials, mockClearCredentials } from './disconnect.test-fixtures';
 
 describe('disconnectCryptoAccount', () => {
   beforeEach(() => {
