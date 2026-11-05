@@ -163,8 +163,10 @@ can affect. The full suite runs only in the queued verify. A focused run of name
   gate began. 2a and 2b never run beside the gate.
 - Costs: a gate failure hides the jest results until the fix. A scoped verify ends on 2a, which
   uses all cores, so the next queued job's start-load defer can wait some minutes. The gate runs in
-  the shared checkout, so it has none of the track's Stop-tier fingerprints and can take longer
-  than the 3 minutes it takes in a track: measure it on a real run (the log shows the time).
+  the shared checkout, so it has none of the track's Stop-tier fingerprints. The log has no gate
+  stage time: subtract the `Time:` lines of 2a and 2b from the job's start-to-end in done.log.
+  First full run (2026-11-05, 97bd292f2): total 1575 s, 2a 806 s, 2b 626 s, so gate plus prepare
+  took at most 143 s.
 - `--scoped` sets `KIKO_VERIFY_SCOPED=1` for that one `make`; without it the queue removes the
   variable (`env -u`), so an inherited value cannot skip 2b. The default is a FULL verify.
   `verify.sh` skips stage 2b only when ALL hold: the flag is 1; `git merge-base --all HEAD main`
@@ -199,11 +201,11 @@ can affect. The full suite runs only in the queued verify. A focused run of name
 - Limits: a new semgrep binary changes no path, so only a full verify sees it. A mid-file read
   error of the just-written changed-path file looks like end of file in bash, so the paths read so
   far decide; a failed open runs 2b.
-- Main: `ff-main.sh` refuses a verify line whose 7th field is not `full` (exit 2). A main-bound
-  set therefore gets a verify with no flag; `--scoped` belongs to a track verify. Forgetting the
-  flag on a track costs the 2b time, measured at 620 to 889 s. The skip rate is low for a merge (a
-  merge carries skill and harness commits that touch triggers), so the merge verify mostly runs in
-  full; the per-task verify is the one that skips.
+- Main: `ff-main.sh` refuses a verify line with a 7th field that is not `full` (exit 2).
+  A main-bound set therefore gets a verify with no flag; `--scoped` belongs to a track verify.
+  Forgetting the flag on a track costs the 2b time, measured at 620 to 889 s. The skip rate is
+  low for a merge (a merge carries skill and harness commits that touch triggers), so the merge
+  verify mostly runs in full; the per-task verify is the one that skips.
 - Track rule: a track goes on with its next task while its verify waits and runs. `--sha` names
   the commit (the worktree may be dirty or moved); with no `--sha` the worktree HEAD at enqueue is
   tested and a dirty worktree is refused. On a failure of sha S a fresh developer fixes on top of
