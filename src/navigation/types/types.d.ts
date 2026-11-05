@@ -340,6 +340,7 @@ export type SettingsStackParamList = {
   Settings: undefined;
   System: undefined;
   Categories: undefined;
+  CategoryReview: undefined;
   // No key: a new category; a key opens that category with its rules.
   CategoryForm: { categoryKey?: string; draft?: CategoryFormDraft };
   // No `ruleId`: a new rule for the category.

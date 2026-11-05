@@ -10,7 +10,7 @@ import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import type { ReviewCandidate, StoredCategoryRule } from '@kiko/categories/category-rules';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
-type ReviewScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Categories'>;
+type ReviewScreenProps = NativeStackScreenProps<SettingsStackParamList, 'CategoryReview'>;
 type ReadKind = 'candidates' | 'rules' | 'categories';
 type CategoryData = { key: string; title: string; icon: string; color: string | null };
 type Preview = { count: number; names: string[] };
@@ -87,7 +87,7 @@ const renderReview = () => {
   return render(
     <Review
       navigation={asNavigationProp<ReviewScreenProps['navigation']>(navigation)}
-      route={asRouteProp<ReviewScreenProps['route']>('Categories')}
+      route={asRouteProp<ReviewScreenProps['route']>('CategoryReview')}
     />,
   );
 };
