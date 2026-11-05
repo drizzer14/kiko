@@ -140,7 +140,10 @@ project-level pointer to this section.
   committing, and keep only inserted lines.
 - A pure rule several features need lives in a folder whose own barrel
   exports it (`src/holdings/account-currency`), never a sub-barrel of a
-  plain feature: the import is denied as alias-skips-barrel.
+  plain feature: the import is denied as alias-skips-barrel. The settings barrel is read
+  widely, so a module that `@kiko/settings` loads by value never reaches
+  `@kiko/recurring/detection`; a list both need goes in a leaf such as
+  `src/recurring/recurring-periods`.
 - Bundle migrations into the app and apply them on launch through
   `src/db/run-migrations.ts` — NOT drizzle's own
   `drizzle-orm/op-sqlite/migrator` + `useMigrations`, which misreads
@@ -1428,7 +1431,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   migration leaves as REAL (exponent, >= 1e21) alone, bounds an import-key
   amount token to int64, and returns the same object and byte-identical
   matchers text when nothing is rescaled; pinned by
-  `src/data-transfer/snapshot/with-usdt-rescaled.test.ts`.
+  `src/data-transfer/snapshot/with-usdt-rescaled.test.ts`. The rescale reads no settings
+  column, so a future scale change of a currency must also rewrite the marks in the recurring
+  merchant choices map (`src/settings/recurring-merchant-choices.ts`), which store minor units.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose

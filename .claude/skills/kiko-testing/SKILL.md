@@ -67,7 +67,8 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   entries (`hookStateOf`, with the `MarkedNames` type), made of the real detection functions.
 - `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
   real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
-  `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and the rows of a `ledgerOf` ledger put into it.
+  `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and
+  the rows of a `ledgerOf` ledger put into it.
 - `form-header-items.ts`: the nav-bar items a form sets (`pressSave`, `saveItem`,
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
@@ -269,7 +270,9 @@ test from being decorative.
   geometry (whether a `hitSlop` or `minHeight`-grown touch target is reachable on the device). A
   fix for either needs a real-navigator test (see
   `src/navigation/root-navigator/statement-import-return.navigator.test.tsx`) or a device check;
-  a green Jest assertion on a prop is never proof the real behavior is fixed. An accessible iOS
+  a green Jest assertion on a prop is never proof the real behavior is fixed. A navigator flow
+  where a write must change what Back shows runs the real `useLiveQuery` through
+  `src/test-support/sqlite-live-query.ts`. An accessible iOS
   `Pressable` groups its children into one VoiceOver element, and RNTL `getByLabelText` still
   finds the inner control: device-check a control inside a pressable row with VoiceOver.
 - The time zone is pinned by a top-level assignment in `jest.config.js` only. Jest gives each test
