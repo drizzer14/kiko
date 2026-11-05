@@ -71,12 +71,9 @@ export const useReviewActions = () => {
   }, [t]);
   const { onPress: submit, isSubmitting } = useSubmitOnce(run);
 
-  // The job is handed over through a ref, so a tap `useSubmitOnce` ignores must not leave it there
-  // for the next one to find.
   const start = (job: Job): void => {
     jobRef.current = job;
     submit();
-    jobRef.current = null;
   };
 
   const pick = (category: string): void => {

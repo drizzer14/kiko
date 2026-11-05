@@ -29,8 +29,9 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-// The line buttons are disabled while a pick runs, so a second pick can only land in the render
-// gap before they are: the guard of `useSubmitOnce` is what the hook itself relies on there.
+// The line buttons are disabled while a pick runs, but a tap on another line during the options
+// sheet's fade still gets past `disabled`, and that pick can be dropped or replace the waiting one:
+// the guard of `useSubmitOnce` is what the hook itself relies on while a write runs.
 describe('useReviewActions', () => {
   it('ignores a pick that lands while the write of another runs', async () => {
     let finishWrite: (changed: number) => void = () => {};
