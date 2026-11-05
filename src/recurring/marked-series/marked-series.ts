@@ -10,13 +10,13 @@ import {
   byNewestCharge,
   amountPiecesOf,
   seriesOfCharges,
-  RECURRING_PERIODS,
   markedRecurrenceOf,
 } from '@kiko/recurring/detection';
 import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
 import { startOfLocalDay } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
+import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
 
 export type MarkedEntry = { key: string; name: string; marks: readonly RecurringMark[] };
 

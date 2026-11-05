@@ -16,16 +16,13 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
-import {
-  type RecurringMark,
-  type RecurringPeriod,
-  RECURRING_PERIODS,
-} from '@kiko/recurring/detection';
 import { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
 import type { MarkedEntry } from '@kiko/recurring/marked-series';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { outcomeOf } from '@kiko/test-support/marked-series-world';
+import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
+import type { RecurringMark, RecurringPeriod } from '@kiko/recurring/detection';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { at, nowOf, chargeOf, ledgerOf } from '@kiko/test-support/recurring-ledger';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';

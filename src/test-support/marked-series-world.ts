@@ -4,7 +4,6 @@ import {
   type RecurringSeries,
   chargeGroupsOf,
   seriesOfGroups,
-  RECURRING_PERIODS,
 } from '@kiko/recurring/detection';
 import {
   type MarkedEntry,
@@ -15,6 +14,7 @@ import {
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
+import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
 
 import {
   type Ledger,

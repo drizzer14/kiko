@@ -205,15 +205,6 @@ const WEEKLY: PeriodRule = {
 
 const PERIOD_RULES: readonly PeriodRule[] = [WEEKLY, MONTHLY, YEARLY];
 
-/** The picker's order, which also settles a tie between two marks of one amount. */
-export const RECURRING_PERIODS: readonly RecurringPeriod[] = [
-  'weekly',
-  'monthly',
-  'everyThreeMonths',
-  'everySixMonths',
-  'yearly',
-];
-
 // How long after its last charge a series reads as stopped, grace included.
 const STOPPED_AFTER: Record<RecurringPeriod, { months: number; days: number }> = {
   // Two weeks and 3 days of grace.

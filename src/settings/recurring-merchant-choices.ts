@@ -1,7 +1,8 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { isCurrency } from '@kiko/currency/currency';
-import { type RecurringMark, RECURRING_PERIODS } from '@kiko/recurring/detection';
+import type { RecurringMark } from '@kiko/recurring/detection';
+import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
 
 /**
  * What the user chose for one merchant key: the last spelling they saw, that its detected series
