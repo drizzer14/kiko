@@ -91,6 +91,7 @@ const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
 const mockApplyNameRule = jest.fn();
+const mockPreviewNameRule = jest.fn();
 const mockSetCategory = jest.fn();
 const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
@@ -150,6 +151,7 @@ jest.mock('@kiko/categories/repo', () => ({
 jest.mock('@kiko/categories/category-rules-repo', () => ({
   categoryRulesRepo: {
     applyNameRule: (...args: unknown[]) => mockApplyNameRule(...args),
+    previewNameRule: (...args: unknown[]) => mockPreviewNameRule(...args),
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -4792,6 +4794,77 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
     });
     expect(navigation.goBack).not.toHaveBeenCalled();
     alertSpy.mockRestore();
+  });
+
+  describe('for a name that ends in a store number', () => {
+    const PREFIX_BUTTON = i18n.t('forms.transaction.applyToAllStartingWith', { prefix: 'ATB' });
+    const MOVE = i18n.t('categoryRulePreview.confirm');
+    const BACK = i18n.t('categoryRulePreview.back');
+    const APPLY_TO_ALL_TITLE = i18n.t('forms.transaction.applyCategoryToAll');
+
+    const openPrefixConfirm = async (preview: { count: number; names: string[] }) => {
+      mockPreviewNameRule.mockResolvedValue(preview);
+      mockApplyNameRule.mockResolvedValue(preview.count);
+      setLiveData(HOLDINGS, { ...ROW, description: 'ATB 0212' });
+
+      const utils = await renderEdit('txn-1');
+      await pickCategory(utils, 'Dining');
+      await pressSave(navigation.setOptions);
+      await fireEvent.press(utils.getByText(PREFIX_BUTTON));
+      await waitFor(() => expect(utils.getByText(BACK)).toBeTruthy());
+
+      return utils;
+    };
+
+    it('previews the rule with the edited row, and writes nothing before Move', async () => {
+      const utils = await openPrefixConfirm({ count: 3, names: ['ATB 0212', 'ATB 0340'] });
+
+      expect(mockPreviewNameRule).toHaveBeenCalledWith({
+        text: 'ATB',
+        kind: 'nameStartsWith',
+        category: 'dining',
+        sourceTransactionId: 'txn-1',
+      });
+      expect(utils.getByText(/3 transactions move to .Dining./)).toBeTruthy();
+      expect(utils.queryByText(APPLY_TO_ALL_TITLE)).toBeNull();
+      expect(mockApplyNameRule).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('writes the prefix rule when Move is pressed, and Back writes nothing', async () => {
+      const utils = await openPrefixConfirm({ count: 3, names: ['ATB 0212', 'ATB 0340'] });
+
+      await fireEvent.press(utils.getByText(BACK));
+
+      expect(mockApplyNameRule).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(utils.getByText(APPLY_TO_ALL_TITLE)).toBeTruthy();
+      expect(utils.queryByText(MOVE)).toBeNull();
+
+      await fireEvent.press(utils.getByText(PREFIX_BUTTON));
+      await waitFor(() => expect(utils.getByText(MOVE)).toBeTruthy());
+      await fireEvent.press(utils.getByText(MOVE));
+
+      await waitFor(() =>
+        expect(mockApplyNameRule).toHaveBeenCalledWith({
+          name: 'ATB',
+          kind: 'nameStartsWith',
+          category: 'dining',
+          sourceTransactionId: 'txn-1',
+        }),
+      );
+      expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+
+    it('titles the step Add Rule when no existing transaction moves', async () => {
+      const utils = await openPrefixConfirm({ count: 0, names: [] });
+
+      expect(utils.getByText(i18n.t('categoryRulePreview.addTitle'))).toBeTruthy();
+      expect(utils.getByText(i18n.t('categoryRulePreview.add'))).toBeTruthy();
+      expect(utils.queryByText(i18n.t('categoryRulePreview.confirmTitle'))).toBeNull();
+      expect(utils.queryByText(MOVE)).toBeNull();
+    });
   });
 });
 

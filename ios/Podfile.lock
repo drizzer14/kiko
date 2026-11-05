@@ -2393,7 +2393,7 @@ PODS:
   - SocketRocket (0.7.1):
     - ReactNativeDependencies
   - SwiftUIIntrospect (1.3.0)
-  - Unistyles (3.3.0):
+  - Unistyles (3.6.0):
     - hermes-engine
     - NitroModules
     - RCTRequired
@@ -2845,7 +2845,7 @@ SPEC CHECKSUMS:
   RNWorklets: 730401e5124f1e9974bbb759d0e9508a9e48e7ea
   SocketRocket: d57b1af80c029e12a75cd9b218287c67381e4593
   SwiftUIIntrospect: fee9aa07293ee280373a591e1824e8ddc869ba5d
-  Unistyles: ae4b7b729e16d1287a6a6e7687d1e0b356f40815
+  Unistyles: 3293325b830530df371957b60899d1beebbff714
   Yoga: 9ddcb167a9925a24e745b8548de3b77c69828931
 
 PODFILE CHECKSUM: 7cf9d805d64eeb0c9b77ff1294a5d926e279ca18

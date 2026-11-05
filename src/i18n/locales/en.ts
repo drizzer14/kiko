@@ -189,6 +189,9 @@ export const en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Loan interest',
+    // The twelfth default category, seeded by its own later migration — hotels, travel agencies,
+    // airlines and airports file under this key.
+    travel: 'Travel',
     // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',
@@ -295,6 +298,22 @@ export const en = {
     message_other: 'This changes {{count}} transactions.',
     applyToExisting: 'Apply to existing',
     newOnly: 'New transactions only',
+  },
+  categoryRulePreview: {
+    add: 'Add',
+    addTitle: 'Add Rule',
+    back: 'Back',
+    confirm: 'Move',
+    confirmTitle: 'Move Transactions',
+    // English defines every plural form so both catalogues carry the same keys (Ukrainian selects
+    // all four). The names text is a quoted list or the list with its own rest phrase. The names
+    // follow a second sentence, so the value is not read as a "Label: {{value}}" fragment.
+    moveMessage_one: '{{count}} transaction moves to "{{category}}". Names: {{names}}.',
+    moveMessage_few: '{{count}} transactions move to "{{category}}". Names: {{names}}.',
+    moveMessage_many: '{{count}} transactions move to "{{category}}". Names: {{names}}.',
+    moveMessage_other: '{{count}} transactions move to "{{category}}". Names: {{names}}.',
+    namesAndMore: '{{names}}, and {{count}} more',
+    noRowsMessage: 'No existing transactions move. New ones will go to "{{category}}".',
   },
   forms: {
     // Field labels reused across two or more of the forms below (the account,
@@ -625,6 +644,7 @@ export const en = {
       applyCategoryMessage:
         'Apply "{{category}}" to all transactions named "{{name}}"? This also applies to future imports.',
       applyCategoryToAll: 'Apply Category to All',
+      applyToAllStartingWith: 'All starting with "{{prefix}}"',
       applyToThisOne: 'Just for this one',
       category: 'Category',
       categorySheetTitle: 'Category',
@@ -1131,7 +1151,7 @@ export const en = {
           '2': 'Tap "Add rule" and set a condition on the name, the amount, or the time. Tap "Add condition" for more; a transaction must match them all.',
           '3': 'Tap "Save". If existing transactions match, choose "Apply to existing" or "New transactions only".',
           '4': 'Rules also sort the transactions you import or sync later.',
-          '5': 'When you change the category of a transaction and choose "Apply", Kiko adds a rule for its name.',
+          '5': 'When you change the category of a transaction and choose "Apply", Kiko adds a rule for its name. If the name ends in a store number, you can also apply to all names that start the same way.',
         },
         title: 'Set Categories Automatically',
       },
@@ -1261,7 +1281,7 @@ export const en = {
           '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
           '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',
           '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
-          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category. A row that sets the balance of an account, such as an opening balance, does not count as spending either.',
+          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category. A transaction that sets an account\'s balance, such as its initial value, does not count as spending either.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
         },
         title: 'Read Your Statistics',

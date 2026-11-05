@@ -294,6 +294,11 @@ project-level pointer to this section.
   pre-0063 source read of `transactions` selects
   `columnsWithout(getTableColumns(transactions), ..., 'operation')` (both in
   `src/test-support/real-sqlite.ts`).
+  A two-path file built by `readDataSnapshot` on a lower world plus an older-world helper
+  that adds `mccCategoriesBackfilled` is not a faithful older file: the reader writes the
+  mark key, so the restore treats it as a 1.4 file. A Travel pin of an older file deletes
+  the key from the JSON after the read (plan
+  `docs/superpowers/plans/2026-11-03-category-automation.md`, "Upgrade worlds").
 - **A NULL meaning replaced by a stored sentinel id is a kind-scoped
   data-only migration, mirrored on restore.** `0049` is hand-authored SQL
   with no snapshot: it sets `bank_id = 'other'` on `kind = 'bank'` rows
@@ -395,7 +400,7 @@ ONE worker thread" below) until it commits. A where-less
 `select().from(<table>)` inside it reads the whole table and then filters in
 JS while every other read and write waits. Filter in SQL (`.where(...)`),
 read only the column you need (`selectDistinct`, as
-`rowIdsForNamedRule` in
+`rowsForNamedRule` in
 `src/categories/category-rules-repo/category-rules.repo.ts` does for descriptions), or bound it with
 `.limit(...)`. The one-row `settings` table is exempt. Mechanized as
 `kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
@@ -404,7 +409,10 @@ caught; that stays a review item. The rule cannot see a select inside a
 helper (for example `readAllRulesDatabaseTransaction`); such a read needs a
 `docs/harness/documented-exceptions.md` entry.
 A read of many rows inside a write pages by id-keyset (`rewriteBlankPageQuery` reads the blank
-rows so), never one whole-table select.
+rows so), never one whole-table select. The one-time MCC back-fill (`backfillIn` in
+`src/categories/category-rules-repo/backfill-mcc-categories.ts`) is the documented exception:
+see its entry in `docs/harness/documented-exceptions.md`. A new unpaged read needs its own
+entry there.
 
 ## The `useLiveQuery` pattern
 
@@ -807,12 +815,13 @@ legs by their markers (`exchange-exclusion.ts`), never by category.
 A name matcher reads `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`):
 the stored description, or for a blank one the label the row shows in the current language. Every
 apply path reads it so: the insert (`withCategoryRules`, which evaluates legs by their label), the
-rewrite and its count (`rowIdsRewrittenBy`), `giveSourceRowCategory`, and the form's
-`resolveRuleDescription`. A named rule's rewrite pages the blank rows by id-keyset
+rewrite and its count (`rowIdsRewrittenBy`), `planSourceRow` (the source row, shared by
+`giveSourceRowCategory` and the preview), and the form's `resolveRuleDescription`.
+A named rule's rewrite pages the blank rows by id-keyset
 (`rewriteBlankPageQuery`); a leg is rewritten like any row, and only the guard fields keep a
 row out. A leg is judged by its real label: `readHoldingLabels` (`category-rules.repo.ts`;
 every holding name and currency, read once per count or rewrite) feeds `withVisibleDescription`,
-and `giveSourceRowCategory` reuses it.
+and `planSourceRow` reuses it.
 A sync input that adopts its import twin is judged as the adopted row (`adoptedRowOf` in
 `src/transactions/repo/transactions.repo.ts`): with the twin's own exchange markers and operation
 when it keeps them (`keepsExchangeMarkers`), so a kept leg reads by its exchange label; the twin's
@@ -846,6 +855,10 @@ category the rules pre-selected saves flag 0 with no sheet; an edit is
 unchanged. Otherwise Apply rewrites every same-name row to a category the user
 never chose (`resolveCategoryOverrideRequest` in
 `src/screens/forms/transaction-form/category-rule/category-rule.ts`).
+When the name ends in a store number, the sheet also offers "All starting with X"
+(`merchantNameOf(...).prefix`): it first shows a confirm step with `previewNameRule`'s count (0
+reads title `Add Rule`, button `Add`), and only its "Move" or "Add" button writes the
+`nameStartsWith` rule through `applyNameRule({ kind })`.
 
 ## App-open and refresh work is gated on data presence
 
@@ -1360,7 +1373,12 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   BOTH paths that can produce a row missing it — the migration path itself
   and the restore/import path (`restoreDataSnapshot`) — never only one.
   Follow the `balanceSetAt` / `loan_interest` re-seed precedent above for the
-  next such column. `transactions.setsBalance` and
+  next such column. A mark-gated variant: `withTravelReseeded`
+  (`src/data-transfer/snapshot/restore-snapshot.ts`) re-adds `travel` only when the file's
+  settings row lacks the key `mccCategoriesBackfilled` (PRESENCE, not value), so a Travel
+  the user deleted in a 1.4 file stays deleted. A once-only mark is per data set, not per
+  device: a restore of an older file runs the one-time step again.
+  `transactions.setsBalance` and
   `holdings.balanceSetRowId` (migration 0047) follow it: a file whose
   rows carry no `setsBalance` key gets the migration's own marks and
   current-row ids (`withLegacyBalanceSetMarksDerived`); a row or holding
@@ -1479,6 +1497,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   no planner: a backup without the key restores the flag as `false`, and
   `importData` awaits `recostStoredLots()` right after the restore, before
   any screen reads the restored lots.
+  `App.tsx` then runs `useMccBackfill()`
+  (`src/categories/category-rules-repo/use-mcc-backfill.ts`) after `useLotRecost()`;
+  `backfillMccCategories` writes the mark `settings.mccCategoriesBackfilled` in the SAME
+  write as the rows, and `importData` (`src/data-transfer/import-data.ts`) calls the
+  back-fill after a restore.
 - **A migration that reassigns rows between tables gets the SAME
   restore-side mirror, run FIRST.** Migration 0044 moves a 1.0-era `cash`
   holding in a crypto currency onto a `crypto_asset` holding under a
@@ -1605,10 +1628,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   state). It is listed in `KEPT_FROM_LIVE_ON_RESTORE`, so a file never
   decides it, it needs no `EXPORT_VERSION` bump, and its reason is the
   `VERSION_DECISIONS` entry in `envelope.test.ts` (read it there).
-  Renaming an UNSHIPPED migration needs a new journal `when` in
-  `drizzle/migrations/meta/_journal.json`: drizzle skips any entry whose `when` is not
-  later than the last applied one, so a device that ran the old name never
-  runs the renamed file.
+  Renaming an UNSHIPPED migration needs no new `when`: the journal `when` in
+  `drizzle/migrations/meta/_journal.json` is bookkeeping only, and
+  `src/db/run-migrations.ts` gates on the COUNT of recorded rows. A device that ran the old
+  name already counts that entry as applied, so it never runs the renamed file's SQL; fix
+  such a device with a new migration, not a `when`.
 
 ## Pane navigation
 

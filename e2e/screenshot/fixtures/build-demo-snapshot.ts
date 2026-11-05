@@ -18,6 +18,11 @@ import type {
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
+import {
+  SEEDED_CATEGORIES,
+  LOAN_INTEREST_CATEGORY,
+  TRAVEL_CATEGORY,
+} from '@kiko/db/__fixtures__/seeded-categories';
 import type { DataSnapshot } from '@kiko/data-transfer';
 import { OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { entityColorsDark } from '@kiko/design-system/palette';
@@ -25,7 +30,6 @@ import { accountCurrencyOf } from '@kiko/holdings/account-currency';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
-import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { demoText } from '../seed/demo-text';
 import type { ScreenshotDataset } from '../seed/screenshot-seed';
@@ -59,6 +63,13 @@ const buildCategories = (): CategoryRow[] => {
       ...LOAN_INTEREST_CATEGORY,
       color: entityColorsDark.indigo,
       sortOrder: SEEDED_CATEGORIES.length,
+    },
+    // Seeded on a fresh install by its own later migration, colored systemTeal, so the reviewer
+    // finds the tile the hotel and airline codes map to.
+    {
+      ...TRAVEL_CATEGORY,
+      color: entityColorsDark.teal,
+      sortOrder: SEEDED_CATEGORIES.length + 1,
     },
   ];
 };
@@ -128,6 +139,9 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     // Every demo lot list is one buy, so the one-time recost has nothing to
     // change: `true` skips it on import, the same as a recosted device.
     lotsRecosted: true,
+    // No demo row holds an MCC code, so the one-time back-fill has nothing to move; `true` also
+    // marks the file as one this build wrote, so a restore keeps its category list as it is.
+    mccCategoriesBackfilled: true,
     // The column is unused, but a snapshot row still has to carry a value for it.
     dismissedTips: [],
   },

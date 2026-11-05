@@ -8,7 +8,7 @@ import { accountDisplayName, accountsForFilter } from '@kiko/holdings/implicit-a
 
 import { type CategorySlice, resolveCategoryColor } from '../category-breakdown';
 
-export type FilterScope = {
+type FilterScope = {
   optionAccounts: AccountRow[];
   /** The stored pick pruned against the options; empty means all. */
   visibleSelectedAccounts: Set<string>;

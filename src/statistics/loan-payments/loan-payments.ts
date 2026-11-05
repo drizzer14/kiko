@@ -108,7 +108,7 @@ export const loanPaymentExcludedTransactionIds = (
  * id `loan-excess:<txId>` and the payment row's own category instead.
  * Shaped as `TrendTransaction` (a superset of `BreakdownTransaction`) so the
  * SAME entries feed both `buildCategoryBreakdown` and the category trend
- * (statistics.screen.tsx): the id is `loan-interest:<txId>` (never collides
+ * (the Statistics-family screens): the id is `loan-interest:<txId>` (never collides
  * with a real transaction id), the category is the seeded `loan_interest`
  * key, and the amount is the interest as a NEGATIVE minor-units expense, in
  * the LOAN holding's own currency — `loanInterestPerPaymentMinor` computes

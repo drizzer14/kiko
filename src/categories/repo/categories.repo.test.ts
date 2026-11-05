@@ -597,4 +597,23 @@ describe('categories seed migration', () => {
     // schema's default sort_order 0.
     expect(sql).toMatch(/coalesce\(max\(`sort_order`\), -1\) \+ 1/i);
   });
+
+  it('seeds travel in its own, later, idempotent migration', () => {
+    const loanInterestMigration = migrationFiles().find(({ sql }) =>
+      sql.includes(`'${LOAN_INTEREST_CATEGORY.key}'`),
+    );
+    const travelMigration = migrationFiles().find(({ sql }) => sql.includes("'travel'"));
+    expect(loanInterestMigration).toBeDefined();
+    expect(travelMigration).toBeDefined();
+    const { name, sql } = travelMigration as { name: string; sql: string };
+
+    expect(name > (loanInterestMigration as { name: string }).name).toBe(true);
+    expect(name > seedMigration().name).toBe(true);
+    expect(sql).toContain('INSERT OR IGNORE INTO `categories`');
+    expect(sql).toContain("'Travel'");
+    expect(sql).toContain("'airplane'");
+    // entityColorsDark.teal, stored as the literal hex every seeded row stores.
+    expect(sql).toContain("'#40C8E0'");
+    expect(sql).toMatch(/coalesce\(max\(`sort_order`\), -1\) \+ 1/i);
+  });
 });

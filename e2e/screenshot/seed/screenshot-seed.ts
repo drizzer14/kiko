@@ -511,8 +511,27 @@ const P2P_FUNDING_MINOR_UNITS = 415_000;
 const CARD_FUNDING_MINOR_UNITS = 260_000;
 const FIAT_DEPOSIT_FUNDING_MINOR_UNITS = 10_000;
 
-// Raised by the two UAH funding debits, so the card keeps its end balance.
-const CARD_OPENING_MINOR_UNITS = 2_000_000 + P2P_FUNDING_MINOR_UNITS + CARD_FUNDING_MINOR_UNITS;
+// One merchant that writes a store number after its name, so the Apply sheet can offer the rule
+// for every name that starts the same way. The days are uneven and the rows span under three
+// weeks, so they cannot read as a monthly series.
+const STORE_NUMBER_MERCHANT = 'Varus';
+const STORE_NUMBER_PURCHASES = [
+  { storeNumber: '0212', amountMinorUnits: -27_450, daysAgo: 20 },
+  { storeNumber: '0340', amountMinorUnits: -41_900, daysAgo: 14 },
+  { storeNumber: '0212', amountMinorUnits: -18_320, daysAgo: 9 },
+];
+const STORE_NUMBER_PURCHASES_MINOR_UNITS = STORE_NUMBER_PURCHASES.reduce(
+  (total, purchase) => total - purchase.amountMinorUnits,
+  0,
+);
+
+// Raised by the two UAH funding debits and by the store-number purchases, so the card keeps its
+// end balance.
+const CARD_OPENING_MINOR_UNITS =
+  2_000_000 +
+  P2P_FUNDING_MINOR_UNITS +
+  CARD_FUNDING_MINOR_UNITS +
+  STORE_NUMBER_PURCHASES_MINOR_UNITS;
 // Raised by the fiat funding debit and by the three card purchases below, so Wise keeps its end
 // balance.
 const WISE_PURCHASES_MINOR_UNITS = 4_500 + 3_900 + 2_200;
@@ -585,6 +604,16 @@ const buildFoodDeliveryTransactions = (calendar: DemoCalendar, text: DemoText): 
     time: calendar.at(daysAgo),
     category: 'other',
     description,
+  }));
+
+// Three rows left in the default category under one merchant and two store numbers: the Apply
+// sheet offers "All starting with Varus" for a pick on any of them.
+const buildStoreNumberTransactions = (calendar: DemoCalendar): SeedTransaction[] =>
+  STORE_NUMBER_PURCHASES.map(({ storeNumber, amountMinorUnits, daysAgo }) => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category: 'other',
+    description: `${STORE_NUMBER_MERCHANT} ${storeNumber}`,
   }));
 
 // A debit stays in the default category: a matched debit leaves spending, so it is no spend to
@@ -664,6 +693,7 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
     ...list,
     ...buildCarLoanPayments(calendar, text),
     ...buildFoodDeliveryTransactions(calendar, text),
+    ...buildStoreNumberTransactions(calendar),
     ...buildExchangeFundingDebits(calendar),
   ];
 };

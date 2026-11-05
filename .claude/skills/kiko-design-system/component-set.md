@@ -129,6 +129,25 @@ new component can land between reviews of this skill:
   quickly (the common case, off the local op-sqlite worker) never
   flashes a spinner at all — readiness (`useDataReady`) itself is
   never delayed, only the visual spinner.
+- **DataTable** (`src/design-system/components/data-table/`) — a grid of money amounts: props
+  `{ columns, rows, caption, initialColumnIndex?, testID? }`, strings and display flags only (the
+  caller formats every amount). A fixed first column (at most 40% of the table's measured width, a
+  long label wraps in full), one vertical `ScrollView` holding the caption (scrolls away), the
+  header row (sticky through `stickyHeaderIndices={[1]}`, opaque `surface` ground), then the body;
+  the header follows the body's horizontal offset through reanimated's `useScrollOffset`, and a
+  horizontal scroll that turns on only when the columns overflow. Every width and row height comes
+  from `onLayout` (a hidden measuring layer for text widths; a row is `minHeight` of the taller
+  part, at least 44pt), never the window or the device type, so Dynamic Type is followed. Cell
+  text is a plain RN `Text` for `fontVariant: ['tabular-nums']`. One VoiceOver element per cell
+  (label, FULL value; role `button` and hint only with `onPress`); header cells are hidden; the
+  caption is the `summary`. `SummaryTable` does not fit: it is a label/value stack with no
+  columns, header, fixed column or scroll. The caller gives it a bounded height (Screen not
+  scrolling).
+  React Native's sticky header wrapper reads the raw scroll offset and has no content inset
+  handling (read from the code, not measured), so measure before you put this table under
+  `bleedTop` with an automatic inset. A `Pressable` that is only inert omits `disabled`, because
+  React Native then sets the disabled state and VoiceOver reads the element as dimmed; keep
+  `disabled` for a control that is temporarily unavailable.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
 - **Text** — the base text primitive reading the typography and tone
@@ -193,7 +212,8 @@ new component can land between reviews of this skill:
   ignores presses and reports `accessibilityState.busy`, and is NOT
   dimmed like `disabled` (the spinner already says why). A button whose
   press awaits a slow write (the transaction form's category-override
-  sheet: Apply and "Just for this one") passes its `useSubmitOnce`
+  sheet: Apply, "All starting with X", "Just for this one", and the
+  prefix confirm's Move/Add; each passes its own `useSubmitOnce`
   `isSubmitting` as `loading`, and the surface it sits on stays open
   until the write is done — never a hand-rolled spinner beside a button.
   `loading` alone blocks the presses, so a button that passes both props

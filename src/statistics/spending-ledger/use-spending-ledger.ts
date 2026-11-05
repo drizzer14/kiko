@@ -155,7 +155,6 @@ export const useSpendingLedger = (input: SpendingLedgerInput): SpendingLedger =>
       shownRows,
       breakdownTransactions,
       trendTransactions,
-      loanInterestRows,
       excludedTransactionIds,
     }),
     [
@@ -163,7 +162,6 @@ export const useSpendingLedger = (input: SpendingLedgerInput): SpendingLedger =>
       shownRows,
       breakdownTransactions,
       trendTransactions,
-      loanInterestRows,
       excludedTransactionIds,
     ],
   );
