@@ -22,6 +22,7 @@ availability risk for little.
 |---|---|---|---|---|
 | `api.monobank.ua` | `src/monobank/` (`X-Token` header) | yes — the personal bank token | **yes** | The token grants read access to every account and full statement history. |
 | `api.binance.com` | `src/crypto-sync/binance/binance.client.ts` (`X-MBX-APIKEY` header) | yes — the read-only API key | **yes** | A MITM reads the API key and the full `/api/v3/account` balance response, and can replay the captured signed request inside the 5 s `recvWindow`. The HMAC secret itself never crosses the wire (`binance.hmac.ts` signs locally). |
+| `api.bybit.com` | the Bybit client, `bybit.client.ts` (`X-BAPI-API-KEY` header) | yes — the read-only API key | **yes** | A MITM reads the API key and the balance responses, and can replay the captured signed request inside the 5 s `X-BAPI-RECV-WINDOW`. The secret itself never crosses the wire (the shared `signQuery` signs locally). `api.bytick.com` and `api.bybit.eu` are neither used nor pinned. |
 | `api.coingecko.com` | `src/rates/` (`coingecko`, `coingecko-history`) | no | no | Public BTC price quote, no auth header. Worst case an active MITM misreports the BTC price. |
 | `blockstream.info` | `src/crypto-sync/btc-wallet/btc-wallet.client.ts` | no | no | Public Esplora explorer, no auth header. Worst case an active MITM forges `chain_stats` and misreports the BTC balance. See the accepted risk on address disclosure below. |
 | `bank.gov.ua` | `src/rates/` (`nbu-history`, `nbu-rates`), `src/prices/nbu-metals`, `src/bonds/nbu-register` | no | no | Public NBU historical AND current fiat rates, no auth header. `nbu-rates` is the unpinned live fallback `rates-refresh.ts` reaches for only when the cert-pinned Monobank fiat fetch fails. `nbu-metals` reads the SAME two endpoints for precious-metal (XAU/XAG/XPT/XPD) prices, refreshed only for currently held metals (`metal-refresh.ts`). `nbu-register` reads a THIRD endpoint on the same host, the public securities register, to refresh the `bond_register` cache at most once per local day (`bond-register.repo.ts`'s `refreshBondRegisterIfStale`). |
@@ -44,11 +45,23 @@ availability risk for little.
 | intermediate | `C=US, O=DigiCert Inc, CN=GeoTrust TLS RSA CA G1` | 2027-11-02 | `SDG5orEv8iX6MNenIAxa8nQFNpROB/6+llsZdXHZNqs=` | yes — backup |
 | root | `C=US, O=DigiCert Inc, CN=DigiCert Global Root G2` | 2038-01-15 | `i7WTqTvh0OioIruIfFR4kMPnBqrS2rdiVPl/s2uC/CY=` | yes — primary |
 
+`api.bybit.com` — first pinned 2026-11-05 (same Amazon chain as `api.monobank.ua`, behind CloudFront):
+
+| Role | Subject | Expires | SPKI-SHA256 (base64) | Pinned |
+|---|---|---|---|---|
+| leaf | `CN=*.bybit.com` | 2027-02-24 | `swOm16kGGgCW5SqgfIfKhbgrV19O5YdI3S1+Jx+WaYc=` | no (renews) |
+| intermediate | `C=US, O=Amazon, CN=Amazon RSA 2048 M01` | 2030-08-23 | `DxH4tt40L+eduF6szpY6TONlxhZhBd+pJ9wbHlQ2fuw=` | yes — backup |
+| root | `C=US, O=Amazon, CN=Amazon Root CA 1` | 2037-12-31 | `++MBgDH5WGvL9Bcn5Be30cRcL0f5O+NyoXuWtQdX1aI=` | yes — primary |
+
+Amazon rotates intermediates, so a new one is covered by the root pin and the backup refreshes at
+the next release; a move to another CA replaces both pins. The host sits behind CloudFront, so a
+CA move is possible without notice: the pins fail closed, and the text is the network failure.
+
 ### What breaks if the pins go stale
 
 Monobank: every Monobank request fails closed with a TLS error
 (`useSync`/`useAutoSync` surface it as a failed sync; no data leaves the
-device). Binance: the crypto sync's Binance provider fails the same way; the
+device). Binance and Bybit: the crypto sync's provider of each fails the same way; the
 BTC-wallet provider, CoinGecko price sync, and NBU history keep working. The
 key never crosses an untrusted chain: fail closed is the intended mode in every
 case.
@@ -62,7 +75,7 @@ and immediately if a sync starts failing with a TLS error.
 
    ```bash
    cd "$(mktemp -d)"
-   for host in api.monobank.ua api.binance.com; do
+   for host in api.monobank.ua api.binance.com api.bybit.com; do
      echo "== $host"
      openssl s_client -connect "$host:443" -servername "$host" -showcerts </dev/null 2>/dev/null > chain.pem
      awk 'BEGIN{n=0} /BEGIN CERT/{n++} {print > ("cert" n ".pem")}' chain.pem
@@ -84,7 +97,7 @@ and immediately if a sync starts failing with a TLS error.
    (or stays on) a CA with rotating intermediates, such as Let's Encrypt, pin
    two roots instead.
 4. Positive check: on device, Monobank sync succeeds AND a Binance sync
-   succeeds.
+   succeeds AND, once Bybit ships, a Bybit sync succeeds.
 5. Negative check: temporarily corrupt one character in BOTH of a host's pins,
    rebuild, confirm that host's sync fails with a TLS error while the other
    hosts' still succeed, then revert.
@@ -92,11 +105,11 @@ and immediately if a sync starts failing with a TLS error.
    query parameter) means adding it here AND to
    `NSPinnedDomains`. `npm run check:plist` fails the build if you forget.
    A client that sends the credential as the `api_token` query parameter or
-   in a header (`X-Token`, `X-MBX-APIKEY`) must also send the
+   in a header (`X-Token`, `X-MBX-APIKEY`, `X-BAPI-API-KEY`) must also send the
    `Cache-Control: no-store` request header, so NSURLCache never writes the
    key-bearing URL or request to `Cache.db`; `npm run check:plist` fails
    without it. Every Monobank request (the public `/bank/currency` one
-   included) and every Binance request sends it. Every build before the
+   included), every Binance request and every Bybit request sends it. Every build before the
    fix (up to 27) stored the X-Token in `Cache.db`, so
    `AppDelegate.purgeStoredURLCacheOnce` clears the shared URL cache once
    per install, at launch (a `UserDefaults` once-key). Known limit:
