@@ -33,6 +33,7 @@ const unsweptLists = (file: string): string[] => {
 describe('property sweep sites', () => {
   it('finds exactly the seed-list test files', () => {
     expect(seedSites()).toEqual([
+      'src/categories/category-rules/plan-review-groups.test.ts',
       'src/crypto-sync/binance/binance.convert-history.properties.test.ts',
       'src/crypto-sync/binance/binance.dust-history.properties.test.ts',
       'src/crypto-sync/binance/binance.fiat-history.properties.test.ts',
