@@ -40,6 +40,7 @@ import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import NoticeBanner from '@kiko/design-system/components/notice-banner';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
 import { keyExpiryStateOf, walletLabelOf } from '@kiko/crypto-sync/bybit';
@@ -62,6 +63,7 @@ import {
   p2pReadFailed,
   walkCursorsOf,
 } from './binance-history-status';
+import { conflictingExchangeHoldings } from './conflicting-exchange-holdings';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
@@ -217,6 +219,7 @@ const NotImportedLine: FC<NotImportedLineProps> = ({ counts, exchange }) => {
 
 type ConnectExchangeProps = {
   account: AccountRow;
+  holdings: HoldingRow[];
   onConnectWallet: (address: string) => Promise<boolean>;
   onConnectBinance: () => Promise<boolean>;
 };
@@ -227,6 +230,7 @@ type ConnectExchangeProps = {
 // own branches stay under the complexity budget.
 const ConnectExchange: FC<ConnectExchangeProps> = ({
   account,
+  holdings,
   onConnectWallet,
   onConnectBinance,
 }) => {
@@ -243,6 +247,12 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
     label: exchangeLabelOf(entry, t),
     captions: [t(entry.captionKey)],
   }));
+  // The pick is refused, and its form never shown, while the account keeps another provider's
+  // holdings: a disconnect keeps their keys, so they would read as synced with no sync behind
+  // them.
+  const isRefused =
+    shownId !== undefined && conflictingExchangeHoldings(shownId, holdings).length > 0;
+  const shownLabel = providerSheetEntries.find((entry) => entry.id === shownId)?.label ?? '';
 
   return (
     <>
@@ -258,12 +268,19 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
         </Button>
       ) : (
         <Box gap={2}>
-          <CryptoSyncForm
-            accountId={account.id}
-            source={shownId}
-            onConnectWallet={onConnectWallet}
-            onConnectBinance={onConnectBinance}
-          />
+          {isRefused ? (
+            <NoticeBanner
+              message={t('accountDetail.exchangeSwitchRefused', { exchange: shownLabel })}
+              testID="exchange-switch-refused"
+            />
+          ) : (
+            <CryptoSyncForm
+              accountId={account.id}
+              source={shownId}
+              onConnectWallet={onConnectWallet}
+              onConnectBinance={onConnectBinance}
+            />
+          )}
 
           {/* Hidden when the bank id itself names the provider: the live bank id would put the
               same pick straight back, so pressing it would visibly change nothing. */}
@@ -513,6 +530,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
       <ConnectExchange
         account={account}
+        holdings={holdings}
         onConnectWallet={connectWallet}
         onConnectBinance={connectBinance}
       />

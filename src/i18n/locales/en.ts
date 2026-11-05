@@ -881,6 +881,8 @@ export const en = {
       'Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync.',
     exchangeP2pReadFailed:
       '{{exchange}} P2P orders could not be read on the last sync. Kiko will try again on the next sync.',
+    exchangeSwitchRefused:
+      '{{exchange}} cannot connect here because this account still holds holdings of another exchange or wallet. Add a new crypto account, or delete those holdings first.',
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',

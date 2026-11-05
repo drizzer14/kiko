@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
-import type { AccountRow } from '@kiko/db';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
 import { type ExchangeCatalogId, exchangeCatalog } from '@kiko/crypto-sync/exchange-catalog';
 
@@ -81,10 +81,15 @@ const cryptoAccount = (overrides: Partial<AccountRow> = {}): AccountRow => ({
   ...overrides,
 });
 
-const renderSection = (overrides: Partial<AccountRow> = {}) =>
-  render(<CryptoSyncSection account={cryptoAccount(overrides)} holdings={[]} />);
+const renderSection = (overrides: Partial<AccountRow> = {}, holdings: HoldingRow[] = []) =>
+  render(<CryptoSyncSection account={cryptoAccount(overrides)} holdings={holdings} />);
+
+const holdingKeyedBy = (field: string): HoldingRow =>
+  ({ id: `held-${field}`, metadata: { [field]: 'KEY', syncedAt: 1 } }) as HoldingRow;
 
 const CONNECT = 'Connect an exchange or wallet';
+const REFUSED_TAIL =
+  'cannot connect here because this account still holds holdings of another exchange or wallet. Add a new crypto account, or delete those holdings first.';
 
 describe('CryptoSyncSection — connecting a crypto account', () => {
   beforeEach(() => {
@@ -187,6 +192,110 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
 
     expect(mockAccountsRepoCall).not.toHaveBeenCalled();
     expect(mockSync).not.toHaveBeenCalled();
+  });
+
+  // O11: an account that still holds another exchange's holdings (kept after a disconnect) must
+  // not connect a provider whose sync would leave them reading as synced.
+  describe('an account that holds a Bybit holding', () => {
+    const bybitHoldings = [holdingKeyedBy('bybitAsset')];
+
+    it.each([
+      ['binance', 'binance-field', 'Binance'],
+      ['btc_wallet', 'wallet-field', 'Bitcoin wallet'],
+    ])(
+      'shows the refusal in place of the %s field when the bank id names it',
+      async (bankId, fieldLabel, name) => {
+        const { getByText, queryByLabelText, queryByText } = await renderSection(
+          { bankId },
+          bybitHoldings,
+        );
+
+        expect(getByText(`${name} ${REFUSED_TAIL}`)).toBeTruthy();
+        expect(queryByLabelText(fieldLabel)).toBeNull();
+        expect(queryByText('Change exchange or wallet')).toBeNull();
+      },
+    );
+
+    it.each([
+      ['binance', 'Binance'],
+      ['btc_wallet', 'Bitcoin wallet'],
+    ])('refuses a sheet pick of %s, keeps Change and writes nothing', async (id, name) => {
+      const { getByText, getByTestId, queryByLabelText } = await renderSection({}, bybitHoldings);
+
+      await fireEvent.press(getByText(CONNECT));
+      await fireEvent.press(getByTestId(`connect-exchange-option-${id}`));
+
+      expect(getByText(`${name} ${REFUSED_TAIL}`)).toBeTruthy();
+      expect(queryByLabelText('binance-field')).toBeNull();
+      expect(queryByLabelText('wallet-field')).toBeNull();
+      expect(getByText('Change exchange or wallet')).toBeTruthy();
+      expect(mockAccountsRepoCall).not.toHaveBeenCalled();
+      expect(mockSync).not.toHaveBeenCalled();
+    });
+
+    it('lets the user leave the refusal through Change exchange or wallet', async () => {
+      const { getByText, getByTestId, queryByText } = await renderSection({}, bybitHoldings);
+
+      await fireEvent.press(getByText(CONNECT));
+      await fireEvent.press(getByTestId('connect-exchange-option-binance'));
+      await fireEvent.press(getByText('Change exchange or wallet'));
+
+      expect(getByText(CONNECT)).toBeTruthy();
+      expect(queryByText(`Binance ${REFUSED_TAIL}`)).toBeNull();
+    });
+
+    it('refuses nothing on the Connect button alone, before any pick', async () => {
+      const { getByText, queryByText } = await renderSection({}, bybitHoldings);
+
+      expect(getByText(CONNECT)).toBeTruthy();
+      expect(queryByText(/cannot connect here/)).toBeNull();
+    });
+  });
+
+  // A Binance user is never stranded: nothing here changes for the holdings Binance and a wallet
+  // already keep, and a manual holding has no key.
+  describe('an account that holds Binance or manual holdings', () => {
+    const binanceHoldings = [holdingKeyedBy('binanceAsset')];
+    const manualHoldings = [{ id: 'manual', metadata: null } as HoldingRow];
+
+    it.each([
+      ['binance', 'binance-field'],
+      ['btc_wallet', 'wallet-field'],
+    ])(
+      'shows the %s field when the bank id names it, so Binance to wallet is open',
+      async (bankId, fieldLabel) => {
+        const { getByLabelText, queryByText } = await renderSection({ bankId }, binanceHoldings);
+
+        expect(getByLabelText(fieldLabel)).toBeTruthy();
+        expect(queryByText(/cannot connect here/)).toBeNull();
+      },
+    );
+
+    it.each([
+      ['binance', 'binance-field'],
+      ['btc_wallet', 'wallet-field'],
+    ])('connects a sheet pick of %s over Binance holdings', async (id, fieldLabel) => {
+      const { getByText, getByTestId, getByLabelText, queryByText } = await renderSection(
+        {},
+        binanceHoldings,
+      );
+
+      await fireEvent.press(getByText(CONNECT));
+      await fireEvent.press(getByTestId(`connect-exchange-option-${id}`));
+
+      expect(getByLabelText(fieldLabel)).toBeTruthy();
+      expect(queryByText(/cannot connect here/)).toBeNull();
+    });
+
+    it('connects over manual holdings', async () => {
+      const { getByLabelText, queryByText } = await renderSection(
+        { bankId: 'binance' },
+        manualHoldings,
+      );
+
+      expect(getByLabelText('binance-field')).toBeTruthy();
+      expect(queryByText(/cannot connect here/)).toBeNull();
+    });
   });
 
   it("titles the disconnect confirm with the registry's name and message", async () => {
