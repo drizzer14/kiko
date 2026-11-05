@@ -28,6 +28,18 @@ describe('the Bybit copy', () => {
     expect(uk.accountDetail.bybitKeyRefusedExpired).toMatch(/ключ і секрет лишаться ті самі/);
   });
 
+  it('the 10024 text states the code, in en and uk, and offers no other step', () => {
+    expect(en.accountDetail.bybitComplianceRefused).toMatch(/\(code 10024\)/);
+    expect(en.accountDetail.bybitComplianceRefused).not.toMatch(
+      /\b(try|create|connect|contact|use|switch|change|ask)\b/i,
+    );
+    expect(uk.accountDetail.bybitComplianceRefused).toMatch(/\(код 10024\)/);
+    expect(uk.accountDetail.bybitComplianceRefused).toMatch(/через вимоги регулятора/);
+    expect(uk.accountDetail.bybitComplianceRefused).not.toMatch(
+      /спробуйте|створіть|підключ|зверніться|використ|змініть/i,
+    );
+  });
+
   it('the borrowed line does not say a last balance exists', () => {
     expect(en.accountDetail.bybitCoinBorrowed).not.toMatch(/last balance/i);
     expect(en.accountDetail.bybitCoinBorrowed).toMatch(

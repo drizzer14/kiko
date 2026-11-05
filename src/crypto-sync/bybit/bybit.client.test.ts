@@ -129,6 +129,7 @@ describe('the refusal classes', () => {
     [10005, 'permission'],
     [131203, 'window'],
     [10010, 'ip'],
+    [10024, 'compliance'],
     [10028, 'notUnified'],
     [99999, 'unknown'],
   ])('reads code %i at HTTP 200 as the %s class and keeps the code', async (code, refusal) => {
@@ -227,6 +228,7 @@ describe('a refusal past the stored date', () => {
     [10005, 'permission'],
     [131203, 'window'],
     [10010, 'ip'],
+    [10024, 'compliance'],
     [10028, 'notUnified'],
   ])('keeps code %i as the %s class after the stored date', async (code, refusal) => {
     await expect(

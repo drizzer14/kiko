@@ -87,6 +87,7 @@ describe('the key expiry a Bybit balance read returns', () => {
     ['a rate refusal', new BybitRateLimitError(10006, 60_000)],
     ['a malformed answer', new BybitRefusalError('malformed')],
     ['an unknown refusal', new BybitRefusalError('unknown', 99999)],
+    ['a compliance refusal', new BybitRefusalError('compliance', 10024)],
     ['a lost network', new TypeError('Network request failed')],
   ])(
     'writes no entry when the key check failed with %s, so the stored one stays',

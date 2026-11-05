@@ -133,6 +133,7 @@ describe('the state a Bybit balance read returns', () => {
       ['a rate refusal', new BybitRateLimitError(10006, 60_000)],
       ['a malformed answer', new BybitRefusalError('malformed')],
       ['an unknown refusal', new BybitRefusalError('unknown', 99999)],
+      ['a compliance refusal', new BybitRefusalError('compliance', 10024)],
       ['a lost network', new TypeError('Network request failed')],
     ])('is not marked for %s, which says nothing of the key', async (_title, failure) => {
       const deps = makeDeps();
@@ -141,6 +142,38 @@ describe('the state a Bybit balance read returns', () => {
       const read = await bybitProvider.fetchBalances(deps, freshTarget());
 
       expect(stateAfter(read).balanceNotes).toEqual({ unified: {} });
+    });
+
+    it('tolerates a FUND wallet that answers 10024, logged by code and with no mark', async () => {
+      const { deps } = routedDeps({
+        [KEY_INFO_PATH]: okAnswer({}),
+        [UNIFIED_PATH]: okAnswer(unifiedResult([unifiedCoin('BTC', '1')])),
+        [FUND_PATH]: refusalAnswer(10024),
+      });
+
+      const read = await bybitProvider.fetchBalances(
+        deps,
+        freshTarget([heldHolding('BTC:fund', 7)]),
+      );
+
+      expect(keysOf(read)).toEqual(['BTC:unified']);
+      expect(stateAfter(read).balanceNotes).toEqual({ unified: {} });
+      expect(warn).toHaveBeenCalledWith('[bybit sync] skipped the fund wallet', {
+        name: 'BybitRefusalError',
+        code: 10024,
+      });
+    });
+
+    it('fails the sync with the compliance text when UNIFIED answers 10024', async () => {
+      const { deps } = routedDeps({
+        [KEY_INFO_PATH]: okAnswer({}),
+        [UNIFIED_PATH]: refusalAnswer(10024),
+        [FUND_PATH]: okAnswer(fundResult([])),
+      });
+
+      await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toThrow(
+        i18n.t('accountDetail.bybitComplianceRefused'),
+      );
     });
 
     it('fails the sync with no state when UNIFIED is the wallet refused', async () => {

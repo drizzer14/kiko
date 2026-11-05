@@ -798,6 +798,8 @@ export const en = {
       "Bybit refused the request because this device's clock is off. Turn on Set Automatically in Date & Time settings.",
     bybitCoinBorrowed:
       '{{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync.',
+    bybitComplianceRefused:
+      'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
     bybitForbidden:
       'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits 10 minutes before trying again.',
     bybitKeyEnded:

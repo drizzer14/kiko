@@ -48,6 +48,7 @@ export type BybitRefusalClass =
   | 'permission'
   | 'window'
   | 'ip'
+  | 'compliance'
   | 'notUnified'
   | 'unknown'
   | 'malformed';
@@ -101,6 +102,7 @@ const failureOfCode = (code: number): Failure => ({
     .with(131203, () => 'window')
     .with(P.union(10006, 10018), () => 'rate')
     .with(10010, () => 'ip')
+    .with(10024, () => 'compliance')
     .with(10028, () => 'notUnified')
     .otherwise(() => 'unknown'),
 });
@@ -159,7 +161,17 @@ const errorOf = (failure: Failure, response: Response, options: BybitReadOptions
         ),
     )
     .with(
-      P.union('expired', 'clock', 'sign', 'permission', 'window', 'ip', 'notUnified', 'malformed'),
+      P.union(
+        'expired',
+        'clock',
+        'sign',
+        'permission',
+        'window',
+        'ip',
+        'compliance',
+        'notUnified',
+        'malformed',
+      ),
       (refusal) => new BybitRefusalError(refusal, failure.code),
     )
     .exhaustive();

@@ -21,6 +21,7 @@ const textOfRefusal = (refusal: BybitRefusalClass, code: number | undefined): st
     .with('rejected', () => i18n.t('accountDetail.bybitKeyRefused'))
     .with('clock', () => i18n.t('accountDetail.bybitClockOff'))
     .with('permission', () => i18n.t('accountDetail.bybitKeyMissingPermission'))
+    .with('compliance', () => i18n.t('accountDetail.bybitComplianceRefused'))
     .with('malformed', () => i18n.t('accountDetail.bybitMissingBalances'))
     .with(P.union('sign', 'window', 'ip', 'notUnified', 'unknown'), () => generic(code))
     .exhaustive();

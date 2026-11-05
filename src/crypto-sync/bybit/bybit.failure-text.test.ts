@@ -16,6 +16,7 @@ describe('bybitFailureOf', () => {
     ['sign', 10004, 'accountDetail.bybitRequestFailed', { code: 10004 }],
     ['window', 131203, 'accountDetail.bybitRequestFailed', { code: 131203 }],
     ['ip', 10010, 'accountDetail.bybitRequestFailed', { code: 10010 }],
+    ['compliance', 10024, 'accountDetail.bybitComplianceRefused', {}],
     ['notUnified', 10028, 'accountDetail.bybitRequestFailed', { code: 10028 }],
     ['unknown', 99999, 'accountDetail.bybitRequestFailed', { code: 99999 }],
   ] as const)('gives the %s class its own text', (refusal, code, key, values) => {
@@ -82,6 +83,9 @@ describe('bybitFailureOf', () => {
       );
       expect(textOf(bybitFailureOf(new BybitRefusalError('clock', 10002)))).toContain(
         'годинник цього пристрою неточний',
+      );
+      expect(textOf(bybitFailureOf(new BybitRefusalError('compliance', 10024)))).toBe(
+        i18n.t('accountDetail.bybitComplianceRefused'),
       );
     });
   });
