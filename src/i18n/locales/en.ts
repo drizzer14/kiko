@@ -876,6 +876,8 @@ export const en = {
       'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
     bybitForbidden:
       'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits before trying again, up to 10 minutes.',
+    bybitHistoryDense:
+      'Bybit lists too many records within one second on {{date}}. Kiko cannot read past them, so later trades or Funding moves stay out, and the past of your net worth can be off by those amounts.',
     bybitKeyEnded:
       'Bybit key ended on {{date}}. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
     // English defines every plural form so both catalogues carry the same keys.
@@ -899,6 +901,17 @@ export const en = {
     // The first sentences are the kinds Kiko reads; the rest is what stays wrong.
     bybitKinds:
       "Kiko reads your balances (Unified, Funding, Flexible Savings, On-Chain Earn), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet's record. It does not read P2P orders, other Earn products, derivatives or loans. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses, airdrops, loans, stocks, card purchases and rewards, or moves to a sub-account. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit's Funding record lists them, and a move that looks like one it already has stays out. Kiko can also rarely count a move twice. The past of your net worth can be off by those amounts.",
+    bybitLogKind: {
+      bonuses: 'bonuses and airdrops',
+      convertEntries: 'convert and liquidation entries',
+      custody: 'custody entries',
+      derivatives: 'derivatives',
+      earn: 'Earn moves',
+      interestAndLoans: 'interest and loans',
+      other: 'other entries',
+      stocks: 'stocks',
+    },
+    bybitLogLeftOut: 'Unified log entries not imported: {{kinds}}.',
     bybitMissingBalances: 'Bybit account response did not contain a balances list',
     bybitRequestFailed: 'Bybit request failed: {{code}}',
     bybitRequestFailedNoCode: 'Bybit request failed.',

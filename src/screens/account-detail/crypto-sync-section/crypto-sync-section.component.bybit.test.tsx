@@ -2,6 +2,7 @@ import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
 import { i18n } from '@kiko/i18n/init';
+import { en } from '@kiko/i18n/locales';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { providerDisplayName } from '@kiko/crypto-sync/provider';
 
@@ -442,6 +443,185 @@ describe('the kinds line of a Bybit account', () => {
   });
 });
 
+const ALL_LOG_KINDS = [
+  'other',
+  'custody',
+  'stocks',
+  'earn',
+  'bonuses',
+  'interestAndLoans',
+  'convertEntries',
+  'derivatives',
+];
+
+describe('the left-out line of a Bybit account', () => {
+  it('names the kinds the log left out, in the order of the closed list, joined by commas', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {},
+      logKinds: ['other', 'stocks', 'derivatives'],
+    });
+
+    expect(
+      getByText('Unified log entries not imported: derivatives, stocks, other entries.'),
+    ).toBeTruthy();
+  });
+
+  it('gives each of the eight kinds its words', async () => {
+    const { getByText } = await renderState('bybit', { walks: {}, logKinds: ALL_LOG_KINDS });
+
+    expect([...ALL_LOG_KINDS].sort()).toEqual(Object.keys(en.accountDetail.bybitLogKind).sort());
+
+    expect(
+      getByText(
+        'Unified log entries not imported: derivatives, convert and liquidation entries, interest and loans, bonuses and airdrops, Earn moves, stocks, custody entries, other entries.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows no line while the log left out nothing', async () => {
+    const { queryByText } = await renderState('bybit', { walks: {}, logKinds: [] });
+
+    expect(queryByText('Unified log entries', { exact: false })).toBeNull();
+  });
+
+  it('names no kind this build does not know, and no line when it knows none', async () => {
+    const mixed = await renderState('bybit', { walks: {}, logKinds: ['mystery', 'earn'] });
+    const unknownOnly = await renderState('bybit', { walks: {}, logKinds: ['mystery'] });
+
+    expect(mixed.getByText('Unified log entries not imported: Earn moves.')).toBeTruthy();
+    expect(mixed.queryByText('mystery', { exact: false })).toBeNull();
+    expect(unknownOnly.queryByText('Unified log entries', { exact: false })).toBeNull();
+  });
+
+  it('is not shown while the state row is still loading', async () => {
+    mockSyncState = {
+      data: [{ exchangeState: JSON.stringify({ version: 1, walks: {}, logKinds: ['earn'] }) }],
+      isLoading: true,
+    };
+    const { queryByText } = await render(
+      <CryptoSyncSection account={accountOf('bybit')} holdings={[holdingOf('bybit')]} />,
+    );
+
+    expect(queryByText('Unified log entries', { exact: false })).toBeNull();
+  });
+
+  describe('in Ukrainian', () => {
+    inUkrainian();
+
+    it('gives the line and each kind in Ukrainian', async () => {
+      const some = await renderState('bybit', {
+        walks: {},
+        logKinds: ['other', 'stocks', 'derivatives'],
+      });
+      const every = await renderState('bybit', { walks: {}, logKinds: ALL_LOG_KINDS });
+
+      expect(
+        some.getByText(
+          'Записи журналу Unified, які не імпортовано: деривативи, акції, інші записи.',
+        ),
+      ).toBeTruthy();
+      expect(
+        every.getByText(
+          'Записи журналу Unified, які не імпортовано: деривативи, записи конвертацій і ліквідацій, відсотки й позики, бонуси й аірдропи, рухи коштів Earn, акції, записи кастоді, інші записи.',
+        ),
+      ).toBeTruthy();
+    });
+  });
+});
+
+describe('the dense line of a Bybit account', () => {
+  const DENSE_START = Date.UTC(2024, 0, 20, 12);
+  const DENSE_LINE =
+    'Bybit lists too many records within one second on 20.01.2024. Kiko cannot read past them, so later trades or Funding moves stay out, and the past of your net worth can be off by those amounts.';
+
+  it('replaces the pending caption while a mark stands, with the date of the mark', async () => {
+    const { getByText, queryByText } = await renderState('bybit', {
+      walks: {},
+      denseSpans: { log: DENSE_START },
+    });
+
+    expect(getByText(DENSE_LINE)).toBeTruthy();
+    expect(queryByText(PENDING_FRAGMENT, { exact: false })).toBeNull();
+  });
+
+  it('shows the pending caption again once the mark is gone', async () => {
+    const { getByText, queryByText } = await renderState('bybit', { walks: {}, denseSpans: {} });
+
+    expect(getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
+    expect(queryByText('too many records', { exact: false })).toBeNull();
+  });
+
+  it('shows once, with the earliest date, for a mark of each series', async () => {
+    const { getAllByText } = await renderState('bybit', {
+      walks: {},
+      denseSpans: { log: DENSE_START + 3 * DAY_MS, fundingLedger: DENSE_START },
+    });
+
+    expect(getAllByText(DENSE_LINE)).toHaveLength(1);
+  });
+
+  it('shows while the history is not behind, since the mark is a standing fact of the last run', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {
+        capital: { cursor: SYNCED_AT },
+        transfer: { cursor: SYNCED_AT },
+        log: { cursor: SYNCED_AT },
+        convert: { cursor: SYNCED_AT, pending: [] },
+      },
+      denseSpans: { log: DENSE_START },
+    });
+
+    expect(getByText(DENSE_LINE)).toBeTruthy();
+  });
+
+  it('is not shown while the state row is still loading', async () => {
+    mockSyncState = {
+      data: [
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            denseSpans: { log: DENSE_START },
+          }),
+        },
+      ],
+      isLoading: true,
+    };
+    const { queryByText } = await render(
+      <CryptoSyncSection account={accountOf('bybit')} holdings={[holdingOf('bybit')]} />,
+    );
+
+    expect(queryByText('too many records', { exact: false })).toBeNull();
+  });
+
+  it('keeps the Binance pending caption word for word', async () => {
+    const { getByText } = await renderState('binance', { walks: {} });
+
+    expect(
+      getByText(
+        'Some Binance transaction history is not imported yet. Kiko will keep importing on each sync.',
+      ),
+    ).toBeTruthy();
+  });
+
+  describe('in Ukrainian', () => {
+    inUkrainian();
+
+    it('gives the line in Ukrainian', async () => {
+      const { getByText } = await renderState('bybit', {
+        walks: {},
+        denseSpans: { log: DENSE_START },
+      });
+
+      expect(
+        getByText(
+          'Bybit показує забагато записів за одну секунду 20.01.2024. Кіко не може прочитати далі, тож пізніші угоди чи рухи коштів у Funding не показано, а минуле вашого капіталу може відрізнятися на ці суми.',
+        ),
+      ).toBeTruthy();
+    });
+  });
+});
+
 describe('a Binance or wallet account beside the Bybit lines', () => {
   const bybitFacts = {
     keyExpiry: { expiredAtMs: Date.UTC(2024, 0, 20, 12), readAtMs: NOW },
@@ -449,6 +629,8 @@ describe('a Binance or wallet account beside the Bybit lines', () => {
       unified: { borrowed: ['BTC'] },
       fund: { refused: true },
     },
+    logKinds: ['stocks', 'earn'],
+    denseSpans: { log: Date.UTC(2024, 0, 20, 12) },
   };
 
   it.each(['binance', 'btc_wallet'])(

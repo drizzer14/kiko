@@ -1,5 +1,7 @@
 import { en, uk } from '@kiko/i18n/locales';
 
+import { BYBIT_LOG_TYPES, kindOfLogRow } from './bybit.log-types';
+
 // The Bybit texts that name a route for the user, and the coin notes that say what a first sync
 // leaves out.
 const ENDED_KEYS = ['bybitKeyEnded', 'bybitKeyRefusedExpired'] as const;
@@ -107,6 +109,20 @@ describe('the Bybit copy', () => {
       );
     },
   );
+
+  it('names, in en and uk, every kind of log entry the walk leaves out, and no other', () => {
+    const wordsAndStrays = [...BYBIT_LOG_TYPES, 'NOT_ON_THE_PAGE'];
+    const leftOut = new Set([
+      ...wordsAndStrays.map((word) => kindOfLogRow(word, 'spot')),
+      kindOfLogRow('TRADE', 'linear'),
+    ]);
+
+    leftOut.delete('spotTrade');
+    leftOut.delete('coveredElsewhere');
+
+    expect(Object.keys(en.accountDetail.bybitLogKind).sort()).toEqual([...leftOut].sort());
+    expect(Object.keys(uk.accountDetail.bybitLogKind).sort()).toEqual([...leftOut].sort());
+  });
 
   it('the borrowed line does not say a last balance exists', () => {
     expect(en.accountDetail.bybitCoinBorrowed).not.toMatch(/last balance/i);

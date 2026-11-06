@@ -23,7 +23,9 @@ import { syncStateRepo } from '@kiko/sync-state';
 import {
   balanceNotesOf,
   balanceSyncedAtOf,
+  denseSpansOf,
   keyExpiryOf,
+  logKindsOf,
   type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,
@@ -182,6 +184,74 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
         </Text>
       ))}
     </>
+  );
+};
+
+// The kinds of log entry the log walk names and does not import, in the order of the closed list.
+// A kind the stored list holds that this build does not name is left out of the line.
+const logKindCopyKeys: [string, ParseKeys][] = [
+  ['derivatives', 'accountDetail.bybitLogKind.derivatives'],
+  ['convertEntries', 'accountDetail.bybitLogKind.convertEntries'],
+  ['interestAndLoans', 'accountDetail.bybitLogKind.interestAndLoans'],
+  ['bonuses', 'accountDetail.bybitLogKind.bonuses'],
+  ['earn', 'accountDetail.bybitLogKind.earn'],
+  ['stocks', 'accountDetail.bybitLogKind.stocks'],
+  ['custody', 'accountDetail.bybitLogKind.custody'],
+  ['other', 'accountDetail.bybitLogKind.other'],
+];
+
+// The entries of the transaction log the last reads met and did not import. Split out like
+// `CoinLines`.
+const LogLeftOutLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+  const met = logKindsOf(walkState);
+  const kinds = logKindCopyKeys.filter(([kind]) => met.includes(kind)).map(([, key]) => t(key));
+
+  if (loading || !hasKeyLines(provider) || kinds.length === 0) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {t('accountDetail.bybitLogLeftOut', { kinds: kinds.join(', ') })}
+    </Text>
+  );
+};
+
+type HistoryCaptionProps = KeyLinesProps & { isBehind: boolean; exchange: string };
+
+// The caption under the lines of a history that is not whole. A burst of records inside one second
+// that a read cannot pass stands in place of the pending caption, whose "will keep importing" does
+// not hold there. Its mark is a standing fact of the last run, so it needs no lag. Split out of the
+// section so its own branches stay under the complexity budget.
+const HistoryCaption: FC<HistoryCaptionProps> = ({
+  provider,
+  loading,
+  walkState,
+  isBehind,
+  exchange,
+}) => {
+  const { t } = useTranslation();
+  const [denseSince] = Object.values(denseSpansOf(walkState))
+    .filter((start): start is number => typeof start === 'number')
+    .sort((first, second) => first - second);
+
+  if (!loading && hasKeyLines(provider) && denseSince !== undefined) {
+    return (
+      <Text variant="caption" tone="textSecondary">
+        {t('accountDetail.bybitHistoryDense', { date: formatDate(denseSince) })}
+      </Text>
+    );
+  }
+
+  if (!isBehind) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {t('accountDetail.exchangeHistoryPending', { exchange })}
+    </Text>
   );
 };
 
@@ -468,6 +538,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             />
           )}
 
+          <LogLeftOutLine
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
+
           <BalanceNotesLines
             provider={connectedProvider}
             loading={syncStateLoading}
@@ -492,13 +568,13 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           )}
 
-          {historyBehind && (
-            <Text variant="caption" tone="textSecondary">
-              {t('accountDetail.exchangeHistoryPending', {
-                exchange: providerDisplayName(connectedProvider, t),
-              })}
-            </Text>
-          )}
+          <HistoryCaption
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+            isBehind={historyBehind}
+            exchange={providerDisplayName(connectedProvider, t)}
+          />
 
           <KindsLine provider={connectedProvider} />
 

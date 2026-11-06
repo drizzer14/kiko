@@ -1,6 +1,8 @@
 import { DAY_MS } from '@kiko/dates';
 import { sweep } from '@kiko/test-support/property-sweep';
 import { walkStateFake } from '@kiko/test-support/walk-marks';
+import { denseSpansOf } from '@kiko/crypto-sync/exchange/history-status';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
 import {
@@ -9,7 +11,11 @@ import {
   SECOND_MS,
   type WorldSlots,
   accountOf,
+  burstOfRows,
+  convertPagesOf,
   evenSlots,
+  logAndConvertAccountOf,
+  logRowOf,
   serveSlots,
 } from './bybit.convergence-test-fixtures';
 import { NOW } from './bybit.client-test-fixtures';
@@ -90,26 +96,42 @@ const accountOfSeed = (seed: number, beforeWrite?: () => void): Account => {
   return account;
 };
 
-type SettlingWalk = Account['capital'] | Account['transfer'];
+type LogAndConvertAccount = ReturnType<
+  typeof logAndConvertAccountOf<ReturnType<typeof walkStateFake>>
+>;
+
+type SettlingWalk =
+  | Account['capital']
+  | Account['transfer']
+  | LogAndConvertAccount['log']
+  | LogAndConvertAccount['convert'];
+
+// The convert walk reads its list through its own route, which records the page index of each
+// call; every other walk reads through the fake Bybit, which records each call.
+const callsOf = (walk: SettlingWalk): number =>
+  'indexes' in walk ? walk.indexes.length : walk.reads.length;
 
 /**
  * Run a walk, one run after another with the clock moving by `gap` between them, until a run is
- * complete. A run the test killed counts as a run and is not complete.
+ * complete or `maxRuns` have run. A run the test killed counts as a run and is not complete.
  */
-const settle = async (walk: SettlingWalk, gap: number) => {
+const settle = async (walk: SettlingWalk, gap: number, maxRuns = MAX_RUNS) => {
   let runs = 0;
   let killed = 0;
   let busiestRun = 0;
+  let isFinished = false;
   const cursors: number[] = [];
+  const callTotals: number[] = [];
+  // The most any run left in the owed lists: a bound on what the state holds, run by run.
+  const peaks = { pending: 0, points: 0, passOwed: 0 };
 
-  while (runs < MAX_RUNS) {
-    const before = walk.reads.length;
-    let complete = false;
+  while (runs < maxRuns && !isFinished) {
+    const before = callsOf(walk);
 
     runs += 1;
 
     try {
-      complete = (await walk.run()).complete;
+      isFinished = (await walk.run()).complete;
     } catch (error) {
       if (!(error instanceof Error) || error.message !== KILLED) {
         throw error;
@@ -118,17 +140,32 @@ const settle = async (walk: SettlingWalk, gap: number) => {
       killed += 1;
     }
 
-    busiestRun = Math.max(busiestRun, walk.reads.length - before);
+    busiestRun = Math.max(busiestRun, callsOf(walk) - before);
     cursors.push(Number(walk.marks().cursor ?? 0));
+    callTotals.push(callsOf(walk));
 
-    if (complete) {
-      break;
+    const { pending = [], passOwed = [] } = walk.marks() as {
+      pending?: { kind?: string }[];
+      passOwed?: unknown[];
+    };
+
+    peaks.pending = Math.max(peaks.pending, pending.length);
+    peaks.points = Math.max(peaks.points, pending.filter(({ kind }) => kind === 'point').length);
+    peaks.passOwed = Math.max(peaks.passOwed, passOwed.length);
+
+    if (!isFinished) {
+      walk.clock.now += gap;
     }
-
-    walk.clock.now += gap;
   }
 
-  return { runs, calls: walk.reads.length, killed, busiestRun, cursors };
+  return { runs, calls: callsOf(walk), killed, busiestRun, cursors, callTotals, isFinished, peaks };
+};
+
+/** The runs and calls it took the forward cursor to reach the clock of the first run. */
+const untilForwardEnd = ({ cursors, callTotals }: Awaited<ReturnType<typeof settle>>) => {
+  const run = cursors.findIndex((cursor) => cursor >= NOW);
+
+  return { runs: run + 1, calls: callTotals[run] };
 };
 
 // Two walks that moved their clocks by different numbers of runs end their cursors at different
@@ -283,6 +320,30 @@ const spacingsOf = (cursors: number[]): number[] => {
   );
 
   return commits.slice(1).map((run, position) => run - commits[position]);
+};
+
+// The log walk and the convert walk. Each log row is one spot leg built on the docs page's TRADE
+// sample, and each convert is one convert of the page's UTA sample, listed newest first.
+const CONVERT_PAGE_SIZE = 100;
+
+type LogAndConvertWorld = {
+  log: RowSlot[];
+  converts: RowSlot[];
+  convertPageSize?: number;
+  /** Fields of every convert row, such as a status that is not settled. */
+  convertOverrides?: Record<string, unknown>;
+};
+
+const newLogAndConvertAccount = (
+  fake?: Parameters<typeof logAndConvertAccountOf>[0]['fake'],
+  beforeWrite?: () => void,
+) => logAndConvertAccountOf({ state: walkStateFake({ accountId: ACCOUNT_ID }), fake, beforeWrite });
+
+const serveLogAndConvert = (account: LogAndConvertAccount, world: LogAndConvertWorld): void => {
+  const { converts, convertPageSize = CONVERT_PAGE_SIZE, convertOverrides } = world;
+
+  account.log.world.log = world.log.map((slot) => logRowOf(slot));
+  account.convert.serve(convertPagesOf(converts, convertPageSize, convertOverrides));
 };
 
 describe('Bybit convergence', () => {
@@ -557,5 +618,482 @@ describe('Bybit convergence', () => {
       added: 1,
       pending: [point],
     });
+  });
+});
+
+type LogAndConvertSeed = {
+  name: string;
+  world: () => LogAndConvertWorld;
+  rows: { log: number; convert: number };
+  log: WalkBound;
+  /** The runs and calls of a whole pass, and the calls of a pass that starts over. */
+  convert: { runs: number; calls: number; steadyCalls: number };
+};
+
+const ONE_PAGE_LOG: WalkBound = {
+  table: { runs: 6, calls: 106 },
+  tableRuns: 'ceiling',
+  measured: { runs: 6, calls: 110 },
+};
+
+const LOG_AND_CONVERT_SEEDS: LogAndConvertSeed[] = [
+  {
+    name: 'small account',
+    world: () => ({ log: evenSlots(40), converts: [] }),
+    rows: { log: 40, convert: 0 },
+    log: ONE_PAGE_LOG,
+    convert: { runs: 1, calls: 1, steadyCalls: 1 },
+  },
+  {
+    name: 'spot user',
+    world: () => ({ log: evenSlots(1_000), converts: evenSlots(100) }),
+    rows: { log: 1_000, convert: 200 },
+    log: ONE_PAGE_LOG,
+    convert: { runs: 1, calls: 2, steadyCalls: 2 },
+  },
+  {
+    name: 'busy',
+    world: () => ({ log: evenSlots(5_000), converts: evenSlots(1_000) }),
+    rows: { log: 5_000, convert: 2_000 },
+    log: ONE_PAGE_LOG,
+    convert: { runs: 2, calls: 11, steadyCalls: 10 },
+  },
+  {
+    name: 'perps bot',
+    world: () => ({ log: evenSlots(50_000), converts: [] }),
+    rows: { log: 50_000, convert: 0 },
+    // MEASURED: 129 runs and 2,570 calls at gap 0, 217 and 4,333 at 1 hour, 166 and 3,313 at 1 day.
+    log: {
+      table: { runs: 53, calls: 1_050 },
+      tableRuns: 'floor',
+      measured: { runs: 217, calls: 4_333 },
+    },
+    convert: { runs: 1, calls: 1, steadyCalls: 1 },
+  },
+];
+
+/** A burst of rows in one span, 10 days old: its commit by the forward cursor, at every gap. */
+type BurstSeed = {
+  name: string;
+  count: number;
+  span: number;
+  table: { runs: number; calls: number };
+  measured: { runs: number; calls: number };
+};
+
+const BURST_START = NOW - 10 * DAY_MS;
+
+type RunsAndCalls = [runs: number, calls: number];
+
+// MEASURED at every gap: the runs of the table, and 2 calls under its calls.
+const burstSeed = (
+  name: string,
+  count: number,
+  span: number,
+  [runs, calls]: RunsAndCalls,
+  [measuredRuns, measuredCalls]: RunsAndCalls,
+): BurstSeed => ({
+  name,
+  count,
+  span,
+  table: { runs, calls },
+  measured: { runs: measuredRuns, calls: measuredCalls },
+});
+
+const COMMITTING_BURSTS: BurstSeed[] = [
+  burstSeed('a day of 1,001 rows', 1_001, DAY_MS, [9, 182], [9, 180]),
+  burstSeed('1,001 rows in 1 hour', 1_001, HOUR_MS, [14, 282], [14, 280]),
+  burstSeed('1,001 rows in 2 minutes', 1_001, 120_000, [25, 502], [25, 500]),
+  burstSeed('1,001 rows in 30 s', 1_001, 30_000, [30, 602], [30, 600]),
+  burstSeed('1,001 rows in 5 s', 1_001, 5_000, [35, 702], [35, 700]),
+  burstSeed('1,001 rows in 2 s', 1_001, 2_000, [35, 702], [35, 700]),
+  burstSeed('1,001 rows in 1.2 s', 1_001, 1_200, [35, 702], [35, 700]),
+  burstSeed('1,001 rows in 1 s', 1_001, 1_000, [35, 702], [35, 700]),
+  burstSeed('1,001 rows in 400 ms', 1_001, 400, [40, 802], [40, 800]),
+  burstSeed('1,001 rows in 300 ms', 1_001, 300, [40, 802], [40, 800]),
+  burstSeed('2,001 rows in 5 s', 2_001, 5_000, [37, 742], [37, 740]),
+  burstSeed('2,001 rows in 2 s', 2_001, 2_000, [39, 782], [39, 780]),
+  burstSeed('5,000 rows in a day', 5_000, DAY_MS, [23, 462], [23, 460]),
+];
+
+const STUCK_BURSTS = [
+  { name: '1,001 rows in 50 ms', count: 1_001, span: 50 },
+  { name: '1,001 rows in one ms', count: 1_001, span: 1 },
+  { name: '2,001 rows in 1 s', count: 2_001, span: 1_000 },
+];
+
+const STUCK_RUNS = 50;
+
+// A run killed on the way loses the halvings it made, and the next run halves again from the whole
+// window, so a killed world needs up to 20 more runs to reach the same stop.
+const KILLED_STUCK_RUNS = 80;
+
+const SPANS_OF_A_BURST = [1, 20, 50, 300, 700, 1_000, 5_000, 60_000];
+
+// A burst of 1,001 to 2,500 rows in a span from one ms to a minute, at any millisecond of the
+// history, so every placement of a span edge against the burst comes up across the seeds.
+const randomBurst = (seed: number) => {
+  const random = seededRandom(seed * SEED_SPREAD);
+  const from = OLDEST_ROW_MS + Math.floor(random() * (NOW - 8 * DAY_MS - OLDEST_ROW_MS));
+  const count = 1_001 + Math.floor(random() * 1_500);
+
+  // The seeds step through the spans in turn: the draws of this generator for seeds this close
+  // fall on a few of them.
+  return { count, span: SPANS_OF_A_BURST[seed % SPANS_OF_A_BURST.length], from };
+};
+
+const burstWorldOf = ({
+  count,
+  span,
+  from,
+}: ReturnType<typeof randomBurst>): LogAndConvertWorld => ({
+  log: burstOfRows(count, from, span),
+  converts: [],
+});
+
+const randomLogAndConvertWorld = (seed: number) => {
+  const random = seededRandom(seed * SEED_SPREAD);
+  const world: LogAndConvertWorld = {
+    log: randomSlots(random),
+    converts: randomSlots(random),
+    convertPageSize: pick(random, [1, 2, 3, 5]),
+  };
+
+  return { world, fake: { pageSize: pick(random, PAGE_SIZES), order: pick(random, ORDERS) } };
+};
+
+const expectWithinBound = (outcome: Awaited<ReturnType<typeof settle>>, bound: WalkBound) => {
+  const { table, tableRuns, measured } = bound;
+
+  expect(outcome.runs).toBeLessThan(MAX_RUNS);
+  expect(outcome.busiestRun).toBeLessThanOrEqual(BYBIT_LANE_CALL_CAPS.log);
+  expect(outcome.calls).toBeGreaterThanOrEqual(table.calls);
+  expect(outcome.calls).toBeLessThanOrEqual(measured.calls);
+  expect(outcome.runs).toBeLessThanOrEqual(measured.runs);
+
+  if (tableRuns === 'ceiling') {
+    expect(outcome.runs).toBeLessThanOrEqual(table.runs);
+  } else {
+    expect(outcome.runs).toBeGreaterThanOrEqual(table.runs);
+  }
+};
+
+const denseMarkOf = async (walk: LogAndConvertAccount['log'] | LogAndConvertAccount['convert']) =>
+  denseSpansOf(parseExchangeState(await walk.readState())).log;
+
+const denseMarkWritesOf = (walk: LogAndConvertAccount['log']): number =>
+  (walk.deps.patchExchangeState as jest.Mock).mock.calls.filter(([, patches]) =>
+    patches.some((patch: { kind: string }) => patch.kind === 'denseSpans'),
+  ).length;
+
+/**
+ * Kill the walk of a fresh account just before each write that outlives a restart, one cut at a
+ * time, and the walk must end with the rows, the ground marks and the dense mark of the run that
+ * was never killed. `finish` settles a walk and says how many of its runs were killed.
+ */
+const expectKilledRunsConverge = async (
+  walkWith: (
+    beforeWrite: () => void,
+  ) => Promise<SettlingWalk & { readState: () => Promise<string | null> }>,
+  finish: (walk: SettlingWalk) => Promise<number>,
+  label: unknown,
+) => {
+  let writes = 0;
+  const reference = await walkWith(() => {
+    writes += 1;
+  });
+
+  await finish(reference);
+
+  expect(writes).toBeGreaterThan(0);
+
+  for (let cut = 1; cut <= writes; cut += 1) {
+    let seen = 0;
+    const walk = await walkWith(() => {
+      seen += 1;
+
+      if (seen === cut) {
+        throw new Error(KILLED);
+      }
+    });
+
+    expect({ label, cut, killed: await finish(walk) }).toEqual({ label, cut, killed: 1 });
+    expect({ label, cut, rows: rowsOf(walk) }).toEqual({ label, cut, rows: rowsOf(reference) });
+    expect({ label, cut, marks: groundMarksOf(walk) }).toEqual({
+      label,
+      cut,
+      marks: groundMarksOf(reference),
+    });
+    expect({ label, cut, dense: denseSpansOf(parseExchangeState(await walk.readState())) }).toEqual(
+      {
+        label,
+        cut,
+        dense: denseSpansOf(parseExchangeState(await reference.readState())),
+      },
+    );
+  }
+};
+
+describe('Bybit convergence of the log and the convert walk', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('draws worlds that differ from seed to seed, with rows in both walks, every page shape and every span', () => {
+    const worlds = SEEDS.map((seed) => randomLogAndConvertWorld(seed));
+    const bursts = SEEDS.map((seed) => randomBurst(seed));
+
+    expect(new Set(worlds.map((world) => JSON.stringify(world))).size).toBe(SEEDS.length);
+    expect(new Set(bursts.map((burst) => JSON.stringify(burst))).size).toBe(SEEDS.length);
+    expect(worlds.every(({ world }) => world.log.length + world.converts.length > 0)).toBe(true);
+    expect(new Set(worlds.map(({ fake }) => fake.order)).size).toBeGreaterThan(1);
+    expect(new Set(worlds.map(({ world }) => world.convertPageSize)).size).toBeGreaterThan(1);
+    expect(new Set(bursts.map(({ span }) => span)).size).toBeGreaterThan(1);
+  });
+
+  // The floor of a run moves on by a day when the runs are a day apart, so a burst 50 days from
+  // the oldest end of the history is stuck for a while and then passed by the floor, and the commit
+  // past it takes its mark with it.
+  it('the mark of a burst no span can hold goes when the floor passes it', async () => {
+    const account = newLogAndConvertAccount();
+
+    serveLogAndConvert(account, {
+      log: burstOfRows(1_001, FLOOR + 50 * DAY_MS, 50),
+      converts: [],
+    });
+
+    await settle(account.log, DAY_MS, 30);
+
+    expect(await denseMarkOf(account.log)).toBeDefined();
+
+    const later = await settle(account.log, DAY_MS, 80);
+
+    expect(await denseMarkOf(account.log)).toBeUndefined();
+    expect(untilForwardEnd(later).runs).toBeGreaterThan(0);
+  }, 120_000);
+
+  describe.each(CLOCK_GAPS)('at a clock gap of %i ms', (gap) => {
+    it.each(LOG_AND_CONVERT_SEEDS)(
+      "log and convert reach the end within the table's runs: the $name seed",
+      async ({ world, rows, log, convert }) => {
+        const account = newLogAndConvertAccount();
+
+        serveLogAndConvert(account, world());
+
+        const logOutcome = await settle(account.log, gap);
+        const convertOutcome = await settle(account.convert, gap);
+
+        expect(rowsOf(account.log)).toHaveLength(rows.log);
+        expectWithinBound(logOutcome, log);
+        expect(rowsOf(account.convert)).toHaveLength(rows.convert);
+        expect(convertOutcome.runs).toBeLessThanOrEqual(convert.runs);
+        expect(convertOutcome.calls).toBe(convert.calls);
+        expect(convertOutcome.busiestRun).toBeLessThanOrEqual(BYBIT_LANE_CALL_CAPS.convert);
+
+        const callsBefore = callsOf(account.convert);
+
+        account.convert.clock.now += gap;
+        await account.convert.run();
+
+        expect(callsOf(account.convert) - callsBefore).toBe(convert.steadyCalls);
+      },
+      120_000,
+    );
+
+    it.each(COMMITTING_BURSTS)(
+      "a burst commits within the table's runs and leaves no mark: $name",
+      async ({ count, span, table, measured }) => {
+        const account = newLogAndConvertAccount();
+
+        serveLogAndConvert(account, { log: burstOfRows(count, BURST_START, span), converts: [] });
+
+        const forward = untilForwardEnd(await settle(account.log, gap, 60));
+
+        expect(forward.runs).toBeGreaterThan(0);
+        expect(forward.runs).toBeLessThanOrEqual(measured.runs);
+        expect(forward.runs).toBeLessThanOrEqual(table.runs);
+        expect(forward.calls).toBeLessThanOrEqual(measured.calls);
+        expect(forward.calls).toBeLessThanOrEqual(table.calls);
+        expect(rowsOf(account.log)).toHaveLength(count);
+        expect(await denseMarkOf(account.log)).toBeUndefined();
+      },
+      120_000,
+    );
+
+    it.each(STUCK_BURSTS)(
+      'a burst no span can hold stops with its mark, written once, and spends its lane on every run: $name',
+      async ({ count, span }) => {
+        const account = newLogAndConvertAccount();
+
+        serveLogAndConvert(account, { log: burstOfRows(count, BURST_START, span), converts: [] });
+
+        const outcome = await settle(account.log, gap, STUCK_RUNS);
+        const mark = await denseMarkOf(account.log);
+
+        expect(outcome.isFinished).toBe(false);
+        expect(untilForwardEnd(outcome).runs).toBe(0);
+        expect(outcome.calls).toBe(STUCK_RUNS * BYBIT_LANE_CALL_CAPS.log);
+        expect(mark).toBeGreaterThanOrEqual(BURST_START - SECOND_MS);
+        expect(mark).toBeLessThanOrEqual(BURST_START + span);
+        expect(denseMarkWritesOf(account.log)).toBe(1);
+        expect(rowsOf(account.log).length).toBeLessThan(count);
+      },
+      120_000,
+    );
+
+    it.each(SEEDS)(
+      'a forward cursor that stops at a burst stops with its mark, and one that passes it leaves none: seed %i',
+      async (seed) => {
+        const account = newLogAndConvertAccount();
+
+        serveLogAndConvert(account, burstWorldOf(randomBurst(seed)));
+
+        const outcome = await settle(account.log, gap, 90);
+        const mark = await denseMarkOf(account.log);
+
+        expect(mark === undefined).toBe(untilForwardEnd(outcome).runs > 0);
+      },
+      120_000,
+    );
+
+    // The forward pass imports a burst that a span edge splits, but the re-scan of it cuts the
+    // burst at other places, and a span of 1 second or less that holds over 1,000 rows is read
+    // again by every run: that ground is owed for ever, with no mark and the pending caption.
+    it.failing('a burst of 1,001 rows in 300 ms ends its owed ground, or its mark stands', async () => {
+      const account = newLogAndConvertAccount();
+
+      serveLogAndConvert(account, { log: burstOfRows(1_001, BURST_START, 300), converts: [] });
+
+      const outcome = await settle(account.log, gap, 200);
+
+      expect(outcome.isFinished || (await denseMarkOf(account.log)) !== undefined).toBe(true);
+    }, 120_000);
+
+    it('a spot row that fails its check leaves at most 12 ranges and no point, on every run', async () => {
+      const account = newLogAndConvertAccount();
+
+      account.log.world.log = evenSlots(5_000).map((slot) => logRowOf(slot, '999'));
+
+      const outcome = await settle(account.log, gap, 60);
+
+      expect(untilForwardEnd(outcome).runs).toBeGreaterThan(0);
+      expect(rowsOf(account.log)).toEqual([]);
+      expect(outcome.peaks.pending).toBeGreaterThan(0);
+      expect(outcome.peaks.pending).toBeLessThanOrEqual(12);
+      expect(outcome.peaks.points).toBe(0);
+    }, 120_000);
+
+    it('30 converts that wait leave at most 12 points in the pass and in the state, on every run', async () => {
+      const account = newLogAndConvertAccount();
+
+      serveLogAndConvert(account, {
+        log: [],
+        converts: evenSlots(30),
+        convertPageSize: 1,
+        convertOverrides: { exchangeStatus: 'init' },
+      });
+
+      const outcome = await settle(account.convert, gap, 20);
+
+      expect(rowsOf(account.convert)).toEqual([]);
+      expect(outcome.peaks.pending).toBeGreaterThan(0);
+      expect(outcome.peaks.pending).toBeLessThanOrEqual(12);
+      expect(outcome.peaks.passOwed).toBeGreaterThan(0);
+      expect(outcome.peaks.passOwed).toBeLessThanOrEqual(12);
+    });
+
+    // The rows start after the first day of the history, as in the random worlds: a run killed
+    // before its first cursor restarts one clock gap later, with a floor that has moved on.
+    it.each([
+      ['small account', 40, 0],
+      ['spot user', 1_000, 100],
+    ])(
+      'a killed run converges to the rows of an uninterrupted one at every commit: the %s seed',
+      async (name, logRows, converts) => {
+        for (const walkName of ['log', 'convert'] as const) {
+          await expectKilledRunsConverge(
+            async (beforeWrite) => {
+              const account = newLogAndConvertAccount(undefined, beforeWrite);
+
+              serveLogAndConvert(account, {
+                log: evenSlots(logRows, OLDEST_ROW_MS),
+                converts: evenSlots(converts, OLDEST_ROW_MS),
+              });
+
+              return account[walkName];
+            },
+            async (walk) => (await settleToCommonEnd(walk, gap)).killed,
+            { name, walkName },
+          );
+        }
+      },
+      300_000,
+    );
+
+    it.each(SEEDS)(
+      'a killed run converges to the rows of an uninterrupted one at every commit, log and convert: seed %i',
+      async (seed) => {
+        const { world, fake } = randomLogAndConvertWorld(seed);
+
+        for (const walkName of ['log', 'convert'] as const) {
+          await expectKilledRunsConverge(
+            async (beforeWrite) => {
+              const account = newLogAndConvertAccount(fake, beforeWrite);
+
+              serveLogAndConvert(account, world);
+
+              return account[walkName];
+            },
+            async (walk) => (await settleToCommonEnd(walk, gap)).killed,
+            { seed, walkName },
+          );
+        }
+      },
+      300_000,
+    );
+
+    // Where the stop sits depends on the clock of each run, and the ground a stuck forward pass
+    // leaves owed never drains, so the law is the stop and its mark, not the rest of the state.
+    it('a killed run on the way to a burst no span can hold still stops with its mark', async () => {
+      const runWith = async (beforeWrite: () => void) => {
+        const account = newLogAndConvertAccount(undefined, beforeWrite);
+
+        serveLogAndConvert(account, { log: burstOfRows(1_001, BURST_START, 50), converts: [] });
+
+        return { account, outcome: await settle(account.log, gap, KILLED_STUCK_RUNS) };
+      };
+      let writes = 0;
+
+      await runWith(() => {
+        writes += 1;
+      });
+
+      expect(writes).toBeGreaterThan(0);
+
+      for (let cut = 1; cut <= writes; cut += 1) {
+        let seen = 0;
+        const { account, outcome } = await runWith(() => {
+          seen += 1;
+
+          if (seen === cut) {
+            throw new Error(KILLED);
+          }
+        });
+        const mark = await denseMarkOf(account.log);
+
+        expect({ cut, killed: outcome.killed }).toEqual({ cut, killed: 1 });
+        expect({ cut, isFinished: outcome.isFinished }).toEqual({ cut, isFinished: false });
+        expect({ cut, forward: untilForwardEnd(outcome).runs }).toEqual({ cut, forward: 0 });
+        expect({ cut, stands: mark !== undefined }).toEqual({ cut, stands: true });
+        expect(mark).toBeGreaterThanOrEqual(BURST_START - SECOND_MS);
+        expect(mark).toBeLessThanOrEqual(BURST_START + 50);
+      }
+    }, 300_000);
   });
 });

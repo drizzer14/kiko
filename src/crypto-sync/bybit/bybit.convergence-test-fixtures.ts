@@ -1,9 +1,16 @@
 import { DAY_MS } from '@kiko/dates';
 
+import {
+  convertAt,
+  depositRow,
+  internalDepositRow,
+  withdrawalRow,
+} from './bybit.history-test-fixtures';
 import { NOW } from './bybit.client-test-fixtures';
+import { logWalkOf, spotAt } from './bybit.log-test-fixtures';
+import { convertWalkOf } from './bybit.convert-test-fixtures';
 import { capitalWalkOf, served } from './bybit.capital-test-fixtures';
 import { transferAt, transferWalkOf } from './bybit.transfer-test-fixtures';
-import { depositRow, internalDepositRow, withdrawalRow } from './bybit.history-test-fixtures';
 
 export const SECOND_MS = 1_000;
 
@@ -83,3 +90,82 @@ export const serveSlots = (account: Account, slots: WorldSlots): void => {
     transferAt(at, { transferId: `t${id}`, coin, amount }),
   );
 };
+
+// The pair a spot row of a coin is traded in: the symbol names the row's coin and one other
+// tracked coin.
+const SYMBOL_OF: Record<string, string> = {
+  BTC: 'BTCUSDT',
+  ETH: 'ETHUSDT',
+  USDT: 'BTCUSDT',
+  EUR: 'BTCEUR',
+};
+
+/**
+ * One spot row of the log for a slot, built on the docs page's TRADE sample, with no fee. Its
+ * `qty` is the slot's amount, so `change + fee = qty` holds; a `qty` of another value is a spot
+ * row that fails that check.
+ */
+export const logRowOf = ({ id, at, coin, amount }: RowSlot, qty = amount) =>
+  spotAt(at, {
+    id: `l${id}`,
+    orderId: `o${id}`,
+    symbol: SYMBOL_OF[coin],
+    currency: coin,
+    qty,
+    fee: '0',
+    change: amount,
+  });
+
+/**
+ * `count` rows inside `[from, from + span)` at the millisecond, so several can share one instant.
+ */
+export const burstOfRows = (count: number, from: number, span: number): RowSlot[] =>
+  Array.from({ length: count }, (_unused, id) => ({
+    id,
+    at: from + Math.floor((id * span) / count),
+    coin: 'BTC',
+    amount: '1',
+  }));
+
+/** The convert list, newest first, in pages of `pageSize` converts, one convert for each slot. */
+export const convertPagesOf = (
+  slots: RowSlot[],
+  pageSize: number,
+  overrides: Record<string, unknown> = {},
+) => {
+  const converts = [...slots]
+    .sort((left, right) => right.at - left.at)
+    .map(({ id, at, coin, amount }) =>
+      convertAt(
+        at,
+        {
+          fromCoin: coin,
+          toCoin: coin === 'BTC' ? 'ETH' : 'BTC',
+          fromAmount: amount,
+          toAmount: amount,
+          ...overrides,
+        },
+        `c${id}`,
+      ),
+    );
+
+  return Array.from({ length: Math.ceil(converts.length / pageSize) }, (_unused, page) =>
+    converts.slice(page * pageSize, (page + 1) * pageSize),
+  );
+};
+
+type LogOptions = Parameters<typeof logWalkOf>[0];
+
+type ConvertOptions = Parameters<typeof convertWalkOf>[0];
+
+/**
+ * A Bybit account of the log walk and the convert walk over one stored state (one
+ * `walkStateFake`), the log over its fake Bybit and the convert over its fake list.
+ */
+export const logAndConvertAccountOf = <State extends LogOptions['state'] & ConvertOptions['state']>(
+  options: Omit<LogOptions, 'state'> & { state: State },
+) => ({
+  state: options.state,
+  log: logWalkOf(options),
+  convert: convertWalkOf({ state: options.state, beforeWrite: options.beforeWrite }),
+});

@@ -3,6 +3,7 @@ export {
   balanceSyncedAtOf,
   denseSpansOf,
   keyExpiryOf,
+  logKindsOf,
   type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,

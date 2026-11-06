@@ -194,6 +194,7 @@ const BYBIT_PHRASES = new RegExp(
     'Earn yield',
     'an Earn product',
     "Bybit's Funding",
+    'Funding moves',
     'Set Automatically',
     'under Synchronization',
     'Date & Time',
