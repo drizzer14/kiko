@@ -7,6 +7,11 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  // The safe-area view is a third-party native view: its page color is a prop of the component,
+  // which repaints on a scheme change, so the color is not set here.
+  gate: {
+    flex: 1,
+  },
   content: {
     flex: 1,
     alignItems: 'center',

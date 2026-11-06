@@ -50,8 +50,12 @@ const KikoCalendar: FC<KikoCalendarProps> = ({
   const calendarTheme = buildCalendarTheme(theme);
   const firstDay = weekStartFor(deviceRegion());
 
+  // The library builds its stylesheet once per mount (react-native-calendars/src/calendar/index.js
+  // `useRef(styleConstructor(theme))`), so a scheme change needs a new mount; the remount returns
+  // the calendar to its start month.
   return (
     <Calendar
+      key={theme.colorScheme}
       testID={testID}
       initialDate={initialDate}
       minDate={minDate}
