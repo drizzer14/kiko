@@ -42,8 +42,10 @@ import { buildScreenshotDataset } from '../seed/screenshot-seed';
 import { resolveDemoAnchor } from './demo-anchor';
 import { buildDemoSnapshot } from './build-demo-snapshot';
 import { buildDemoEnvelopeJson } from './generate-demo-kiko';
+import { buildCategoryCheckSnapshot } from './build-category-check-snapshot';
 
 const FIXTURES_DIR = __dirname;
+const CATEGORY_CHECK_FILE = 'kiko-category-check-en.kiko';
 const KEY_PATH = join(FIXTURES_DIR, 'kiko-demo.key');
 const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
 const CYRILLIC = /\p{Script=Cyrillic}/u;
@@ -145,6 +147,24 @@ if (process.env.KIKO_REGEN_DEMO === '1') {
   });
 }
 
+// Apart from the demo files: a regeneration of the demo files never rewrites the check file, and
+// this one never rewrites them, so each keeps the anchor of its own run.
+if (process.env.KIKO_REGEN_CATEGORY_CHECK === '1') {
+  describe('regenerate the category-check .kiko fixture', () => {
+    it('writes kiko-category-check-en.kiko with the shared key', () => {
+      const anchor = resolveDemoAnchor(process.env.KIKO_DEMO_ANCHOR, new Date());
+
+      writeFileSync(
+        join(FIXTURES_DIR, CATEGORY_CHECK_FILE),
+        buildDemoEnvelopeJson(buildCategoryCheckSnapshot(anchor), readOrCreateKey(), anchor),
+        'utf8',
+      );
+
+      expect(existsSync(join(FIXTURES_DIR, CATEGORY_CHECK_FILE))).toBe(true);
+    });
+  });
+}
+
 describe('the committed demo .kiko fixtures decrypt back to the current dataset', () => {
   // Read at RUN time, not at collection time — collection runs every
   // describe body before any `it` body, so reading here eagerly would race
@@ -181,6 +201,16 @@ describe('the committed demo .kiko fixtures decrypt back to the current dataset'
       );
     });
   }
+
+  it(`${CATEGORY_CHECK_FILE} decrypts to buildCategoryCheckSnapshot(its own exportedAt), with no secrets block`, () => {
+    const { envelope, payload } = readPayload(CATEGORY_CHECK_FILE);
+
+    expect(envelope.version).toBe(EXPORT_VERSION);
+    expect(payload.secrets).toBeUndefined();
+    expect(payload.exportedAt % DAY_MS).toBe(ANCHOR % DAY_MS);
+    expect(payload.tables).toEqual(buildCategoryCheckSnapshot(payload.exportedAt));
+    expect(JSON.stringify(payload.tables)).not.toMatch(CYRILLIC);
+  });
 
   it('shares one anchor between the two files, so both open on the same days', () => {
     const anchors = DEMO_FILES.map(({ fileName }) => readPayload(fileName).payload.exportedAt);
