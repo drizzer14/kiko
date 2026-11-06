@@ -486,7 +486,7 @@ describe('the choices a help step names', () => {
     [
       'uk',
       ukValues,
-      'гроші, які ви виводите чи продаєте з Binance на банк',
+      'гроші, які ви виводите чи продаєте з Binance на ваш банківський рахунок',
       'курси валют',
       'переоцінка',
     ],
@@ -507,7 +507,7 @@ describe('the choices a help step names', () => {
       enValues,
       [
         'more than 2 minutes apart or only one side was synced',
-        'from one of your own IBANs',
+        'from the IBAN of an account Kiko tracks',
         'a category you pick with "Categories" narrows the category table only',
       ],
       'are the figures of the category table',
@@ -517,13 +517,13 @@ describe('the choices a help step names', () => {
       ukValues,
       [
         'понад 2 хвилини або синхронізовано лише одну',
-        'з вашого власного IBAN',
+        'з IBAN рахунку, який відстежує Кіко',
         'звужує лише таблицю за категоріями',
       ],
       'це дані таблиці за категоріями',
     ],
   ] as const)(
-    'names in %s the own transfers and the own-IBAN credit that income can get wrong, and no longer ties the expenses to a held category pick',
+    'names in %s the own transfers and the tracked-account IBAN credit that income can get wrong, and a category pick that narrows only the category table',
     (_language, values, wrongRows, falseClaim) => {
       const step = stepOf(values, 'viewStatistics', 10);
 
@@ -541,6 +541,10 @@ describe('the choices a help step names', () => {
     expect(step).not.toContain('Повернення коштів');
     expect(step).not.toContain('рахується');
     expect(step).not.toContain('на ваш банк ');
+    expect(step).not.toContain('Binance на банк,');
+    expect(step).toContain(
+      'Кошти, які продавець повернув окремим зарахуванням, вважаються надходженням',
+    );
     expect(step).toContain('вважається');
     expect(step).toContain('на ваш банківський рахунок');
   });

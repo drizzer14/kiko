@@ -41,7 +41,10 @@ const CATEGORIES = [
   { key: 'transport', title: 'Transport', icon: 'car' },
 ];
 
-/** The columns the ledger and its exclusion matchers read from a row, as the database returns. */
+/**
+ * The ledger columns a test sets on a row, as the database returns them. It has no `mcc`,
+ * `counterIban` or `description`.
+ */
 type FilterTransaction = Pick<
   TransactionRow,
   | 'id'
