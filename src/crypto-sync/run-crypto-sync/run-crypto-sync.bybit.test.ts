@@ -5,11 +5,12 @@ const mockPatchExchangeState = jest.fn();
 const mockSyncBybitCapitalHistory = jest.fn();
 const mockSyncBybitTransferHistory = jest.fn();
 const mockSyncBybitLogHistory = jest.fn();
+const mockSyncBybitConvertHistory = jest.fn();
 
 // `./sync` pulls the repos into the graph, and the Binance barrel loads every walk; replacing both
 // keeps this a pure dispatch test, and a walk that ran for a Bybit request would show here. The
-// Bybit capital, transfer and log walks are replaced the same way, so what they are given is all
-// this suite looks at.
+// Bybit capital, transfer, log and convert walks are replaced the same way, so what they are given
+// is all this suite looks at.
 jest.mock('@kiko/crypto-sync/bybit/bybit.capital-history', () => ({
   syncBybitCapitalHistory: (...args: unknown[]) => mockSyncBybitCapitalHistory(...args),
 }));
@@ -18,6 +19,9 @@ jest.mock('@kiko/crypto-sync/bybit/bybit.transfer-history', () => ({
 }));
 jest.mock('@kiko/crypto-sync/bybit/bybit.log-history', () => ({
   syncBybitLogHistory: (...args: unknown[]) => mockSyncBybitLogHistory(...args),
+}));
+jest.mock('@kiko/crypto-sync/bybit/bybit.convert-history', () => ({
+  syncBybitConvertHistory: (...args: unknown[]) => mockSyncBybitConvertHistory(...args),
 }));
 jest.mock('@kiko/crypto-sync/sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
@@ -54,12 +58,14 @@ describe('runCryptoSync for Bybit', () => {
     mockSyncBybitCapitalHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBybitTransferHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBybitLogHistory.mockResolvedValue({ imported: 0, complete: true });
+    mockSyncBybitConvertHistory.mockResolvedValue({ imported: 0, complete: true });
   });
 
   describe.each([
     ['capital', mockSyncBybitCapitalHistory],
     ['transfer', mockSyncBybitTransferHistory],
     ['log', mockSyncBybitLogHistory],
+    ['convert', mockSyncBybitConvertHistory],
   ])('the %s history walk, as each of them', (name, mockWalk) => {
     it('still resolves with the balance result when the walk fails, logging only its name', async () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -143,6 +149,34 @@ describe('runCryptoSync for Bybit', () => {
       await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
 
       expect(mockSyncBybitLogHistory).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
+  });
+
+  describe('the convert history walk', () => {
+    it('runs once after the log walk, on the run the other walks were given', async () => {
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockSyncBybitConvertHistory).toHaveBeenCalledTimes(1);
+      expect(mockSyncBybitConvertHistory).toHaveBeenCalledWith({
+        targetAccountId: 'acc-1',
+        run: { gate: expect.any(Object), budget: expect.any(Object) },
+      });
+      expect(mockSyncBybitConvertHistory.mock.calls[0][0].run).toBe(
+        mockSyncBybitLogHistory.mock.calls[0][0].run,
+      );
+      expect(mockSyncBybitLogHistory.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncBybitConvertHistory.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('still runs when the log walk fails', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockSyncBybitLogHistory.mockRejectedValueOnce(new Error('Failed query: params SECRET'));
+
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockSyncBybitConvertHistory).toHaveBeenCalledTimes(1);
       warn.mockRestore();
     });
   });

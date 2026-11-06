@@ -1,7 +1,8 @@
 // A disconnect and a reconnect over the REAL repositories on a real `node:sqlite` engine (the
 // shipped migrations), with the transfer walk of the Bybit arm as the walk that has state to reset:
 // the walk marks, the stored key date, the holdings the walk made and the rows it wrote sit side by
-// side. No page with a row was read live: the transfer is built from the docs page's sample.
+// side. The convert walk is the one that keeps a page index and the points of its pass. No page
+// with a row was read live: the transfer and the convert are built from the docs pages' samples.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -32,9 +33,12 @@ import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import { seedWalkMarks, walkMarksOf } from '@kiko/test-support/walk-marks';
 
 import { fakeBybit } from './bybit.capital-test-fixtures';
+import { convertAt } from './bybit.history-test-fixtures';
 import { transferAt } from './bybit.transfer-test-fixtures';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
+import { convertRouteOf } from './bybit.convert-test-fixtures';
 import { createBybitHistoryRun } from './bybit.history-budget';
+import { syncBybitConvertHistory } from './bybit.convert-history';
 import { API_KEY, NOW, SECRET } from './bybit.client-test-fixtures';
 import { syncBybitTransferHistory } from './bybit.transfer-history';
 
@@ -143,5 +147,69 @@ describe('the Bybit arm over a real database: disconnect and reconnect', () => {
       before.map(({ id }) => id).sort(),
     );
     expect(rowCount()).toBe(4);
+  });
+
+  describe('the convert walk, which keeps a page index and the points of a pass', () => {
+    const CONVERT_AT = NOW - 2 * DAY_MS;
+
+    const convertWalkOver = (route: ReturnType<typeof convertRouteOf>) =>
+      syncBybitConvertHistory(
+        {
+          targetAccountId: ACCOUNT_ID,
+          run: createBybitHistoryRun({ now: () => NOW, sleep: async () => undefined }),
+        },
+        {
+          now: () => NOW,
+          fetchImpl: route.fetchImpl,
+          readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
+        },
+      );
+
+    // Eleven pages, so a run of ten stops inside the pass; the first holds a convert that waits.
+    const accountInsideAPass = async () => {
+      mockDatabase
+        .prepare(
+          "INSERT INTO accounts (id, name, kind, institution) VALUES (?, 'Bybit', 'crypto', 'bybit')",
+        )
+        .run(ACCOUNT_ID);
+      const route = convertRouteOf();
+      route.serve(
+        Array.from({ length: 11 }, (_, page) => [
+          convertAt(CONVERT_AT + page * 1_000, page === 0 ? { exchangeStatus: 'init' } : {}),
+        ]),
+      );
+
+      await convertWalkOver(route);
+
+      return route;
+    };
+
+    it('a disconnect drops the page index and the points of the pass, and keeps the rest of its marks as for any walk', async () => {
+      await accountInsideAPass();
+
+      expect(walkMarksOf(mockDatabase, ACCOUNT_ID, 'convert')).toMatchObject({
+        pageIndex: 11,
+        passOwed: [expect.objectContaining({ kind: 'point', series: 'convert' })],
+        pending: [expect.objectContaining({ kind: 'point', series: 'convert' })],
+      });
+
+      await disconnectCryptoAccount(ACCOUNT_ID, 'bybit');
+
+      expect(walkMarksOf(mockDatabase, ACCOUNT_ID, 'convert')).toEqual({ pending: [] });
+    });
+
+    it('a reconnect starts the pass again at page 1', async () => {
+      await accountInsideAPass();
+      await disconnectCryptoAccount(ACCOUNT_ID, 'bybit');
+      mockDatabase
+        .prepare("UPDATE accounts SET institution = 'bybit' WHERE id = ?")
+        .run(ACCOUNT_ID);
+      const route = convertRouteOf();
+      route.serve([[convertAt(CONVERT_AT)]]);
+
+      await convertWalkOver(route);
+
+      expect(route.indexes[0]).toBe(1);
+    });
   });
 });

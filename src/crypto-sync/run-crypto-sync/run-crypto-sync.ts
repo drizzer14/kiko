@@ -13,6 +13,7 @@ import {
   defaultBybitDeps,
   syncBybitCapitalHistory,
   syncBybitLogHistory,
+  syncBybitConvertHistory,
   syncBybitTransferHistory,
 } from '../bybit';
 import {
@@ -185,8 +186,8 @@ const runBinanceSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult>
   joinedOrStarted(inFlightBinanceSyncs, targetAccountId, runBinanceSyncAndImport);
 
 /**
- * The Bybit arm: the balance sync, the write of the lists it read, then the capital, transfer and
- * log history walks. The join covers all of it, with the same per-account key as Binance's.
+ * The Bybit arm: the balance sync, the write of the lists it read, then the capital, transfer, log
+ * and convert history walks. The join covers all of it, with the same per-account key as Binance's.
  */
 const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyncResult> => {
   const { syncedHoldings, exchangeState } = await runBalanceSync(bybitProvider, defaultBybitDeps, {
@@ -216,6 +217,9 @@ const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyn
   );
   await logOnFailure('[bybit sync] log history failed', () =>
     syncBybitLogHistory({ targetAccountId, run }),
+  );
+  await logOnFailure('[bybit sync] convert history failed', () =>
+    syncBybitConvertHistory({ targetAccountId, run }),
   );
 
   return { syncedHoldings };

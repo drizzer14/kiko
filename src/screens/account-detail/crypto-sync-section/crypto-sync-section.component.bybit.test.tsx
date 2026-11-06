@@ -552,6 +552,7 @@ describe('CryptoSyncSection for a Bybit account', () => {
         capital: { cursor: SYNCED_AT },
         transfer: { cursor: SYNCED_AT },
         log: { cursor: SYNCED_AT },
+        convert: { cursor: SYNCED_AT },
         pay: { pending: [{ start: 1, end: 3 }] },
       },
     };
@@ -561,6 +562,18 @@ describe('CryptoSyncSection for a Bybit account', () => {
 
     expect(binance.getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
     expect(bybit.queryByText(PENDING_FRAGMENT, { exact: false })).toBeNull();
+  });
+
+  it('shows the history as behind while the convert walk has not ended a pass', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {
+        capital: { cursor: SYNCED_AT },
+        transfer: { cursor: SYNCED_AT },
+        log: { cursor: SYNCED_AT },
+      },
+    });
+
+    expect(getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
   });
 
   describe('in Ukrainian', () => {

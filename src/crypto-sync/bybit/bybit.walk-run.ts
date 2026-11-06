@@ -45,6 +45,9 @@ const SECOND_MS = 1_000;
  */
 const HISTORY_DAYS = 729;
 
+/** The oldest instant a Bybit walk reads from, for a run that starts at `now`. */
+export const historyFloorOf = (now: number): number => now - HISTORY_DAYS * DAY_MS;
+
 /** A record that settles late can sit this far behind the cursor, so the re-scan starts there. */
 const OVERLAP_MS = DAY_MS;
 
@@ -213,7 +216,7 @@ export const runBybitWalk = async <Deps extends BybitWalkDeps, Page>(input: {
   const { cursor, rescan: rescanCursor } = stored;
   const write = walkMarkWriterOf(deps, accountId, walkId);
   const roundRobins = await readWalkRoundRobins({ stored, write });
-  const floorMs = now - HISTORY_DAYS * DAY_MS;
+  const floorMs = historyFloorOf(now);
   const pending = await readPendingMark({
     stored: stored.pending,
     owedIfUnreadable: { start: floorMs, end: cursor ?? floorMs },

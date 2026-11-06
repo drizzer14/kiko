@@ -214,9 +214,19 @@ export const convertRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/** A settled convert row of the sample, created at `time`, with the id `transactionId`. */
+export const convertAt = (
+  time: number,
+  overrides: Record<string, unknown> = {},
+  transactionId = `convert-${time}`,
+) => convertRow({ exchangeTxId: transactionId, createdAt: String(time), ...overrides });
+
 /** A row without one of its fields: an absent field is no `undefined` value of that field. */
 export const withoutField = (row: Record<string, unknown>, field: string) =>
   Object.fromEntries(Object.entries(row).filter(([name]) => name !== field));
+
+/** A convert row that cannot be read: it names no transaction. */
+export const convertWithoutId = (time: number) => withoutField(convertAt(time), 'exchangeTxId');
 
 /** A fetch that answers one page of the route's list, with the cursor the page names. */
 export const pageAnswer = (field: 'rows' | 'list', list: unknown, nextPageCursor: unknown = '') =>
