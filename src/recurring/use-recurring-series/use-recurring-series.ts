@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
   type MarkedChain,
-  type MarkedEntry,
   markedSeriesOf,
   detectedBesideMarked,
 } from '@kiko/recurring/marked-series';
@@ -11,6 +10,7 @@ import { startOfLocalDay } from '@kiko/dates';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { markedEntriesOf } from '@kiko/recurring/row-recurrence';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
@@ -27,11 +27,6 @@ type UseRecurringSeriesResult = {
 };
 
 const NOTHING_FOUND = { series: [], markedSeries: [], withoutCharges: [] };
-
-const markedEntriesOf = (choices: Choices): MarkedEntry[] =>
-  [...choices].flatMap(([key, { name, marks = [] }]) =>
-    marks.length > 0 ? [{ key, name, marks }] : [],
-  );
 
 /**
  * The recurring series of the whole ledger, shared by the list and the series screen, and the

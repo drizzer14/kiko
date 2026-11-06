@@ -689,6 +689,11 @@ export const en = {
       createTransaction: 'Create transaction',
       description: 'Description',
       descriptionPlaceholder: 'Coffee',
+      detectedRecurring: {
+        monthly: 'Detected: monthly',
+        weekly: 'Detected: weekly',
+        yearly: 'Detected: yearly',
+      },
       editTemplateTitle: 'Edit Template',
       editTitle: 'Edit Transaction',
       entryModeLabel: 'Entry mode',

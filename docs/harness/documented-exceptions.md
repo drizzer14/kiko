@@ -396,6 +396,13 @@ verified usage, not dead weight:
   `__tests__/deps-ranges.test.ts`, which spawns the script as a child
   process against a fixture `package.json`, not an import, so Jest's
   coverage does not make Knip see it as reachable either.
+- **Knip `@public` JSDoc tag**: `rowRecurrenceOf` in `src/recurring/row-recurrence/row-recurrence.ts`.
+  It is the one pure function that decides a row's recurrence for both screens, and its two steps
+  (`rowDetectionOf`, `rowRecurrenceFromDetection`) are what `useRowMark` calls, so the form's
+  hook splits the work to run no detection on a settings fire. The composition has no app caller;
+  `row-recurrence.test.ts` and `row-recurrence.properties.test.ts` call it through
+  `jest.requireActual('./row-recurrence')`, a runtime lookup Knip cannot follow, so it reports
+  the export unused. The tag exempts that one export only, not the file or the folder.
 - **`scripts/checks/feature-imports.js`'s `TEST_ONLY` allowlist**
   (`kiko-feature-imports`): the paths below may be imported deep, through
   `@kiko/<path>`, and only by a test file. No barrel may export them
