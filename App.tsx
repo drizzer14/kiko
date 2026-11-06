@@ -15,9 +15,9 @@ import MigrationsGate from '@kiko/migration/migrations-gate';
 import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef } from '@kiko/navigation/navigation-ref';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useMccBackfill } from '@kiko/categories/category-rules-repo';
+import { useNavigationTheme } from '@kiko/navigation/navigation-theme';
 import { useReminderScheduler } from '@kiko/reminders/use-reminder-scheduler';
 import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-settings';
 
@@ -42,8 +42,10 @@ const AppRoot: FC = () => {
 
   useMccBackfill();
 
+  const navigationTheme = useNavigationTheme();
+
   return (
-    <NavigationContainer ref={navigationRef} theme={navigationDarkTheme}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
       <RootNavigator />
     </NavigationContainer>
   );

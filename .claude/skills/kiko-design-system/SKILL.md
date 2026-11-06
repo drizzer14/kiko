@@ -87,13 +87,13 @@ is what keeps native chrome (bottom tab bar, stack headers/large-title
 blur, system controls, the native date picker) on the dark appearance
 regardless of the device's own OS setting — there is no
 `Appearance.setColorScheme` call anywhere driving it live. React
-Navigation's own native chrome uses `navigationDarkTheme`
-(`src/navigation/dark-theme/dark-theme.ts`), which now sources its `colors` from
-concrete dark hex values matching the design-system dark tokens
-directly, rather than an OS-trait-resolving `PlatformColor` — with a
-single fixed appearance there is nothing for a semantic color to
-repaint in response to. Read `dark-theme.ts` directly for the exact
-field mapping rather than restating it here.
+Navigation's own chrome colors come from one theme per scheme,
+`navigationDarkTheme` and `navigationLightTheme`
+(`src/navigation/navigation-theme/navigation-theme.ts`), each sourcing its `colors` from the
+design-system token values of its scheme rather than an OS-trait-resolving `PlatformColor`.
+`useNavigationTheme()` (`use-navigation-theme.ts` beside it) picks the one that follows the
+active theme's `colorScheme`, and `App.tsx` hands it to `NavigationContainer`. Read the source
+file directly for the exact field mapping rather than restating it here.
 
 `settings.appearance` (`src/db/schema.ts`) still exists as a schema
 column — migrations here are additive-only, so a removed feature's
@@ -345,7 +345,8 @@ every one of them, so scan this list rather than the reference files for what is
   glass path's tint; (3) every large-title native stack takes
   `screenOptions={largeTitleScreenOptions}`
   (`src/navigation/large-title-screen-options/`), which on this tier adds
-  `headerBlurEffect: 'systemChromeMaterialDark'` plus `headerLargeStyle:
+  `headerBlurEffect: 'systemChromeMaterial'` (no scheme in the name: it follows the window's
+  interface style, which is Dark while the plist pins it) plus `headerLargeStyle:
   { backgroundColor: 'transparent' }` (the at-rest large title stays
   transparent, only the scrolled bar blurs), because react-native-screens
   builds a transparent appearance with no background effect there. On

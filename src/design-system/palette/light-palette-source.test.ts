@@ -1,11 +1,14 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import type { Theme } from '@react-navigation/native';
+import { navigationDarkTheme, navigationLightTheme } from '@kiko/navigation/navigation-theme';
 
 import { darkTheme, lightTheme } from '../theme';
 
 import { chartSeriesDark, entityColorsDark } from './palette';
 
 type SwatchFile = Record<string, { dark: string; light: string }>;
+type NavigationColor = keyof Theme['colors'];
 
 const palette = JSON.parse(
   readFileSync(join(__dirname, '../../../docs/design/light-palette/palette.json'), 'utf8'),
@@ -19,6 +22,7 @@ const palette = JSON.parse(
   categorySwatches: SwatchFile;
   chartSeries: { keys: string[]; dark: string[]; light: string[] };
   iconTile: { glyph: { onLightTile: { dark: string; light: string } } };
+  navigation: Record<string, { token: string } | { dark: string; light: string }>;
   chartParameters: {
     netWorthAreaOpacity: { dark: number; light: number };
     netWorthNegativeAreaOpacity: { dark: number; light: number };
@@ -71,6 +75,24 @@ describe('the approved light palette file', () => {
   it('pins the glyph on a light tile to the file', () => {
     expect(darkTheme.colors.glyphOnLightTile).toBe(palette.iconTile.glyph.onLightTile.dark);
     expect(lightTheme.colors.glyphOnLightTile).toBe(palette.iconTile.glyph.onLightTile.light);
+  });
+
+  it('maps each navigation color of both navigation themes as the file names it', () => {
+    for (const [name, entry] of Object.entries(palette.navigation)) {
+      if ('token' in entry) {
+        expect(navigationDarkTheme.colors[name as NavigationColor]).toBe(darkColors[entry.token]);
+        expect(navigationLightTheme.colors[name as NavigationColor]).toBe(lightColors[entry.token]);
+      } else {
+        expect(navigationDarkTheme.colors[name as NavigationColor]).toBe(entry.dark);
+        expect(navigationLightTheme.colors[name as NavigationColor]).toBe(entry.light);
+      }
+    }
+  });
+
+  it('names every color of the navigation themes in the file', () => {
+    expect(Object.keys(palette.navigation).sort()).toEqual(
+      Object.keys(navigationLightTheme.colors).sort(),
+    );
   });
 
   it('pins the net-worth area opacities of each theme to the file', () => {
