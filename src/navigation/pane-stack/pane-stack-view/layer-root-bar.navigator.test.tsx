@@ -60,6 +60,9 @@ type HeaderConfig = {
   hideShadow?: boolean;
   largeTitle?: boolean;
   translucent: boolean;
+  blurEffect?: string;
+  largeTitleBackgroundColor?: string;
+  largeTitleHideShadow?: boolean;
 };
 
 type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
@@ -96,12 +99,26 @@ const tablesBar = (): HeaderConfig => {
   return tables[0];
 };
 
-// What the shared navigation bar is drawn from. `largeTitle` is read as on or off: a stack that
-// sets no large title leaves it undefined, which the native side reads as off.
-const lookOf = ({ backgroundColor, hideShadow, largeTitle, translucent }: HeaderConfig) => ({
+// What the shared navigation bar is drawn from: every header config prop that
+// `RNSScreenStackHeaderConfig.buildAppearance` and the scroll-edge appearance read for the
+// background (the title and font props are left out: the root shows no title). `largeTitle` is read
+// as on or off: a stack that sets no large title leaves it undefined, which the native side reads
+// as off.
+const lookOf = ({
   backgroundColor,
+  blurEffect,
+  hideShadow,
+  largeTitle,
+  largeTitleBackgroundColor,
+  largeTitleHideShadow,
+  translucent,
+}: HeaderConfig) => ({
+  backgroundColor,
+  blurEffect,
   hideShadow,
   largeTitle: largeTitle === true,
+  largeTitleBackgroundColor,
+  largeTitleHideShadow,
   translucent,
 });
 
