@@ -265,6 +265,7 @@ describe('layerSlice', () => {
   describe('with appearance options on the pages of the layer', () => {
     const headerStyle = { backgroundColor: 'black' };
     const headerLargeStyle = { backgroundColor: 'transparent' };
+    const headerBackground = () => null;
 
     const sliceWith = (
       tables: NativeStackNavigationOptions,
@@ -287,6 +288,7 @@ describe('layerSlice', () => {
           title: 'Tables',
           headerBackTitle: 'Back',
           headerLargeTitle: true,
+          headerBackground,
           headerBlurEffect: 'systemChromeMaterialDark',
           headerLargeStyle,
           headerLargeTitleShadowVisible: false,
@@ -302,6 +304,7 @@ describe('layerSlice', () => {
         contentStyle: { backgroundColor: 'transparent' },
         headerShown: true,
         headerTitle: '',
+        headerBackground,
         headerBlurEffect: 'systemChromeMaterialDark',
         headerLargeStyle,
         headerLargeTitleShadowVisible: false,

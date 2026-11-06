@@ -9,11 +9,13 @@ const collect = <Props extends object>(node: RenderedNode | string): Props[] => 
     return [];
   }
 
-  const own = [node]
-    .filter(({ type }) => type === 'RNSScreenStackHeaderConfig')
-    .map(({ props }) => props as Props);
+  const inside = (node.children ?? []).flatMap((child) => collect<Props>(child));
 
-  return [...own, ...(node.children ?? []).flatMap((child) => collect<Props>(child))];
+  if (node.type !== 'RNSScreenStackHeaderConfig') {
+    return inside;
+  }
+
+  return [node.props as Props, ...inside];
 };
 
 /**
