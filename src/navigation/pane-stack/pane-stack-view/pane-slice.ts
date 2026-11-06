@@ -99,14 +99,16 @@ const LAYER_ROOT_OPTIONS: NativeStackNavigationOptions = {
   contentStyle: { backgroundColor: 'transparent' },
 };
 
-// A header that is there and shows nothing. Root and the page over it share one navigation bar, so
+// A header that is there and shows no title. Root and the page over it share one navigation bar, so
 // a root with no header hides the page's own bar when a swipe back starts; a root with this one
-// keeps it, and the swipe can be cancelled with the bar in place.
+// keeps it, and the swipe can be cancelled with the bar in place. It sets no transparency and no
+// shadow, so its bar is drawn as the bar of a page with a small title is: UIKit moves the shared
+// bar from one page's look to the other's during the swipe, and a root that looks unlike the page
+// would fade the bar's background away.
 const LAYER_ROOT_HEADER: NativeStackNavigationOptions = {
   headerShown: true,
-  headerTransparent: true,
   headerTitle: '',
-  headerShadowVisible: false,
+  headerLargeTitle: false,
 };
 
 // The page under Tables in this stack is the untitled placeholder root, so a Back label or a menu

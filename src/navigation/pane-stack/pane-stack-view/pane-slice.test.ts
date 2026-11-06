@@ -241,8 +241,10 @@ describe('layerSlice', () => {
   // The whole options object is compared: the root takes nothing from the route it is named after,
   // whose own options (a large title, for one) would show in a bar that is meant to be empty.
   // Root and Tables share one navigation bar. A root with no header hides that bar when a swipe
-  // back starts, so while Tables is in the layer the root keeps a header of its own, clear and
-  // empty; at rest the layer shows no header at all.
+  // back starts, so while Tables is in the layer the root keeps a header of its own, one that
+  // looks as Tables' bar does and shows no title; at rest the layer shows no header at all. Jest
+  // proves the props only, never the UIKit transition between the two bars or the bar's hide at
+  // the end of a pop.
   it('gives the root a title-less page on a clear ground and no header while it holds only the root', () => {
     expect(rootOf(atRest()).options).toEqual({
       title: '',
@@ -251,14 +253,13 @@ describe('layerSlice', () => {
     });
   });
 
-  it('gives the root a title-less page on a clear ground and a shown, clear, empty header with Tables in it', () => {
+  it('gives the root a title-less page on a clear ground and a shown, empty, small-title header with Tables in it', () => {
     expect(rootOf(onTables()).options).toEqual({
       title: '',
       contentStyle: { backgroundColor: 'transparent' },
       headerShown: true,
-      headerTransparent: true,
       headerTitle: '',
-      headerShadowVisible: false,
+      headerLargeTitle: false,
     });
   });
 
