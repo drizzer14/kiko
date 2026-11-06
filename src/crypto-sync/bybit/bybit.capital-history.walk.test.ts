@@ -255,11 +255,12 @@ describe('the capital walk: windows, pages and marks', () => {
       ];
       walk.world.internal = [internalAt(AT)];
 
-      await walk.run();
+      const result = await walk.run();
 
       expect(walk.keys()).toEqual(['acc-1:internal:5678:BTC']);
       expect(walk.marks().cursor).toBe(NOW);
       expect(walk.marks().pending).toEqual([{ start: CURSOR, end: NOW, series: 'deposit' }]);
+      expect(result.complete).toBe(false);
       expect(loggedCodes(warn)).toContain('bybit-page-drift');
     });
 
