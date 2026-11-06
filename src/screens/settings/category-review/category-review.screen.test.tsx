@@ -841,6 +841,28 @@ describe('CategoryReviewScreen', () => {
         expect(silpo.queryByText(suggestionText('Groceries', 3, 3))).toBeNull();
       });
 
+      it('shows the Ukrainian chip text and names the chip button in Ukrainian', async () => {
+        silpoSuggested();
+
+        const screen = await renderReview();
+        const translated = i18n.t('categories.groceries');
+        const chipText = suggestionText(translated, 3, 3);
+        const chipLabel = i18n.t('categoryReview.suggestionFor', {
+          category: translated,
+          name: 'Silpo',
+          agreeing: 3,
+          total: 3,
+        });
+        const silpo = within(linesOf(screen)[SECOND_LINE]);
+
+        expect(chipText).not.toBe('categoryReview.suggestion');
+        expect(chipLabel).not.toBe('categoryReview.suggestionFor');
+        expect(chipText).not.toBe(GROCERIES_CHIP);
+        expect(chipLabel).not.toContain('Groceries');
+        expect(silpo.getByText(chipText)).toBeTruthy();
+        expect(silpo.getByLabelText(chipLabel)).toBeTruthy();
+      });
+
       it.each([
         ['renamed seeded', 'groceries', 'My groceries'],
         ['user-made', 'corner-shop', 'Corner shop'],

@@ -1,13 +1,39 @@
+let mockDatabase: DatabaseSync;
+
+jest.mock('@kiko/db/client', () => {
+  const { executingClient } = require('@kiko/test-support/real-sqlite');
+
+  return executingClient(() => mockDatabase);
+});
+
 import {
-  type ReviewEvidence,
   type ReviewGroup,
   planMccBackfill,
   planReviewGroups,
   planRuleRewrite,
   prepareRules,
 } from '@kiko/categories/category-rules';
-import type { TransactionRow } from '@kiko/db';
+import {
+  type DataSnapshot,
+  EXPORT_VERSION,
+  type ExportEnvelope,
+  type ExportPayload,
+  decodeBase64ToBytes,
+  decryptEnvelope,
+} from '@kiko/data-transfer';
+import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { database } from '@kiko/db';
+import { DatabaseSync } from 'node:sqlite';
+import { restoreDataSnapshot } from '@kiko/data-transfer/snapshot/restore-snapshot';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
+import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+import {
+  categoryRulesRepo,
+  mccBackfillRowsQuery,
+  readHoldingLabels,
+  withVisibleDescription,
+} from '@kiko/categories/category-rules-repo';
 
 import { demoText } from '../seed/demo-text';
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
@@ -30,60 +56,96 @@ const MOVED_NAMES = [
   'Bistro Zamok',
 ];
 
-describe('buildCategoryCheckSnapshot', () => {
-  const demo = buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR));
-  const snapshot = buildCategoryCheckSnapshot(ANCHOR);
-  const holdingById = new Map(snapshot.holdings.map((holding) => [holding.id, holding]));
-  const candidates = snapshot.transactions.map((transaction) => ({
-    ...transaction,
-    currency: holdingById.get(transaction.holdingId)?.currency ?? null,
-    accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
-  }));
-  const knownCategoryKeys = new Set(snapshot.categories.map((category) => category.key));
-  const rowsNamed = (name: string): TransactionRow[] =>
-    snapshot.transactions.filter((transaction) => transaction.description === name);
-  // The one-time move the import runs, planned by the app's own function over the file's rows.
+// What the import does with a file: the app's own restore writes it to a migrated database, the
+// one-time move reads its rows with the app's own query and writes the plan, and the review reads
+// its evidence with the app's own query.
+const worldOf = async (fileSnapshot: DataSnapshot) => {
+  mockDatabase = new DatabaseSync(':memory:');
+  applyAllMigrations(mockDatabase);
+  await restoreDataSnapshot(fileSnapshot, EXPORT_VERSION);
+
+  const holdingById = new Map(fileSnapshot.holdings.map((holding) => [holding.id, holding]));
+  const knownCategoryKeys = new Set(fileSnapshot.categories.map((category) => category.key));
+  const backfillRows = withVisibleDescription(
+    await mccBackfillRowsQuery(database),
+    await readHoldingLabels(database),
+  );
   const moves = new Map(
-    planMccBackfill(prepareRules(snapshot.categoryRules), candidates, knownCategoryKeys).map(
+    planMccBackfill(prepareRules(fileSnapshot.categoryRules), backfillRows, knownCategoryKeys).map(
       ({ id, category }) => [id, category],
     ),
   );
+  const updateCategory = mockDatabase.prepare('UPDATE transactions SET category = ? WHERE id = ?');
+
+  for (const [id, category] of moves) {
+    updateCategory.run(category, id);
+  }
+
+  const afterMove = fileSnapshot.transactions.map((transaction) => ({
+    ...transaction,
+    currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+    accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
+    category: moves.get(transaction.id) ?? transaction.category,
+  }));
+  const reviewLines = planReviewGroups(
+    prepareRules(fileSnapshot.categoryRules),
+    afterMove,
+    new Set(fileSnapshot.categories.map((category) => category.key.toLowerCase())),
+    await categoryRulesRepo.reviewEvidenceQuery(),
+  );
+
+  return { moves, afterMove, reviewLines };
+};
+
+// The rows the saved rule for the Podil Bakery name would move, planned by the app's own function.
+const podilRuleMoves = (
+  fileSnapshot: DataSnapshot,
+  afterMove: Awaited<ReturnType<typeof worldOf>>['afterMove'],
+  category: string,
+): number => {
+  const savedRule = {
+    id: 'review-rule',
+    category,
+    matchers: JSON.stringify([{ type: 'nameIs', text: 'Podil Bakery' }]),
+    createdAt: ANCHOR,
+    updatedAt: ANCHOR,
+  };
+
+  return planRuleRewrite(
+    prepareRules([...fileSnapshot.categoryRules, savedRule]),
+    savedRule.id,
+    afterMove,
+  ).length;
+};
+
+const readCommittedSnapshot = (): DataSnapshot => {
+  const key = decodeBase64ToBytes(readFileSync(join(__dirname, 'kiko-demo.key'), 'utf8'));
+  const envelope: ExportEnvelope = JSON.parse(
+    readFileSync(join(__dirname, 'kiko-category-check-en.kiko'), 'utf8'),
+  );
+  const payload: ExportPayload = JSON.parse(
+    new TextDecoder().decode(decryptEnvelope(envelope, key)),
+  );
+
+  return payload.tables;
+};
+
+describe('buildCategoryCheckSnapshot', () => {
+  const demo = buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR));
+  const snapshot = buildCategoryCheckSnapshot(ANCHOR);
+  const knownCategoryKeys = new Set(snapshot.categories.map((category) => category.key));
+  const rowsNamed = (name: string) =>
+    snapshot.transactions.filter((transaction) => transaction.description === name);
+  let moves: Map<string, string>;
+  let afterMove: Awaited<ReturnType<typeof worldOf>>['afterMove'];
+  let reviewLines: ReviewGroup[];
+
+  beforeAll(async () => {
+    ({ moves, afterMove, reviewLines } = await worldOf(snapshot));
+  });
+
   const categoryAfterMove = (name: string): (string | null)[] =>
     rowsNamed(name).map((row) => moves.get(row.id) ?? row.category);
-  const afterMove = candidates.map((row) => ({
-    ...row,
-    category: moves.get(row.id) ?? row.category,
-  }));
-  // The rows the evidence read counts, as that read counts them: per description and category.
-  const evidence = [
-    ...afterMove
-      .filter(
-        (row) =>
-          row.description !== '' &&
-          row.category !== null &&
-          !row.setsBalance &&
-          row.changeGroupId === null &&
-          row.exchangeCounterpartHoldingId === null &&
-          row.untrackedCounterpart === null,
-      )
-      .reduce((counts, row) => {
-        const categoryKey = (row.category ?? '').toLowerCase();
-        const pair = JSON.stringify([row.description, categoryKey]);
-
-        return counts.set(pair, {
-          description: row.description,
-          categoryKey,
-          rowCount: (counts.get(pair)?.rowCount ?? 0) + 1,
-        });
-      }, new Map<string, ReviewEvidence>())
-      .values(),
-  ];
-  const reviewLines = planReviewGroups(
-    prepareRules(snapshot.categoryRules),
-    afterMove,
-    new Set(snapshot.categories.map((category) => category.key.toLowerCase())),
-    evidence,
-  );
   const groupOf = (key: string): ReviewGroup | undefined =>
     reviewLines.find((group) => group.key === key);
 
@@ -196,19 +258,8 @@ describe('buildCategoryCheckSnapshot', () => {
     });
 
     it('opens the confirm sheet on the Podil Bakery line: the rule moves a row the line hides', () => {
-      const savedRule = {
-        id: 'review-rule',
-        category: 'dining',
-        matchers: JSON.stringify([{ type: 'nameIs', text: 'Podil Bakery' }]),
-        createdAt: ANCHOR,
-        updatedAt: ANCHOR,
-      };
       const movedBy = (category: string): number =>
-        planRuleRewrite(
-          prepareRules([...snapshot.categoryRules, { ...savedRule, category }]),
-          savedRule.id,
-          afterMove,
-        ).length;
+        podilRuleMoves(snapshot, afterMove, category);
 
       expect(groupOf('podil bakery')).toMatchObject({
         names: ['Podil Bakery'],
@@ -229,5 +280,20 @@ describe('buildCategoryCheckSnapshot', () => {
       expect(groupOf('varus')).toMatchObject({ rowCount: 3, suggestion: null });
       expect(groupOf('kfc')).toMatchObject({ rowCount: 4, suggestion: null });
     });
+  });
+});
+
+describe('the committed kiko-category-check-en.kiko', () => {
+  it('holds what the README says, whatever day it was made on', async () => {
+    const committed = readCommittedSnapshot();
+    const { afterMove, reviewLines } = await worldOf(committed);
+    const groupOf = (key: string) => reviewLines.find((group) => group.key === key);
+    expect(afterMove.filter((row) => row.category === 'travel')).toHaveLength(4);
+    expect(groupOf('bud depot')?.suggestion).toEqual({
+      category: LONG_TITLE_CATEGORY_KEY,
+      agreeing: 2,
+      total: 2,
+    });
+    expect(podilRuleMoves(committed, afterMove, 'dining')).toBe(3);
   });
 });
