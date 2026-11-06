@@ -463,6 +463,10 @@ const input = { ...(note === undefined ? {} : { note }) };
 const input = { ...foldMap(maybe(note), (value) => ({ note: value })) };
 ```
 
+A non-empty fallback is the same case: `x === undefined ? fallback : f(x)`
+becomes `foldMap(maybe(x), f) ?? fallback`. The layer root options in
+`src/navigation/pane-stack/pane-stack-view/pane-slice.ts` are the worked example.
+
 ## `fnts` FIRST
 
 `fnts` (github.com/drizzer14/fnts, the user's own library) is the
