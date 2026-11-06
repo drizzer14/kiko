@@ -58,9 +58,9 @@ const withdrawalAt = (time: number, overrides: Record<string, unknown> = {}) =>
 
 // The ten-digit time of an internal deposit is a whole second, so its point ends a second later.
 const AMOUNT_SERIES = [
-  ['deposit', 'deposit', depositAt, 'id', 'deposit', 1],
-  ['internal deposit', 'internal', internalAt, 'id', 'internal', SECOND_MS],
-  ['withdrawal', 'withdraw', withdrawalAt, 'withdrawId', 'withdraw', 1],
+  ['a deposit', 'deposit', depositAt, 'id', 'deposit', 1],
+  ['an internal deposit', 'internal', internalAt, 'id', 'internal', SECOND_MS],
+  ['a withdrawal', 'withdraw', withdrawalAt, 'withdrawId', 'withdraw', 1],
 ] as const;
 
 const pointAt = (time: number, series: CapitalSeries) => ({
@@ -509,6 +509,25 @@ describe('the capital walk: what each row is', () => {
     });
   });
 
+  describe('a record that moves no money', () => {
+    it.each(AMOUNT_SERIES)(
+      '%s of zero writes no row and owes nothing',
+      async (_name, series, recordAt, idField, kind) => {
+        const walk = newWalk();
+        walk.world[series] = [
+          recordAt(AT, { [idField]: 'zero', amount: '0' }),
+          recordAt(AT + 2 * SECOND_MS, { [idField]: 'good' }),
+        ];
+
+        await walk.run();
+
+        expect(walk.keys()).toEqual([`acc-1:${kind}:good:BTC`]);
+        expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+        expect(warn).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('a record the walk cannot trust', () => {
     it('owes the point of a row that did not parse, and still imports its neighbours', async () => {
       const walk = newWalk();
@@ -529,24 +548,7 @@ describe('the capital walk: what each row is', () => {
     });
 
     it.each(AMOUNT_SERIES)(
-      'a %s of zero writes no row and owes nothing',
-      async (_name, series, recordAt, idField, kind) => {
-        const walk = newWalk();
-        walk.world[series] = [
-          recordAt(AT, { [idField]: 'zero', amount: '0' }),
-          recordAt(AT + 2 * SECOND_MS, { [idField]: 'good' }),
-        ];
-
-        await walk.run();
-
-        expect(walk.keys()).toEqual([`acc-1:${kind}:good:BTC`]);
-        expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
-        expect(warn).not.toHaveBeenCalled();
-      },
-    );
-
-    it.each(AMOUNT_SERIES)(
-      'a %s with a negative amount owes its point and its neighbour imports',
+      '%s with a negative amount owes its point and its neighbour imports',
       async (_name, series, recordAt, idField, kind, pointEnd) => {
         const walk = newWalk();
         walk.world[series] = [

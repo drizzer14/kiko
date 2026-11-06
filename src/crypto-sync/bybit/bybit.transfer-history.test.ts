@@ -278,7 +278,7 @@ describe('the transfer walk: what each row is', () => {
     });
   });
 
-  describe('a record the walk cannot trust', () => {
+  describe('a record that moves no money', () => {
     it('a transfer of zero writes no leg, owes nothing, and its neighbour imports', async () => {
       const walk = newWalk();
       walk.world.transfer = [
@@ -295,7 +295,9 @@ describe('the transfer walk: what each row is', () => {
       expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
       expect(warn).not.toHaveBeenCalled();
     });
+  });
 
+  describe('a record the walk cannot trust', () => {
     it.each([
       ['negative', '-5', 'transfer-amount-invalid'],
       ['not a number', 'a lot', 'amount-malformed'],

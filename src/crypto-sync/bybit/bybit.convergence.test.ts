@@ -348,6 +348,7 @@ describe('Bybit convergence', () => {
       const inBurst = cursors.slice(first, last + 1);
 
       expect(first).toBeGreaterThan(0);
+      expect(last).toBeGreaterThan(first);
       expect(inBurst.slice(1).every((cursor, run) => cursor > inBurst[run])).toBe(true);
     });
 
@@ -378,10 +379,14 @@ describe('Bybit convergence', () => {
         const { cursors } = await settle(account.transfer, gap);
         const spacings = spacingsOf(cursors);
 
+        const [firstSlow = 1, ...laterSlow] = spacings.filter((spacing) => spacing > 1);
+
         expect(rowsOf(account.transfer)).toHaveLength(2 * count);
         expect(cursors).toEqual([...cursors].sort((left, right) => left - right));
         expect(spacings.length).toBeGreaterThan(0);
-        expect(Math.max(...spacings)).toBeLessThanOrEqual(4);
+        expect(firstSlow).toBeLessThanOrEqual(4);
+        expect(laterSlow.length).toBeLessThanOrEqual(1);
+        expect(Math.max(1, ...laterSlow)).toBeLessThanOrEqual(3);
       },
     );
 
