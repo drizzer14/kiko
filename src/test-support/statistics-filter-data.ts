@@ -1,4 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
+import type { TransactionRow } from '@kiko/db';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import { act, fireEvent } from '@testing-library/react-native';
 
@@ -40,29 +41,57 @@ const CATEGORIES = [
   { key: 'transport', title: 'Transport', icon: 'car' },
 ];
 
-const NO_MARKERS = {
+/** The columns the ledger and its exclusion matchers read from a row, as the database returns. */
+export type FilterTransaction = Pick<
+  TransactionRow,
+  | 'id'
+  | 'holdingId'
+  | 'time'
+  | 'amountMinorUnits'
+  | 'category'
+  | 'setsBalance'
+  | 'changeGroupId'
+  | 'exchangePairId'
+  | 'exchangeCounterpartHoldingId'
+  | 'untrackedCounterpart'
+  | 'loanHoldingId'
+>;
+
+// A matcher keeps a row on `=== null` or `!== null`, so a column left out reads as a value, never
+// as no value: every column starts as the database gives it for a plain row.
+const PLAIN_ROW = {
+  category: null,
+  setsBalance: false,
+  changeGroupId: null,
+  exchangePairId: null,
   exchangeCounterpartHoldingId: null,
   untrackedCounterpart: null,
   loanHoldingId: null,
 };
 
+/** A plain transaction row with the columns a test sets, the rest as the database gives them. */
+export const transactionRowOf = (
+  row: Pick<FilterTransaction, 'id' | 'holdingId' | 'time' | 'amountMinorUnits'> &
+    Partial<FilterTransaction>,
+): FilterTransaction => ({ ...PLAIN_ROW, ...row });
+
 // Each row is a categorized spending on one account, so the pie and the trend have both to show.
 const TRANSACTIONS = [
-  {
+  transactionRowOf({
     id: 'e1',
     holdingId: 'h1',
     time: localDaysFrom(now, -2),
     amountMinorUnits: -300_00,
     category: 'groceries',
-  },
-  {
+  }),
+  transactionRowOf({
     id: 'e2',
     holdingId: 'h2',
     time: localDaysFrom(now, -2),
     amountMinorUnits: -100_00,
     category: 'transport',
-  },
-].map((row) => ({ ...NO_MARKERS, ...row }));
+  }),
+];
 
 const HISTORY = [
   { base: 'USD', quote: 'UAH', day: toUtcMidnight(now) - 5 * DAY_MS, rate: '40', source: 'nbu' },

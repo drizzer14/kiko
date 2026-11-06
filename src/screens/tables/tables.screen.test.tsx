@@ -9,6 +9,11 @@ import {
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
 import { calendarMonthOf } from '@kiko/dates';
+import {
+  answerFilterData,
+  pressFilterOption,
+  transactionRowOf,
+} from '@kiko/test-support/statistics-filter-data';
 import { darkTheme } from '@kiko/design-system/theme';
 import Screen from '@kiko/design-system/components/screen';
 import { reportWindow } from '@kiko/test-support/window-size';
@@ -17,7 +22,6 @@ import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { act, fireEvent, render, renderHook, within } from '@testing-library/react-native';
-import { answerFilterData, pressFilterOption } from '@kiko/test-support/statistics-filter-data';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
@@ -89,17 +93,14 @@ describe('TablesScreen', () => {
           tables[0] === 'transactions'
             ? [
                 ...(answer.data as object[]),
-                {
+                transactionRowOf({
                   id: 'opening',
                   holdingId: 'h1',
                   time: SPENT_AT,
                   amountMinorUnits: -999_00,
                   category: 'groceries',
                   setsBalance: true,
-                  exchangeCounterpartHoldingId: null,
-                  untrackedCounterpart: null,
-                  loanHoldingId: null,
-                },
+                }),
               ]
             : undefined,
         ),
@@ -111,17 +112,15 @@ describe('TablesScreen', () => {
     });
 
     describe('beside a credit of the amount of a real debit on another holding', () => {
-      const creditOf = (setsBalance: boolean) => ({
-        id: 'credit',
-        holdingId: 'h1',
-        time: SPENT_AT + 1_000,
-        amountMinorUnits: 100_00,
-        category: 'groceries',
-        setsBalance,
-        exchangeCounterpartHoldingId: null,
-        untrackedCounterpart: null,
-        loanHoldingId: null,
-      });
+      const creditOf = (setsBalance: boolean) =>
+        transactionRowOf({
+          id: 'credit',
+          holdingId: 'h1',
+          time: SPENT_AT + 1_000,
+          amountMinorUnits: 100_00,
+          category: 'groceries',
+          setsBalance,
+        });
       const seedCredit = (setsBalance: boolean) =>
         mockUseLiveQuery.mockImplementation(
           answerWith((tables, answer) =>
@@ -423,13 +422,6 @@ describe('TablesScreen', () => {
     describe('a category that a month spends on and the period nets out', () => {
       const PAID_AT = calendarMonthOf(calendarMonthOf(SPENT_AT).start - 1).start + 1_000;
       const PAID_IN = monthTitle(calendarMonthOf(PAID_AT), i18n.t);
-      const NO_MARKERS = {
-        setsBalance: false,
-        exchangeCounterpartHoldingId: null,
-        untrackedCounterpart: null,
-        loanHoldingId: null,
-        changeGroupId: 'refund-group',
-      };
       const withNettedOutCategory = answerWith((tables, answer) => {
         if (tables[0] === 'categories') {
           return [
@@ -441,22 +433,21 @@ describe('TablesScreen', () => {
         if (tables[0] === 'transactions') {
           return [
             ...(answer.data as object[]),
-            {
-              ...NO_MARKERS,
+            transactionRowOf({
               id: 'paid',
               holdingId: 'h1',
               time: PAID_AT,
               amountMinorUnits: -200_00,
               category: 'refunded',
-            },
-            {
-              ...NO_MARKERS,
+              changeGroupId: 'refund-group',
+            }),
+            transactionRowOf({
               id: 'returned',
               holdingId: 'h1',
               time: SPENT_AT,
               amountMinorUnits: 250_00,
-              category: null,
-            },
+              changeGroupId: 'refund-group',
+            }),
           ];
         }
 
@@ -559,20 +550,11 @@ describe('TablesScreen', () => {
   });
 
   describe('the cash flow table', () => {
-    const NO_MARKERS = {
-      category: null,
-      setsBalance: false,
-      changeGroupId: null,
-      exchangeCounterpartHoldingId: null,
-      untrackedCounterpart: null,
-      loanHoldingId: null,
-    };
-    const rowOf = (row: Record<string, unknown>) => ({ ...NO_MARKERS, ...row });
-    const withRows = (...rows: Record<string, unknown>[]) =>
+    const withRows = (...rows: Parameters<typeof transactionRowOf>[0][]) =>
       mockUseLiveQuery.mockImplementation(
         answerWith((tables, answer) =>
           tables[0] === 'transactions'
-            ? [...(answer.data as object[]), ...rows.map(rowOf)]
+            ? [...(answer.data as object[]), ...rows.map(transactionRowOf)]
             : undefined,
         ),
       );
