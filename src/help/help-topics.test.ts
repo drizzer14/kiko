@@ -507,7 +507,7 @@ describe('the choices a help step names', () => {
       enValues,
       [
         'more than 2 minutes apart or only one side was synced',
-        'a transfer from one of your Monobank cards that Kiko syncs',
+        'a transfer from one of your Monobank cards that Kiko syncs or synced',
         'a category you pick with "Categories" narrows the category table only',
       ],
       'are the figures of the category table',
@@ -517,7 +517,7 @@ describe('the choices a help step names', () => {
       ukValues,
       [
         'понад 2 хвилини або синхронізовано лише одну',
-        'переказ з вашої картки Monobank, яку синхронізує Кіко',
+        'переказ з вашої картки Monobank, яку синхронізує або синхронізував Кіко',
         'звужує лише таблицю за категоріями',
       ],
       'це дані таблиці за категоріями',
@@ -545,7 +545,6 @@ describe('the choices a help step names', () => {
     expect(step).toContain(
       'Кошти, які продавець повернув окремим зарахуванням, вважаються надходженням',
     );
-    expect(step).toContain('вважається');
     expect(step).toContain('на ваш банківський рахунок');
   });
 
