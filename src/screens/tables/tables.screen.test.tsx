@@ -18,6 +18,7 @@ import { darkTheme } from '@kiko/design-system/theme';
 import Screen from '@kiko/design-system/components/screen';
 import { reportWindow } from '@kiko/test-support/window-size';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
+import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
@@ -797,6 +798,35 @@ describe('TablesScreen', () => {
 
       expect(getByTestId('category-table-caption')).toHaveTextContent('in USD', { exact: false });
       expect(spokenValue(getByLabelText(`Groceries, ${SPENT_IN}`))).toBe('$7.50');
+    });
+  });
+
+  describe('the rate-history backfill', () => {
+    // The data-layer helper already stubs `runBackfill` with a run that never ends, and its mock
+    // is the one the store calls; the spy only counts the calls and settles one.
+    const backfillModule = jest.requireMock('@kiko/rates/history-backfill') as {
+      runBackfill: () => Promise<BackfillStatus>;
+    };
+    const runBackfillSpy = jest.spyOn(backfillModule, 'runBackfill');
+
+    afterAll(() => {
+      runBackfillSpy.mockRestore();
+    });
+
+    it('starts the run when Tables is the first screen to open', async () => {
+      await renderTables();
+
+      expect(runBackfillSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts no run when it is pushed after a settled run', async () => {
+      runBackfillSpy.mockResolvedValueOnce({ state: 'complete', lastDay: Date.now() });
+
+      await renderTables();
+      await act(async () => {});
+      await renderTables();
+
+      expect(runBackfillSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

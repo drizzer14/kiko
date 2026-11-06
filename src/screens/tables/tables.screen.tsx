@@ -25,6 +25,7 @@ import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
 import { TABLES_VIEWS, type TablesView } from '@kiko/statistics/tables-view';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
@@ -85,7 +86,24 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     categoryByKey,
     filtered,
     spanStart,
+    transactionsFresh,
+    historyRows,
+    historyFresh,
   } = useStatisticsSources({ isVisible, now, selectedAccounts });
+
+  // A screen opened before Statistics has no run to read, so it starts the one that fills the
+  // rate history; one opened after a run that covers its span starts nothing and shares that run.
+  useRateHistoryBackfill({
+    transactions,
+    holdings,
+    historyRows,
+    transactionsFresh,
+    historyFresh,
+    baseCurrency,
+    spanStart,
+    now,
+  });
+
   const ledger = useSpendingLedger({
     transactions,
     holdings,

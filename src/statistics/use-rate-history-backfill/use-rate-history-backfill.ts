@@ -4,13 +4,16 @@ import {
   deriveLastBackfilledDay,
   deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDayByCurrency,
-  planBackfillRun,
-  runBackfill,
 } from '@kiko/rates/history-backfill';
-import either, { bifold, isLeft } from 'fnts/either';
 import type { Currency } from '@kiko/currency/currency';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { CurrencyRateHistoryRow, HoldingRow, TransactionRow } from '@kiko/db';
+
+import {
+  getBackfillStatus,
+  requestBackfill,
+  subscribeBackfillStatus,
+} from './rate-history-backfill.store';
 
 /**
  * Drives the incremental, non-blocking rate-history backfill and surfaces its status. It runs
@@ -22,7 +25,9 @@ import type { CurrencyRateHistoryRow, HoldingRow, TransactionRow } from '@kiko/d
  * day; a currency-set change instead resumes from the ordinary incremental cursor, since
  * `runBackfill`'s own per-currency window already widens for the new currency on its own. See
  * `resolveBackfillWindow` (`history-backfill.ts`) for why `runBackfill` must honor an explicit
- * null as an override of its own per-currency minimum.
+ * null as an override of its own per-currency minimum. The run and its status are shared by every
+ * mounted reader (`rate-history-backfill.store.ts`): a reader of a span a run already covers
+ * starts nothing and shows that run's status.
  */
 export const useRateHistoryBackfill = (input: {
   transactions: readonly Pick<TransactionRow, 'id'>[];
@@ -64,7 +69,7 @@ export const useRateHistoryBackfill = (input: {
   // "latest" refs instead, so that self-triggered re-render cannot re-enter the effect on its own
   // — only a dependency that genuinely changed for an unrelated reason (`now` advancing on a real
   // focus, `spanStart` moving) does. Without this, a
-  // failed run whose span ref was just cleared (below, to allow a LATER
+  // failed run whose covered span was just restored (by the store, to allow a LATER
   // retry) would see its own write's echo immediately, at the SAME instant,
   // and restart — a permanent request loop for a currency whose provider
   // never answers, for as long as Statistics stays mounted.
@@ -101,39 +106,10 @@ export const useRateHistoryBackfill = (input: {
     [holdings, baseCurrency],
   );
 
-  // Both refs hold what the last run covered, so the re-render the backfill's own writes trigger
-  // (which advance `lastBackfilledDay`) does not re-enter for the same span/currency set.
-  const backfillRanForSpanRef = useRef<number | null>(null);
-  const backfillRanForCurrencyKeyRef = useRef<string | null>(null);
-  const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>({
-    state: 'idle',
-    lastDay: null,
-  });
-
-  // Guards the backfill effect's own async settle against a REAL unmount
-  // only. A re-render whose deps changed (a refocus advancing `now`, for
-  // example) fires the SAME cleanup lifecycle event as an unmount, so a
-  // per-effect `cancelled` flag set in that effect's own returned cleanup
-  // cannot tell the two apart — it would drop a still-pending run's eventual
-  // settle on every refocus, leaving the line stuck on "loading" forever.
-  // This ref only ever flips inside its own unmount-only effect (`[]` deps).
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  // Guards a settle against a SUPERSEDED run, not just a real unmount: a span
-  // extension while still mounted (an older transaction arriving mid-session)
-  // can start run B before run A's own settle arrives. Bumped only when this
-  // effect actually starts a run (never on a plain refocus, which the
-  // `backfillRanForSpanRef` check below already turns into a no-op), so a
-  // stale run's `.then` can compare its captured token against the current
-  // one and drop its settle instead of overwriting run B's state or ref.
-  const runTokenRef = useRef(0);
+  // The run and its status live in one module store, so every mounted reader (Statistics, Tables)
+  // shares one run: the span the last run covered, the guard against a superseded run and the
+  // status are the store's own, not this instance's.
+  const backfillStatus = useSyncExternalStore(subscribeBackfillStatus, getBackfillStatus);
 
   useEffect(() => {
     // `historyFresh` guards against the exact same "empty reads as no data
@@ -156,87 +132,14 @@ export const useRateHistoryBackfill = (input: {
       return;
     }
 
-    const currenciesChanged =
-      backfillRanForCurrencyKeyRef.current !== null &&
-      backfillRanForCurrencyKeyRef.current !== historyCurrencyKey;
-    const { run, resumeFrom } = planBackfillRun(
+    requestBackfill({
       spanStart,
-      backfillRanForSpanRef.current,
-      lastBackfilledDayRef.current,
-      currenciesChanged,
-    );
-
-    if (!run) {
-      return;
-    }
-
-    // Captured so a failed settle below can RESTORE both, not just clear them
-    // to null — see that restore's own comment for why the distinction
-    // matters.
-    const spanCoveredBeforeThisRun = backfillRanForSpanRef.current;
-    const currencyKeyCoveredBeforeThisRun = backfillRanForCurrencyKeyRef.current;
-    // Mark this span AND currency set covered BEFORE the async run so the
-    // write's own re-render (which advances lastBackfilledDay) does not
-    // re-enter for the same span/currency set.
-    backfillRanForSpanRef.current = spanStart;
-    backfillRanForCurrencyKeyRef.current = historyCurrencyKey;
-    runTokenRef.current += 1;
-    const token = runTokenRef.current;
-
-    // No local "nothing missing" shortcut here any more: `runBackfill` itself
-    // owns that decision now, since it also has to check a newly-held or
-    // lagging currency against `lastBackfilledDayByCurrency` — a check this
-    // caller cannot replicate without `openCurrencies`'s own async read.
-    setBackfillStatus({ state: 'loading', lastDay: lastBackfilledDayRef.current });
-    // either() captures every rejection as a Left, and the .then handler only sets state.
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
-    either<unknown, BackfillStatus>(() =>
-      runBackfill({
-        earliestDay: spanStart,
-        lastBackfilledDay: resumeFrom,
-        today: now,
-        lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
-        firstBackfilledDayByCurrency: firstBackfilledDayByCurrencyRef.current,
-        binanceOnlyCurrencies: binanceOnlyCurrenciesRef.current,
-      }),
-    ).then((result) => {
-      if (!isMountedRef.current || token !== runTokenRef.current) {
-        return;
-      }
-
-      if (isLeft(result)) {
-        // A rejected run must retry on the next focus refresh instead of
-        // being reported as done: RESTORE both refs to what they covered
-        // BEFORE this run, not null — see the restore below for why.
-        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
-        backfillRanForCurrencyKeyRef.current = currencyKeyCoveredBeforeThisRun;
-        setBackfillStatus({ state: 'failed', lastDay: lastBackfilledDayRef.current });
-
-        return;
-      }
-
-      // `runBackfill` itself resolves a Right `'failed'` status (rather than
-      // rejecting) when every provider failed for the span — treated
-      // identically to the `isLeft` arm above: retry on the next focus.
-      const settled: BackfillStatus = bifold(result);
-
-      if (settled.state === 'failed') {
-        // Restore, don't clear to null: a FIRST-ever run's pre-run value was
-        // already null, so this still reads as never-run next time. But an
-        // EARLIER-EXTENSION run's pre-run value was the OLD (later) spanStart
-        // — clearing to null instead would make the next planBackfillRun call
-        // take its "never run" branch, which resumes from the CURRENT
-        // lastBackfilledDay (already advanced by an earlier successful run)
-        // rather than recomputing the whole span — silently losing the
-        // newly-opened earlier gap forever. Restoring the old spanStart keeps
-        // `spanStart < ranForSpanStart` true, so the SAME earlier-extension
-        // branch (resumeFrom: null) fires again on the next retry. The
-        // currency key must restore the same way, or a currency-set change
-        // that failed reads as already covered and never retries.
-        backfillRanForSpanRef.current = spanCoveredBeforeThisRun;
-        backfillRanForCurrencyKeyRef.current = currencyKeyCoveredBeforeThisRun;
-      }
-      setBackfillStatus(settled);
+      currencyKey: historyCurrencyKey,
+      now,
+      lastBackfilledDay: lastBackfilledDayRef.current,
+      lastBackfilledDayByCurrency: lastBackfilledDayByCurrencyRef.current,
+      firstBackfilledDayByCurrency: firstBackfilledDayByCurrencyRef.current,
+      binanceOnlyCurrencies: binanceOnlyCurrenciesRef.current,
     });
   }, [
     transactions.length,
