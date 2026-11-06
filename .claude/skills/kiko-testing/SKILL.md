@@ -260,6 +260,8 @@ test from being decorative.
 - A walk world needs a moving clock: a fixed-clock world hid a reset bug in `headFirstGroundOf`.
   Run it at gaps of 0, one hour and one day, and pin the cases that need the clock to move (a head
   held across runs).
+- A new law needs a mutant of its own fix that turns it red, shown in the report: a bound copied
+  from the old law can stay green with the fix removed.
 - A red commit for a missing export or field reads it by a runtime lookup so the file type-checks;
   after the green, tidy the lookup into a typed import or field.
 - The seed list goes through `sweep` (below).

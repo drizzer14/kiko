@@ -1058,7 +1058,9 @@ section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list
   passes `plainHintOf` (`src/crypto-sync/bybit/bybit.cursor-span.ts`) as the optional `outcomeOf`
   of `runExchangeWalkPlan` (`src/crypto-sync/exchange/walk/exchange-walk-plan.ts`): after a commit
   on a forward or re-scan pass the next run starts from the span it wanted, not from the whole
-  window, so a burst converges in a few halvings. Binance passes no `outcomeOf`, so its run is
+  window, so the named burst converges in a few halvings; a random burst may re-halve once more,
+  in at most 3 runs (the burst property in `src/crypto-sync/bybit/bybit.convergence.test.ts`).
+  Binance passes no `outcomeOf`, so its run is
   unchanged.
 - The transfer walk (`bybit.transfer-history.ts`) reads 7-day windows (`WINDOW_MS`), writes both
   legs of a transfer with one pair id per coin (`exchangePairIdOf`), in the series `transfer`
@@ -1068,9 +1070,10 @@ section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list
   the capital walk's code is `capital-amount-invalid`, `CAPITAL_AMOUNT_INVALID`).
 - The lanes, their call caps and the call interval live in `bybit.history-budget.ts`
   (`BYBIT_LANE_CALL_CAPS`, `BYBIT_REQUEST_INTERVAL_MS`). Read the values there.
-- Every capital row books on FUND. A page drift of a capital series is owed as a range tagged with
-  the series (`driftOf` in `src/crypto-sync/bybit/bybit.walk-run.ts`), and the forward pass goes
-  past it (`CAPITAL_FORWARD_OWES`; `isOwedPast` in
+- Every capital row books on FUND. A page drift of a capital or transfer series is owed as a range
+  tagged with the series (`driftOf` in `src/crypto-sync/bybit/bybit.walk-run.ts`), and the forward
+  pass goes past it (`CAPITAL_FORWARD_OWES`, and `TRANSFER_FORWARD_OWES` in
+  `src/crypto-sync/bybit/bybit.transfer-history.ts`, both hold `BYBIT_PAGE_DRIFT`; `isOwedPast` in
   `src/crypto-sync/exchange/walk/records.ts`). Binance `earn-page-drift` is the opposite: it stops
   the run.
 - Deposit type 50 (`NOT_CREDITED_DEPOSIT_TYPE`) is final and owes nothing.
