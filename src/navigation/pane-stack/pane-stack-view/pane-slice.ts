@@ -177,9 +177,10 @@ export const layerSlice = (
         render: () => createElement(Fragment),
         options: {
           ...LAYER_ROOT_OPTIONS,
-          ...(page === undefined
-            ? { headerShown: false }
-            : { ...barAppearanceOf(descriptors[page.key]?.options ?? {}), ...LAYER_ROOT_HEADER }),
+          ...(foldMap(maybe(page), (shown) => ({
+            ...barAppearanceOf(descriptors[shown.key]?.options ?? {}),
+            ...LAYER_ROOT_HEADER,
+          })) ?? { headerShown: false }),
         },
       },
       ...overlaid,
