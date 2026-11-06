@@ -109,12 +109,12 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
   const worldOf = (): GroupsInput =>
     inputOf({
       shown: [
-        seriesOf('null-category'),
-        seriesOf('empty-category'),
-        seriesOf('no-rows', { chargeIds: ['absent'] }),
-        seriesOf('stored-under-default'),
-        seriesOf('in-media'),
-        seriesOf('in-bills'),
+        seriesOf('null-category', { lastChargeAmountMinorUnits: 100 }),
+        seriesOf('empty-category', { lastChargeAmountMinorUnits: 200 }),
+        seriesOf('no-rows', { chargeIds: ['absent'], lastChargeAmountMinorUnits: 50 }),
+        seriesOf('stored-under-default', { lastChargeAmountMinorUnits: 400 }),
+        seriesOf('in-media', { lastChargeAmountMinorUnits: 800 }),
+        seriesOf('in-bills', { lastChargeAmountMinorUnits: 1_600 }),
       ],
       rows: [
         rowOf('null-category-charge', -100, null),
@@ -137,7 +137,7 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
       'null-category',
       'stored-under-default',
     ]);
-    expect(plain(defaultGroup?.total)).toEqual({ currency: 'UAH', minorUnits: 700 });
+    expect(plain(defaultGroup?.total)).toEqual({ currency: 'UAH', minorUnits: 750 });
   });
 
   it('heads that group with the default`s title, icon and resolved color', () => {
@@ -183,7 +183,11 @@ describe('recurringGroupsOf: the order of groups and of series', () => {
   it('follows the categories, not the totals, the titles or the keys', () => {
     const { groups } = recurringGroupsOf(
       inputOf({
-        shown: [seriesOf('general-series'), seriesOf('bills-series'), seriesOf('media-series')],
+        shown: [
+          seriesOf('general-series', { lastChargeAmountMinorUnits: 50_000 }),
+          seriesOf('bills-series', { lastChargeAmountMinorUnits: 90_000 }),
+          seriesOf('media-series', { lastChargeAmountMinorUnits: 10_000 }),
+        ],
         rows: [
           rowOf('general-series-charge', -50_000, 'general'),
           rowOf('bills-series-charge', -90_000, 'bills'),
@@ -199,9 +203,15 @@ describe('recurringGroupsOf: the order of groups and of series', () => {
   it('lists only the shown series, and sums none of the rows of another', () => {
     const { groups, total } = recurringGroupsOf(
       inputOf({
-        shown: [seriesOf('shown-series')],
+        shown: [
+          seriesOf('shown-series', {
+            chargeIds: ['shown-series-charge', 'shown-series-older'],
+            lastChargeAmountMinorUnits: 100,
+          }),
+        ],
         rows: [
           rowOf('shown-series-charge', -100, 'media'),
+          rowOf('shown-series-older', -60, 'media'),
           rowOf('hidden-series-charge', -9_999, 'media'),
           rowOf('hidden-other-charge', -7_777, 'bills'),
         ],

@@ -210,7 +210,7 @@ describe('RecurringChargesScreen — category groups', () => {
 
     expect(total.getByText('Sum of last charges')).toBeTruthy();
     expect(total.queryByText('All paid so far')).toBeNull();
-    expect(total.getByText(moneyText(60000 + 89700 + 19800))).toBeTruthy();
+    expect(total.getByText(moneyText(30000 + 29900 + 9900))).toBeTruthy();
   });
 
   it('shows each heading with its category title, icon tile and own total', async () => {
@@ -223,13 +223,13 @@ describe('RecurringChargesScreen — category groups', () => {
     expect(utilities.getByText('Utilities')).toBeTruthy();
     expect(utilities.getByTestId('entity-icon-tile')).toBeTruthy();
     expect(
-      within(getByTestId('recurring-charges-group-total-utilities')).getByText(moneyText(60000)),
+      within(getByTestId('recurring-charges-group-total-utilities')).getByText(moneyText(30000)),
     ).toBeTruthy();
     expect(subscriptions.getByText('Subscriptions')).toBeTruthy();
     expect(subscriptions.getByTestId('entity-icon-tile')).toBeTruthy();
     expect(
       within(getByTestId('recurring-charges-group-total-subscriptions')).getByText(
-        moneyText(89700 + 19800),
+        moneyText(29900 + 9900),
       ),
     ).toBeTruthy();
   });
@@ -330,7 +330,7 @@ describe.each(['en', 'uk'])('RecurringChargesScreen — no category, in %s', (la
     expect(tree.queryByTestId(/uncategorized/i)).toBeNull();
     expect(
       within(tree.getByTestId('recurring-charges-group-total-other')).getByText(
-        moneyText(30000 + 10000),
+        moneyText(15000 + 10000 + 5000),
       ),
     ).toBeTruthy();
   });
