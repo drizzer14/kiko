@@ -226,6 +226,12 @@ actually landed.
   has, and do not assume a single coin. `generate-demo-kiko.test.ts` decrypts the committed file
   and compares it with the seed, so the two agree. Tell the user to add by hand any holding a
   check needs that the seed lacks.
+- A check of the category automation (the MCC move, a suggestion chip, the Move Transactions
+  confirm) imports the check file `e2e/screenshot/fixtures/kiko-category-check-en.kiko`, not the
+  demo: the demo sets `mccCategoriesBackfilled: true` and has no MCC rows, so it cannot show the
+  MCC move. Regenerate it with `KIKO_REGEN_CATEGORY_CHECK=1 npx jest
+  e2e/screenshot/fixtures/generate-demo-kiko.test.ts` (README section "The category check
+  file"). Never give it to the App Store reviewer or use it for a screenshot.
 
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
 after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes
