@@ -215,6 +215,10 @@ the theme's tokens, not literal values, so the token keys stay the one
 contract every component styles against, whichever theme supplies values.
 The token values live in `theme.ts` (`darkTheme`, `lightTheme`) and
 `palette.ts`; read those directly rather than restating them here.
+The light values come from `docs/design/light-palette/palette.json`, pinned by
+`src/design-system/palette/light-palette-source.test.ts`; change the JSON, never a light hex alone.
+The palette check reads `palette.ts` by text position, and code placed above the
+`chartSeriesDark` block failed it: keep that block in place and put new light sets below it.
 
 ## Locked decisions (user-approved)
 
@@ -791,8 +795,8 @@ where they can drift. The pipeline is:
   `stored ?? typeDefault` — that pattern misses an empty-string stored
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
-  of silently falling back. The gray fallback resolves from the single
-  dark palette (`entityColorsDark` in `palette.ts`). For an account
+  of silently falling back. The gray fallback resolves from
+  `entityColorsDark` in `palette.ts`; the light twins sit beside it. For an account
   row, call `accountIdentity` (`src/holdings/account-identity/`), which
   pairs this color with the icon fallback (see `kiko-domain`'s "Entity
   glyphs"); for a holding, call its twin `holdingIdentity`
