@@ -73,7 +73,7 @@ describe('RecurringSeriesRow', () => {
       {
         kind: 'quiet',
         overrides: QUIET_SERIES,
-        line: `Wallet: no newer transactions since ${formatDate(TENTH_OF_JUNE)}`,
+        line: `"Wallet": no newer transactions since ${formatDate(TENTH_OF_JUNE)}`,
       },
     ])(
       'sits in the amount column of an $kind series, beside the name column',
@@ -153,7 +153,7 @@ describe('RecurringSeriesRow', () => {
     );
 
     expect(
-      getByText(`Wallet: no newer transactions since ${formatDate(TENTH_OF_JUNE)}`),
+      getByText(`"Wallet": no newer transactions since ${formatDate(TENTH_OF_JUNE)}`),
     ).toBeTruthy();
     expect(queryByText(`No charge since ${formatDate(FIRST_OF_MAY)}`)).toBeNull();
   });

@@ -183,7 +183,7 @@ describe('recurrence text in English', () => {
       'No transactions near the amount you marked count here now. ' +
       'Transfers, exchanges and loan payments are left out.',
     lastCharge: 'Last charge 15.08.2026',
-    quiet: 'Netflix: no newer transactions since 20.08.2026',
+    quiet: '"Netflix": no newer transactions since 20.08.2026',
   });
 
   describe('recurrenceLine', () => {
@@ -254,7 +254,7 @@ describe('recurrence text in English', () => {
             quiet: { since: QUIET_SINCE, holdingName: 'Monobank black' },
           }),
         ),
-      ).toBe('Monobank black: no newer transactions since 20.08.2026');
+      ).toBe('"Monobank black": no newer transactions since 20.08.2026');
     });
 
     it('reads the quiet date, never the charge date', () => {
@@ -262,7 +262,7 @@ describe('recurrence text in English', () => {
         seriesWith({ isStopped: true, quiet: { since: QUIET_SINCE, holdingName: '*1234' } }),
       );
 
-      expect(line).toBe('*1234: no newer transactions since 20.08.2026');
+      expect(line).toBe('"*1234": no newer transactions since 20.08.2026');
       expect(line).not.toContain('15.08.2026');
     });
   });
@@ -370,6 +370,15 @@ describe('recurrence text in Ukrainian', () => {
           }),
         ),
       ).toBe('«Monobank black»: немає новіших транзакцій за 20.08.2026');
+    });
+
+    it('keeps the guillemets around the quiet holding name, never straight quotes', () => {
+      const line = lastChargeLineOf(
+        seriesWith({ isStopped: true, quiet: { since: QUIET_SINCE, holdingName: 'Wallet' } }),
+      );
+
+      expect(line.startsWith('«Wallet»: ')).toBe(true);
+      expect(line).not.toContain('"');
     });
   });
 });
