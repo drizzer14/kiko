@@ -1148,8 +1148,9 @@ is in section 9.6 ("The detected period"), 8.2 and 13. Detection itself does not
 The user's device check of `next` 258396580, relayed by the coordinator, three items. Words in quotes are the user's (as
 relayed). This section overrides sections 8.1, 9.2, 9.3, 17.2, 17.4 and 17.6 where they differ. Detection, marks, the store,
 the routes, the form's mark field and the reads (17.5) do not change. **Status: Q1 to Q4 answered by the user 2026-11-06
-(18.8); texts approved 2026-11-06 ("Texts approved"). OPEN, waiting for the user: 18.8 Q5, a way to remove a stopped series
-from the list (a need the Q2 answer added); its texts are pending.** 18.1 to 18.5 do not wait on Q5. Every fact here was read at
+(18.8); texts approved 2026-11-06 ("Texts approved"). Q5, a way to remove a stopped series from the list (a need the Q2
+answer added), answered 2026-11-06 "A: Remove = hide" with "Long press+delete action"; its texts "lgtm".** Every fact here was
+read at
 85215396e or 6df66759b: re-grep each symbol on the base.
 
 ### 18.1 What this reverses
@@ -1239,12 +1240,12 @@ sent or logged. The store and its parser do not change.
 
 ### 18.7 i18n
 
-Rows in `.superpowers/sdd/1.4-recurring/texts-visual-2.md`, APPROVED 2026-11-06 ("Texts approved") except its section "Q2
-option texts (pending)". New: `recurringCharges.lastChargesTotal`, `recurringCharges.hiddenTag`,
+Rows in `.superpowers/sdd/1.4-recurring/texts-visual-2.md`, APPROVED 2026-11-06 ("Texts approved"; Q5 A's rows "lgtm").
+New: `recurringCharges.lastChargesTotal`, `recurringCharges.hiddenTag`,
 `recurringCharges.summary.{repeats,lastCharge,status,stopped,chargeCount}`. Changed: `help.topics.viewRecurringCharges.steps.4`
 (the "Hidden" section is gone). Removed: `recurringCharges.hiddenHeading` (with its `title-keys.ts` line) and
-`recurringCharges.chargeCount_{one,few,many,other}`. Q5's keys (18.8) are pending and are copied only after its answer and
-their own approval.
+`recurringCharges.chargeCount_{one,few,many,other}`. Q5 (18.8) adds `recurringCharges.removeFromList` (the footer button and
+the row's menu item) and `help.topics.viewRecurringCharges.steps.6`.
 
 ### 18.8 Questions for the user
 
@@ -1257,7 +1258,8 @@ Answered 2026-11-06 (relayed by the coordinator); the options not picked are dro
 | Q3 a hidden row | A, plus "the amount greyed" | tag, after the group's active and stopped rows, out of the totals, amount `textSecondary` (18.4) |
 | Q4 after "Show again" or "Not a recurring charge" | B | the screen goes back, as the hide does (18.5) |
 
-**Q5. A way to remove a stopped series from the list. OPEN, waiting for the user.** Facts (re-grep on the base):
+**Q5. A way to remove a stopped series from the list. ANSWERED 2026-11-06: "A: Remove = hide", with the note "Long
+press+delete action"; texts "lgtm".** Facts (re-grep on the base):
 `settingsRepo.hideRecurringMerchant(key, name)` sets `hidden: true` on a merchant KEY's entry and keeps its marks
 (`settings.repo.ts`); a hide covers every detected series of that key, all currencies and periods, and never a marked series
 (`shownSeriesOf`, `recurring-charges.screen.tsx`). A series is stopped when its newest charge is before
@@ -1268,7 +1270,7 @@ choice entry holds only `name`, `hidden` and `marks` (`RecurringMerchantChoice`,
 hidden row stays listed, so today's "Not a recurring charge" on a stopped series takes it out of the totals but not off the
 list. The series screen's footer has one button by kind (`recurring-series.screen.tsx`, the `footer` prop; 18.5).
 
-- **A (recommended): "Remove from list" hides a stopped series, and a hidden stopped series is not listed.** On a stopped
+- **A (picked): "Remove from list" hides a stopped series, and a hidden stopped series is not listed.** On a stopped
   detected series not hidden, the footer reads "Remove from list" (`secondaryTonal`, testID `recurring-series-remove`) and
   writes the same `hideRecurringMerchant`; the screen goes back (Q4 B). The list leaves out a detected series that is hidden
   AND stopped; a hidden active series stays a "Hidden" row (Q3 A). Totals: the series leaves them (hidden does not count, Q2),
@@ -1278,14 +1280,18 @@ list. The series screen's footer has one button by kind (`recurring-series.scree
   series that later stops leaves the list on its own. Data: no new field, no migration, marks untouched. Pins: 18.4's "a hidden
   series lists in its group" gains "unless stopped" (a named edit); the Q3 A worlds with a hidden stopped series move. Texts:
   one button, one help step. Size: the smallest; one predicate in the screen's split, one footer kind, one help step.
-- **B: "Remove from list" stores a per-series removal that ends with a new charge.** Same button; the write stores, in the
-  key's entry, the removed series' currency and last-charge time (a new optional field, the parser and its tests change). The
-  list and the totals leave out a series whose newest charge is not after the stored time; a newer charge brings it back on
-  its own, counted, and the stored entry no longer matches. Undo before a new charge: as A (a mark on the form). Risk: none to
-  other series of the key; a store-shape change (a JSON field in the existing column, no migration, a reviewer step for the
-  parser), and "a settled mark must expire" is met by the time compare. Texts: one button, one help step. Size: medium (the
-  choice type, its parser, a repo write, the screen's split, the footer).
-- **C: a list switch "Show stopped charges".** One switch row above the total; off, every stopped series leaves the list and
-  the totals (the total of all keeps equalling the groups). Undo: turn it on. Risk: removes all stopped series at once, never
-  one; kept across launches it needs a settings column (a migration, a reviewer step), else it resets on each visit. Texts: one
-  switch label, one help step. Size: medium to large (a control, a stored setting, every list world with a stopped series).
+- **The long press (the user's note, read with the coordinator):** the removal is ALSO a long-press menu item on the list
+  row of a stopped detected series that is not hidden; the footer button stays. The row is wrapped in the shared
+  `CardContextMenu` (`src/design-system/components/card-context-menu/`), `liftOnHold` (a plain list), `deletable={false}`,
+  and one action: "Remove from list" in the destructive style. It calls the same `settingsRepo.hideRecurringMerchant(key,
+  name)` as the footer (one write; a rejected write alerts as the list's other writes do). Every other row (active, hidden,
+  marked) passes no action, so `CardContextMenu` renders it bare: no gesture, no menu.
+- **No confirm (finding):** `CardContextMenu` forces its `ConfirmSheet` on the delete path only (`deletable` + `onDelete`:
+  the destructive "Delete" (`common.delete`) item and a `Delete "<name>"` confirm, `confirmDelete`). Its `closeAction`
+  (`{ label, onPress }`, used by the close-holding action) runs with no confirm ("the consumer owns its label and its
+  confirm", `runClose`) but renders a default `Button`. A hide can be undone, so no confirm: `closeAction` gains an optional
+  `destructive: true` that renders that item `variant="destructive"`; today's callers pass none and render as before. The
+  menu's header is the row's name and its Cancel is `common.cancel`, so no new text.
+- B (a stored per-series removal) and C (a "Show stopped charges" switch) were not picked.
+- **Open question (not planned):** a marked stopped series gets no menu item, since a hide never hides a marked series and its
+  way out is "Remove mark" on the series screen. If the user wants a long press there too, it would be a "Remove mark" item.

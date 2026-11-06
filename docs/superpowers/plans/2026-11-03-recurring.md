@@ -737,12 +737,11 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
 ## 1.4-recurring visual round 2
 
 **Spec:** section 18 (18.1 the reversals with their "was:", 18.2 totals, 18.3 the table, 18.4 hidden rows, 18.5 the footer,
-18.7 texts, 18.8 answers and the open Q5). **Branch:** `1.4-recurring-visual-2`, base 85215396e (visual-1 task 3/3's tip, not
+18.7 texts, 18.8 answers with Q5). **Branch:** `1.4-recurring-visual-2`, base 85215396e (visual-1 task 3/3's tip, not
 yet in `next`). **Answers (USER 2026-11-06):** Q1 A, Q2 (a stopped series counts, a hidden one does not, plus a way to remove a
-stopped series: Q5), Q3 A plus the hidden amount greyed (`MoneyText tone="muted"`, token `textSecondary`), Q4 B. **Texts:**
-APPROVED 2026-11-06 ("Texts approved"), except "Q2 option texts (pending)". **Gates:** tasks 1/5 to 3/5 have none left and
-start now (task 1/5 step 1/4 first). Task 4/5 waits for the user's Q5 pick and the approval of its pending texts; it is
-planned on the recommended option A and is the only task a different pick rewrites. Task 5/5 is the track's design
+stopped series: Q5), Q3 A plus the hidden amount greyed (`MoneyText tone="muted"`, token `textSecondary`), Q4 B, Q5 "A:
+Remove = hide" with "Long press+delete action". **Texts:** APPROVED 2026-11-06 ("Texts approved"; Q5 A "lgtm"). **Gates:**
+none left; task 1/5 step 1/4 first, then each task on the previous tip. Task 5/5 is the track's design
 consistency review (user rule 2026-11-06). Five change sets, stacked: task 1/5 on this plan's commit, each next one on the
 previous tip. Every count is a floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base.
 Scope is the three items, Q5 and the review only.
@@ -902,17 +901,24 @@ in the same step (harness-workflow "Removing or renaming a catalogue key").
   series, a marked one; the largest non-accessibility size and AX1 (a wrapped value keeps its label). READY FOR VERIFY, label
   `1.4-recurring-visual-2-task-3`.
 
-### 1.4-recurring-visual-2 task 4/5: remove a stopped series from the list (spec 18.8 Q5, option A)
+### 1.4-recurring-visual-2 task 4/5: remove a stopped series from the list (spec 18.8 Q5 A, with the long press)
 
-**Gate:** the user's Q5 pick and "texts approved" for its rows of "Q2 option texts (pending)". Planned on option A; if the user
-picks B or C the planner rewrites this task only (tasks 1/5 to 3/5 and 5/5 do not move). **Base:** task 3/5's tip. **Files
-(floor 14; mutable floor 3: `recurring-charges.screen.tsx`, `recurring-series.screen.tsx`, `help-topics.ts`; plus
-`use-recurring-groups.ts` if the ids input is chosen below).**
+**Answered:** Q5 "A: Remove = hide", "Long press+delete action", texts "lgtm" (2026-11-06). **Base:** task 3/5's tip. **Files
+(floor 17; mutable floor 4: `recurring-charges.screen.tsx`, `recurring-series.screen.tsx`, `help-topics.ts`,
+`card-context-menu.component.tsx`; plus `use-recurring-groups.ts` if the ids input is chosen below).**
 - Modify: `recurring-charges.screen.tsx` (the split of the detected series: hidden AND `isStopped` goes to neither `shown` nor
-  `hidden`); `src/recurring/use-recurring-groups/{use-recurring-groups.ts,use-recurring-groups.test.tsx}` (the removed series'
-  ids stay in the by-ids read, so a removal adds no by-ids key, spec 9.5: a third ids-only input or the same `every` list the
+  `hidden`; the series item wraps `RecurringSeriesRow` in `CardContextMenu` with `liftOnHold`, `deletable={false}`, and a
+  `closeAction` `{ label: t('recurringCharges.removeFromList'), destructive: true, onPress }` only for a stopped detected
+  series not hidden, else no action, so the row renders bare); `src/design-system/components/card-context-menu/
+  {card-context-menu.component.tsx,card-context-menu.component.test.tsx}` (`closeAction` gains optional `destructive: true`,
+  rendering that item `variant="destructive"`; no confirm, as `runClose` today);
+  `src/recurring/use-recurring-groups/{use-recurring-groups.ts,use-recurring-groups.test.tsx}` (the removed series' ids stay
+  in the by-ids read, so a removal adds no by-ids key, spec 9.5: a third ids-only input or the same `every` list the
   developer measures); `recurring-series.screen.tsx` (a fourth footer kind); `src/help/{help-topics.ts,help-topics.test.ts}`
   (`steps.6` in `stepKeys`); `src/i18n/locales/{en,uk}.ts`.
+- One write: the footer and the menu item both call `settingsRepo.hideRecurringMerchant(series.merchantKey, series.name)`, the
+  existing repo write; no new repo function and no list-local copy of the write logic beyond its call and the alert (the list's
+  catch is `alertOnCatch` with the save-error keys, as its other writes).
 - Modify, pins: `recurring-charges.screen.test.tsx`, `recurring-charges.screen.groups.test.tsx`,
   `recurring-charges.screen.marked.test.tsx` (each world with a hidden stopped series; grep `isStopped: true` beside a hidden
   key on the base), `recurring-series.screen.footer.test.tsx`, `src/screens/settings/help-topic/help-topic.screen.test.tsx` (if
@@ -928,20 +934,35 @@ picks B or C the planner rewrites this task only (tasks 1/5 to 3/5 and 5/5 do no
   `secondaryTonal`, and no `recurring-series-hide` (red); a tap calls `hideRecurringMerchant(key, name)` once, goes back only
   after the write and only while focused, a rejected write alerts and stays (Q4 B); an active detected series still shows "Not
   a recurring charge", a marked stopped series "Remove mark", a hidden series "Show again" (guards). Help: `steps.6` in both
-  languages (red). Commit `test(settings): remove a stopped series from the list`.
-- [ ] **step 2/5 (kiko:developer): code.** Spec 18.8 Q5 A. The split and the footer by kind with `match` (four kinds); the
-  write is the existing hide, no new repo function, no store change. Catalogue: `recurringCharges.removeFromList` and
+  languages (red). Long press (list suites, `HOLD_GESTURE_TEST_ID` and `CLOSE_ACTION_TEST_ID` from `CardContextMenu`): a hold
+  on a stopped detected row opens the menu headed by the row's name with one item "Remove from list" / «Прибрати зі списку»
+  in `variant="destructive"` and Cancel, and no `DELETE_ACTION_TEST_ID` and no confirm sheet (red); tapping it calls
+  `hideRecurringMerchant` with the series' key and name once, the same spy and arguments as the footer pin (red); after the
+  write the row leaves the list and its amount leaves its group total and the total of all (red); a rejected write alerts and
+  the row stays (red); a hold on an active row, a hidden row and a marked stopped row shows no remove item (the row renders
+  bare, no `card-context-menu`; guards, red on a mutant that offers it to every row); a tap on a stopped row still opens the
+  series screen (guard). `card-context-menu.component.test.tsx`: a `closeAction` with `destructive: true` renders
+  `variant="destructive"` and runs `onPress` with no confirm (red); without it the item keeps today's default variant (guard).
+  Commit `test(settings): remove a stopped series from the list`.
+- [ ] **step 2/5 (kiko:developer): code.** Spec 18.8 Q5 A and its long press. The split, the row's menu and the footer by
+  kind with `match` (four kinds); the write is the existing hide, no new repo function, no store change; the menu is the
+  shared `CardContextMenu`, no local sheet. Catalogue: `recurringCharges.removeFromList` and
   `help.topics.viewRecurringCharges.steps.6` into `en.ts` and `uk.ts` together, as approved; `steps.6` into `stepKeys`. Run
   `npx jest src/recurring src/screens/settings/recurring-charges src/screens/settings/recurring-series
-  src/navigation/settings-stack src/help src/screens/settings/help-topic src/i18n/locales --maxWorkers=2`. Commit
-  `feat(settings): remove a stopped series from the list`.
+  src/navigation/settings-stack src/help src/screens/settings/help-topic src/design-system/components/card-context-menu
+  src/i18n/locales --maxWorkers=2`. Commit `feat(settings): remove a stopped series from the list`.
 - [ ] **step 3/5 Review (kiko:reviewer).** Top question: can the removal hide a marked series, drop an active series of the key
-  from the list (it must stay, tagged), or change a by-ids key? Second: does a hidden series that stops leave the list, and
-  one charged again come back tagged?
+  from the list (it must stay, tagged), or change a by-ids key? Second: do the menu item and the footer share one write, and
+  does any other row get a hold gesture (it would also take the hold from the list's scroll)? Third: does `destructive` change
+  any existing `closeAction` caller (the close-holding sheets)? Fourth: does a hidden series that stops leave the list, and one
+  charged again come back tagged?
 - [ ] **step 4/5 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring section (hidden and stopped is not
-  listed), kiko-design-system's footer kinds (four), spec 18.4's "Which series".
+  listed; the long press), kiko-design-system's footer kinds (four) and `CardContextMenu`'s `closeAction` (the destructive
+  flag, a new caller), spec 18.4's "Which series".
 - [ ] **step 5/5 Device and Ready.** Both languages: a stopped series, "Remove from list", Back, gone with the totals down by its
-  amount; an active series of the same key stays, tagged. READY FOR VERIFY, label `1.4-recurring-visual-2-task-4`.
+  amount; a hold on another stopped row, the destructive item, gone the same way, no confirm; a hold on an active row opens
+  nothing and the list still scrolls from it; an active series of the same key stays, tagged. READY FOR VERIFY, label
+  `1.4-recurring-visual-2-task-4`.
 
 ### 1.4-recurring-visual-2 task 5/5: Design consistency review (user rule 2026-11-06)
 
@@ -953,7 +974,7 @@ and before the track's final READY FOR VERIFY. **Scope, the track's touched scre
 `src/screens/settings/recurring-series/recurring-series.screen.tsx`, `src/screens/forms/transaction-form/transaction-form.screen.tsx`
 and its `recurring-mark-field`, `src/screens/forms/exchange-fields/exchange-fields.component.tsx`,
 `src/screens/forms/paired-fields-row/paired-fields-row.component.tsx`, `src/screens/settings/help-topic` (the recurring
-topic), and `SummaryTable` as used by the series screen.
+topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its destructive `closeAction`).
 
 - [ ] **step 1/3 Review (kiko:designer, READ-ONLY).** Over every file of the scope, five points: shared design-system
   components only, no local copies; theme tokens only; the same patterns as the sibling screens (dividers, headers, buttons,
@@ -981,7 +1002,7 @@ topic), and `SummaryTable` as used by the series screen.
 | visual-2 task 1/5 | 2 (listed in its Files) |
 | visual-2 task 2/5 | 6 (listed in its Files) |
 | visual-2 task 3/5 | 1 (listed in its Files) |
-| visual-2 task 4/5 | 3 (option A; listed in its Files) |
+| visual-2 task 4/5 | 4 (listed in its Files) |
 | visual-2 task 5/5 | the fix set's own files, measured |
 
 Mutation gates are paused by the user; this table is for a lift.
