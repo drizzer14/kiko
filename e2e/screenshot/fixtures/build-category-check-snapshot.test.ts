@@ -16,24 +16,17 @@ import {
   restoreDataSnapshot,
 } from '@kiko/data-transfer';
 import { join } from 'node:path';
-import { database } from '@kiko/db';
 import { readFileSync } from 'node:fs';
 import {
   type ReviewGroup,
-  planMccBackfill,
   planReviewGroups,
   planRuleRewrite,
   prepareRules,
 } from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
-import {
-  categoryRulesRepo,
-  mccBackfillRowsQuery,
-  readHoldingLabels,
-  withVisibleDescription,
-} from '@kiko/categories/category-rules-repo';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+import { backfillMccCategories, categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 
 import { demoText } from '../seed/demo-text';
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
@@ -57,35 +50,37 @@ const MOVED_NAMES = [
 ];
 
 // What the import does with a file: the app's own restore writes it to a migrated database, the
-// one-time move reads its rows with the app's own query and writes the plan, and the review reads
-// its evidence with the app's own query.
+// app's own one-time move runs on it (and only when the restored settings row says it has not),
+// and the review reads its evidence with the app's own query.
 const worldOf = async (fileSnapshot: DataSnapshot) => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
   await restoreDataSnapshot(fileSnapshot, EXPORT_VERSION);
+  await backfillMccCategories();
 
   const holdingById = new Map(fileSnapshot.holdings.map((holding) => [holding.id, holding]));
-  const knownCategoryKeys = new Set(fileSnapshot.categories.map((category) => category.key));
-  const backfillRows = withVisibleDescription(
-    await mccBackfillRowsQuery(database),
-    await readHoldingLabels(database),
+  const categoryById = new Map(
+    (
+      mockDatabase.prepare('SELECT id, category FROM transactions').all() as {
+        id: string;
+        category: string | null;
+      }[]
+    ).map((row) => [row.id, row.category]),
   );
   const moves = new Map(
-    planMccBackfill(prepareRules(fileSnapshot.categoryRules), backfillRows, knownCategoryKeys).map(
-      ({ id, category }) => [id, category],
-    ),
+    fileSnapshot.transactions.flatMap((transaction): [string, string][] => {
+      const category = categoryById.get(transaction.id);
+
+      return typeof category === 'string' && category !== transaction.category
+        ? [[transaction.id, category]]
+        : [];
+    }),
   );
-  const updateCategory = mockDatabase.prepare('UPDATE transactions SET category = ? WHERE id = ?');
-
-  for (const [id, category] of moves) {
-    updateCategory.run(category, id);
-  }
-
   const afterMove = fileSnapshot.transactions.map((transaction) => ({
     ...transaction,
     currency: holdingById.get(transaction.holdingId)?.currency ?? null,
     accountId: holdingById.get(transaction.holdingId)?.accountId ?? null,
-    category: moves.get(transaction.id) ?? transaction.category,
+    category: categoryById.get(transaction.id) ?? transaction.category,
   }));
   const reviewLines = planReviewGroups(
     prepareRules(fileSnapshot.categoryRules),
@@ -283,7 +278,7 @@ describe('buildCategoryCheckSnapshot', () => {
 });
 
 describe('the committed kiko-category-check-en.kiko', () => {
-  it('holds what the README says, whatever day it was made on', async () => {
+  it('holds Travel 4 rows, Bud Depot chip 2 of 2 and Podil Bakery Dining moving 3, any day', async () => {
     const committed = readCommittedSnapshot();
     const { afterMove, reviewLines } = await worldOf(committed);
     const groupOf = (key: string) => reviewLines.find((group) => group.key === key);

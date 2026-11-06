@@ -829,24 +829,12 @@ describe('CategoryReviewScreen', () => {
         });
       });
 
-      it('shows the translated title of a seeded category', async () => {
+      it('shows the translated title on the chip text and on the chip button label', async () => {
         silpoSuggested();
 
         const screen = await renderReview();
         const translated = i18n.t('categories.groceries');
-        const silpo = within(linesOf(screen)[SECOND_LINE]);
-
-        expect(translated).not.toBe('Groceries');
-        expect(silpo.getByText(suggestionText(translated, 3, 3))).toBeTruthy();
-        expect(silpo.queryByText(suggestionText('Groceries', 3, 3))).toBeNull();
-      });
-
-      it('shows the Ukrainian chip text and names the chip button in Ukrainian', async () => {
-        silpoSuggested();
-
-        const screen = await renderReview();
-        const translated = i18n.t('categories.groceries');
-        const chipText = suggestionText(translated, 3, 3);
+        const englishTitle = i18n.t('categories.groceries', { lng: 'en' });
         const chipLabel = i18n.t('categoryReview.suggestionFor', {
           category: translated,
           name: 'Silpo',
@@ -855,11 +843,11 @@ describe('CategoryReviewScreen', () => {
         });
         const silpo = within(linesOf(screen)[SECOND_LINE]);
 
-        expect(chipText).not.toBe('categoryReview.suggestion');
+        expect(translated).not.toBe(englishTitle);
         expect(chipLabel).not.toBe('categoryReview.suggestionFor');
-        expect(chipText).not.toBe(GROCERIES_CHIP);
-        expect(chipLabel).not.toContain('Groceries');
-        expect(silpo.getByText(chipText)).toBeTruthy();
+        expect(chipLabel).not.toContain(englishTitle);
+        expect(silpo.getByText(suggestionText(translated, 3, 3))).toBeTruthy();
+        expect(silpo.queryByText(suggestionText(englishTitle, 3, 3))).toBeNull();
         expect(silpo.getByLabelText(chipLabel)).toBeTruthy();
       });
 
