@@ -12,6 +12,7 @@ import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { buildCategoryByMonth } from '@kiko/statistics/category-by-month';
 import { averageOverComplete, firstCompleteMonthIndex } from '@kiko/statistics/table-period';
@@ -23,7 +24,7 @@ import type { CategoryTableProps } from './category-table.props';
 
 // The table keeps a row's key, title and amounts, never a slice color, so the scheme the breakdown
 // resolves colors in cannot show here; the category menu's own slices take the active one.
-const TABLE_SCHEME = 'dark';
+const TABLE_SCHEME: ColorScheme = 'dark';
 const NO_VALUE = '–';
 const WHOLE_UNITS = { fractionDigits: 0, symbol: false } as const;
 // The table opens with this many month columns showing, the next column peeking in as the hint

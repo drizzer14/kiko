@@ -76,6 +76,11 @@ import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dat
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import '@kiko/design-system/unistyles';
+import {
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '@kiko/design-system/palette';
 import { darkTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
@@ -201,7 +206,7 @@ type Transaction = {
   untrackedCounterpart?: string | null;
   loanHoldingId?: string | null;
 };
-type CategoryRow = { key: string; title: string; icon: string };
+type CategoryRow = { key: string; title: string; icon: string; color?: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
 type LiveData = {
   accounts?: Account[];
@@ -2148,6 +2153,40 @@ describe('StatisticsScreen', () => {
 
       expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
       expect(tint).not.toBe(categoryColor('groceries'));
+    } finally {
+      restoreThemeOrder();
+    }
+  });
+
+  // A manual trend key is held in the option list without being checked in the category filter, so
+  // its glyph shows the tint; a checked row shows the white on-accent glyph instead.
+  it('tints a trend-held category with no spending through the category set in the light scheme', async () => {
+    registerLightThemeFirst();
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: THREE_EXPENSES,
+      history: HISTORY,
+      categories: [
+        ...CATEGORIES,
+        { key: 'utilities', title: 'Utilities', icon: 'bolt', color: entityColorsDark.violet },
+      ],
+      settings: [{ baseCurrency: 'UAH', trendFilter: { mode: 'manual', keys: ['utilities'] } }],
+    });
+
+    try {
+      const { getByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(CATEGORY_FILTER));
+      });
+
+      const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-utilities`), 'bolt')?.props
+        .tintColor;
+
+      expect(tint).toBe(categoryColorsLight.violet);
+      expect(tint).not.toBe(entityColorsLight.violet);
     } finally {
       restoreThemeOrder();
     }
