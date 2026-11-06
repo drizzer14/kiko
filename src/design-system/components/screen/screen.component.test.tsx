@@ -339,6 +339,29 @@ describe('Screen', () => {
     expect(getByTestId(CONTENT_TEST_ID).parent?.props.edges).toBeUndefined();
   });
 
+  describe('belowHeader (a plain screen under a shown native header)', () => {
+    it('drops the top edge, so the header owns the top inset, and keeps the rest', async () => {
+      const { getByTestId } = await renderScreen({ belowHeader: true });
+
+      expect(getByTestId(CONTENT_TEST_ID).parent?.props.edges).toEqual(['left', 'right', 'bottom']);
+    });
+
+    it('keeps the content, the base top padding and the tab-bar clearance of the plain branch', async () => {
+      const { getByTestId } = await renderScreen({ belowHeader: true });
+      const content = StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style);
+
+      expect(content.paddingTop).toBe(CONTENT_BASE_PADDING);
+      expect(content.paddingBottom).toBe(FOOTER_GAP + BOTTOM_CLEARANCE);
+      expect(content.flex).toBe(1);
+    });
+
+    it('still pins a footer below the content', async () => {
+      const { getByTestId } = await renderScreen({ belowHeader: true, footer: footerNode });
+
+      expect(getByTestId(FOOTER_TEST_ID)).toBeTruthy();
+    });
+  });
+
   it('renders the bleedTop child directly under the SafeAreaView with no content wrapper, so the native large title can track it as its scroll view', async () => {
     const { getByText, queryByTestId } = await renderScreen({ bleedTop: true });
 
@@ -871,6 +894,12 @@ describe('Screen', () => {
       ).toBeUndefined();
     });
 
+    it('adds no pill under a top bar when the screen sits below a shown header', async () => {
+      const view = await renderScreen({ belowHeader: true });
+
+      expect(contentTop(view)).toBe(CONTENT_BASE_PADDING);
+    });
+
     it('carries no top clearance in the scroll branch', async () => {
       const { getByTestId } = await renderScreen({ scroll: true });
       const scrollContentStyle = StyleSheet.flatten(
@@ -1121,6 +1150,20 @@ describe('Screen', () => {
       ['rows', 'companion', ['left', 'right']],
       ['rows', 'primary', ['left', 'right', 'bottom']],
     ] as const)(
+      'drops the top edge of a plain screen below a header and keeps only the edges the %s %s pane touches',
+      async (mode, pane, touched) => {
+        const view = await renderInPane({ belowHeader: true }, mode, pane);
+
+        expect(view.getByTestId(CONTENT_TEST_ID).parent?.props.edges).toEqual(touched);
+      },
+    );
+
+    it.each([
+      ['columns', 'companion', ['left', 'bottom']],
+      ['columns', 'primary', ['right', 'bottom']],
+      ['rows', 'companion', ['left', 'right']],
+      ['rows', 'primary', ['left', 'right', 'bottom']],
+    ] as const)(
       'drops the top edge of a large-title screen and keeps only the edges the %s %s pane touches',
       async (mode, pane, touched) => {
         const scroll = await renderInPane({ scroll: true }, mode, pane);
@@ -1186,6 +1229,112 @@ describe('Screen', () => {
 
       expect(StyleSheet.flatten(getByTestId(CONTENT_TEST_ID).props.style).paddingBottom).toBe(
         FOOTER_GAP + BOTTOM_CLEARANCE,
+      );
+    });
+  });
+
+  // A table is wider than the pane cap, which exists to keep a form from stretching across a wide
+  // window. A screen that asks for `uncapped` takes the whole window or pane it is in.
+  describe('uncapped', () => {
+    afterEach(() => {
+      mockHorizontalSizeClass.mockReturnValue('compact');
+    });
+
+    // The bleedTop child caps its own content, so only its footer is Screen's to cap.
+    const BRANCHES = [
+      ['plain', {}],
+      ['scroll', { scroll: true }],
+    ] as const;
+
+    const capsOf = (
+      view: Awaited<ReturnType<typeof renderScreen>>,
+      props: { scroll?: boolean },
+    ) => {
+      const root = view.getByTestId(props.scroll ? SCROLL_VIEW_TEST_ID : CONTENT_TEST_ID).parent;
+      const content = props.scroll
+        ? view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle
+        : undefined;
+
+      return [
+        StyleSheet.flatten(root?.props.style)?.maxWidth,
+        StyleSheet.flatten(content)?.maxWidth,
+      ];
+    };
+
+    it('caps a regular window at the pane max width, so the next case is a change', async () => {
+      mockHorizontalSizeClass.mockReturnValue('regular');
+
+      expect(capsOf(await renderScreen({}), {})).toEqual([
+        darkTheme.layout.paneMaxWidth,
+        undefined,
+      ]);
+      expect(capsOf(await renderScreen({ scroll: true }), { scroll: true })).toEqual([
+        undefined,
+        darkTheme.layout.paneMaxWidth,
+      ]);
+    });
+
+    it.each(BRANCHES)('leaves the %s branch of a regular window uncapped', async (_name, props) => {
+      mockHorizontalSizeClass.mockReturnValue('regular');
+      const view = await renderScreen({ ...props, uncapped: true });
+
+      expect(capsOf(view, props)).toEqual([undefined, undefined]);
+    });
+
+    // The footer of the plain branch sits inside the capped root, which the cases above cover.
+    it.each([
+      ['scroll', { scroll: true, footer: footerNode }],
+      ['bleedBottom', { bleedBottom: true, footer: footerNode }],
+      ['bleedTop', { bleedTop: true, footer: footerNode }],
+    ] as const)(
+      'caps the footer of the %s branch in a regular window, unless uncapped',
+      async (_name, props) => {
+        mockHorizontalSizeClass.mockReturnValue('regular');
+        const capped = await renderScreen(props);
+        const uncapped = await renderScreen({ ...props, uncapped: true });
+
+        expect(StyleSheet.flatten(capped.getByTestId(FOOTER_TEST_ID).props.style).maxWidth).toBe(
+          darkTheme.layout.paneMaxWidth,
+        );
+        expect(StyleSheet.flatten(uncapped.getByTestId(FOOTER_TEST_ID).props.style).maxWidth).toBe(
+          undefined,
+        );
+      },
+    );
+
+    it.each([
+      ['columns', 'primary'],
+      ['rows', 'companion'],
+    ] as const)('leaves the plain branch of a %s %s pane uncapped', async (mode, pane) => {
+      const inPane = (props: ComponentProps<typeof Screen>) =>
+        render(
+          <PaneContext.Provider value={paneContextOf(mode, pane)}>
+            <Screen {...props}>
+              <Text>content</Text>
+            </Screen>
+          </PaneContext.Provider>,
+        );
+      const capped = await inPane({});
+      const uncapped = await inPane({ uncapped: true });
+
+      expect(
+        StyleSheet.flatten(capped.getByTestId(CONTENT_TEST_ID).parent?.props.style).maxWidth,
+      ).toBe(darkTheme.layout.paneMaxWidth);
+      expect(
+        StyleSheet.flatten(uncapped.getByTestId(CONTENT_TEST_ID).parent?.props.style).maxWidth,
+      ).toBe(undefined);
+    });
+
+    it('keeps the edges, the margin and the clearance of the plain branch', async () => {
+      mockHorizontalSizeClass.mockReturnValue('regular');
+      const capped = await renderScreen({ belowHeader: true });
+      const uncapped = await renderScreen({ belowHeader: true, uncapped: true });
+
+      expect(uncapped.getByTestId(CONTENT_TEST_ID).parent?.props.edges).toEqual(
+        capped.getByTestId(CONTENT_TEST_ID).parent?.props.edges,
+      );
+      expect(uncapped.getByTestId(CONTENT_TEST_ID).props.style).toEqual(
+        capped.getByTestId(CONTENT_TEST_ID).props.style,
       );
     });
   });

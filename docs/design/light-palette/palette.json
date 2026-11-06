@@ -1,0 +1,599 @@
+{
+  "meta": {
+    "title": "Kiko Light Palette",
+    "base": "next 57130e23c",
+    "scope": "palette only: no app code. Dark values are copied from the code and checked by check-dark.mjs.",
+    "tokenCountMeasured": 19,
+    "tokenCountNote": "theme.ts has 21 color lines in darkTheme.colors: 19 string tokens plus 2 palette references (entityColors, chartSeries). The research said 19, which is right for string tokens.",
+    "rationale": "Light values start from Apple's iOS light system colors. Where a system value fails WCAG 2.2 AA on the real backgrounds (systemBlue 4.0:1, systemGreen 2.2:1, systemRed 3.6:1, secondaryLabel 3.5:1), the hue is kept and the lightness is lowered until the pair passes. The check is contrast.mjs."
+  },
+  "decisions": {
+    "pageBackground": {
+      "chosen": "A",
+      "options": {
+        "A": {
+          "label": "Grouped gray page, white cards (iOS Settings look)",
+          "background": "#F2F2F7",
+          "surface": "#FFFFFF",
+          "sheetBackground": "#F2F2F7"
+        },
+        "B": {
+          "label": "White page, light-gray cards",
+          "background": "#FFFFFF",
+          "surface": "#F2F2F7",
+          "sheetBackground": "#FFFFFF"
+        }
+      }
+    },
+    "segmentedThumb": {
+      "chosen": "A",
+      "options": {
+        "A": {
+          "label": "White thumb (native iOS look)",
+          "segmentSelected": "#FFFFFF"
+        },
+        "B": {
+          "label": "Mid-gray thumb that clears 3:1 like the dark one",
+          "segmentSelected": "#7C7C80"
+        }
+      }
+    }
+  },
+  "tokens": {
+    "background": {
+      "dark": "#000000",
+      "light": "#F2F2F7",
+      "use": "Screen fill, tab bar fill (pinned), navigation background and card, flat-fallback base under tonal buttons. Light: systemGroupedBackground, so white cards stand out without a shadow. The launch screen is black, so a saved Light shows about 300 ms of black, then a fade."
+    },
+    "surface": {
+      "dark": "#111112",
+      "light": "#FFFFFF",
+      "use": "Solid content Card, chart cards, filter menu, date range field, disabled field fill, opaque GlassSurface base. Dark is a composite of translucent glass over black; light is white (secondarySystemGroupedBackground), not a composite, because white over a gray page cannot be reached by a translucent white."
+    },
+    "surfaceTranslucent": {
+      "dark": "rgba(28,28,30,0.60)",
+      "light": "rgba(255,255,255,0.60)",
+      "use": "See-through GlassSurface backdrop and its non-glass fill. Over the light page it composites to about #FAFAFC, 5 levels from the solid card."
+    },
+    "surfaceTranslucentStrong": {
+      "dark": "rgba(28,28,30,0.80)",
+      "light": "rgba(255,255,255,0.80)",
+      "use": "Home transaction card backdrop: a stronger pin so the card drifts less in lightness while scrolling."
+    },
+    "surfaceWashStrong": {
+      "dark": "rgba(0,0,0,0.38)",
+      "light": "rgba(255,255,255,0.38)",
+      "use": "Neutral overlay drawn on top of the finished translucentStrong glass. Dark darkens it; light whitens it (a black wash on light glass would look dirty gray). Same alpha, same job: a visible step toward the opaque side."
+    },
+    "surfaceHigh": {
+      "dark": "#2C2C2E",
+      "light": "#E5E5EA",
+      "use": "Raised pill: secondary Button fill, Switch off track, sync progress track, read-only notice, disabled field border, glassTint of the secondary footer button. Light: systemGray5."
+    },
+    "sheetBackground": {
+      "dark": "#1C1C1E",
+      "light": "#F2F2F7",
+      "use": "Opaque base of a presented BottomSheet (iOS < 26 fallback and flat paths). A grouped base one level under the white cards and pills on it."
+    },
+    "segmentSelected": {
+      "dark": "#747478",
+      "light": "#FFFFFF",
+      "use": "Selected thumb of SegmentedControl. Dark is tuned to clear 3:1 against its track. Light is the native iOS white thumb, ruled by the user on 2026-11-03 (decision 2, option A). The user accepted that the thumb-to-track pair FAILs 3:1 (about 1.15:1 to 1.28:1); the 600-weight selected label also marks the selection."
+    },
+    "textPrimary": {
+      "dark": "#FFFFFF",
+      "light": "#000000",
+      "use": "Body text, titles, neutral amounts, secondary Button label, symbol tint default, TextField text, color-picker selected ring, header tint."
+    },
+    "textSecondary": {
+      "dark": "rgba(235,235,245,0.60)",
+      "light": "rgba(60,60,67,0.78)",
+      "use": "Captions, labels, placeholders, disabled calendar days, spinner, tab bar inactive, chart axis text and reference line. Light keeps Apple's secondaryLabel hue but 0.78 alpha, not 0.60: at 0.60 it is 3.4:1 on white and fails AA for caption text."
+    },
+    "accent": {
+      "dark": "#0A84FF",
+      "light": "#0066E6",
+      "use": "Primary Button fill, selected chip/row fill, Switch on track, links and accent text, calendar today/arrows/selected day, tab bar active, navigation primary, glassTint of the primary footer button. Light: systemBlue #007AFF is only 4.0:1 under white text; #0066E6 keeps the 213 degree hue and gives 5.19:1."
+    },
+    "onAccent": {
+      "dark": "#FFFFFF",
+      "light": "#FFFFFF",
+      "use": "Label, glyph and thumb on a filled accent or negative surface. Always white in both schemes."
+    },
+    "positive": {
+      "dark": "#30D158",
+      "light": "#0F7A4A",
+      "use": "Positive amounts (MoneyText), net-worth line above the start value, positive sync status. Light: a teal-leaning green so it stays apart from the red for color-blind users (see computed.json cvd)."
+    },
+    "negative": {
+      "dark": "#FF453A",
+      "light": "#C20019",
+      "use": "Negative amounts, destructive Button fill, net-worth line below the start value, errors, destructiveTonal label, glassTint of the destructive footer button. Light: darker than systemRed so the red label still passes on its own 12% tint."
+    },
+    "negativeSubtle": {
+      "dark": "rgba(255,69,58,0.18)",
+      "light": "rgba(194,0,25,0.12)",
+      "use": "Fill of the destructiveTonal Button and its flat footer fallback. Light: 12% of the light negative; the fill is a visible pink (#F8E0E3 over the white card), not the old faint tint, and the red label still passes on it."
+    },
+    "neutralSubtle": {
+      "dark": "rgba(118,118,128,0.24)",
+      "light": "rgba(118,118,128,0.12)",
+      "use": "Segmented track, unselected chip and day-of-month chip, secondaryTonal Button fill and its flat footer fallback. Light: iOS tertiarySystemFill at its light alpha."
+    },
+    "border": {
+      "dark": "#38383A",
+      "light": "#C6C6C8",
+      "use": "Hairline on cards, fields, dividers, sheet handle edge, chart gridlines, two-pane divider, navigation border. Light: opaqueSeparator."
+    },
+    "scrim": {
+      "dark": "rgba(0,0,0,0.4)",
+      "light": "rgba(0,0,0,0.3)",
+      "use": "Dismiss scrim and tint of the live-blur scrim behind a BottomSheet on iOS 26+. Light is lighter: the glass sheet samples this dimmed screen, and 0.4 black over a white page turns the sample mid-gray (#999999) and drags the sheet text contrast down. Device check needed."
+    },
+    "scrimFallback": {
+      "dark": "rgba(0,0,0,0.55)",
+      "light": "rgba(0,0,0,0.4)",
+      "use": "Dismiss scrim for iOS < 26 (opaque sheet; nothing samples it). Heavier than the glass scrim, as on dark, but 0.15 lower because black dims a white screen more than a black one."
+    }
+  },
+  "entitySwatches": {
+    "white": {
+      "dark": "#FFFFFF",
+      "light": "#3A3A3C",
+      "note": "Graphite (systemGray4 dark value). A white tile would vanish on a white card. Default for bank accounts and card holdings."
+    },
+    "khaki": {
+      "dark": "#BDB76B",
+      "light": "#8A8434",
+      "note": "Olive-khaki, lightness lowered."
+    },
+    "brown": {
+      "dark": "#AC8E68",
+      "light": "#8C6A43"
+    },
+    "yellow": {
+      "dark": "#FFD60A",
+      "light": "#A67C00",
+      "note": "Deep gold. Bright yellow is 1.4:1 on white; no yellow above 3:1 stays bright."
+    },
+    "blue": {
+      "dark": "#0A84FF",
+      "light": "#0066E6",
+      "note": "Equals the light accent, as dark blue equals the dark accent."
+    },
+    "green": {
+      "dark": "#30D158",
+      "light": "#1F8A3B"
+    },
+    "mint": {
+      "dark": "#66D4CF",
+      "light": "#008A83"
+    },
+    "violet": {
+      "dark": "#BF5AF2",
+      "light": "#9B3FD1"
+    },
+    "red": {
+      "dark": "#FF453A",
+      "light": "#E0352B"
+    },
+    "orange": {
+      "dark": "#FF9F0A",
+      "light": "#C46A00"
+    },
+    "teal": {
+      "dark": "#40C8E0",
+      "light": "#0A869E"
+    },
+    "pink": {
+      "dark": "#FF375F",
+      "light": "#D6204A"
+    },
+    "indigo": {
+      "dark": "#5E5CE6",
+      "light": "#3A38B8",
+      "note": "Deeper than Apple light indigo (#5856D6) so it stays apart from blue for color-blind users: lightness differs, not only hue."
+    },
+    "gray": {
+      "dark": "#98989D",
+      "light": "#6E6E73"
+    }
+  },
+  "categorySwatches": {
+    "white": {
+      "dark": "#FFFFFF",
+      "light": "#48484A"
+    },
+    "khaki": {
+      "dark": "#BDB76B",
+      "light": "#8B8535"
+    },
+    "brown": {
+      "dark": "#AC8E68",
+      "light": "#A07A4B"
+    },
+    "yellow": {
+      "dark": "#FFD60A",
+      "light": "#A67C00",
+      "note": "Same hex as the entity yellow: no lighter gold keeps a white glyph at 3:1 on the tile top."
+    },
+    "blue": {
+      "dark": "#0A84FF",
+      "light": "#0066E6"
+    },
+    "green": {
+      "dark": "#30D158",
+      "light": "#1E8E3E"
+    },
+    "mint": {
+      "dark": "#66D4CF",
+      "light": "#00958D"
+    },
+    "violet": {
+      "dark": "#BF5AF2",
+      "light": "#A546DB"
+    },
+    "red": {
+      "dark": "#FF453A",
+      "light": "#E5392F"
+    },
+    "orange": {
+      "dark": "#FF9F0A",
+      "light": "#C86C00"
+    },
+    "teal": {
+      "dark": "#40C8E0",
+      "light": "#0C8CA6"
+    },
+    "pink": {
+      "dark": "#FF375F",
+      "light": "#E0305A"
+    },
+    "indigo": {
+      "dark": "#5E5CE6",
+      "light": "#4240C4",
+      "note": "Deeper than the dark hex so it stays apart from blue under protanopia and deuteranopia."
+    },
+    "gray": {
+      "dark": "#98989D",
+      "light": "#7C7C80"
+    }
+  },
+  "swatchSets": {
+    "entityRule": "Tile fill. Contrast to white at least 3.8 on the base so the lightened top stop (15%) still holds a white glyph at 3:1 and the base clears 3:1 on the light page (#F2F2F7). Every entity tile therefore takes the white glyph.",
+    "categoryRule": "Glyph, line and slice hue on a white card and on the page (graphic, 3:1). Also used as an EntityIconTile fill on the category card, so the top gradient stop must still hold a white glyph at 3:1. The value is the lightest hue that passes that test, which keeps eight pie slices and trend lines apart; the entity set keeps a safety margin instead.",
+    "whatDiffers": "12 of 14 keys differ (all but yellow and blue). Where they differ, the category value is the lightest hue that passes the tile-glyph test (so it is 0.1 to 1.0 lighter in contrast terms: white #48484A vs #3A3A3C, brown #A07A4B vs #8C6A43, gray #7C7C80 vs #6E6E73, and so on), while the entity value keeps a safety margin; indigo is the reverse case, a deliberate pair chosen for color-blind separation from blue. The sets are separate in the file so one can be tuned without touching the other."
+  },
+  "chartSeries": {
+    "keys": ["blue", "green", "orange", "violet", "teal", "pink", "yellow", "indigo"],
+    "set": "categorySwatches",
+    "dark": [
+      "#0A84FF",
+      "#30D158",
+      "#FF9F0A",
+      "#BF5AF2",
+      "#40C8E0",
+      "#FF375F",
+      "#FFD60A",
+      "#5E5CE6"
+    ],
+    "light": [
+      "#0066E6",
+      "#1E8E3E",
+      "#C86C00",
+      "#A546DB",
+      "#0C8CA6",
+      "#E0305A",
+      "#A67C00",
+      "#4240C4"
+    ],
+    "invariant": "The light series is a subset of categorySwatches.light (same rule as dark: the category color picker rings the swatch of an uncolored category's fallback hue)."
+  },
+  "chartParameters": {
+    "netWorthAreaOpacity": {
+      "dark": 0.3,
+      "light": 0.3,
+      "use": "Positive band stop next to the line. Same alpha; the fill color is the light positive."
+    },
+    "netWorthNegativeAreaOpacity": {
+      "dark": 0.5,
+      "light": 0.3,
+      "use": "Negative band stop next to the line. Dark needs 0.5 because blending toward black loses the color; on white the same alpha already reads, so light uses 0.3 (composite #F3B3B9 over white)."
+    },
+    "gridColorToken": "border",
+    "axisTextToken": "textSecondary",
+    "referenceLineToken": "textSecondary",
+    "lineAbove": "positive",
+    "lineBelow": "negative",
+    "background": "surface (every chart sits in a Card)",
+    "pie": "slices fill = category color (resolveCategoryColor); legend dot = same hex",
+    "bar": "fill = defaultHoldingColor[type] = entity color",
+    "categoryTrendLine": "stroke = category color; grid = border"
+  },
+  "defaults": {
+    "accountKind": {
+      "bank": "white",
+      "cash": "khaki",
+      "crypto": "yellow",
+      "property": "brown",
+      "metals": "gray",
+      "debt": "red",
+      "broker": "teal"
+    },
+    "holdingType": {
+      "card": "white",
+      "term_deposit": "blue",
+      "bond": "green",
+      "jar": "violet",
+      "cash": "khaki",
+      "crypto_asset": "yellow",
+      "property_item": "brown",
+      "metal": "gray",
+      "loan": "red"
+    },
+    "categorySeed": {
+      "groceries": "green",
+      "dining": "orange",
+      "transport": "blue",
+      "shopping": "pink",
+      "health": "red",
+      "cash": "khaki",
+      "transfers": "white",
+      "other": "gray",
+      "loan_interest": "indigo"
+    },
+    "providerColors": "none: no bank or crypto provider in src/ carries its own brand color; accounts take the kind default."
+  },
+  "storedHexMap": {
+    "rule": "Store the dark hex as the canonical value. Accounts and holdings read the entity map; categories read the category map. The two maps cannot be merged: the same dark hex has a different light hex per set.",
+    "entity": {
+      "#FFFFFF": "#3A3A3C",
+      "#BDB76B": "#8A8434",
+      "#AC8E68": "#8C6A43",
+      "#FFD60A": "#A67C00",
+      "#0A84FF": "#0066E6",
+      "#30D158": "#1F8A3B",
+      "#66D4CF": "#008A83",
+      "#BF5AF2": "#9B3FD1",
+      "#FF453A": "#E0352B",
+      "#FF9F0A": "#C46A00",
+      "#40C8E0": "#0A869E",
+      "#FF375F": "#D6204A",
+      "#5E5CE6": "#3A38B8",
+      "#98989D": "#6E6E73"
+    },
+    "category": {
+      "#FFFFFF": "#48484A",
+      "#BDB76B": "#8B8535",
+      "#AC8E68": "#A07A4B",
+      "#FFD60A": "#A67C00",
+      "#0A84FF": "#0066E6",
+      "#30D158": "#1E8E3E",
+      "#66D4CF": "#00958D",
+      "#BF5AF2": "#A546DB",
+      "#FF453A": "#E5392F",
+      "#FF9F0A": "#C86C00",
+      "#40C8E0": "#0C8CA6",
+      "#FF375F": "#E0305A",
+      "#5E5CE6": "#4240C4",
+      "#98989D": "#7C7C80"
+    },
+    "legacyLightEraHex": {
+      "note": "NOT BUILT (spec D3, C4). The old picker could store a light hex in the two-day window 2026-09-07 to 09-09. Such a value takes the cannotMap rule. This table stays for reference only.",
+      "map": {
+        "#000000": "white",
+        "#8D873F": "khaki",
+        "#A2845E": "brown",
+        "#B8860B": "yellow",
+        "#007AFF": "blue",
+        "#34C759": "green",
+        "#009992": "mint",
+        "#AF52DE": "violet",
+        "#FF3B30": "red",
+        "#FF9500": "orange",
+        "#30B0C7": "teal",
+        "#FF2D55": "pink",
+        "#5856D6": "indigo",
+        "#8E8E93": "gray"
+      }
+    },
+    "cannotMap": [
+      "Any #RRGGBB that is not one of the 14 dark swatch hexes (a hand-edited or imported .kiko file). Rule: keep the hue and saturation, lower HSL lightness in 1% steps until the contrast to white is at least 3.4. Unchanged if it already passes. Test fixtures such as #112233 and #00FF00 appear only in migration tests.",
+      "null or empty string: not stored data; resolveEntityColor falls to the kind or type default, which maps by swatch key.",
+      "3-digit hex, rgb() strings or uppercase/lowercase variants: isValidHex only accepts #RRGGBB, so these already fall back to the default. Lookup must lower-case or upper-case the key first (the dark palette is upper-case)."
+    ]
+  },
+  "iconTile": {
+    "gradient": {
+      "lightenPercent": {
+        "dark": 15,
+        "light": 15
+      },
+      "darkenPercent": {
+        "dark": 20,
+        "light": 20
+      },
+      "note": "Same numbers. Top stop = lightenHex(base, 15), bottom = darkenHex(base, 20), both from the light swatch."
+    },
+    "glyph": {
+      "minimumContrast": {
+        "dark": 3,
+        "light": 3
+      },
+      "onFilledTile": {
+        "dark": "#FFFFFF",
+        "light": "#FFFFFF"
+      },
+      "onLightTile": {
+        "dark": "#000000",
+        "light": "#000000"
+      },
+      "rule": "Unchanged math: white glyph unless contrast(white, base) < 3, then the dark glyph. Light change: the dark glyph is a fixed #000000 (a new constant), because the code reads theme.colors.background, which is #F2F2F7 on light and would put a pale glyph on a pale tile. All 14 light entity swatches and all 14 light category swatches pass the 3:1 test, so on the light set the dark glyph is reached only by an unmapped stored hex."
+    }
+  },
+  "calendar": {
+    "calendarBackground": {
+      "literal": "transparent"
+    },
+    "monthTextColor": {
+      "token": "textPrimary"
+    },
+    "dayTextColor": {
+      "token": "textPrimary"
+    },
+    "textSectionTitleColor": {
+      "token": "textSecondary"
+    },
+    "todayTextColor": {
+      "token": "accent"
+    },
+    "arrowColor": {
+      "token": "accent"
+    },
+    "selectedDayBackgroundColor": {
+      "token": "accent"
+    },
+    "selectedDayTextColor": {
+      "token": "onAccent"
+    },
+    "textDisabledColor": {
+      "token": "textSecondary"
+    }
+  },
+  "navigation": {
+    "background": {
+      "token": "background"
+    },
+    "card": {
+      "token": "background"
+    },
+    "text": {
+      "token": "textPrimary"
+    },
+    "border": {
+      "token": "border"
+    },
+    "primary": {
+      "token": "accent"
+    },
+    "notification": {
+      "dark": "rgb(255, 69, 58)",
+      "light": "#C20019",
+      "source": "inherited from @react-navigation/native DarkTheme; light value = negative"
+    }
+  },
+  "tabBar": {
+    "background": {
+      "token": "background"
+    },
+    "active": {
+      "token": "accent"
+    },
+    "inactive": {
+      "token": "textSecondary"
+    }
+  },
+  "glass": {
+    "footerGlassTint": {
+      "primary": {
+        "token": "accent"
+      },
+      "secondary": {
+        "token": "surfaceHigh"
+      },
+      "destructive": {
+        "token": "negative"
+      }
+    },
+    "footerFlatFallback": {
+      "secondaryTonal": {
+        "token": "neutralSubtle"
+      },
+      "destructiveTonal": {
+        "token": "negativeSubtle"
+      },
+      "tonalBase": {
+        "token": "background"
+      }
+    },
+    "scrimTintToken": "scrim",
+    "scrimFallbackToken": "scrimFallback",
+    "washToken": "surfaceWashStrong",
+    "colorSchemeProp": {
+      "dark": "dark",
+      "light": "system",
+      "note": "The dark value is the code today: colorScheme is hard-coded dark in glass-surface.component.tsx and bottom-sheet.component.tsx. Set 5 changes both sites to \"system\" (spec D5, C13; measured in probes N1 and N2), so the prop inherits the window scheme in both schemes."
+    },
+    "deviceSamples": {
+      "light": "#FFFFFF",
+      "dark": "#000000"
+    },
+    "tintOpacityModel": 0.6
+  },
+  "other": {
+    "switch": {
+      "trackOff": {
+        "token": "surfaceHigh"
+      },
+      "trackOn": {
+        "token": "accent"
+      },
+      "thumb": {
+        "token": "onAccent"
+      }
+    },
+    "spinner": {
+      "token": "textSecondary"
+    },
+    "symbolTints": "tone tokens: textPrimary, textSecondary, accent, positive, negative, onAccent; or an explicit entity/category hex on a bare glyph (TransactionCard, trend filter rows).",
+    "nativeChromeNotPalette": [
+      "ios Info.plist UIUserInterfaceStyle = Dark",
+      "keyboardAppearance 'dark' (use-keyboard-done-accessory.tsx:71)",
+      "headerBlurEffect 'systemChromeMaterialDark' (large-title-screen-options.ts:21)",
+      "LiquidGlassView colorScheme 'dark' (glass-surface.component.tsx:298, bottom-sheet.component.tsx:355)",
+      "RefreshControl, date and time pickers, alerts: no tint, follow the window",
+      "Launch screen: fixed black by decision",
+      "App icons: out of scope here",
+      "Status bar: no StatusBar code in src/, follows the window style",
+      "Launch screen text is white on black in LaunchScreen.storyboard:22,26"
+    ],
+    "providerColorsNote": "grep of src/ found no bank or crypto provider brand color; monobank.types black/white are card types, not UI colors"
+  },
+  "knownFailures": [
+    {
+      "schemes": ["light"],
+      "pattern": "^segment thumb vs track",
+      "reason": "Native iOS white thumb on a faint track; the selected label is also 600 weight. Accepted by the user 2026-11-03 (decision 2, option A, native white thumb); the mid-gray alternative that reaches 3:1 was declined."
+    },
+    {
+      "schemes": ["light", "dark"],
+      "pattern": "^switch off track vs card",
+      "reason": "Apple off track is a faint gray by design; the thumb position and the accent on-color carry the state. Dark has the same FAIL (1.35). Fix would change both schemes."
+    },
+    {
+      "schemes": ["light"],
+      "pattern": "^switch thumb vs off track",
+      "reason": "Native UISwitch draws a shadow under the white thumb; the dark pair passes only because its track is dark."
+    },
+    {
+      "schemes": ["dark"],
+      "pattern": "^(primary|destructive) Button label|^selected chip|^calendar selected day",
+      "reason": "DARK VALUE, NOTE ONLY: white on the bright dark accent/negative is 3.4 to 3.7:1 for 16/600 text. Dark is locked and was not changed."
+    },
+    {
+      "schemes": ["dark"],
+      "pattern": "^destructiveTonal label on sheet",
+      "reason": "DARK VALUE, NOTE ONLY: the red label on its tint over the sheet is 4.05:1. Dark is locked."
+    },
+    {
+      "schemes": ["dark"],
+      "pattern": "^segment thumb vs track on sheet",
+      "reason": "DARK VALUE, NOTE ONLY: the code comment tunes the thumb for surface and black, not the sheet (2.76:1). Dark is locked."
+    },
+    {
+      "schemes": ["dark"],
+      "pattern": "glyph vs tile top",
+      "reason": "DARK VALUE, NOTE ONLY: the glyph rule measures the base hue, so the lightened top stop of brown, violet and red tiles is just under 3:1 at the very top edge."
+    }
+  ]
+}

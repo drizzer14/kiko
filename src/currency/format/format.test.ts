@@ -133,3 +133,60 @@ describe('formatMoney USDT amounts', () => {
     expect(formatMoney(Money.of('USDT', Number.MAX_SAFE_INTEGER))).toBe('₮90,071,992.54740991');
   });
 });
+
+describe('formatMoney whole units without a symbol', () => {
+  const WHOLE_UNITS = { fractionDigits: 0, symbol: false };
+
+  it('rounds to whole units and drops the symbol', () => {
+    expect(formatMoney(Money.of('UAH', 123_456), 'en-US', WHOLE_UNITS)).toBe('1,235');
+    expect(formatMoney(Money.of('USD', 123_449), 'en-US', WHOLE_UNITS)).toBe('1,234');
+  });
+
+  it("groups with the locale's separator", () => {
+    expect(formatMoney(Money.of('UAH', 123_456), 'uk-UA', WHOLE_UNITS)).toBe('1 235');
+  });
+
+  it('puts the sign before a negative amount', () => {
+    expect(formatMoney(Money.of('UAH', -123_456), 'en-US', WHOLE_UNITS)).toBe('-1,235');
+  });
+
+  it('rounds half away from zero on both signs', () => {
+    expect(formatMoney(Money.of('UAH', 50), 'en-US', WHOLE_UNITS)).toBe('1');
+    expect(formatMoney(Money.of('UAH', -50), 'en-US', WHOLE_UNITS)).toBe('-1');
+  });
+
+  it('gives a rounded zero no sign', () => {
+    expect(formatMoney(Money.of('UAH', -49), 'en-US', WHOLE_UNITS)).toBe('0');
+    expect(formatMoney(Money.of('UAH', -1), 'uk-UA', WHOLE_UNITS)).toBe('0');
+    expect(formatMoney(Money.of('UAH', 49), 'en-US', WHOLE_UNITS)).toBe('0');
+    expect(formatMoney(Money.of('UAH', 0), 'en-US', WHOLE_UNITS)).toBe('0');
+  });
+
+  it('leaves a currency with no decimals as it is', () => {
+    expect(formatMoney(Money.of('JPY', -1_234), 'en-US', WHOLE_UNITS)).toBe('-1,234');
+    expect(formatMoney(Money.of('JPY', 1_234), 'en-US')).toBe('¥1,234');
+  });
+
+  it('rounds a crypto amount to whole units too, with no minimum of two decimals', () => {
+    expect(formatMoney(Money.fromMajor('BTC', 1.5), 'en-US', WHOLE_UNITS)).toBe('2');
+    expect(formatMoney(Money.fromMajor('BTC', -0.2), 'en-US', WHOLE_UNITS)).toBe('0');
+  });
+
+  it('drops the symbol alone and keeps the currency scale', () => {
+    expect(formatMoney(Money.of('USD', 123_456), 'en-US', { symbol: false })).toBe('1,234.56');
+    expect(formatMoney(Money.of('USD', -123_456), 'en-US', { symbol: false })).toBe('-1,234.56');
+    expect(formatMoney(Money.fromMajor('BTC', 0.05), 'en-US', { symbol: false })).toBe('0.05');
+  });
+
+  it('keeps the symbol when only the digits change', () => {
+    expect(formatMoney(Money.of('USD', -123_456), 'en-US', { fractionDigits: 0 })).toBe('-$1,235');
+    expect(formatMoney(Money.of('UAH', 123_456), 'en-US', { fractionDigits: 0 })).toBe('1,235 ₴');
+  });
+
+  it('changes nothing for a call with no third argument or an empty one', () => {
+    const money = Money.of('UAH', -123_456);
+
+    expect(formatMoney(money, 'en-US', {})).toBe(formatMoney(money, 'en-US'));
+    expect(formatMoney(money)).toBe('-1,234.56 ₴');
+  });
+});

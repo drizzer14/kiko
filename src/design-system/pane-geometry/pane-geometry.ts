@@ -62,6 +62,17 @@ export const belowTopBand = (geometry: PaneGeometry, band: number): PaneGeometry
         primary: moveBelowBand(geometry.primary, band),
       };
 
+/**
+ * The frame of the layer over both panes: the window below the top-bar band, which the layer's
+ * native header must not sit behind.
+ */
+export const wholeWindowFrame = (window: Window, band: number): PaneFrame => ({
+  x: 0,
+  y: band,
+  width: window.width,
+  height: window.height - band,
+});
+
 // Pure pane geometry. Flat: the companion takes `companionShare` of the length less the hairline
 // divider. Folded: each pane ends at the fold edge, so the panes are equal only when the fold is
 // centred. A fold ignores the share. The divider is then the fold's own gap, which the caller does

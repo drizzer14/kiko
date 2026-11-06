@@ -3646,14 +3646,13 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     expect(synced.queryByText('Exchange')).toBeTruthy();
   });
 
-  it('renders the Exchange action at the small inline size', async () => {
+  it('renders the Exchange action as the regular footer button', async () => {
     const { getByRole } = await renderEdit('expense-manual');
 
-    // The action is a small inline secondary of the form's Save CTA, so it takes
-    // the shorter `small` size (34pt visible, 44pt tap via hitSlop) rather than
-    // the taller 44pt `compact` — matching the other small inline actions.
+    // The action is the screen footer's lone secondary, so it takes the regular
+    // 50pt footer size like the Edit template footer's.
     const convert = getByRole('button', { name: 'Exchange' });
-    expect(StyleSheet.flatten(convert.props.style).minHeight).toBe(34);
+    expect(StyleSheet.flatten(convert.props.style).minHeight).toBe(50);
   });
 
   it('caps the convert Date calendar at today', async () => {

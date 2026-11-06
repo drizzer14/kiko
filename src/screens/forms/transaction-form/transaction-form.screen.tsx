@@ -33,13 +33,11 @@ import {
 } from '@kiko/screens/forms/use-select-created-option';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Screen from '@kiko/design-system/components/screen';
-import Button from '@kiko/design-system/components/button';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
 import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { SYNCED_HOLDING_REFUSAL } from '@kiko/holdings/deletable';
-import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { ruleMoveMessage } from '@kiko/categories/rule-preview-text';
@@ -112,6 +110,7 @@ import CommentRow from './comment-row';
 import FieldGroup from './field-group';
 import SplitReturns from './split-returns';
 import ReadOnlyNotice from './read-only-notice';
+import { footerActionOf } from './footer-action';
 import { draftFromForm } from './draft-from-form';
 import TemplateNameField from './template-name-field';
 import { useCategoryPick } from './use-category-pick';
@@ -1378,8 +1377,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   });
 
   // The transaction-TYPE selector, built here so the label/mode copy stays with
-  // the component's live translations. It renders directly UNDER the Holding
-  // select field (not while converting, which has no mode toggle). Uses the
+  // the component's live translations. `FieldGroup` lays it beside Amount (Value
+  // out in Exchange mode); a convert has no mode toggle. Uses the
   // transaction-scoped `forms.transaction.type` ("Type") label, decoupled from
   // the holding form's own `forms.holding.type`. On a read-only (synced) row the
   // field is `disabled`: the trigger is inert and dims like every other locked
@@ -1405,20 +1404,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         onContentSizeChange={onContentSizeChange}
         onFieldBlur={onFieldBlur}
         floatingFooter
-        footer={foldMap(maybe(editTemplateId), (templateId) => (
-          // Create transaction opens the template as it is STORED: the unsaved edits on this
-          // form are neither used nor saved. Save is the nav bar's, like every other form's, so
-          // this lone secondary action is the whole footer.
-          <Button
-            variant="secondaryTonal"
-            onPress={() => {
-              navigation.push('TransactionForm', { templateId });
-            }}
-            icon={genericEntitySymbol.transaction}
-          >
-            {t('forms.transaction.createTransaction')}
-          </Button>
-        ))}
+        footer={footerActionOf({
+          editTemplateId,
+          convertEligible: convertView.eligible,
+          converting,
+          onCreateTransaction: (templateId) => {
+            navigation.push('TransactionForm', { templateId });
+          },
+          onConvert: () => setConverting(true),
+          t,
+        })}
       >
         <Box gap={4} testID="transaction-form">
           {/* The Manual and Template tabs sit on top of the form, which they gate: the Template
@@ -1467,12 +1462,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               fieldRef={holdingFieldRef}
             />
 
-            {/* The transaction-TYPE selector, directly under the Holding select.
-            Built with `visible={!converting}` (a convert has no mode toggle),
-            so it is rendered unconditionally here — the field itself carries
-            both that gate and the read-only dimming for a synced row. */}
-            {typeSelectField}
-
             {/* Convert-mode replaces the entire income/expense/exchange field
             group with the single-counterpart convert group — no mode toggle,
             no category, just the fixed existing leg plus the one leg being
@@ -1494,6 +1483,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               counterpartAmount={counterpartAmount}
               onChangeCounterpartAmount={(text) => setCounterpartAmount(groupAmount(text))}
               isExchange={isExchange}
+              typeField={typeSelectField}
               amount={amount}
               onChangeAmount={(text) => setAmount(groupAmount(text))}
               amountSuffix={amountSuffix}
@@ -1599,9 +1589,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               />
             </View>
 
-            {/* The mode chip row, category picker, and "Convert to exchange"
-            action — everything below the main field group EXCEPT while
-            converting. The `!converting` gate and every `&&`-conditional
+            {/* The category and loan pickers — everything below the main field
+            group EXCEPT while converting. The `!converting` gate and every `&&`-conditional
             live in `ModeAndActions`. */}
             <ModeAndActions
               converting={converting}
@@ -1610,8 +1599,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               categoryOptions={categoryOptions}
               selectedCategory={selectedCategory}
               onSelectCategory={selectCategory}
-              convertEligible={convertView.eligible}
-              onPressConvert={() => setConverting(true)}
               categoryRequired={!(isEditing || isTemplateMode)}
               t={t}
               categoryError={fieldError('selectedCategory')}

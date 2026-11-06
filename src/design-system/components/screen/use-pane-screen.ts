@@ -26,14 +26,15 @@ const LARGE_TITLE_EDGES: readonly Edge[] = ['left', 'right', 'bottom'];
  * has not yet moved into a pane keeps its cap through a resize into a split. A scrollable surface
  * applies it to its content container, never to itself, so the scroll view and its indicator span
  * the whole pane; a screen with no scroll view takes it on its root, so the native header and
- * bars, which are not inside it, still span the pane.
+ * bars, which are not inside it, still span the pane. A screen whose content is wider than the cap
+ * (a table) asks for none (`isUncapped`).
  */
-export const useContentCap = () => {
+export const useContentCap = (isUncapped = false) => {
   const pane = usePaneContext();
   const { horizontalSizeClass } = useDisplayRegions();
   const isTabBarAtTop = useIsTabBarAtTop();
 
-  if (pane !== null && isTabBarAtTop) {
+  if (isUncapped || (pane !== null && isTabBarAtTop)) {
     return undefined;
   }
 
@@ -76,26 +77,30 @@ export const useScrollIndicatorProps = () =>
  * what the screen has always used: the SafeAreaView's own default edges. In a pane the screen
  * keeps a safe-area inset only on an edge the pane shares with the window. Beside a side bar the
  * bottom edge is dropped everywhere (`useIsBottomInsetPadded`): the content runs to the window's
- * bottom and pads the inset itself.
+ * bottom and pads the inset itself. A plain screen below a shown header (`isBelowHeader`) takes
+ * the large-title edges as its plain ones, since the header owns the top inset.
  */
-export const usePaneScreen = () => {
+export const usePaneScreen = (isBelowHeader = false) => {
   const pane = usePaneContext();
   const isBottomInsetPadded = useIsBottomInsetPadded();
 
   const withoutPaddedBottom = (edges: readonly Edge[]) =>
     isBottomInsetPadded ? edges.filter((edge) => edge !== 'bottom') : edges;
 
+  const touched = (edges: readonly Edge[]) =>
+    pane === null ? edges : edges.filter((edge) => pane.edges[edge]);
+  const largeTitleEdges = withoutPaddedBottom(touched(LARGE_TITLE_EDGES));
+
+  if (isBelowHeader) {
+    return { plainEdges: largeTitleEdges, largeTitleEdges };
+  }
+
   if (pane === null) {
     return {
       plainEdges: isBottomInsetPadded ? withoutPaddedBottom(ALL_EDGES) : undefined,
-      largeTitleEdges: withoutPaddedBottom(LARGE_TITLE_EDGES),
+      largeTitleEdges,
     };
   }
 
-  const touched = (edges: readonly Edge[]) => edges.filter((edge) => pane.edges[edge]);
-
-  return {
-    plainEdges: withoutPaddedBottom(touched(ALL_EDGES)),
-    largeTitleEdges: withoutPaddedBottom(touched(LARGE_TITLE_EDGES)),
-  };
+  return { plainEdges: withoutPaddedBottom(touched(ALL_EDGES)), largeTitleEdges };
 };

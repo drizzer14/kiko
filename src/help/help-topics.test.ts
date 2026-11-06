@@ -162,7 +162,7 @@ describe('help topic registry', () => {
     ['useTemplates', 4],
     ['manageCategories', 5],
     ['categoryRules', 6],
-    ['viewStatistics', 8],
+    ['viewStatistics', 9],
     ['viewRecurringCharges', 5],
     ['backupData', 4],
     ['restoreData', 4],
@@ -442,6 +442,52 @@ describe('the choices a help step names', () => {
     'names the wallets among the own-money moves that are not spending in %s',
     (_language, values, sentence) => {
       expect(stepOf(values, 'viewStatistics', 7)).toContain(sentence);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      enValues,
+      /by 1\b/,
+      'first month with data',
+      'differ slightly',
+      'mean of the cells',
+      'A return that falls in a different month from its payment lowers the "Total" or "All" figure, but not the cell of the payment\'s month.',
+    ],
+    [
+      'uk',
+      ukValues,
+      /на 1\b/,
+      'перший місяць із даними',
+      'трохи відрізнятися',
+      'середнє значення клітинок',
+      'Повернення, що припадає на інший місяць, ніж платіж, зменшує значення «Разом» або «Усього», але не клітинку місяця платежу.',
+    ],
+  ] as const)(
+    'claims in %s no bound on how far a table total can sit from its cells, names the first month the average leaves out, and says what a return in another month changes',
+    (_language, values, bound, firstMonth, falseClaim, averageIsCells, returnSentence) => {
+      const step = stepOf(values, 'viewStatistics', 9);
+
+      expect(step).not.toMatch(bound);
+      expect(step).not.toContain(falseClaim);
+      expect(step).toContain(firstMonth);
+      expect(step).toContain(averageIsCells);
+      expect(step).toContain(returnSentence);
+    },
+  );
+
+  // The step names where the button is, so it must follow the screen: first, above the filters.
+  it.each([
+    ['en', enValues, 'Above the filters', 'Below the filters'],
+    ['uk', ukValues, 'Над фільтрами', 'Під фільтрами'],
+  ] as const)(
+    'places the Monthly tables button in %s above the filters',
+    (_language, values, above, below) => {
+      const step = stepOf(values, 'viewStatistics', 9);
+
+      expect(step.startsWith(above)).toBe(true);
+      expect(step).not.toContain(below);
     },
   );
 

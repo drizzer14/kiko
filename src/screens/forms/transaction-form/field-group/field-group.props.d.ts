@@ -16,6 +16,9 @@ export type FieldGroupProps = {
   counterpartAmount: string;
   onChangeCounterpartAmount: (text: string) => void;
   isExchange: boolean;
+  // The transaction-type select the screen builds. It shares a row with Amount (Value out in
+  // Exchange mode), so Type keeps its first place on a mode switch; the convert group has no Type.
+  typeField: ReactElement;
   amount: string;
   onChangeAmount: (text: string) => void;
   // The source holding's currency glyph, shown as the amount/Value-Out field's

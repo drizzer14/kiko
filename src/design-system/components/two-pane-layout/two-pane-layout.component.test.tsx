@@ -78,8 +78,13 @@ const renderProbes = (mode?: 'rows') =>
     />,
   );
 
+// Testing Library leaves a pane hidden from accessibility out of its queries by default.
+const WITH_HIDDEN = { includeHiddenElements: true } as const;
+
 const frameOf = (testID: string) => {
-  const { left, top, width, height } = StyleSheet.flatten(screen.getByTestId(testID).props.style);
+  const { left, top, width, height } = StyleSheet.flatten(
+    screen.getByTestId(testID, WITH_HIDDEN).props.style,
+  );
 
   return { x: left, y: top, width, height };
 };
@@ -481,6 +486,178 @@ describe('TwoPaneLayout', () => {
       await renderProbes();
 
       expect(screen.getByTestId('width-primary').children).toEqual(['null']);
+    });
+  });
+
+  // A layer is the window over both panes: it never moves them, so a screen in it shows over
+  // panes that keep their frame, their context and their width, and it takes touches only while
+  // it holds a screen.
+  describe('a layer over both panes', () => {
+    const WINDOW_INSETS = { top: 32, right: 0, bottom: 20, left: 0 };
+
+    const renderLayer = (isLayerShown?: boolean) =>
+      render(
+        <SafeAreaInsetsContext.Provider value={WINDOW_INSETS}>
+          <TwoPaneLayout
+            isLayerShown={isLayerShown}
+            layer={<InsetProbe name="layer" />}
+            companion={<InsetProbe name="companion" />}
+            primary={<InsetProbe name="primary" />}
+          />
+        </SafeAreaInsetsContext.Provider>,
+      );
+
+    const layerProps = () => screen.getByTestId('two-pane-layer', WITH_HIDDEN).props;
+
+    it('draws no layer view without a layer', async () => {
+      await renderLayout();
+
+      expect(screen.queryByTestId('two-pane-layer', WITH_HIDDEN)).toBeNull();
+    });
+
+    it('is the last view, after the divider, across the whole window', async () => {
+      await renderLayer(true);
+
+      const root = screen.toJSON();
+      const order =
+        root !== null && !Array.isArray(root)
+          ? (root.children ?? []).map((child) =>
+              typeof child === 'string' ? child : child.props.testID,
+            )
+          : [];
+
+      expect(order).toEqual([
+        'two-pane-companion',
+        'two-pane-divider',
+        'two-pane-primary',
+        'two-pane-layer',
+      ]);
+      expect(frameOf('two-pane-layer')).toEqual({ x: 0, y: 0, width: 951, height: 669 });
+      expect(layerProps().collapsable).toBe(false);
+    });
+
+    it.each([true, false])(
+      'leaves both panes, the divider and their frames as they were when the layer is shown: %s',
+      async (isLayerShown) => {
+        await renderLayer(isLayerShown);
+
+        expect(frameOf('two-pane-companion')).toEqual({ x: 0, y: 0, width: HALF, height: 669 });
+        expect(frameOf('two-pane-primary')).toEqual({
+          x: HALF + HAIRLINE,
+          y: 0,
+          width: HALF,
+          height: 669,
+        });
+        expect(frameOf('two-pane-divider')).toEqual({
+          x: HALF,
+          y: 0,
+          width: HAIRLINE,
+          height: 669,
+        });
+
+        for (const testID of ['two-pane-companion', 'two-pane-primary']) {
+          const pane = screen.getByTestId(testID, WITH_HIDDEN);
+
+          expect(StyleSheet.flatten(pane.props.style).opacity).toBeUndefined();
+          expect(pane.props.pointerEvents).toBeUndefined();
+          expect(pane.props.accessibilityElementsHidden).toBeUndefined();
+        }
+      },
+    );
+
+    it('takes touches and the VoiceOver focus only while it is shown', async () => {
+      const view = await renderLayer(true);
+
+      expect(layerProps().pointerEvents).toBeUndefined();
+      expect(layerProps().accessibilityViewIsModal).toBe(true);
+
+      await view.rerender(
+        <SafeAreaInsetsContext.Provider value={WINDOW_INSETS}>
+          <TwoPaneLayout
+            isLayerShown={false}
+            layer={<InsetProbe name="layer" />}
+            companion={<InsetProbe name="companion" />}
+            primary={<InsetProbe name="primary" />}
+          />
+        </SafeAreaInsetsContext.Provider>,
+      );
+
+      expect(layerProps().pointerEvents).toBe('none');
+      expect(layerProps().accessibilityViewIsModal).toBeUndefined();
+    });
+
+    it('is not shown when no flag is given', async () => {
+      await renderLayer();
+
+      expect(layerProps().pointerEvents).toBe('none');
+    });
+
+    it('tells its child it is no pane, with no width, and each pane its own', async () => {
+      await renderLayer(true);
+
+      expect(screen.getByTestId('probe-layer', WITH_HIDDEN).children).toEqual(['null']);
+      expect(screen.getByTestId('width-layer', WITH_HIDDEN).children).toEqual(['null']);
+      // A shown layer is a modal view, which Testing Library takes to hide the panes beside it.
+      expect(screen.getByTestId('probe-companion', WITH_HIDDEN).children).toEqual([
+        JSON.stringify(paneContextOf('columns', 'companion')),
+      ]);
+      expect(screen.getByTestId('probe-primary', WITH_HIDDEN).children).toEqual([
+        JSON.stringify(paneContextOf('columns', 'primary')),
+      ]);
+      expect(screen.getByTestId('width-companion', WITH_HIDDEN).children).toEqual([String(HALF)]);
+      expect(screen.getByTestId('width-primary', WITH_HIDDEN).children).toEqual([String(HALF)]);
+    });
+
+    it('lies below the top-bar band under a top tab bar, with a zero top inset, and moves no pane', async () => {
+      mockUseTabBarEdge.mockReturnValue('top');
+      mockWindow.width = 1376;
+      mockWindow.height = 1032;
+      await renderLayer(true);
+
+      expect(frameOf('two-pane-layer')).toEqual({ x: 0, y: 76, width: 1376, height: 956 });
+      expect(JSON.parse(screen.getByTestId('inset-layer').children.join('')).top).toBe(0);
+      expect(frameOf('two-pane-primary')).toMatchObject({ y: 76, height: 956 });
+    });
+
+    it('reads the window top inset under a bottom tab bar', async () => {
+      mockUseTabBarEdge.mockReturnValue('bottom');
+      await renderLayer(true);
+
+      expect(frameOf('two-pane-layer').y).toBe(0);
+      expect(JSON.parse(screen.getByTestId('inset-layer').children.join('')).top).toBe(32);
+    });
+
+    it('is the window in rows too', async () => {
+      mockUseLayoutMode.mockReturnValue('rows');
+      await renderLayer(true);
+
+      expect(frameOf('two-pane-layer')).toEqual({ x: 0, y: 0, width: 951, height: 669 });
+    });
+
+    it('is left out in single mode, where the window is the screen', async () => {
+      mockUseLayoutMode.mockReturnValue('single');
+      await renderLayer(true);
+
+      expect(screen.queryByTestId('two-pane-layer', WITH_HIDDEN)).toBeNull();
+      expect(screen.queryByTestId('probe-layer', WITH_HIDDEN)).toBeNull();
+    });
+
+    it('keeps every child mounted as the layer is shown and hidden again', async () => {
+      mountLog.length = 0;
+      const tree = (isLayerShown: boolean) => (
+        <TwoPaneLayout
+          isLayerShown={isLayerShown}
+          layer={<MountProbe name="layer" />}
+          companion={<MountProbe name="companion" />}
+          primary={<MountProbe name="primary" />}
+        />
+      );
+
+      const view = await render(tree(false));
+      await view.rerender(tree(true));
+      await view.rerender(tree(false));
+
+      expect([...mountLog].sort()).toEqual(['companion', 'layer', 'primary']);
     });
   });
 });
