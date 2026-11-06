@@ -7,33 +7,33 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import {
-  type ReviewGroup,
-  planMccBackfill,
-  planReviewGroups,
-  planRuleRewrite,
-  prepareRules,
-} from '@kiko/categories/category-rules';
-import {
   type DataSnapshot,
   EXPORT_VERSION,
   type ExportEnvelope,
   type ExportPayload,
   decodeBase64ToBytes,
   decryptEnvelope,
+  restoreDataSnapshot,
 } from '@kiko/data-transfer';
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { database } from '@kiko/db';
+import { readFileSync } from 'node:fs';
+import {
+  type ReviewGroup,
+  planMccBackfill,
+  planReviewGroups,
+  planRuleRewrite,
+  prepareRules,
+} from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
-import { restoreDataSnapshot } from '@kiko/data-transfer/snapshot/restore-snapshot';
-import { merchantNameOf } from '@kiko/transactions/merchant-name';
-import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import {
   categoryRulesRepo,
   mccBackfillRowsQuery,
   readHoldingLabels,
   withVisibleDescription,
 } from '@kiko/categories/category-rules-repo';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
+import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { demoText } from '../seed/demo-text';
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
@@ -258,8 +258,7 @@ describe('buildCategoryCheckSnapshot', () => {
     });
 
     it('opens the confirm sheet on the Podil Bakery line: the rule moves a row the line hides', () => {
-      const movedBy = (category: string): number =>
-        podilRuleMoves(snapshot, afterMove, category);
+      const movedBy = (category: string): number => podilRuleMoves(snapshot, afterMove, category);
 
       expect(groupOf('podil bakery')).toMatchObject({
         names: ['Podil Bakery'],

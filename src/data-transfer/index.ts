@@ -4,7 +4,7 @@ export * from './export-data';
 export * from './crypto/envelope';
 export * from './crypto/generate-key';
 export { USDT_RESCALE_BOUND_MINOR_UNITS } from './snapshot/with-usdt-rescaled';
-export { FROZEN_1_0_CRYPTO_CODES } from './snapshot/restore-snapshot';
+export { FROZEN_1_0_CRYPTO_CODES, restoreDataSnapshot } from './snapshot/restore-snapshot';
 export type { ExportPayload } from './payload';
 export type { ExportSecretKind } from './secrets/restore-secrets';
 export type { DataSnapshot } from './snapshot/data-snapshot';
