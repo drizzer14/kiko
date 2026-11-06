@@ -45,7 +45,8 @@ export const useSpendingLedger = (input: SpendingLedgerInput): SpendingLedger =>
 
   // The matcher sees only unmarked rows: an exchange leg is excluded by its marker, or by the pair
   // rule when it is an equal same-currency pair on two holdings, and must never pair with (and so
-  // swallow) an unmarked Pay send.
+  // swallow) an unmarked Pay send. A row that sets a balance never pairs either, which
+  // `rowsForTransferMatch` takes care of.
   const internalTransferIds = useMemo(
     () => internalTransferTransactionIds(rowsForTransferMatch(ledgerWithCurrency)),
     [ledgerWithCurrency],

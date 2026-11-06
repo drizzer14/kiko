@@ -34,7 +34,7 @@ export const transactionRow = (
   ...overrides,
 });
 
-const holdingRow = (
+export const holdingRow = (
   overrides: Partial<HoldingRow> & Pick<HoldingRow, 'id' | 'accountId'>,
 ): HoldingRow => ({
   name: overrides.id,
@@ -53,7 +53,7 @@ const holdingRow = (
   ...overrides,
 });
 
-const accountRow = (
+export const accountRow = (
   overrides: Partial<AccountRow> & Pick<AccountRow, 'id' | 'kind'>,
 ): AccountRow => ({
   name: overrides.id,

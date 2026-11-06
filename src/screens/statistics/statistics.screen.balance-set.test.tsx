@@ -103,13 +103,29 @@ const BALANCE_SET = {
 };
 const UNMARKED_TWIN = { ...BALANCE_SET, id: 'unmarked-twin', setsBalance: false };
 
-const seedLedger = (...extra: (typeof BALANCE_SET)[]): void => {
+const CASH = { ...CARD, id: 'cash', type: 'cash' };
+// The marked credit sits on another holding, a second later than the real debit it would have
+// cancelled: inside the two-minute window of an own transfer.
+const REAL_DEBIT = { ...BALANCE_SET, id: 'real-debit', setsBalance: false };
+const SET_CREDIT = {
+  ...BALANCE_SET,
+  id: 'set-credit',
+  holdingId: 'cash',
+  time: REAL_DEBIT.time + 1_000,
+  amountMinorUnits: 500_00,
+};
+const UNMARKED_CREDIT = { ...SET_CREDIT, id: 'unmarked-credit', setsBalance: false };
+
+const seedLedger = (...extra: (typeof BALANCE_SET)[]): void =>
+  seedHoldings([CARD], [GROCERIES, ...extra]);
+
+const seedHoldings = (holdings: (typeof CARD)[], transactions: (typeof BALANCE_SET)[]): void => {
   const byTable: Record<string, unknown[]> = {
     accounts: [BANK],
-    holdings: [CARD],
+    holdings,
     currency_rates: [],
     settings: [{ baseCurrency: 'UAH' }],
-    transactions: [GROCERIES, ...extra],
+    transactions,
     currency_rate_history: [],
     categories: CATEGORIES,
     price_points: [],
@@ -164,5 +180,27 @@ describe('StatisticsScreen with a row that sets a balance', () => {
     const centerTotal = within(getByTestId('category-pie-center-total'));
 
     expect(centerTotal.getByText('600.00 ₴')).toBeTruthy();
+  });
+
+  it('counts a real debit in the donut and the trend when a marked credit of its amount sits on another holding', async () => {
+    seedHoldings([CARD, CASH], [GROCERIES, SET_CREDIT, REAL_DEBIT]);
+
+    const { getByTestId } = await renderScreen();
+    const centerTotal = within(getByTestId('category-pie-center-total'));
+
+    expect(centerTotal.getByText('600.00 ₴')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-savings')).toBeTruthy();
+    expect(getByTestId('category-trend-line-line-savings')).toBeTruthy();
+  });
+
+  it('pairs the same two rows when the credit is unmarked, and counts neither', async () => {
+    seedHoldings([CARD, CASH], [GROCERIES, UNMARKED_CREDIT, REAL_DEBIT]);
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+    const centerTotal = within(getByTestId('category-pie-center-total'));
+
+    expect(centerTotal.getByText('100.00 ₴')).toBeTruthy();
+    expect(queryByTestId('category-pie-arc-savings')).toBeNull();
+    expect(queryByTestId('category-trend-line-line-savings')).toBeNull();
   });
 });

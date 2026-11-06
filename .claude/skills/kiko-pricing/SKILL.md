@@ -253,7 +253,9 @@ Crypto history rules (`src/rates/coingecko-history/coingecko-history.ts`,
 
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`), through the hook in
-`src/statistics/use-rate-history-backfill/use-rate-history-backfill.ts` (the screen only calls it):
+`src/statistics/use-rate-history-backfill/use-rate-history-backfill.ts` (Statistics and Tables
+both call it; the run, covered span and status live in `rate-history-backfill.store.ts`, one run
+for all readers):
 `planBackfillRun` decides whether a mount/focus needs a run for the
 current span — from the earliest transaction OR the earliest priced-lot day
 (`earliestLotDay` in `src/statistics/statistics-sources/use-statistics-sources.ts`, and
@@ -323,8 +325,8 @@ stays mounted) re-runs the backfill WITHOUT a restart, even though
 (`src/statistics/use-rate-history-backfill/`) derives a
 sorted `historyCurrencyKey` from every held holding's currency
 plus
-the base, tracked in its own ref (`backfillRanForCurrencyKeyRef`)
-alongside the existing span ref — set the same way, and RESTORED the
+the base and passes it to `requestBackfill`; the store holds it as `coveredCurrencyKey`
+alongside `coveredSpan` — set the same way, and RESTORED the
 same way on a failed settle, so a retry after a rejected run still
 sees the currency set as changed if it genuinely still is. Unlike the
 earlier-extension case, a currency-set-only change resumes from the
@@ -333,22 +335,17 @@ per-currency window already widens for the newly-held currency on its
 own (it has no stored day at all, so `resolveResumeCursor` treats it
 as maximally behind), so there is nothing this override needs to force.
 
-The screen's own effect must guard its async settle against a REAL unmount only (the
-`isMountedRef` flag flipped inside its own unmount-only effect) — a
-dep-change cleanup (a refocus advancing `now`, the same trigger that
-drives the retry above) fires the identical cleanup lifecycle event and
-must not drop a still-pending run's eventual settle, or the line gets
-stuck on "loading" with no retry at all. A settle needs a SECOND,
-independent guard against a run SUPERSEDED by a later one, not merely
-against an unmount: an older transaction or lot extending `spanStart` earlier
-can start a new run before an already-in-flight run's own settle
-arrives, and that stale settle must not overwrite the newer run's
-state or reset its span ref out from under it. A run-token ref, bumped
-only when the effect actually starts a run (never on a plain refocus,
-which the span-ref check above already turns into a no-op) and
-captured locally for that run's own `.then`, tells the two apart: a
-settle applies only when its captured token still matches the ref's
-current value.
+A settle is dropped only when its captured `runToken` is stale: a newer run started, or the
+empty-store reset bumped it. A dep-change cleanup (a refocus advancing `now`, the same trigger
+that drives the retry above) never drops a still-pending run's settle, or the line gets stuck on
+"loading" with no retry at all. A run SUPERSEDED by a later one must not have its stale settle
+overwrite the newer run's state or reset its covered span: an older transaction or lot extending
+`spanStart` earlier can start a new run before an in-flight run's own settle arrives. The module
+`runToken` in `src/statistics/use-rate-history-backfill/rate-history-backfill.store.ts`, bumped
+only when `requestBackfill` actually starts a run (never on a plain refocus, which the
+covered-span check above already turns into a no-op) and captured locally for that run's own
+`.then`, tells them apart: a settle applies only when its captured token still matches the
+module's current value.
 
 The effect's own dependency array deliberately EXCLUDES
 `lastBackfilledDay`/`lastBackfilledDayByCurrency`, even though the

@@ -35,6 +35,7 @@ type FundingLedgerRow = {
   description: string;
   mcc: number | null;
   categorySetByHand: boolean;
+  setsBalance?: boolean;
 };
 
 type FundingMatch = { exchangeId: string; kind: FundingKind };
@@ -258,14 +259,18 @@ const pairOneToOne = (pairs: readonly FundingPair[]): FundingPair[] => {
  * non-crypto account, in the code's fiat, for exactly minus the total in minor units, dated inside
  * the kind's window around the exchange row. Returns the pairs by bank row id and the ids to leave
  * out of spending: every matched debit except one the user categorized by hand, which stays in
- * spending as set but still takes its match.
+ * spending as set but still takes its match. A row that sets a balance takes no part on either
+ * side.
  */
 export const exchangeFundingMatches = (
   ledger: readonly FundingLedgerRow[],
   accountKindByHoldingId: ReadonlyMap<string, AccountRow['kind']>,
 ): ExchangeFundingMatches => {
-  const buckets = buildBankBuckets(ledger, accountKindByHoldingId);
-  const pairs = ledger
+  // A row that sets a balance is the app's own correction: it is neither a funding debit nor an
+  // exchange purchase, so it never takes a match from a real row.
+  const realRows = ledger.filter((row) => row.setsBalance !== true);
+  const buckets = buildBankBuckets(realRows, accountKindByHoldingId);
+  const pairs = realRows
     .flatMap((row) => fundingOf(row) ?? [])
     .flatMap((funding) => candidatePairsOf(funding, buckets));
   const taken = pairOneToOne(pairs);

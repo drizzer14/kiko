@@ -3,6 +3,7 @@ import {
   NavigationContainer,
   type ParamListBase,
 } from '@react-navigation/native';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { transactionFormDataLayer as mockDataLayer } from '@kiko/test-support/transaction-form-data-layer';
@@ -139,29 +140,11 @@ type HeaderConfigProps = {
   onPressHeaderBarButtonItem?: (event: { nativeEvent: { buttonId: string } }) => void;
 };
 
-type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
-
-const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfigProps[] => {
-  if (node === null || typeof node === 'string') {
-    return [];
-  }
-
-  return [
-    ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as HeaderConfigProps] : []),
-    ...(node.children ?? []).flatMap(headerConfigsOf),
-  ];
-};
-
 // The native bar of the form on top, pressed the way the native side reports a press.
 const pressSaveOnTopForm = async (): Promise<void> => {
-  const tree = screen.toJSON() as RenderedNode | RenderedNode[] | null;
-  const roots = Array.isArray(tree) ? tree : [tree];
-
-  const saveConfigs = roots
-    .flatMap(headerConfigsOf)
-    .filter((config) =>
-      (config.headerRightBarButtonItems ?? []).some((item) => item.title === 'Save'),
-    );
+  const saveConfigs = headerConfigsIn<HeaderConfigProps>(screen.toJSON()).filter((config) =>
+    (config.headerRightBarButtonItems ?? []).some((item) => item.title === 'Save'),
+  );
   const config = saveConfigs.at(-1);
   const save = config?.headerRightBarButtonItems?.find((item) => item.title === 'Save');
 

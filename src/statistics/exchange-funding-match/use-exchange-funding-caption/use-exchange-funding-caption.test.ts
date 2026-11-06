@@ -29,7 +29,7 @@ type LedgerRow = Pick<
   | 'mcc'
   | 'description'
   | 'categorySetByHand'
->;
+> & { setsBalance?: boolean };
 
 const T = 1_700_000_000_000;
 const MINUTE = 60_000;
@@ -149,6 +149,21 @@ describe('useExchangeFundingCaption', () => {
     serve([purchase('p2p:UAH:4150.00'), debit]);
 
     expect(await captionOf(debit)).toBeUndefined();
+  });
+
+  it('gives a debit that sets a balance no caption, and the real debit of the same amount its own', async () => {
+    const setDebit = ledgerRow({
+      id: 'set-debit',
+      holdingId: 'card',
+      time: T - 10 * MINUTE,
+      setsBalance: true,
+    });
+    const debit = ledgerRow({ id: 'debit', holdingId: 'card', time: T - 20 * MINUTE });
+
+    serve([purchase('p2p:UAH:4150.00'), setDebit, debit]);
+
+    expect(await captionOf(setDebit)).toBeUndefined();
+    expect(await captionOf(debit)).toBe('transactions.matchedP2pPurchase');
   });
 
   it('reads the ledger for a debit on a holding of a bank account', async () => {

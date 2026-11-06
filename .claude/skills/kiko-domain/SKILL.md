@@ -195,7 +195,10 @@ sync and Exchange/Convert legs see `kiko-exchange-sync`.
   `isImplicitAccount` (kind + live), `accountDisplayName(account, t)`, and
   `accountsForFilter(accounts, holdings)` (the Home and Statistics account
   filter options: live accounts, minus an implicit one with no holding at all
-  — a transaction always hangs off a holding, so none is left either).
+  — a transaction always hangs off a holding, so none is left either), plus
+  `accountSectionOf` and `accountSectionOrder` (the one Accounts-section partition and order;
+  the Accounts screen renders and net worth by account ranks by them; pinned by the
+  `accounts.screen.test.tsx` order test and `implicit-account.test.ts`).
   **A screen shows an implicit account's name through `accountDisplayName`,
   never through the raw stored `name`**: the stored `name` is the fixed English
   sentinel `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`) while the
@@ -837,6 +840,10 @@ why this is the deliberate exception to functional-first). It holds
   `splitMinorUnits`, never `/ 10 ** scale` or `toFixed`.
   `splitMinorUnits` rounds a non-integer stored value first (a test pins
   it).
+- A fiat amount shown with fewer fraction digits than its scale (the tables' whole-unit
+  cells) rounds half away from zero in integers (`roundedToDigits`,
+  `src/currency/format/format.ts`); never leave the last digit to `toLocaleString`'s engine
+  rounding mode.
 - The value object itself — construction, arithmetic, and the
   currency-mismatch guard — lives in `src/currency/`. Read it
   directly for the current method set rather than trusting a list
@@ -1055,6 +1062,13 @@ purchase row with its funding bank debit)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
+Income (`isIncomeRow`, `src/statistics/cash-flow/cash-flow.ts`) is the ledger's `shownRows`
+credits (amount > 0) that are not in `excludedTransactionIds`, have `changeGroupId === null` (a
+change return is already netted from expenses) and are not `setsBalance`. The exclusion rules
+were written for spending and some ignore sign. A refund counts as income. A coupon payout
+described as a deposit does not. A new exclusion rule therefore changes income too; read
+`cash-flow.ts`, do not restate its rules.
+
 A NEW exclusion rule also goes in `recurringExcludedIds`
 (`src/recurring/eligibility/eligibility.ts`), so a recurring series never counts the row.
 
@@ -1167,12 +1181,20 @@ holding's rows whatever the account filter. `loanInterestEntries`
 marked row linked to a loan emits no entry and the loan's other payments split as if it did not
 exist. A positive marked row is in the set but was never in the donut.
 
+Decision 10: a balance-set row (`setsBalance`, either sign) is also skipped by the three
+row-pairing matchers: `rowsForTransferMatch`, `exchangeFundingMatches` and
+`sameCurrencyMoveTransactionIds`. It is neither a debit nor a credit there, so it never pairs
+with, or takes the funding or partner match of, a real row of the same amount. The funding
+caption (`useExchangeFundingCaption`) and `recurringExcludedIds` follow. Source: the
+`src/db/schema.ts` comment on `setsBalance`.
+
 Where the Statistics code lives (read each folder, not a name list here):
 `src/statistics/spending-ledger/` (the ledger hook and pure builder),
 `src/statistics/statistics-sources/` (the screen's reads),
 `src/statistics/statistics-filter-scope/` (the account and category filter scope, including the
 kept selection unioned back in), and `src/statistics/use-rate-history-backfill/` (the rate-history
-backfill the screen only calls).
+backfill; Statistics and Tables both call it, one run for all readers, held in
+`rate-history-backfill.store.ts`).
 
 ## Deleting a movement takes its other parts
 
@@ -1616,6 +1638,12 @@ Every call site — including a single-instant read like
 `createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
 this pays the same per-holding setup cost that single-call function used to pay
 per call, which is negligible for a single call.
+
+Net worth by account (`src/statistics/net-worth-by-account/`) reads `buildHoldingValues` per
+holding at `monthEndInstants` (month end, or now for the running month), so its All and last
+column equal the line's. Rows rank by `accountSectionOrder`; an account with no holding has no
+row. A property or debt account with only closed holdings gets a row, deliberately unlike the
+Accounts screen.
 
 `buildNetWorthSeries` also decides whether a holding's value counts at
 bucket `t` at all: the net-worth LINE is built from `filtered.netWorthHoldings`
