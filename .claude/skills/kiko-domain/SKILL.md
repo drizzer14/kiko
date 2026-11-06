@@ -767,7 +767,8 @@ second kind/type -> glyph map in a screen module.
 An account row's displayed icon + color come from one helper,
 `accountIdentity` (`src/holdings/account-identity/`): the stored icon
 or `accountKindSymbol[kind]`, and the color through
-`resolveEntityColor` with `defaultAccountColor[kind]`. Every screen
+`resolveEntityColor` with `defaultAccountColor[kind]`, mapped for display by
+`entityDisplayColor`; it takes a required `scheme`. Every screen
 that shows a stored account row's icon or color calls it; never rebuild the
 `icon ?? accountKindSymbol[kind]` pair in a screen. There are two
 exceptions: the account form edits a draft, not a stored row; and the
@@ -784,9 +785,10 @@ garbled metadata still gets the Other glyph), else `holdingTypeSymbol`
 — is the glyph a holding shows. A holding's icon + color come from one
 helper, `holdingIdentity` (`src/holdings/holding-identity/`), the twin of
 `accountIdentity`: `icon ?? defaultHoldingSymbol(holding)` and the color
-through `resolveEntityColor` with `defaultHoldingColor[type]`. A holding
-picker option comes from `toHoldingOption(holding, accountNameById)`
-(`src/screens/forms/holding-select-option/`). A screen never rebuilds the
+through `resolveEntityColor` with `defaultHoldingColor[type]`, mapped by
+`entityDisplayColor`; it takes a required `scheme`. A holding picker option
+comes from `toHoldingOption` (`src/screens/forms/holding-select-option/`; read
+it for the arguments, `scheme` is required). A screen never rebuilds the
 pair, because copies of the rule drift apart (a colour divergence came
 from such copies). Users: the holding card, the holding-detail header, the
 holding form, the transaction form, the statement-import target options.
@@ -1507,7 +1509,8 @@ netted into it, so it can never reduce a positive holding of the same
 type. Debt has its own total (see below).
 
 **The account pie (`buildAccountContribution`,
-`src/statistics/account-contribution/`) is ASSETS ONLY:** an account's slice sums only its POSITIVE
+`src/statistics/account-contribution/`, takes a required `scheme`; slice colors are display
+colors) is ASSETS ONLY:** an account's slice sums only its POSITIVE
 holding values; a negative holding (a `loan`'s own value, or a
 non-loan holding in debit, e.g. a credit card) never reduces it and
 never nets against a positive one in the same account. An account

@@ -339,9 +339,9 @@ account-contribution pie passes nothing, so its legend is uncropped.
 ## The account pie excludes debts
 
 `PieChart` itself has no debt concept — the exclusion lives entirely
-in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`)
-filters to `slice.amount > 0` before this component ever sees the
-slice list, so a debt account's net worth (negative, since a `loan`
+in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`; a required
+`scheme` makes slice colors display colors) filters to `slice.amount > 0` before
+this component ever sees the slice list, so a debt account's net worth (negative, since a `loan`
 holding's own value is negative — see `kiko-domain` "Net worth")
 never reaches the ring: no negative-slice case exists inside
 `PieChart`/`allocatePercents` to handle. The SAME file's
