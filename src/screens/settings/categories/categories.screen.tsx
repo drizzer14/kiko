@@ -9,6 +9,7 @@ import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import Divider from '@kiko/design-system/components/divider';
 import SettingsRow from '@kiko/screens/settings/settings-row';
 import { categoryKeyOf } from '@kiko/categories/category-rules';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -151,6 +152,8 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('CategoryReview')}
           />
         </Card>
+
+        <Divider testID="categories-review-divider" spacing={2} />
 
         {/* A hold that moves reorders (through the shared `onGridDragEnd`, which persists only a
             real move); a hold that stays still opens the delete menu; a quick tap opens the page.
