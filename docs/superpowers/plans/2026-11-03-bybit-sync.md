@@ -414,9 +414,9 @@ way in. Stays out of `next` (O21). A coin with an open order or a loan is on UNI
   fields only (the list of each series in spec section 3: `result.rows`, and `result.list` for transfer), `BybitHistoryParseError`, time by digit count: 13 ms, 10 the whole second, any other unreadable (A60); an empty, 0 or absent time reads the same (rule 47). A withdrawal's shown `time` is `createTime` (A82). Paths added to `BYBIT_SIGNED_PATHS`.
 - [ ] **step 4/4: the capital walk.** `bybit.capital-history.ts`: series `deposit`, `internal`,
   `withdraw`; windows 29 days; floor `now - 729 days`, which P12 did not move (R1); `reach` per rule 18;
-  a withdrawal's `extentOf` is `createTime` alone (PLANNER CALL 29); `depositType` 0 only (PLANNER CALL 30); removal of 70011; forward owes constant per the
+  a withdrawal's `extentOf` is `createTime` alone (PLANNER CALL 29); `depositType` 0 only (PLANNER CALL 30), and type 50 final, nothing owed (PLANNER CALL 118); removal of 70011; forward owes constant per the
   Transfer rule, holding each code of a waiting status with a time. Every row on FUND, clause W1 (rule 45). The walker stays as it is: a deposit with
-  no time and no final status, and a row with an unreadable time, makes no row, and this file tags the range `settleRecords` owes with the series, so `isOwedPast` lets the forward pass go on (rule 47, PLANNER CALL 37, O63 (b); was: owes nothing, CALL 28). The stop codes of these rows join the forward owes list. A 70011 row with no time still removes by key (rule 14). Guard on an empty plan
+  no time and no final status, and a row with an unreadable time, makes no row, and this file tags the range `settleRecords` owes with the series, so `isOwedPast` lets the forward pass go on (rule 47, PLANNER CALL 37, O63 (b); was: owes nothing, CALL 28). The stop codes of these rows join the forward owes list, and so does `bybit-page-drift`, whose range this file tags with its series (rule 22, PLANNER CALL 117). A 70011 row with no time still removes by key (rule 14). Guard on an empty plan
   tests all four lists. Arm: `capital` in `logOnFailure`, `captionWalksOf('bybit')` gains `capital`. Rows A17
   to A22, A27, A30, A35, A39, A41, A60, A82. A failing proof of a safe reading is a report to the planner, never a loosened row.
 
