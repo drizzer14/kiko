@@ -195,6 +195,10 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 
+// A Binance caption compares its 8 walks: the log walk is Bybit's, so ground it owes shows no
+// Binance caption.
+const BINANCE_CAPTION_WALKS = WALK_NAMES.filter((walkName) => walkName !== 'log');
+
 const PAUSED_CAPTION =
   'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to fix this. Your holdings and transactions are kept.';
 
@@ -552,20 +556,23 @@ describe('CryptoSyncSection', () => {
     },
   );
 
-  describe.each(WALK_NAMES)('while the cursors are current and the %s walk owes', (walkName) => {
-    it.each([
-      ['a range owed in every series', { start: 5, end: 7 }],
-      ['a range owed in one series', { start: 5, end: 7, series: 'MAIN_FUNDING' }],
-    ])('%s, the caption shows', async (_label, owed) => {
-      const { getByText } = await renderBinance(
-        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, { pending: [owed] }),
-      );
+  describe.each(BINANCE_CAPTION_WALKS)(
+    'while the cursors are current and the %s walk owes',
+    (walkName) => {
+      it.each([
+        ['a range owed in every series', { start: 5, end: 7 }],
+        ['a range owed in one series', { start: 5, end: 7, series: 'MAIN_FUNDING' }],
+      ])('%s, the caption shows', async (_label, owed) => {
+        const { getByText } = await renderBinance(
+          withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, walkName, { pending: [owed] }),
+        );
 
-      expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
-    });
-  });
+        expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
+      });
+    },
+  );
 
-  describe.each(WALK_NAMES)(
+  describe.each(BINANCE_CAPTION_WALKS)(
     'while the cursors are current and the %s walk owes a point',
     (walkName) => {
       const pointWith = (stamp: { since?: number }) => ({

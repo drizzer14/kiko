@@ -10,8 +10,8 @@ export const ACCOUNT_ID = 'acc-1';
 
 export type CapitalSeries = 'deposit' | 'internal' | 'withdraw';
 
-/** The series the fake serves: the three capital routes and the transfer route. */
-export type BybitSeries = CapitalSeries | 'transfer';
+/** The series the fake serves: the three capital routes, the transfer route and the log. */
+export type BybitSeries = CapitalSeries | 'transfer' | 'log';
 
 /**
  * A row the fake exchange holds, and the instant its window test uses for the row: the instant a
@@ -30,6 +30,7 @@ const SERIES_OF_PATH: Record<string, BybitSeries> = {
   '/v5/asset/deposit/query-internal-record': 'internal',
   '/v5/asset/withdraw/query-record': 'withdraw',
   '/v5/asset/transfer/query-inter-transfer-list': 'transfer',
+  '/v5/account/transaction-log': 'log',
 };
 
 type PageOrder = 'ascending' | 'descending' | 'scrambled';
@@ -84,6 +85,7 @@ export const fakeBybit = (options: FakeOptions = {}) => {
     internal: [],
     withdraw: [],
     transfer: [],
+    log: [],
   };
   const reads: SentRead[] = [];
 
@@ -109,7 +111,9 @@ export const fakeBybit = (options: FakeOptions = {}) => {
     const next = offset + pageSize;
 
     return envelopeOf(0, {
-      [series === 'transfer' ? 'list' : 'rows']: held.slice(offset, next).map(({ row }) => row),
+      [series === 'transfer' || series === 'log' ? 'list' : 'rows']: held
+        .slice(offset, next)
+        .map(({ row }) => row),
       nextPageCursor: next < held.length ? `${CURSOR_PREFIX}${next}` : '',
     });
   };
@@ -145,6 +149,8 @@ type StoredRow = {
   description: string;
   exchangePairId?: string;
   exchangeCounterpartHoldingId?: string;
+  untrackedCounterpart?: string;
+  operation?: string;
 };
 
 type WalkWorldOptions = {

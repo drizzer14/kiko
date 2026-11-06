@@ -569,6 +569,7 @@ describe('CryptoSyncSection for a Bybit account', () => {
       walks: {
         capital: { cursor: SYNCED_AT },
         transfer: { cursor: SYNCED_AT },
+        log: { cursor: SYNCED_AT },
         pay: { pending: [{ start: 1, end: 3 }] },
       },
     };

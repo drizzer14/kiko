@@ -4,16 +4,20 @@ const mockSyncBinanceTransactions = jest.fn();
 const mockPatchExchangeState = jest.fn();
 const mockSyncBybitCapitalHistory = jest.fn();
 const mockSyncBybitTransferHistory = jest.fn();
+const mockSyncBybitLogHistory = jest.fn();
 
 // `./sync` pulls the repos into the graph, and the Binance barrel loads every walk; replacing both
 // keeps this a pure dispatch test, and a walk that ran for a Bybit request would show here. The
-// Bybit capital and transfer walks are replaced the same way, so what they are given is all this
-// suite looks at.
+// Bybit capital, transfer and log walks are replaced the same way, so what they are given is all
+// this suite looks at.
 jest.mock('@kiko/crypto-sync/bybit/bybit.capital-history', () => ({
   syncBybitCapitalHistory: (...args: unknown[]) => mockSyncBybitCapitalHistory(...args),
 }));
 jest.mock('@kiko/crypto-sync/bybit/bybit.transfer-history', () => ({
   syncBybitTransferHistory: (...args: unknown[]) => mockSyncBybitTransferHistory(...args),
+}));
+jest.mock('@kiko/crypto-sync/bybit/bybit.log-history', () => ({
+  syncBybitLogHistory: (...args: unknown[]) => mockSyncBybitLogHistory(...args),
 }));
 jest.mock('@kiko/crypto-sync/sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
@@ -49,6 +53,7 @@ describe('runCryptoSync for Bybit', () => {
     mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 2 });
     mockSyncBybitCapitalHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBybitTransferHistory.mockResolvedValue({ imported: 0, complete: true });
+    mockSyncBybitLogHistory.mockResolvedValue({ imported: 0, complete: true });
   });
 
   describe('the transfer history walk', () => {
@@ -105,6 +110,59 @@ describe('runCryptoSync for Bybit', () => {
       ).rejects.toThrow('read boom');
 
       expect(mockSyncBybitTransferHistory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the log history walk', () => {
+    it('runs once after the transfer walk, on the run the other walks were given', async () => {
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockSyncBybitLogHistory).toHaveBeenCalledTimes(1);
+      expect(mockSyncBybitLogHistory).toHaveBeenCalledWith({
+        targetAccountId: 'acc-1',
+        run: { gate: expect.any(Object), budget: expect.any(Object) },
+      });
+      expect(mockSyncBybitLogHistory.mock.calls[0][0].run).toBe(
+        mockSyncBybitTransferHistory.mock.calls[0][0].run,
+      );
+      expect(mockSyncBybitTransferHistory.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncBybitLogHistory.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('still runs when the transfer walk fails', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockSyncBybitTransferHistory.mockRejectedValueOnce(new Error('Failed query: params SECRET'));
+
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockSyncBybitLogHistory).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
+
+    it('still resolves with the balance result when the walk fails, logging only its name', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockSyncBybitLogHistory.mockRejectedValueOnce(new Error('Failed query: params SECRET'));
+
+      const result = await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(result).toEqual({ syncedHoldings: 2 });
+      expect(warn).toHaveBeenCalledWith('[bybit sync] log history failed', {
+        name: 'Error',
+        code: undefined,
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+      warn.mockRestore();
+    });
+
+    it('does not run when the balance sync fails', async () => {
+      mockRunBalanceSync.mockRejectedValueOnce(new Error('read boom'));
+
+      await expect(
+        runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' }),
+      ).rejects.toThrow('read boom');
+
+      expect(mockSyncBybitLogHistory).not.toHaveBeenCalled();
     });
   });
 

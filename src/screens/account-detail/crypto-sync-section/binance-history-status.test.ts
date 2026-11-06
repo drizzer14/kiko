@@ -431,11 +431,11 @@ describe('the history caption over the P2P and fiat walks', () => {
 describe('the caption walks of each provider', () => {
   const owedCapital = () => stateOf({ capital: { cursor: NOW, pending: [{ start: 1, end: 3 }] } });
 
-  it('Binance compares its 8 walks and Bybit compares its capital and transfer walks', () => {
-    const state = withEveryCursor(NOW, {});
+  it('Binance compares its 8 walks and Bybit compares its capital, transfer and log walks', () => {
+    const state = withEveryCursor(NOW, { log: { cursor: NOW } });
 
     expect(walkCursorsOf(state, 'binance')).toHaveLength(8);
-    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW, NOW]);
+    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW, NOW, NOW]);
   });
 
   it('Binance stays its 8 walks: a log walk with an old cursor and an owed range is not read', () => {
@@ -454,16 +454,43 @@ describe('the caption walks of each provider', () => {
     ).toBe(false);
   });
 
-  it('Bybit compares its capital and transfer walks alone, and no cursor of a state it cannot read', () => {
+  it('Bybit compares its capital, transfer and log walks alone, and no cursor of a state it cannot read', () => {
     const state = stateOf({
       capital: { cursor: NOW - HOUR_MS },
       transfer: { cursor: NOW - 2 * HOUR_MS },
+      log: { cursor: NOW - 3 * HOUR_MS },
       pay: { cursor: NOW - 9 * DAY_MS },
     });
 
-    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW - HOUR_MS, NOW - 2 * HOUR_MS]);
-    expect(walkCursorsOf(parseExchangeState('{not json'), 'bybit')).toEqual([null, null]);
-    expect(walkCursorsOf(stateOf({}), 'bybit')).toEqual([null, null]);
+    expect(walkCursorsOf(state, 'bybit')).toEqual([
+      NOW - HOUR_MS,
+      NOW - 2 * HOUR_MS,
+      NOW - 3 * HOUR_MS,
+    ]);
+    expect(walkCursorsOf(parseExchangeState('{not json'), 'bybit')).toEqual([null, null, null]);
+    expect(walkCursorsOf(stateOf({}), 'bybit')).toEqual([null, null, null]);
+  });
+
+  it('Bybit owes a range of its log walk, and is behind while its log cursor lags a day', () => {
+    const owedLog = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW },
+      log: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'log' }] },
+    });
+    const lagging = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW },
+      log: { cursor: NOW - 2 * DAY_MS },
+    });
+
+    expect(historyOwesRange(owedLog, NOW, 'bybit')).toBe(true);
+    expect(historyOwesRange(owedLog, NOW, 'binance')).toBe(false);
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(lagging, 'bybit'),
+        lastBalanceSyncAt: NOW,
+      }),
+    ).toBe(true);
   });
 
   it('Bybit owes a range of its capital walk and of its transfer walk, and no range of a walk it does not read', () => {

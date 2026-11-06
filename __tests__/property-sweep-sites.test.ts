@@ -46,6 +46,7 @@ describe('property sweep sites', () => {
       'src/crypto-sync/binance/binance.walks.multi-coin.properties.test.ts',
       'src/crypto-sync/bybit/bybit.convergence.test.ts',
       'src/crypto-sync/bybit/bybit.keys.property.test.ts',
+      'src/crypto-sync/bybit/bybit.log-history.property.test.ts',
       'src/currency/currency-group/currency-group.test.ts',
       'src/recurring/detection/detection.test.ts',
       'src/recurring/eligibility/eligibility.test.ts',

@@ -9,5 +9,6 @@ export { walletLabelOf } from './bybit.holding-keys';
 export { isTrackedBybitAsset } from './bybit.tracked-coin';
 export { bybitProvider, defaultBybitDeps } from './bybit.provider';
 export { createBybitHistoryRun } from './bybit.history-budget';
+export { syncBybitLogHistory } from './bybit.log-history';
 export { syncBybitCapitalHistory } from './bybit.capital-history';
 export { syncBybitTransferHistory } from './bybit.transfer-history';
