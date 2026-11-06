@@ -471,7 +471,7 @@ one for the other:
   callback); only the READ that fire would start is deferred, and
   marks the query dirty instead. `data` keeps its last rows (never
   `[]`), `isLoading` stays `false`, and `isFresh` turns `false` for a
-  dirty query (so a `backfillRanForSpanRef`-style effect guard —
+  dirty query (so a covered-span guard (the backfill store's `coveredSpan`) —
   "Local state on a cached display screen follows the row" below —
   keeps working across a pause exactly the way it already does across
   an ordinary cached mount). Flipping back to `false` runs exactly ONE
@@ -758,9 +758,9 @@ hydrated ref); a display row follows the row. An effect that writes from rows an
 records what it covered in a ref waits for `isFresh` too: Statistics'
 history backfill does not start until `transactions` and
 `currency_rate_history` are both fresh, because its
-`backfillRanForSpanRef` marks the span covered for the rest of the
-mount, so a run planned from a cached resume point would stop the fresh
-read's own run from ever starting.
+store's `coveredSpan` marks the span covered while any reader is mounted (it resets one
+microtask after the last reader leaves), so a run planned from a cached resume point would
+stop the fresh read's own run from ever starting.
 
 ## Category screens and the delete path
 
@@ -1836,8 +1836,12 @@ are built with `createPaneStackNavigator`.
   default in the other), so their live queries run twice. Opening Tables does not mount a second
   Statistics: it has no mount reads and the stand-in stays, paused.
 - **Tables code.** `src/screens/tables/` (the screen, `category-table/`, `cash-flow-table/`,
-  `table-cells/` shared cell formatters); the data in
-  `src/statistics/{table-period,category-by-month,cash-flow,tables-view}/`. A view is added by
+  `net-worth-table/` under `src/screens/tables/`, `table-cells/` shared cell formatters with
+  `monthColumnsOf`); the data in
+  `src/statistics/{table-period,category-by-month,cash-flow,tables-view}/`, plus
+  `src/statistics/net-worth-by-account/` (`buildNetWorthByAccount`, `monthEndInstants`) and
+  `src/statistics/net-worth-series/` (`transactionsByHolding`, shared with the Statistics
+  screen). C3 reads the line's `buildHoldingValues`; its All is the line's value. A view is added by
   extending `TABLES_VIEWS` (`src/statistics/tables-view/tables-view.ts`); the typed Records fail
   to compile until mapped.
 

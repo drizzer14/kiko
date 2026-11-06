@@ -195,7 +195,10 @@ sync and Exchange/Convert legs see `kiko-exchange-sync`.
   `isImplicitAccount` (kind + live), `accountDisplayName(account, t)`, and
   `accountsForFilter(accounts, holdings)` (the Home and Statistics account
   filter options: live accounts, minus an implicit one with no holding at all
-  — a transaction always hangs off a holding, so none is left either).
+  — a transaction always hangs off a holding, so none is left either), plus
+  `accountSectionOf` and `accountSectionOrder` (the one Accounts-section partition and order;
+  the Accounts screen renders and net worth by account ranks by them; pinned by the
+  `accounts.screen.test.tsx` order test and `implicit-account.test.ts`).
   **A screen shows an implicit account's name through `accountDisplayName`,
   never through the raw stored `name`**: the stored `name` is the fixed English
   sentinel `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`) while the
@@ -1176,7 +1179,8 @@ Where the Statistics code lives (read each folder, not a name list here):
 `src/statistics/statistics-sources/` (the screen's reads),
 `src/statistics/statistics-filter-scope/` (the account and category filter scope, including the
 kept selection unioned back in), and `src/statistics/use-rate-history-backfill/` (the rate-history
-backfill the screen only calls).
+backfill; Statistics and Tables both call it, one run for all readers, held in
+`rate-history-backfill.store.ts`).
 
 ## Deleting a movement takes its other parts
 
@@ -1619,6 +1623,12 @@ Every call site — including a single-instant read like
 `createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
 this pays the same per-holding setup cost that single-call function used to pay
 per call, which is negligible for a single call.
+
+Net worth by account (`src/statistics/net-worth-by-account/`) reads `buildHoldingValues` per
+holding at `monthEndInstants` (month end, or now for the running month), so its All and last
+column equal the line's. Rows rank by `accountSectionOrder`; an account with no holding has no
+row. A property or debt account with only closed holdings gets a row, deliberately unlike the
+Accounts screen.
 
 `buildNetWorthSeries` also decides whether a holding's value counts at
 bucket `t` at all: the net-worth LINE is built from `filtered.netWorthHoldings`
