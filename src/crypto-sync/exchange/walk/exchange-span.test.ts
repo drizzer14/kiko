@@ -90,6 +90,42 @@ describe('commitExchangeSpan', () => {
     );
   });
 
+  it('removes the rows of the records a span read as rolled back, after its rows and before its marks', async () => {
+    const order: string[] = [];
+    const remove = jest.fn(async (externalIds: readonly string[]) => {
+      order.push('remove');
+
+      return externalIds.length;
+    });
+    const addTransactions = jest.fn(async (rows: string[]) => {
+      order.push('add');
+
+      return rows.length;
+    });
+    const write = jest.fn(async () => {
+      order.push('marks');
+    });
+
+    await commitExchangeSpan({
+      context: {
+        deps: { addTransactions, patchExchangeState: jest.fn() },
+        accountId: 'acc-1',
+        marks,
+        plan,
+        write,
+      },
+      pass: 'forward',
+      span: SPAN,
+      settled: { rows: ['one'], codes: [], owed: [], returned: [], removed: ['gone-1', 'gone-2'] },
+      place: async (planned) => planned,
+      restartMs: 0,
+      remove,
+    });
+
+    expect(remove).toHaveBeenCalledWith(['gone-1', 'gone-2']);
+    expect(order).toEqual(['add', 'remove', 'marks']);
+  });
+
   describe('what a span hands the commit and its marks', () => {
     const POINT: OwedGround = { start: 1_500, end: 1_501, kind: 'point' };
 

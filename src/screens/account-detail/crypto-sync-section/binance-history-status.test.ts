@@ -435,10 +435,37 @@ describe('the caption walks of each provider', () => {
     const state = withEveryCursor(NOW, {});
 
     expect(walkCursorsOf(state, 'binance')).toHaveLength(8);
-    expect(walkCursorsOf(state, 'bybit')).toEqual([]);
+    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW]);
   });
 
-  const WITHOUT_WALKS = ['bybit', 'btc_wallet'] as const;
+  it('Bybit compares the capital walk alone, and no cursor of a state it cannot read', () => {
+    const state = stateOf({
+      capital: { cursor: NOW - HOUR_MS },
+      pay: { cursor: NOW - 9 * DAY_MS },
+    });
+
+    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW - HOUR_MS]);
+    expect(walkCursorsOf(parseExchangeState('{not json'), 'bybit')).toEqual([null]);
+    expect(walkCursorsOf(stateOf({}), 'bybit')).toEqual([null]);
+  });
+
+  it('Bybit owes a range of its capital walk, and no range of a walk it does not read', () => {
+    const owedPay = stateOf({ pay: { cursor: NOW, pending: [{ start: 1, end: 3 }] } });
+
+    expect(historyOwesRange(owedCapital(), NOW, 'bybit')).toBe(true);
+    expect(historyOwesRange(owedPay, NOW, 'bybit')).toBe(false);
+    expect(historyOwesRange(owedPay, NOW, 'binance')).toBe(true);
+  });
+
+  it('Bybit shows the caption for a range tagged with a series, as it does for any owed range', () => {
+    const owedDeposit = stateOf({
+      capital: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'deposit' }] },
+    });
+
+    expect(historyOwesRange(owedDeposit, NOW, 'bybit')).toBe(true);
+  });
+
+  const WITHOUT_WALKS = ['btc_wallet'] as const;
 
   it.each(WITHOUT_WALKS)('compares no walk for %s, a state it cannot read too', (provider) => {
     expect(walkCursorsOf(withEveryCursor(NOW, {}), provider)).toEqual([]);

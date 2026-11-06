@@ -57,13 +57,13 @@ export const isTrackedAssetOf = (provider: BalanceProviderId): ((asset: string) 
  * The walks whose forward cursor the caption compares. Binance: capital, Pay, Transfer, Earn,
  * Convert, P2P, fiat orders, fiat payments. A P2P page that cannot be read holds its cursor on
  * every run, which this caption shows once the cursor lags a day; the failure itself has its own,
- * immediate caption (`p2pReadFailed`). An empty list never shows the caption: Bybit has no walk
- * yet, and a wallet has no history.
+ * immediate caption (`p2pReadFailed`). Bybit: capital. An empty list never shows the caption: a
+ * wallet has no history.
  */
 const CAPTION_WALKS: Record<BalanceProviderId, readonly WalkId[]> = {
   btc_wallet: [],
   binance: ['capital', 'pay', 'transfer', 'earn', 'convert', 'p2p', 'fiatOrders', 'fiatPayments'],
-  bybit: [],
+  bybit: ['capital'],
 };
 
 const captionWalksOf = (provider: BalanceProviderId): readonly WalkId[] => CAPTION_WALKS[provider];

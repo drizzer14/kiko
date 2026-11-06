@@ -540,7 +540,7 @@ describe('CryptoSyncSection for a Bybit account', () => {
     ).toBeTruthy();
   });
 
-  it('never shows the history as behind, for a state with no cursor or an owed range, where Binance does', async () => {
+  it('shows the history as behind when the capital walk has no cursor or owes a range, as it does for Binance', async () => {
     const stateWithOwedRange = {
       walks: { capital: { cursor: SYNCED_AT, pending: [{ start: 1, end: 3 }] } },
     };
@@ -550,8 +550,33 @@ describe('CryptoSyncSection for a Bybit account', () => {
       const bybit = await renderState('bybit', state);
 
       expect(binance.getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
-      expect(bybit.queryByText(PENDING_FRAGMENT, { exact: false })).toBeNull();
+      expect(bybit.getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
     }
+  });
+
+  it('shows the history as behind for a range owed in one series of the capital walk', async () => {
+    const { getByText } = await renderState('bybit', {
+      walks: {
+        capital: { cursor: SYNCED_AT, pending: [{ start: 1, end: 3, series: 'deposit' }] },
+      },
+    });
+
+    expect(getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
+  });
+
+  it('never shows the history as behind on the ground of a walk Bybit does not read', async () => {
+    const state = {
+      walks: {
+        capital: { cursor: SYNCED_AT },
+        pay: { pending: [{ start: 1, end: 3 }] },
+      },
+    };
+
+    const binance = await renderState('binance', state);
+    const bybit = await renderState('bybit', state);
+
+    expect(binance.getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
+    expect(bybit.queryByText(PENDING_FRAGMENT, { exact: false })).toBeNull();
   });
 
   describe('in Ukrainian', () => {

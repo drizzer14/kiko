@@ -8,6 +8,12 @@ import { logFailure, logOnFailure } from '@kiko/diagnostics';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
+  bybitProvider,
+  createBybitHistoryRun,
+  defaultBybitDeps,
+  syncBybitCapitalHistory,
+} from '../bybit';
+import {
   type BinanceHistoryRun,
   binanceProvider,
   createBinanceHistoryRun,
@@ -23,7 +29,6 @@ import {
   syncBinanceTransferHistory,
   syncBinanceFiatPaymentHistory,
 } from '../binance';
-import { bybitProvider, defaultBybitDeps } from '../bybit';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
 
@@ -178,8 +183,8 @@ const runBinanceSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult>
   joinedOrStarted(inFlightBinanceSyncs, targetAccountId, runBinanceSyncAndImport);
 
 /**
- * The Bybit arm: the balance sync and the write of the lists it read. No history walk runs yet, so
- * the join covers the balance sync alone, with the same per-account key as Binance's.
+ * The Bybit arm: the balance sync, the write of the lists it read, then the capital history walk.
+ * The join covers all of it, with the same per-account key as Binance's.
  */
 const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyncResult> => {
   const { syncedHoldings, exchangeState } = await runBalanceSync(bybitProvider, defaultBybitDeps, {
@@ -193,6 +198,15 @@ const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyn
       exchangeStateDepsOf('bybit').patchExchangeState(targetAccountId, exchangeState),
     );
   }
+
+  // One gate and one call budget for every history walk of this run. The walk is supplementary to
+  // the balance sync, which has written the Funding wallets it reads, so a failure of the walk is
+  // only logged.
+  const run = createBybitHistoryRun({ now: () => Date.now(), sleep });
+
+  await logOnFailure('[bybit sync] capital history failed', () =>
+    syncBybitCapitalHistory({ targetAccountId, run }),
+  );
 
   return { syncedHoldings };
 };

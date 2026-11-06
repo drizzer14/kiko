@@ -32,7 +32,9 @@ type SpanCommitContext<Row> = {
  * `series` names the series a window was narrowed to and `scope` the scope it was read in; a walk
  * that never narrows a window leaves `series` out, so a span reads all of it, and a window read
  * for every coin has no scope. `place` is the walk's own: it turns the planned rows into the rows
- * to add, and what a scope leaves out of them is its decision, not this commit's.
+ * to add, and what a scope leaves out of them is its decision, not this commit's. A walk whose
+ * records can be taken back passes `remove`, which deletes the rows the span read as such, after
+ * its rows are added and before its marks move.
  */
 export const commitExchangeSpan = <Planned, Row>(input: {
   context: SpanCommitContext<Row>;
@@ -44,6 +46,7 @@ export const commitExchangeSpan = <Planned, Row>(input: {
   series?: OwedWindow['series'];
   scope?: OwedWindow['scope'];
   forwardOwes?: readonly string[];
+  remove?: (externalIds: readonly string[]) => Promise<number>;
 }): Promise<SpanCommit | undefined> => {
   const { context, pass, span, series, scope, restartMs } = input;
   const { deps, accountId, plan, marks, write } = context;
@@ -55,6 +58,7 @@ export const commitExchangeSpan = <Planned, Row>(input: {
     forwardOwes: input.forwardOwes,
     place: input.place,
     add: deps.addTransactions,
+    remove: input.remove,
     writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
     writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     writeNotImported: notImportedWriterOf(deps, accountId),
