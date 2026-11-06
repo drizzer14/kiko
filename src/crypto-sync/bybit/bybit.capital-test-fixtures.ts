@@ -152,6 +152,12 @@ type WalkWorldOptions = {
   state: { deps: ExchangeStateDeps };
   fake?: FakeOptions;
   now?: number;
+  /**
+   * Called before each write that outlives a restart (rows added or removed, marks moved), with
+   * the number of writes the world has taken including this one. A test throws here to kill a run
+   * just before that write.
+   */
+  beforeWrite?: (writeNumber: number) => void;
 };
 
 /**
@@ -166,12 +172,19 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
   const stored = new Map<string, StoredRow>();
   const calls: string[] = [];
   const clock = { now: worldOptions.now ?? NOW };
+  let writes = 0;
+
+  const record = (call: 'add' | 'remove' | 'mark'): void => {
+    calls.push(call);
+    writes += 1;
+    worldOptions.beforeWrite?.(writes);
+  };
 
   const deps = {
     ...state.deps,
     patchExchangeState: jest.fn(
       async (...patch: Parameters<ExchangeStateDeps['patchExchangeState']>) => {
-        calls.push('mark');
+        record('mark');
 
         return state.deps.patchExchangeState(...patch);
       },
@@ -193,7 +206,7 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
       }
     }),
     addTransactions: jest.fn(async (rows: StoredRow[]) => {
-      calls.push('add');
+      record('add');
 
       return rows.filter((row) => {
         const isNew = !stored.has(row.externalId);
@@ -209,6 +222,7 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
     ...bybit,
     deps,
     clock,
+    record,
     holdings,
     calls,
     stored,
@@ -231,12 +245,12 @@ type WorldOptions = WalkWorldOptions & {
  */
 export const capitalWalkOf = (worldOptions: WorldOptions) => {
   const world = inMemoryWalkOf(worldOptions);
-  const { clock, calls, stored } = world;
+  const { clock, record, stored } = world;
 
   const deps: SyncDeps = {
     ...world.deps,
     removeTransactions: jest.fn(async (externalIds: readonly string[]) => {
-      calls.push('remove');
+      record('remove');
 
       return externalIds.filter((externalId) => stored.delete(externalId)).length;
     }),
