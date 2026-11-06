@@ -213,12 +213,12 @@ describe('CashFlowTable', () => {
       ]);
     });
 
-    it('speaks the percent with its decimals', async () => {
+    it('speaks the percent with one decimal', async () => {
       const { table } = await shown(propsOf(WORLD));
       const cells = cellsOf(table, 'savings-rate');
 
-      expect(cells[0].accessibilityValue).toBe('66.67%');
-      expect(cells[6].accessibilityValue).toBe('26.83%');
+      expect(cells[0].accessibilityValue).toBe('66.7%');
+      expect(cells[6].accessibilityValue).toBe('26.8%');
       expect(cells[6].accessibilityLabel).toBe('Savings rate, Total');
       expect(cells[0].accessibilityLabel).toBe('Savings rate, January 2025');
     });

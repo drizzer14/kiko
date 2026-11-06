@@ -24,6 +24,20 @@ describe('cellOf', () => {
     expect(cell.text).toBe('0');
     expect(cell.tone).toBeUndefined();
   });
+
+  it('marks an amount on the half unit, which rounds away from zero to a signed unit', () => {
+    const cell = cellOf(-50, 'Net', spoken);
+
+    expect(cell.text).toBe('-1');
+    expect(cell.tone).toBe('negative');
+  });
+
+  it('marks no amount on the half unit above zero', () => {
+    const cell = cellOf(50, 'Net', spoken);
+
+    expect(cell.text).toBe('1');
+    expect(cell.tone).toBeUndefined();
+  });
 });
 
 describe('averageCellOf', () => {
@@ -32,6 +46,13 @@ describe('averageCellOf', () => {
 
     expect(cell.text).toBe('1,000');
     expect(cell.accessibilityValue).toBe('1,000.40 ₴');
+  });
+
+  it('marks a negative mean that rounds to the half unit, as the cell shows it', () => {
+    const cell = averageCellOf(-50.4, 'Average', spoken);
+
+    expect(cell.text).toBe('-1');
+    expect(cell.tone).toBe('negative');
   });
 
   it('shows a dash and says that no month is complete', () => {

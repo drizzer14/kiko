@@ -7,9 +7,9 @@ import DataTable, {
 } from '@kiko/design-system/components/data-table';
 import Box from '@kiko/design-system/components/box';
 import { activeLocale } from '@kiko/i18n/active-locale';
-import { buildCashFlow } from '@kiko/statistics/cash-flow';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { firstCompleteMonthIndex } from '@kiko/statistics/table-period';
+import { buildCashFlow, type CashFlowLine } from '@kiko/statistics/cash-flow';
 
 import {
   cellOf,
@@ -27,7 +27,7 @@ import type { CashFlowTableProps } from './cash-flow-table.props';
 
 const PERCENT = 100;
 const WHOLE_PERCENT_DIGITS = 0;
-const SPOKEN_PERCENT_DIGITS = 2;
+const SPOKEN_PERCENT_DIGITS = 1;
 
 /** A rate as a percent; adding zero turns a rounded negative zero into zero. */
 const percentOf = (rate: number, fractionDigits: number): number =>
@@ -62,15 +62,7 @@ const rateCellOf = (
   };
 };
 
-type Line = {
-  key: string;
-  label: string;
-  isSummary?: boolean;
-  cells: number[];
-  total: number;
-  /** Null when no month is complete yet. */
-  average: number | null;
-};
+type Line = CashFlowLine & { key: string; label: string; isSummary?: boolean };
 
 const lineRowOf = (
   line: Line,

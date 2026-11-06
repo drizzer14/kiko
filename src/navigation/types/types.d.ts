@@ -6,6 +6,7 @@ import type { ReminderDraft } from '@kiko/reminders/rules';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import type { TablesView } from '@kiko/statistics/tables-view';
 import type { TablePeriod } from '@kiko/statistics/table-period';
 import type { RecurringPeriod } from '@kiko/recurring/detection';
 import type { EntryTab } from '@kiko/screens/forms/transaction-form';
@@ -175,9 +176,6 @@ type HoldingFormParams = (
   // id back to this id, so the picker selects exactly that holding.
   handbackId?: string;
 };
-
-/** The table the Tables screen shows. */
-export type TablesView = 'categories' | 'cashFlow';
 
 /**
  * The Tables screen's period and view. They live in the route params, so a fold or a resize that

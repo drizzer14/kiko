@@ -3,13 +3,15 @@ import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import type { CalendarMonth } from '@kiko/dates';
 import { formatMoney } from '@kiko/currency/format';
-import { type Currency, currencyScale } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 import type { SpendingLedger } from '@kiko/statistics/spending-ledger';
 import type { DataTableCell, DataTableColumn } from '@kiko/design-system/components/data-table';
 
 import { monthColumnLabel } from '../month-column-label';
 
 const NO_VALUE = '–';
+// The sign `formatMoney` writes before a negative amount, whatever the locale.
+const MINUS = '-';
 const WHOLE_UNITS = { fractionDigits: 0, symbol: false } as const;
 // A table opens with this many month columns showing, the next column peeking in as the hint that
 // it scrolls.
@@ -23,14 +25,16 @@ export type Spoken = { baseCurrency: Currency; locale: string; t: TFunction };
  */
 export const cellOf = (amount: number, label: string, spoken: Spoken): DataTableCell => {
   const money = Money.of(spoken.baseCurrency, amount);
-  const isNegative = Math.round(amount / 10 ** currencyScale[spoken.baseCurrency]) < 0;
+  const text = formatMoney(money, spoken.locale, WHOLE_UNITS);
 
   return {
-    text: formatMoney(money, spoken.locale, WHOLE_UNITS),
+    text,
     accessibilityLabel: label,
     // The cell shows whole units; the spoken value is the full amount.
     accessibilityValue: formatMoney(money, spoken.locale),
-    ...(isNegative ? { tone: 'negative' as const } : {}),
+    // The sign is read off the shown text: `formatMoney` alone decides how a half unit rounds, and
+    // it writes no sign on a zero, so the mark can never disagree with what the cell reads.
+    ...(text.startsWith(MINUS) ? { tone: 'negative' as const } : {}),
   };
 };
 

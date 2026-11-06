@@ -576,6 +576,16 @@ describe('TablesScreen', () => {
       expect(spokenValue(getByLabelText(`Savings rate, ${SPENT_IN}`))).toBe('20%');
     });
 
+    it('writes the income row label in English, the text the language switch must remove', async () => {
+      const { getAllByText } = await renderTables({ view: 'cashFlow' });
+
+      expect(
+        getAllByText(i18n.t('tables.cashFlow.income', { lng: 'en' }), {
+          includeHiddenElements: true,
+        }).length,
+      ).toBeGreaterThan(0);
+    });
+
     it('names the base currency and the rate in the caption', async () => {
       const { getByTestId } = await renderTables({ view: 'cashFlow' });
 
@@ -708,6 +718,7 @@ describe('TablesScreen', () => {
   });
 
   describe('a switch of language while the cash flow table shows', () => {
+    const INCOME_IN_ENGLISH = i18n.t('tables.cashFlow.income', { lng: 'en' });
     let rendered: Awaited<ReturnType<typeof renderTables>>;
 
     beforeEach(async () => {
@@ -732,7 +743,7 @@ describe('TablesScreen', () => {
       expect(
         rendered.getAllByText('Надходження', { includeHiddenElements: true }).length,
       ).toBeGreaterThan(0);
-      expect(rendered.queryByText('Income', { includeHiddenElements: true })).toBeNull();
+      expect(rendered.queryByText(INCOME_IN_ENGLISH, { includeHiddenElements: true })).toBeNull();
     });
   });
 
