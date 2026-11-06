@@ -20,9 +20,18 @@ export const WALK_IDS = [
   'p2p',
   'fiatOrders',
   'fiatPayments',
+  'log',
 ] as const;
 
 export type WalkId = (typeof WALK_IDS)[number];
+
+/** The two series that can hold a dense span: Bybit's account log and its Funding ledger. */
+const DENSE_SERIES = ['log', 'fundingLedger'] as const;
+
+export type DenseSeries = (typeof DENSE_SERIES)[number];
+
+/** The start of the span each series could not read past, one entry per series at most. */
+type DenseSpans = Partial<Record<DenseSeries, number>>;
 
 /** Why a record was refused for good, as the first part of a `notImported` entry. */
 export const NOT_IMPORTED_KINDS = [
@@ -91,6 +100,16 @@ export type WalkMarks = {
    * next run that reads and resolves writes `null`. A disconnect drops it with the other marks.
    */
   readFailedAt?: number | null;
+  /**
+   * The next page of the convert read's pass (Bybit only). Absent on every other walk, so a Binance
+   * state keeps its text.
+   */
+  pageIndex?: number;
+  /**
+   * The points the convert read's pass has owed so far (Bybit only); the pass's end replaces
+   * `pending` with them.
+   */
+  passOwed?: BinancePendingRange[];
 };
 
 export type CoinLists = {
@@ -167,6 +186,10 @@ export type ExchangeState = {
   balanceNotes?: Record<string, Partial<ParsedWalletNotes>>;
   /** Each record a rule refused for good, once; only a disconnect clears it. */
   notImported?: string[];
+  /** The kinds of log row a read met and left out, by name and never by row; Bybit only. */
+  logKinds?: string[];
+  /** One start per series whose read stopped inside one second of rows; Bybit only. */
+  denseSpans?: DenseSpans;
 };
 
 /**
@@ -180,7 +203,9 @@ export type ExchangeState = {
  * to the backfill (`backfillGroundOf`), which stores the floor in its place; a seen mark that is
  * not `true` is absent. A backfill cursor that is no finite number only orders the reads of the
  * backfill, so it is absent too, and so is a backfill turn that is not `true`: it only orders the
- * reads of the two groups of owed windows.
+ * reads of the two groups of owed windows. A convert page index or a pass's owed list that is
+ * unreadable is absent: the pass then starts again at page 1, and it reads every page, so it owes
+ * again each point it read.
  */
 export type ParsedWalkMarks = {
   cursor: number | null;
@@ -197,6 +222,8 @@ export type ParsedWalkMarks = {
   multiCoinSince?: number;
   multiCoinSeen?: true;
   readFailedAt?: number;
+  pageIndex?: number;
+  passOwed?: BinancePendingRange[];
 };
 
 /**
@@ -217,6 +244,8 @@ export type ParsedExchangeState =
       keyExpiry: ParsedKeyExpiry | undefined;
       balanceNotes: Record<string, ParsedWalletNotes>;
       notImported: string[];
+      logKinds: string[];
+      denseSpans: DenseSpans;
       unreadable: string[];
     };
 
@@ -247,6 +276,13 @@ const listOrUndefined = (value: unknown): unknown[] | undefined =>
 /** A time is a non-negative whole number; any other stored value reads as absent, unrepaired. */
 const timeOrUndefined = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+
+/** A page of a list starts at 1: any other stored value reads as absent. */
+const pageIndexOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+
+const passOwedOf = (stored: unknown): BinancePendingRange[] | undefined =>
+  foldMap(maybe(stored), binanceWalkPendingValueOf);
 
 /**
  * A stored range start that is no finite number reads as the entry's cursor, and as none when that
@@ -283,6 +319,8 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
     ...foldMap(maybe(timeOrUndefined(entry.readFailedAt)), (readFailedAt) => ({ readFailedAt })),
+    ...foldMap(maybe(pageIndexOrUndefined(entry.pageIndex)), (pageIndex) => ({ pageIndex })),
+    ...foldMap(maybe(passOwedOf(entry.passOwed)), (passOwed) => ({ passOwed })),
   };
 };
 
@@ -461,6 +499,33 @@ const notImportedOf = (stored: unknown): ReadEntry<string[]> => {
   };
 };
 
+/** A kind is named once, in the order stored: the list only grows, so a repeat is a stale copy. */
+export const logKindsEntryOf = (stored: unknown): ReadEntry<string[]> => {
+  const kinds = entryOf('logKinds', stored, stringListOrUndefined, emptyList);
+
+  return { value: [...new Set(kinds.value)], unreadable: kinds.unreadable };
+};
+
+/**
+ * Each series' start parses alone, so a start that is no time is dropped and named while the other
+ * stays. A key that is no series reads as nothing, so at most two entries are ever read.
+ */
+export const denseSpansEntryOf = (stored: unknown): ReadEntry<DenseSpans> => {
+  const starts = recordOf('denseSpans', stored, timeOrUndefined);
+
+  return {
+    value: Object.fromEntries(
+      DENSE_SERIES.flatMap(
+        (series) =>
+          foldMap(maybe(starts.value[series]), (start): [DenseSeries, number][] => [
+            [series, start],
+          ]) ?? [],
+      ),
+    ),
+    unreadable: starts.unreadable,
+  };
+};
+
 /** An end of a key is an instant after the epoch; the epoch itself is Bybit's "no date". */
 const instantOrUndefined = (value: unknown): number | undefined =>
   isNumber(value) && value > 0 ? value : undefined;
@@ -527,6 +592,8 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
   const keyExpiry = keyExpiryEntryOf(stored.keyExpiry);
   const balanceNotes = recordOf('balanceNotes', stored.balanceNotes, walletNotesOf);
   const notImported = notImportedOf(stored.notImported);
+  const logKinds = logKindsEntryOf(stored.logKinds);
+  const denseSpans = denseSpansEntryOf(stored.denseSpans);
 
   return {
     kind: 'parsed',
@@ -541,6 +608,8 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     keyExpiry: keyExpiry.value,
     balanceNotes: balanceNotes.value,
     notImported: notImported.value,
+    logKinds: logKinds.value,
+    denseSpans: denseSpans.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
       ...trades.unreadable,
@@ -551,6 +620,8 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...keyExpiry.unreadable,
       ...balanceNotes.unreadable,
       ...notImported.unreadable,
+      ...logKinds.unreadable,
+      ...denseSpans.unreadable,
     ],
   };
 };

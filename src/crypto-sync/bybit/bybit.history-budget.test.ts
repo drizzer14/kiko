@@ -9,7 +9,7 @@ import {
   recordBybitFailedCall,
 } from './bybit.history-budget';
 
-const LANES: readonly BybitLane[] = ['capital', 'transfer'];
+const LANES: readonly BybitLane[] = ['capital', 'transfer', 'log', 'convert'];
 
 const spendCalls = (budget: BybitRunBudget, lane: BybitLane, count: number): void => {
   for (let call = 0; call < count; call += 1) {
@@ -23,8 +23,8 @@ describe('the Bybit gate interval and lane caps', () => {
     expect(Math.ceil(60_000 / BYBIT_REQUEST_INTERVAL_MS)).toBeLessThanOrEqual(55);
   });
 
-  it('holds the per-run call cap of the two lanes of this set', () => {
-    expect(BYBIT_LANE_CALL_CAPS).toEqual({ capital: 30, transfer: 20 });
+  it('holds the per-run call cap of the four lanes: log 20 windows, convert 10 pages', () => {
+    expect(BYBIT_LANE_CALL_CAPS).toEqual({ capital: 30, transfer: 20, log: 20, convert: 10 });
   });
 });
 
@@ -32,6 +32,8 @@ describe('createBybitRunBudget', () => {
   it.each([
     { lane: 'capital', cap: 30 },
     { lane: 'transfer', cap: 20 },
+    { lane: 'log', cap: 20 },
+    { lane: 'convert', cap: 10 },
   ] as const)('allows call $cap of the $lane lane and refuses the next', ({ lane, cap }) => {
     const budget = createBybitRunBudget();
 
@@ -49,6 +51,16 @@ describe('createBybitRunBudget', () => {
 
     expect(budget.canAfford('capital', NO_WEIGHTS)).toBe(false);
     expect(budget.canAfford('transfer', NO_WEIGHTS)).toBe(true);
+  });
+
+  it.each(LANES)('leaves every other lane whole when the %s lane spent its cap', (spent) => {
+    const budget = createBybitRunBudget();
+
+    spendCalls(budget, spent, BYBIT_LANE_CALL_CAPS[spent]);
+
+    LANES.filter((lane) => lane !== spent).forEach((lane) => {
+      expect(budget.canAfford(lane, NO_WEIGHTS)).toBe(true);
+    });
   });
 
   it('refuses a call that would leave fewer than the calls to keep under the lane cap', () => {

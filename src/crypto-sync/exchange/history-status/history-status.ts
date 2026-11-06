@@ -143,6 +143,30 @@ export const notImportedCountsOf = (state: ParsedExchangeState): NotImportedCoun
     .with({ kind: 'malformed' }, () => [])
     .exhaustive();
 
+/**
+ * The kinds of log row a read met and left out, sorted, by name: a kind met once stays on the list,
+ * so the account detail names it. None when the state holds none or cannot be read.
+ */
+export const logKindsOf = (state: ParsedExchangeState): string[] =>
+  match(state)
+    .returnType<string[]>()
+    .with({ kind: 'parsed' }, ({ logKinds }) => [...logKinds].sort())
+    .with({ kind: 'malformed' }, () => [])
+    .exhaustive();
+
+type DenseSpans = Extract<ParsedExchangeState, { kind: 'parsed' }>['denseSpans'];
+
+/**
+ * The start of the span each series could not read past, for a series whose mark stands. None for
+ * a state that holds none or cannot be read.
+ */
+export const denseSpansOf = (state: ParsedExchangeState): DenseSpans =>
+  match(state)
+    .returnType<DenseSpans>()
+    .with({ kind: 'parsed' }, ({ denseSpans }) => denseSpans)
+    .with({ kind: 'malformed' }, () => ({}))
+    .exhaustive();
+
 /** When the last good balance read ran, or `undefined`: none stamped, or the state is lost. */
 export const balanceSyncedAtOf = (state: ParsedExchangeState): number | undefined =>
   match(state)

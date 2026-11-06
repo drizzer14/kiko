@@ -3,7 +3,9 @@ import { notImportedEntry, parseExchangeState } from '../walk-state';
 import {
   balanceNotesOf,
   balanceSyncedAtOf,
+  denseSpansOf,
   keyExpiryOf,
+  logKindsOf,
   notImportedCountsOf,
   oversizedCoinsOf,
   untrackedBalanceCoinsOf,
@@ -289,5 +291,33 @@ describe('notImportedCountsOf', () => {
 
   it('counts nothing for a list that is no list', () => {
     expect(notImportedCountsOf(stateWith({ notImported: 'p2p-sale:1:2' }))).toEqual([]);
+  });
+});
+
+describe('logKindsOf', () => {
+  it('lists the kinds a log read met, sorted and once each', () => {
+    const state = stateWith({ logKinds: ['transfer', 'interest', 'transfer'] });
+
+    expect(logKindsOf(state)).toEqual(['interest', 'transfer']);
+  });
+
+  it('lists none for a state with none, for a list that is no list, and for a state that cannot be read', () => {
+    expect(logKindsOf(stateWith({}))).toEqual([]);
+    expect(logKindsOf(stateWith({ logKinds: 'transfer' }))).toEqual([]);
+    expect(logKindsOf(parseExchangeState('not json'))).toEqual([]);
+  });
+});
+
+describe('denseSpansOf', () => {
+  it('gives the start of each series with a mark standing', () => {
+    expect(denseSpansOf(stateWith({ denseSpans: { log: 5, fundingLedger: 9 } }))).toEqual({
+      log: 5,
+      fundingLedger: 9,
+    });
+  });
+
+  it('gives none for a state with none, and for a state that cannot be read', () => {
+    expect(denseSpansOf(stateWith({}))).toEqual({});
+    expect(denseSpansOf(parseExchangeState('not json'))).toEqual({});
   });
 });

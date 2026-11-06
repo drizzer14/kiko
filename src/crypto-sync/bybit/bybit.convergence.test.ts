@@ -363,7 +363,7 @@ describe('Bybit convergence', () => {
     });
 
     it.each(SEEDS)(
-      'a burst commits a span within its halvings and one run of the last one, and the cursor never moves back: seed %i',
+      'a burst commits a span within its halvings and one run of the last one, and the cursor never moves back, and re-halves at most once more, in at most 3 runs: seed %i',
       async (seed) => {
         const random = seededRandom(seed * SEED_SPREAD);
         const count = 1_200 + Math.floor(random() * 3_600);
@@ -384,6 +384,8 @@ describe('Bybit convergence', () => {
         expect(rowsOf(account.transfer)).toHaveLength(2 * count);
         expect(cursors).toEqual([...cursors].sort((left, right) => left - right));
         expect(spacings.length).toBeGreaterThan(0);
+        // MEASURED, full sweep, 60 runs, fake route, 2026-11-06: the first slow gap is at most 4
+        // runs, a later one at most once and then at most 3 runs. Wider limits hide a slower pager.
         expect(firstSlow).toBeLessThanOrEqual(4);
         expect(laterSlow.length).toBeLessThanOrEqual(1);
         expect(Math.max(1, ...laterSlow)).toBeLessThanOrEqual(3);

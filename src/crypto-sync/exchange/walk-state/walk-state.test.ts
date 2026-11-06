@@ -41,6 +41,8 @@ const EMPTY_STATE: ReadableState = {
   keyExpiry: undefined,
   balanceNotes: {},
   notImported: [],
+  logKinds: [],
+  denseSpans: {},
   unreadable: [],
 };
 
@@ -101,7 +103,8 @@ type StoredReads = [label: string, stored: unknown, reads: unknown];
  * The fields this table covers: the multi-coin marks, the backfill cursor and the three turn marks
  * read by their own rules, which `walk-state.multi-coin.test.ts`,
  * `walk-state.backfill-cursor.test.ts`, `walk-state.backfill-turn.test.ts` and
- * `walk-state.behind-run.test.ts` cover.
+ * `walk-state.behind-run.test.ts` cover, and the convert marks, which
+ * `walk-state.log-marks.test.ts` covers.
  */
 type TableField = Exclude<
   WalkField,
@@ -113,6 +116,8 @@ type TableField = Exclude<
   | 'rescanTurn'
   | 'rescanStuck'
   | 'readFailedAt'
+  | 'pageIndex'
+  | 'passOwed'
 >;
 
 /** What a field reads for a stored value: `undefined` is a value that is stored but unreadable. */

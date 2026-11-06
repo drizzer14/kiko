@@ -5,11 +5,11 @@ import {
 } from '@kiko/crypto-sync/exchange/budget';
 
 /**
- * One lane per walk, so a long backfill in one walk cannot starve the others. This set has the
- * capital walk (deposits, internal transfers and withdrawals) and the transfer walk; the log,
- * convert and funding-ledger lanes come with their own walks.
+ * One lane per walk, so a long backfill in one walk cannot starve the others: the capital walk
+ * (deposits, internal transfers and withdrawals), the transfer walk, the account log and the
+ * convert read. The funding-ledger lane comes with its own walk.
  */
-export type BybitLane = 'capital' | 'transfer';
+export type BybitLane = 'capital' | 'transfer' | 'log' | 'convert';
 
 /**
  * Bybit limits each route on its own, and the gate interval holds the slowest one, so a call
@@ -28,17 +28,25 @@ export const BYBIT_REQUEST_INTERVAL_MS = 1100;
 
 /**
  * The per-run call cap of each lane. It is the only limit of a lane: no response header can
- * loosen or tighten it. Capital reads 3 series over 10 windows, transfer 20 windows.
+ * loosen or tighten it. Capital reads 3 series over 10 windows, transfer and log 20 windows, and
+ * convert 10 pages.
  */
 export const BYBIT_LANE_CALL_CAPS: Record<BybitLane, number> = {
   capital: 30,
   transfer: 20,
+  log: 20,
+  convert: 10,
 };
 
 export type BybitRunBudget = RunBudget<BybitLane, BybitCallWeights, BybitCallWeights>;
 
 /** A fresh count per lane: the counters of two runs must never share an object. */
-const noCallsByLane = (): Record<BybitLane, number> => ({ capital: 0, transfer: 0 });
+const noCallsByLane = (): Record<BybitLane, number> => ({
+  capital: 0,
+  transfer: 0,
+  log: 0,
+  convert: 0,
+});
 
 /**
  * One budget per Bybit arm run: calls per lane only. No lane has narrowing calls, so a call

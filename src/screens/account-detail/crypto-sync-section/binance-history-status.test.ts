@@ -438,6 +438,22 @@ describe('the caption walks of each provider', () => {
     expect(walkCursorsOf(state, 'bybit')).toEqual([NOW, NOW]);
   });
 
+  it('Binance stays its 8 walks: a log walk with an old cursor and an owed range is not read', () => {
+    const state = withEveryCursor(NOW, {
+      log: { cursor: NOW - 9 * DAY_MS, pending: [{ start: 1, end: 3 }] },
+    });
+
+    expect(walkCursorsOf(state, 'binance')).toEqual(Array(8).fill(NOW));
+    expect(historyOwesRange(state, NOW, 'binance')).toBe(false);
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(state, 'binance'),
+        lastBalanceSyncAt: NOW,
+        owesRange: historyOwesRange(state, NOW, 'binance'),
+      }),
+    ).toBe(false);
+  });
+
   it('Bybit compares its capital and transfer walks alone, and no cursor of a state it cannot read', () => {
     const state = stateOf({
       capital: { cursor: NOW - HOUR_MS },

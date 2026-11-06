@@ -4,6 +4,7 @@ import { isRecord } from '@kiko/type-guards';
 
 import {
   type CoinLists,
+  type DenseSeries,
   type ExchangeTrades,
   type Metadata,
   type StoredExchangeState,
@@ -11,6 +12,7 @@ import {
   type WalkId,
   type WalkMarks,
   coinListsOf,
+  logKindsEntryOf,
   oversizedByWalletOf,
   recordOrEmpty,
   storedExchangeStateOf,
@@ -35,8 +37,8 @@ type WalletNotes = { borrowed: string[]; openOrder?: string[]; refusedCoins?: st
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
  * trade symbol, the trades' rotation, balance snapshot or unread symbols, one coin list, the notes
  * of the wallets a balance read reached, or the balance sync stamp, or entries to add to the
- * not-imported list. A patch names fields, never
- * whole entries, so a field it does not name is never written from a parse.
+ * not-imported list, or kinds to add to the log kinds, or one series' dense span. A patch names
+ * fields, never whole entries, so a field it does not name is never written from a parse.
  *
  * The oversized balance list has its own patch and no `coinList` form, so no write can set
  * `balance` apart from the wallet arrays it is derived from.
@@ -79,7 +81,14 @@ export type ExchangeStatePatch =
       deadlineDay?: number;
       readAtMs: number;
     }
-  | { kind: 'notImported'; entries: string[] };
+  | { kind: 'notImported'; entries: string[] }
+  | { kind: 'logKinds'; kinds: string[] }
+  | {
+      kind: 'denseSpans';
+      series: DenseSeries;
+      /** The start of the span the series could not read past; `null` drops the series' entry. */
+      start: number | null;
+    };
 
 const withWalkField = (
   stored: StoredExchangeState,
@@ -262,6 +271,29 @@ const withNotImported = (
   ],
 });
 
+/** A list that only grows, by kind name: a read adds a kind it met and never removes one. */
+const withLogKinds = (
+  stored: StoredExchangeState,
+  { kinds }: Extract<ExchangeStatePatch, { kind: 'logKinds' }>,
+): StoredExchangeState => ({
+  ...stored,
+  logKinds: sortedUnique([...logKindsEntryOf(stored.logKinds).value, ...kinds]),
+});
+
+/**
+ * One entry per series. The last entry that goes leaves the key undefined, which JSON drops, so
+ * the text is the one before the first entry.
+ */
+const withDenseSpan = (
+  stored: StoredExchangeState,
+  { series, start }: Extract<ExchangeStatePatch, { kind: 'denseSpans' }>,
+): StoredExchangeState => {
+  const others = Object.entries(recordOrEmpty(stored.denseSpans)).filter(([key]) => key !== series);
+  const entries: [string, unknown][] = start === null ? others : [...others, [series, start]];
+
+  return { ...stored, denseSpans: entries.length > 0 ? Object.fromEntries(entries) : undefined };
+};
+
 const patchedState = (
   stored: StoredExchangeState,
   patch: ExchangeStatePatch,
@@ -284,6 +316,8 @@ const patchedState = (
     .with({ kind: 'balanceSyncedAt' }, ({ value }) => ({ ...stored, balanceSyncedAt: value }))
     .with({ kind: 'keyExpiry' }, (keyExpiryPatch) => withKeyExpiry(stored, keyExpiryPatch))
     .with({ kind: 'notImported' }, (notImportedPatch) => withNotImported(stored, notImportedPatch))
+    .with({ kind: 'logKinds' }, (logKindsPatch) => withLogKinds(stored, logKindsPatch))
+    .with({ kind: 'denseSpans' }, (denseSpansPatch) => withDenseSpan(stored, denseSpansPatch))
     .exhaustive();
 
 /**
