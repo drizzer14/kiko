@@ -1,5 +1,10 @@
 import { render } from '@testing-library/react-native';
 
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { entityColorsLight } from '@kiko/design-system/palette';
 import type { TypeSlice } from '@kiko/statistics/type-breakdown';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import '@kiko/design-system/unistyles';
@@ -73,6 +78,24 @@ describe('BarChart', () => {
     expect(getByTestId('bar-chart-bar-crypto_asset').props.fill).toBe(
       defaultHoldingColor.crypto_asset,
     );
+  });
+
+  describe('in the light world', () => {
+    beforeEach(() => {
+      registerLightThemeFirst();
+    });
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('a light bar chart paints each slice through the entity map', async () => {
+      const { getByTestId } = await render(<BarChart data={data} baseCurrency="USD" />);
+
+      expect(getByTestId('bar-chart-bar-card').props.fill).toBe(entityColorsLight.white);
+      expect(getByTestId('bar-chart-bar-term_deposit').props.fill).toBe(entityColorsLight.blue);
+      expect(getByTestId('bar-chart-bar-crypto_asset').props.fill).toBe(entityColorsLight.yellow);
+    });
   });
 
   it('renders an empty-state message when there is no data', async () => {

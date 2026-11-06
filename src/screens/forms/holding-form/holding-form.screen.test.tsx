@@ -20,6 +20,10 @@ import {
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { dayKeyOf } from '@kiko/prices/price-book';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { darkTheme } from '@kiko/design-system/theme';
 import {
   closeHandback,
@@ -29,6 +33,7 @@ import {
 import { MAX_TERM_MONTHS } from '@kiko/holdings/term-limits';
 import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import { entityColorsLight } from '@kiko/design-system/palette';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
@@ -4400,6 +4405,44 @@ const bondHolding = {
     couponFrequency: 'quarterly',
   },
 };
+
+describe('HoldingFormScreen in the light world', () => {
+  beforeEach(() => {
+    createMock.mockClear();
+    registerLightThemeFirst();
+  });
+
+  afterEach(() => {
+    restoreThemeOrder();
+  });
+
+  it('a light holding form paints the tile through the entity map', async () => {
+    // A bank create defaults to a term deposit, whose default swatch is blue.
+    const screen = await renderScreen();
+
+    expect(glyphTintsWithin(screen.getByTestId('holding-name'))).toEqual([entityColorsLight.blue]);
+  });
+
+  it('paints the swatches light and rings the default type color', async () => {
+    const screen = await renderScreen();
+
+    expect(screen.getByLabelText('Color blue').props.accessibilityState.selected).toBe(true);
+    expect(
+      StyleSheet.flatten(screen.getByTestId('color-swatch-blue').props.style).backgroundColor,
+    ).toBe(entityColorsLight.blue);
+  });
+
+  it('a form opened in light saves the canonical dark hex', async () => {
+    mockAccountKind = 'cash';
+    const screen = await renderScreen();
+
+    await fill(screen, 'Name', 'My cash');
+    await fireEvent.press(screen.getByLabelText('Color violet'));
+    await pressSave(navigation.setOptions);
+
+    expect(createMock.mock.calls[0][0].color).toBe(entityColors.violet);
+  });
+});
 
 describe('HoldingFormScreen edit mode', () => {
   beforeEach(() => {

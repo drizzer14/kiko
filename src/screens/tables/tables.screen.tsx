@@ -22,6 +22,7 @@ import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
@@ -46,6 +47,7 @@ type TablesScreenProps = {
  */
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   // Visibility, not focus: in two panes the panes behind this screen are in view without being the
   // focused route, and this screen is the only one read while it shows.
   const isVisible = useIsScreenVisible();
@@ -143,7 +145,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
           label={t('statistics.filterAccounts')}
           sheetTitle={t('statistics.filterAccountsSheetTitle')}
           testID="tables-account-filter"
-          options={buildAccountOptions(filtered.optionAccounts, t)}
+          options={buildAccountOptions(filtered.optionAccounts, t, scheme)}
           selected={filtered.visibleSelectedAccounts}
           onToggle={toggleAccount}
           triggerIcon="tray"

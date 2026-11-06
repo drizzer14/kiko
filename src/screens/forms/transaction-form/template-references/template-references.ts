@@ -1,4 +1,5 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import { toTransactionTemplate } from '@kiko/transaction-templates/repo';
 import type { AccountRow, HoldingRow, TransactionTemplateRow } from '@kiko/db';
@@ -15,6 +16,10 @@ type ReferenceOptions = {
 
 const idsOf = (options: readonly { id: string }[]): ReadonlySet<string> =>
   new Set(options.map((option) => option.id));
+
+// Only the ids of the options are read here, so no color reaches a sink and the scheme the
+// builders are asked for changes nothing.
+const IDS_ONLY_SCHEME: ColorScheme = 'dark';
 
 // The ids a stored draft may still point at, read from the same option builders the form's own
 // pickers use, so a template can never seat a holding the picker would not offer: closed, synced,
@@ -37,7 +42,13 @@ export const buildReferenceOptions = (
 
   return {
     primaryIds: idsOf(
-      buildPrimaryOptions(holdings, accountNameById, accountOrderById, accountById),
+      buildPrimaryOptions(
+        holdings,
+        accountNameById,
+        accountOrderById,
+        accountById,
+        IDS_ONLY_SCHEME,
+      ),
     ),
     exchangeIds: idsOf(
       buildExchangeOptions(
@@ -46,6 +57,7 @@ export const buildReferenceOptions = (
         accountOrderById,
         draft.holdingId ?? undefined,
         isExchangeCreateDestinationType,
+        IDS_ONLY_SCHEME,
       ),
     ),
     returnIds:
@@ -58,6 +70,7 @@ export const buildReferenceOptions = (
             accountById,
             payerCurrency,
             new Set(),
+            IDS_ONLY_SCHEME,
           ),
         ),
       ) ?? new Set(),

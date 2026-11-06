@@ -9,6 +9,7 @@ import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
 import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import ReminderRow from '@kiko/screens/settings/reminder-row';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { usePermissionNotice } from '@kiko/reminders/permission';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
@@ -19,6 +20,7 @@ import { writeThenReplan } from '@kiko/reminders/use-reminder-scheduler';
 import { type ReminderKind, reminderKinds } from '@kiko/reminders/schedule';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { type ReminderRow as SavedReminder, useDataReady, useLiveQuery } from '@kiko/db';
 import NotificationPreAlertSheet from '@kiko/design-system/components/notification-pre-alert-sheet';
 
@@ -40,14 +42,18 @@ type AccountGroup = {
 
 // Groups keep the accounts list order the rows arrive in; within a group,
 // import comes first, as on the account's own page.
-const groupByAccount = (rows: readonly ListedReminder[], t: TFunction): AccountGroup[] =>
+const groupByAccount = (
+  rows: readonly ListedReminder[],
+  t: TFunction,
+  scheme: ColorScheme,
+): AccountGroup[] =>
   [
     ...rows
       .reduce((groups, { reminder, account }) => {
         const group = groups.get(reminder.accountId) ?? {
           accountId: reminder.accountId,
           name: accountDisplayName(account, t),
-          ...accountIdentity(account),
+          ...accountIdentity(account, scheme),
           archived: account.archivedAt !== null,
           eligibleKinds: eligibleReminderKinds(account),
           reminders: [],
@@ -78,6 +84,7 @@ const RemindersScreen: FC<RemindersScreenProps> = ({ navigation }) => {
   );
   const isReady = useDataReady(isLoading);
   const { notice, sheet } = usePermissionNotice(rows.length > 0);
+  const scheme = useActiveColorScheme();
 
   if (!isReady) {
     return (
@@ -87,7 +94,7 @@ const RemindersScreen: FC<RemindersScreenProps> = ({ navigation }) => {
     );
   }
 
-  const groups = groupByAccount(rows, t);
+  const groups = groupByAccount(rows, t, scheme);
 
   return (
     <>

@@ -3,10 +3,11 @@ import type { AccountRow, HoldingRow } from '@kiko/db';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { EMPTY_PRICE_BOOK, type PriceBook } from '@kiko/prices/price-book';
+import { entityDisplayColor, resolveEntityColor } from '@kiko/design-system/entity-tint';
 
 /**
  * An account as the pie chart needs it: identity, display name, and the two
@@ -32,8 +33,8 @@ export type AccountSlice = {
   amount: number;
   share: number;
   // The effective slice color: the account's own override when set, else the
-  // per-kind default. The same color the account card renders, so the pie reads
-  // in the app's color language.
+  // per-kind default, mapped for the scheme. The same color the account card
+  // renders, so the pie reads in the app's color language.
   color: string;
 };
 
@@ -71,9 +72,18 @@ export const buildAccountContribution = (input: {
   rateTable: RateTable;
   baseCurrency: Currency;
   now: number;
+  scheme: ColorScheme;
   book?: PriceBook;
 }): AccountSlice[] => {
-  const { accounts, holdings, rateTable, baseCurrency, now, book = EMPTY_PRICE_BOOK } = input;
+  const {
+    accounts,
+    holdings,
+    rateTable,
+    baseCurrency,
+    now,
+    scheme,
+    book = EMPTY_PRICE_BOOK,
+  } = input;
   const accountDefaults = defaultAccountColor;
 
   const valued = accounts
@@ -91,7 +101,10 @@ export const buildAccountContribution = (input: {
       // black on the black card and the legend swatch was transparent while
       // the slice still consumed ring share. Every other call site in the app
       // already uses this; this was the last hold-out.
-      const color = resolveEntityColor(account.color, accountDefaults[account.kind]);
+      const color = entityDisplayColor(
+        resolveEntityColor(account.color, accountDefaults[account.kind]),
+        scheme,
+      );
 
       return { accountId: account.id, name: account.name, amount, color };
     })

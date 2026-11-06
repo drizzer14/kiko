@@ -5,6 +5,7 @@ import Text from '@kiko/design-system/components/text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 
 import { styles } from './implicit-account-heading.styles';
 import type { ImplicitAccountHeadingProps } from './implicit-account-heading.props';
@@ -16,7 +17,8 @@ import type { ImplicitAccountHeadingProps } from './implicit-account-heading.pro
 // name beside the tile already reads out.
 const ImplicitAccountHeading: FC<ImplicitAccountHeadingProps> = ({ account, testID }) => {
   const { t } = useTranslation();
-  const { icon, color } = accountIdentity(account);
+  const scheme = useActiveColorScheme();
+  const { icon, color } = accountIdentity(account, scheme);
 
   return (
     <Box testID={testID} direction="row" gap={3} style={styles.heading}>

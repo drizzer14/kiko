@@ -42,6 +42,7 @@ import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { accountDisplayName, hasNoAccounts } from '@kiko/holdings/implicit-account';
 import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
 import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
@@ -127,6 +128,7 @@ const NET_WORTH_CARD_GAP = 3;
  */
 const StatisticsScreen: FC = () => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   // The card order and the shared row follow the window and the width the pane's content has (the
   // pane's, limited by the content cap), and nothing else: a filter or a date range never moves a
   // card. A window that is not large shows one column, every card full width (line, bar, pie,
@@ -304,9 +306,10 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
+        scheme,
         book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now, priceBook, t],
+    [filtered, rateTable, baseCurrency, now, priceBook, t, scheme],
   );
 
   // The "Debts" total under the account pie
@@ -541,7 +544,7 @@ const StatisticsScreen: FC = () => {
     [categorySlices, baseCurrency],
   );
 
-  const accountOptions = buildAccountOptions(filtered.optionAccounts, t);
+  const accountOptions = buildAccountOptions(filtered.optionAccounts, t, scheme);
 
   if (!isReady) {
     return (
