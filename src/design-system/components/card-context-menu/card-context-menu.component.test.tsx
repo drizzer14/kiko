@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import { trigger } from 'react-native-haptic-feedback';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
@@ -20,6 +21,29 @@ import CardContextMenu, {
   VIEW_ACCOUNT_ACTION_TEST_ID,
   VIEW_HOLDING_ACTION_TEST_ID,
 } from './card-context-menu.component';
+
+type MenuProps = Partial<ComponentProps<typeof CardContextMenu>>;
+
+const renderDeletable = (props: MenuProps = {}) =>
+  render(
+    <CardContextMenu name="Black card" deletable onDelete={jest.fn()} {...props}>
+      <Text>card</Text>
+    </CardContextMenu>,
+    { wrapper: GestureRootWrapper },
+  );
+
+// A deleteMessage whose every read stays open until the test settles it.
+const pendingMessages = () => {
+  const resolvers: ((message: string | undefined) => void)[] = [];
+
+  return {
+    resolvers,
+    read: () =>
+      new Promise<string | undefined>((resolve) => {
+        resolvers.push(resolve);
+      }),
+  };
+};
 
 describe('CardContextMenu', () => {
   beforeEach(() => {
@@ -52,12 +76,7 @@ describe('CardContextMenu', () => {
   });
 
   it('titles the delete confirm with the deleteTitle instead of the named title when one is given', async () => {
-    const { getByText, queryByText } = await render(
-      <CardContextMenu name="Black card" deletable onDelete={jest.fn()} deleteTitle="Delete Rule">
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { getByText, queryByText } = await renderDeletable({ deleteTitle: 'Delete Rule' });
 
     await holdCard();
 
@@ -66,17 +85,9 @@ describe('CardContextMenu', () => {
   });
 
   it('shows the deleteMessage under the delete confirm title when one is given', async () => {
-    const { getByText } = await render(
-      <CardContextMenu
-        name="Black card"
-        deletable
-        onDelete={jest.fn()}
-        deleteMessage={() => Promise.resolve('This stays at the bank figure.')}
-      >
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { getByText } = await renderDeletable({
+      deleteMessage: () => Promise.resolve('This stays at the bank figure.'),
+    });
 
     await holdCard();
 
@@ -85,29 +96,15 @@ describe('CardContextMenu', () => {
   });
 
   it('opens the delete confirm only once a deleteMessage function resolves, then shows its text', async () => {
-    let resolveMessage: (message: string | undefined) => void = () => undefined;
-    const { getByText, queryByText } = await render(
-      <CardContextMenu
-        name="Black card"
-        deletable
-        onDelete={jest.fn()}
-        deleteMessage={() =>
-          new Promise<string | undefined>((resolve) => {
-            resolveMessage = resolve;
-          })
-        }
-      >
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { resolvers, read } = pendingMessages();
+    const { getByText, queryByText } = await renderDeletable({ deleteMessage: read });
 
     await holdCard();
 
     expect(queryByText('Delete "Black card"')).toBeNull();
 
     await act(async () => {
-      resolveMessage('This also deletes the other part.');
+      resolvers[0]?.('This also deletes the other part.');
     });
 
     expect(getByText('Delete "Black card"')).toBeTruthy();
@@ -115,17 +112,9 @@ describe('CardContextMenu', () => {
   });
 
   it('opens a title-only confirm when the deleteMessage function resolves to nothing', async () => {
-    const { getByText } = await render(
-      <CardContextMenu
-        name="Black card"
-        deletable
-        onDelete={jest.fn()}
-        deleteMessage={() => Promise.resolve(undefined)}
-      >
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { getByText } = await renderDeletable({
+      deleteMessage: () => Promise.resolve(undefined),
+    });
 
     await holdCard();
 
@@ -133,17 +122,9 @@ describe('CardContextMenu', () => {
   });
 
   it('opens the confirm with no message when the deleteMessage function rejects', async () => {
-    const { getByText, getByTestId } = await render(
-      <CardContextMenu
-        name="Black card"
-        deletable
-        onDelete={jest.fn()}
-        deleteMessage={() => Promise.reject(new Error('read failed'))}
-      >
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { getByText, getByTestId } = await renderDeletable({
+      deleteMessage: () => Promise.reject(new Error('read failed')),
+    });
 
     await holdCard();
 
@@ -153,17 +134,9 @@ describe('CardContextMenu', () => {
 
   it('shows the resolved text again, freshly read, each time the confirm opens', async () => {
     const messages = ['First text.', 'Second text.'];
-    const { getByText, queryByText, getByTestId } = await render(
-      <CardContextMenu
-        name="Black card"
-        deletable
-        onDelete={jest.fn()}
-        deleteMessage={() => Promise.resolve(messages.shift())}
-      >
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { getByText, queryByText, getByTestId } = await renderDeletable({
+      deleteMessage: () => Promise.resolve(messages.shift()),
+    });
 
     await holdCard();
     expect(getByText('First text.')).toBeTruthy();
@@ -179,22 +152,8 @@ describe('CardContextMenu', () => {
   });
 
   it('shows the text of the latest request when an earlier read settles after it', async () => {
-    const resolvers: ((message: string | undefined) => void)[] = [];
-    const { getByText, queryByText } = await render(
-      <CardContextMenu
-        name="Black card"
-        deletable
-        onDelete={jest.fn()}
-        deleteMessage={() =>
-          new Promise<string | undefined>((resolve) => {
-            resolvers.push(resolve);
-          })
-        }
-      >
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { resolvers, read } = pendingMessages();
+    const { getByText, queryByText } = await renderDeletable({ deleteMessage: read });
 
     await holdCard();
     await holdCard();
@@ -213,22 +172,8 @@ describe('CardContextMenu', () => {
   });
 
   it('opens no confirm for a read that settles after a newer request, until that one settles', async () => {
-    const resolvers: ((message: string | undefined) => void)[] = [];
-    const { getByText, queryByText } = await render(
-      <CardContextMenu
-        name="Black card"
-        deletable
-        onDelete={jest.fn()}
-        deleteMessage={() =>
-          new Promise<string | undefined>((resolve) => {
-            resolvers.push(resolve);
-          })
-        }
-      >
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { resolvers, read } = pendingMessages();
+    const { getByText, queryByText } = await renderDeletable({ deleteMessage: read });
 
     await holdCard();
     await holdCard();
@@ -269,17 +214,91 @@ describe('CardContextMenu', () => {
   });
 
   it('keeps the delete confirm title-only when no deleteMessage is given', async () => {
-    const { getByText, queryByText } = await render(
-      <CardContextMenu name="Black card" deletable onDelete={jest.fn()}>
-        <Text>card</Text>
-      </CardContextMenu>,
-      { wrapper: GestureRootWrapper },
-    );
+    const { getByText, queryByText } = await renderDeletable();
 
     await holdCard();
 
     expect(getByText('Delete "Black card"')).toBeTruthy();
     expect(queryByText('This stays at the bank figure.')).toBeNull();
+  });
+
+  describe('the deleteLabel', () => {
+    it('labels the confirm button of a delete-only card with it, and still routes it to onDelete', async () => {
+      const onDelete = jest.fn();
+      const { getByTestId, queryByText } = await render(
+        <CardContextMenu
+          name="Netflix"
+          deletable
+          onDelete={onDelete}
+          deleteLabel="Not a recurring charge"
+        >
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toHaveTextContent('Not a recurring charge', {
+        exact: true,
+      });
+      expect(queryByText('Delete')).toBeNull();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(onDelete).toHaveBeenCalledTimes(1);
+    });
+
+    it('labels the Delete item of the action list and the confirm button it hands off to', async () => {
+      const onDelete = jest.fn();
+      const { getByTestId, queryByText } = await render(
+        <CardContextMenu
+          name="Netflix"
+          deletable
+          onDelete={onDelete}
+          onDuplicate={jest.fn()}
+          deleteLabel="Not a recurring charge"
+        >
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getByTestId(DELETE_ACTION_TEST_ID)).toHaveTextContent('Not a recurring charge', {
+        exact: true,
+      });
+      expect(queryByText('Delete')).toBeNull();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toHaveTextContent('Not a recurring charge', {
+        exact: true,
+      });
+      expect(queryByText('Delete')).toBeNull();
+    });
+
+    it('reads Delete on the confirm button and the action list item when it is omitted', async () => {
+      const { getByTestId } = await render(
+        <CardContextMenu name="Netflix" deletable onDelete={jest.fn()} onDuplicate={jest.fn()}>
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getByTestId(DELETE_ACTION_TEST_ID)).toHaveTextContent('Delete', { exact: true });
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toHaveTextContent('Delete', { exact: true });
+    });
   });
 
   it('leaves a plain tap to the child card and never opens the confirm', async () => {

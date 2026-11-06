@@ -68,7 +68,8 @@ const HOLD_LIFT_DURATION_MS = 300;
  *   it raises the shared, themed `ConfirmSheet` (a `BottomSheet`, NOT a
  *   native `ActionSheetIOS`) straight away, titled `Delete "<name>"` (a `deleteTitle` replaces
  *   that title) with a bare destructive `Delete` confirm and no body, unless the card passes a
- *   `deleteMessage`. A card with another action
+ *   `deleteMessage`. A `deleteLabel` replaces the word `Delete` on the list item and the confirm
+ *   button alike. A card with another action
  *   opens the action list instead, whose Delete (only when deletable) hands
  *   off to that same confirm. Only the confirm routes to `onDelete`; Cancel
  *   and a scrim/back dismiss delete nothing. The named title keeps an
@@ -132,6 +133,9 @@ const CardContextMenu: FC<{
   // rule's summary) that would read badly inside `Delete "<name>"`. Omitted, the confirm is
   // titled with the name; `name` still heads the action list.
   deleteTitle?: string;
+  // An optional text for the delete item and the confirm's button, for an action that removes
+  // without being a delete ("Not a recurring charge"). Omitted, both read `common.delete`.
+  deleteLabel?: string;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -153,6 +157,7 @@ const CardContextMenu: FC<{
   closeAction,
   deleteMessage,
   deleteTitle,
+  deleteLabel,
   liftOnHold = false,
   children,
 }) => {
@@ -350,7 +355,7 @@ const CardContextMenu: FC<{
 
           {deletable && (
             <Button variant="destructive" onPress={chooseDelete} testID={DELETE_ACTION_TEST_ID}>
-              {t('common.delete')}
+              {deleteLabel ?? t('common.delete')}
             </Button>
           )}
 
@@ -364,7 +369,7 @@ const CardContextMenu: FC<{
         visible={confirmVisible}
         title={deleteTitle ?? t('common.deleteNamed', { name })}
         message={resolvedMessage}
-        confirmLabel={t('common.delete')}
+        confirmLabel={deleteLabel ?? t('common.delete')}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
         destructive

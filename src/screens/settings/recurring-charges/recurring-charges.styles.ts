@@ -26,9 +26,8 @@ export const styles = StyleSheet.create((theme) => ({
   totalAmount: {
     flexShrink: 0,
   },
-  // The merchant's name on the left and the way back on the right, centered against the name block,
-  // which is one line for a hidden merchant and three for a marked chain without a charge. Both are
-  // laid out alike.
+  // The name block on the left and its button on the right, centered against the block, which is
+  // three lines for a marked chain without a charge.
   entryRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -36,5 +35,10 @@ export const styles = StyleSheet.create((theme) => ({
   entryName: {
     flex: 1,
     marginRight: theme.spacing(3),
+  },
+  // The same block with its button under it, at an accessibility text size.
+  entryStack: {
+    gap: theme.spacing(3),
+    alignItems: 'flex-start',
   },
 }));

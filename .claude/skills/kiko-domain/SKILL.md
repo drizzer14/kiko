@@ -1096,7 +1096,8 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   `src/recurring/recurring-groups/recurring-groups.ts` (read it for the rules). In words: a
   series' category is its newest charge's, folded to the default category when it has none or it
   is unknown; groups follow the Categories screen order; within a group the active series come
-  before the stopped ones; 'Marked, No Charges' and 'Hidden' are their own sections with no total.
+  before the stopped ones; 'Marked, No Charges' is its own section with no total, and there is no
+  Hidden section.
   A total is the sum of the shown series' LAST charges (`lastChargeAmountMinorUnits`), one
   `convert` per series into the base currency; `canConvert` is the guard, so a currency with no
   rate is left out of the totals and its series stays listed. A stopped series counts. The row
@@ -1104,7 +1105,10 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   paid so far' is `paidSoFarOf`, the sum of every charge in the series' own currency; it covers
   only the series screen, never a list total.
 - One choice map holds every key's hide flag and its list of marks, one entry per key; removing
-  a mark clears only that mark, and "Show again" clears only the hide.
+  a mark clears only that mark. 'Not a recurring charge' (the series-row hold or the series
+  footer, one `ConfirmSheet`) calls `settingsRepo.hideRecurringMerchant(key, name, chain = [])`,
+  which sets the hide and drops that chain's marks in one write. There is no way to show the key
+  again: a new charge of the key stays out, and only a mark brings it back.
 - The transaction form's mark field shows 'Detected: <period>' (keys
   `forms.transaction.detectedRecurring.*`) for a row of a shown detected series. The one shared
   pure module is `src/recurring/row-recurrence/` (`rowDetectionOf`, memoized on the ledger fire;
