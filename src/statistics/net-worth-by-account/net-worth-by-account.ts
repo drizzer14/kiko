@@ -4,7 +4,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { RateTable } from '@kiko/rates/conversion';
 import type { PriceBook } from '@kiko/prices/price-book';
 import type { AccountRow, CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
-import { implicitAccountKinds, isImplicitAccount } from '@kiko/holdings/implicit-account';
+import { accountSectionOf, accountSectionOrder } from '@kiko/holdings/implicit-account';
 
 import { buildHoldingValues } from '../net-worth-series';
 import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
@@ -39,10 +39,8 @@ export type NetWorthByAccount = {
 export const monthEndInstants = (months: readonly CalendarMonth[], now: number): number[] =>
   months.map((month) => Math.min(month.end, now));
 
-// The Accounts screen lists the main accounts first, then the property section, then the debt
-// section, wherever the property and debt accounts sit in the query's order.
-const sectionOf = (account: Pick<AccountRow, 'kind' | 'archivedAt'>): number =>
-  isImplicitAccount(account) ? implicitAccountKinds.indexOf(account.kind) + 1 : 0;
+const sectionRankOf = (account: Pick<AccountRow, 'kind' | 'archivedAt'>): number =>
+  accountSectionOrder.indexOf(accountSectionOf(account));
 
 const holdingIdsByAccount = (
   holdings: NetWorthByAccountInput['holdings'],
@@ -90,7 +88,7 @@ export const buildNetWorthByAccount = (input: NetWorthByAccountInput): NetWorthB
   const allCells = columns.map((byHolding) => sumOf([...byHolding.values()]));
 
   const rows = [...accounts]
-    .sort((a, b) => sectionOf(a) - sectionOf(b))
+    .sort((a, b) => sectionRankOf(a) - sectionRankOf(b))
     .flatMap((account) => {
       const ids = idsByAccount.get(account.id) ?? [];
       const accountValueAt = (byHolding: Map<string, number>): number =>

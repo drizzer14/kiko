@@ -1,8 +1,8 @@
 import { type FC, useMemo } from 'react';
 import {
   accountDisplayName,
+  accountSectionOf,
   hasNoAccounts,
-  isImplicitAccount,
   type ImplicitAccountKind,
 } from '@kiko/holdings/implicit-account';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -170,10 +170,12 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     const byKind: Partial<Record<ImplicitAccountKind, AccountRow>> = {};
 
     for (const account of activeAccounts) {
-      if (isImplicitAccount(account)) {
-        byKind[account.kind] = account;
-      } else {
+      const section = accountSectionOf(account);
+
+      if (section === 'main') {
         main.push(account);
+      } else {
+        byKind[section] = account;
       }
     }
 

@@ -72,7 +72,7 @@ export const useRateHistoryBackfill = (input: {
   // failed run whose covered span was just restored (by the store, to allow a LATER
   // retry) would see its own write's echo immediately, at the SAME instant,
   // and restart — a permanent request loop for a currency whose provider
-  // never answers, for as long as Statistics stays mounted.
+  // never answers, for as long as any reader stays mounted.
   const lastBackfilledDayRef = useRef(lastBackfilledDay);
   lastBackfilledDayRef.current = lastBackfilledDay;
   const lastBackfilledDayByCurrencyRef = useRef(lastBackfilledDayByCurrency);
@@ -121,7 +121,7 @@ export const useRateHistoryBackfill = (input: {
     // whole span on first open, adding to the app-open DB-read burst, then
     // runs a SECOND time once history's real (possibly non-empty) rows land.
     // Both guards also wait out the cached rows of a cached mount: a run
-    // marks its span covered for the rest of the mount, so a run planned from
+    // marks its span covered in the store while any reader is mounted, so a run planned from
     // a cached, one-read-old resume point would stop the fresh read's own run
     // from ever starting (kiko-architecture).
     if (
