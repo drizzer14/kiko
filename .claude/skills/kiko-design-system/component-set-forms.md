@@ -85,7 +85,9 @@
   — wraps a grid/list card in a touch-and-hold delete (and, when an
   `onEdit`, `onDuplicate`, `onViewAccount`, `onViewHolding` and/or `closeAction`
   is passed, an Edit/Duplicate/View account/View holding/Close/Delete choice,
-  in that order; read the JSX in `card-context-menu.component.tsx`) menu. `onEdit` is
+  in that order; read the JSX in `card-context-menu.component.tsx`) menu. The optional
+  `deleteLabel` names the destructive item and its confirm button (default `common.delete`);
+  the recurring list's series rows pass 'Not a recurring charge'. `onEdit` is
   for a row with no tap target of its own: the holding detail's
   share-change rows and lot rows (`LotRowMenu`, Edit + Delete; Delete
   is offered only while every later sale stays covered without the lot,
