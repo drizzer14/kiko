@@ -89,14 +89,17 @@ const CAPITAL_HOLDING_MISSING = 'capital-holding-missing';
 /**
  * The stops of one record that the forward pass owes and goes past: the record stays owed at its
  * own point, or its span stays owed in its series, until a read settles it or the floor drops it,
- * and holding the cursor behind it would keep every newer record from importing. A stop that is no
- * one record's (a page that drifted, a holding that cannot be found) is not in this list.
+ * and holding the cursor behind it would keep every newer record from importing. A page that
+ * drifted is owed as the span in its own series alone, so it is in this list too: a deposit route
+ * that repeats a cursor on every run must not hold back the other series. A holding that cannot be
+ * found is no series' stop and is not in this list.
  */
 const CAPITAL_FORWARD_OWES: readonly string[] = [
   CAPITAL_ROW_UNREADABLE,
   CAPITAL_NOT_SETTLED,
   CAPITAL_DEPOSIT_TYPE,
   CAPITAL_TIME_MISSING,
+  CAPITAL_PAGE_DRIFT,
   ...AMOUNT_STOP_CODES,
 ];
 
@@ -116,6 +119,9 @@ const WITHDRAWAL_FAILED = ['CancelByUser', 'Reject', 'Fail'];
 
 /** The only `depositType` that is a deposit of the user's own money, as the page states it. */
 const MONEY_DEPOSIT_TYPE = '0';
+
+/** Bybit states that the funds of this `depositType` are not credited to the account. */
+const NOT_CREDITED_DEPOSIT_TYPE = '50';
 
 type DepositItem = Awaited<ReturnType<typeof fetchDepositPage>>['rows'][number];
 
@@ -252,6 +258,10 @@ const depositOutcomesOf = (accountId: string, row: DepositRow): CapitalOutcome[]
     .with(DEPOSIT_ROLLED_BACK, () => [
       { kind: 'removal', externalId: externalIdOf(accountId, 'deposit', row.id, row.coin) },
     ])
+    .when(
+      () => row.depositType === NOT_CREDITED_DEPOSIT_TYPE,
+      () => [],
+    )
     .when(
       (status) => SETTLED_STATUSES.deposit.includes(status),
       () => {

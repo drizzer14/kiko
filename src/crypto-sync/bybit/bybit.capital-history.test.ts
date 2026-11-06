@@ -21,6 +21,9 @@ const CURSOR = NOW - 3 * DAY_MS;
 const AT = NOW - 2 * DAY_MS;
 const SECOND_MS = 1_000;
 
+// The page says an internal deposit's address is the sender's email, so the sentinel has its shape.
+const SENTINEL_EMAIL = `${NEVER_READ}@example.com`;
+
 const newWalk = (options: Partial<Parameters<typeof capitalWalkOf>[0]> = {}) =>
   capitalWalkOf({
     state: walkStateFake({ accountId: ACCOUNT_ID, marks: { capital: { cursor: CURSOR } } }),
@@ -157,9 +160,9 @@ describe('the capital walk: what each row is', () => {
   describe('deposits', () => {
     const IMPORTING = [3, 70012];
     const WAITING = [0, 1, 2, 7, 70013, 10011, 10012, 99999];
-    const OTHER_TYPES = ['10', '20', '50', '7', undefined];
+    const OTHER_TYPES = ['10', '20', '7', undefined];
 
-    it('imports only statuses 3 and 70012 with type 0, owes pending, unknown and any other type, ignores 4', async () => {
+    it('imports only statuses 3 and 70012 with type 0, owes pending, unknown and types 10, 20, 7 and absent, ignores 4', async () => {
       const walk = newWalk();
       const cases = [
         ...IMPORTING.map((status) => ({
@@ -209,6 +212,35 @@ describe('the capital walk: what each row is', () => {
 
       expect(walk.keys()).toEqual([]);
       expect(walk.marks().pending).toEqual([]);
+    });
+
+    it('ignores a type 50 deposit whatever its status, with a time or none, and owes nothing for it', async () => {
+      const walk = newWalk();
+      const noTimeForms = ['', '0', undefined];
+      walk.world.deposit = [
+        ...[3, 0, 70012].map((status, index) =>
+          depositAt(AT + index * SECOND_MS, { id: `status-${status}`, status, depositType: '50' }),
+        ),
+        ...noTimeForms.map((successAt, form) =>
+          served(
+            AT + (3 + form) * SECOND_MS,
+            depositRow({
+              id: `no-time-${form}`,
+              coin: 'BTC',
+              status: 3,
+              depositType: '50',
+              successAt,
+            }),
+          ),
+        ),
+      ];
+
+      const result = await walk.run();
+
+      expect(result.imported).toBe(0);
+      expect(walk.keys()).toEqual([]);
+      expect(walk.marks().pending).toEqual([]);
+      expect(walk.marks().cursor).toBe(NOW);
     });
 
     it('reads a numeric type 0 as type 0', async () => {
@@ -438,6 +470,25 @@ describe('the capital walk: what each row is', () => {
       expect(walk.rows().map((row) => row.time)).toEqual([AT]);
     });
 
+    it.each([
+      ['11 digits', '17427289991'],
+      ['12 digits', '174272899912'],
+    ])(
+      'imports a settled withdrawal whose updateTime has %s, at its createTime',
+      async (_title, updateTime) => {
+        const walk = newWalk();
+        walk.world.withdraw = [withdrawalAt(AT, { updateTime })];
+
+        const result = await walk.run();
+
+        expect(result.imported).toBe(1);
+        expect(walk.rows().map(({ externalId, time }) => ({ externalId, time }))).toEqual([
+          { externalId: 'acc-1:withdraw:9012:BTC', time: AT },
+        ]);
+        expect(walk.marks().pending).toEqual([]);
+      },
+    );
+
     it('owes the span of a settled withdrawal with no createTime, in its own series, and the others go on', async () => {
       const walk = newWalk();
       walk.world.withdraw = [withdrawalAt(AT, { createTime: '', status: 'success' })];
@@ -541,7 +592,7 @@ describe('the capital walk: what each row is', () => {
       depositAt(AT + 2 * SECOND_MS, { id: '', toAddress: NEVER_READ }),
     ];
     walk.world.internal = [
-      internalAt(AT + 3 * SECOND_MS, { address: NEVER_READ, fromMemberId: NEVER_READ }),
+      internalAt(AT + 3 * SECOND_MS, { address: SENTINEL_EMAIL, fromMemberId: NEVER_READ }),
     ];
     walk.world.withdraw = [
       withdrawalAt(AT + 5 * SECOND_MS, { toAddress: NEVER_READ, tag: NEVER_READ }),

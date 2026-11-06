@@ -36,6 +36,7 @@ export const internalDepositRow = (overrides: Record<string, unknown> = {}) => (
   amount: '12.5',
   status: 2,
   address: NEVER_READ,
+  txID: NEVER_READ,
   createdTime: '1705393280',
   fromMemberId: NEVER_READ,
   complianceStatus: NEVER_READ,

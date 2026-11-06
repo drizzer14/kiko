@@ -252,7 +252,8 @@ export const fetchInternalDepositPage = fetcherOf({
 /**
  * Withdrawals of both kinds: the route answers on-chain ones alone unless `withdrawType` is 2. The
  * row's point is `createTime`, which never changes, so the row keeps its day when it settles.
- * `updateTime` is kept apart because a window may filter on it.
+ * `updateTime` is a window field only: it is read for the drift test and never into the row, so
+ * an `updateTime` that cannot be read does not make a settled withdrawal unreadable.
  */
 export const fetchWithdrawalPage = fetcherOf({
   path: '/v5/asset/withdraw/query-record',
@@ -265,7 +266,6 @@ export const fetchWithdrawalPage = fetcherOf({
     amount: text(fields.amount),
     status: text(fields.status),
     time: timeOf(fields.createTime),
-    updateTime: timeOf(fields.updateTime),
   }),
 });
 

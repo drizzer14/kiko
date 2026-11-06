@@ -188,7 +188,7 @@ describe('the named fields of each series', () => {
     ]);
   });
 
-  it('reads a withdrawal by withdrawId, coin, amount, status, createTime and updateTime', async () => {
+  it('reads a withdrawal by withdrawId, coin, amount, status and createTime, and keeps updateTime in the times alone', async () => {
     const { fetchImpl } = pageAnswer('rows', [withdrawalRow()]);
     const page = await fetchWithdrawalPage(API_KEY, SECRET, FIRST_PAGE, optionsOf(fetchImpl));
 
@@ -202,7 +202,6 @@ describe('the named fields of each series', () => {
           amount: '41.43008',
           status: 'success',
           time: { start: MS, end: MS },
-          updateTime: { start: 1_742_728_999_000, end: 1_742_728_999_000 },
         },
       },
     ]);

@@ -214,42 +214,43 @@ describe('the time of a withdrawal', () => {
     ]);
   });
 
-  it('keeps every reading of both times for the drift test, and updateTime apart', async () => {
+  it('keeps every reading of both times for the drift test, and updateTime in no row', async () => {
     const [item] = await withdrawalsOf(withdrawalRow({ updateTime: '1742999999' }));
 
-    expect(item).toMatchObject({
-      times: [MS, 1_742_999_999_000, 1_742_999_999_999],
-      row: { updateTime: { start: 1_742_999_999_000, end: 1_742_999_999_999 } },
-    });
+    expect(item).toMatchObject({ times: [MS, 1_742_999_999_000, 1_742_999_999_999] });
+    expect(item).not.toHaveProperty('row.updateTime');
   });
 
   it.each([
     ['empty', ''],
     ['0', '0'],
     ['absent', undefined],
-  ])('reads an updateTime that is %s as no time', async (_title, updateTime) => {
+  ])('reads an updateTime that is %s as no reading', async (_title, updateTime) => {
     const [item] = await withdrawalsOf(withdrawalRow({ updateTime }));
 
-    expect(item).toMatchObject({ kind: 'row', times: [MS], row: { updateTime: undefined } });
+    expect(item).toMatchObject({ kind: 'row', times: [MS] });
   });
 
-  it('reads a createTime that is absent as no time, and keeps updateTime', async () => {
+  it('reads a createTime that is absent as no time, and keeps the reading of updateTime', async () => {
     const [item] = await withdrawalsOf(withdrawalRow({ createTime: undefined }));
 
     expect(item).toMatchObject({
       kind: 'row',
       times: [1_742_728_999_000],
-      row: { time: undefined, updateTime: { start: 1_742_728_999_000 } },
+      row: { time: undefined },
     });
   });
 
-  it.each([
-    ['createTime', { createTime: '174272816' }],
-    ['updateTime', { updateTime: '174272899912' }],
-  ])('makes the whole row unreadable when %s is unreadable', async (_title, overrides) => {
-    const [item] = await withdrawalsOf(withdrawalRow(overrides));
+  it('makes the whole row unreadable when createTime is unreadable', async () => {
+    const [item] = await withdrawalsOf(withdrawalRow({ createTime: '174272816' }));
 
     expect(item).toMatchObject({ kind: 'unreadable' });
+  });
+
+  it('reads the row when updateTime is unreadable, and gives the drift test no reading of it', async () => {
+    const [item] = await withdrawalsOf(withdrawalRow({ updateTime: '174272899912' }));
+
+    expect(item).toMatchObject({ kind: 'row', times: [MS], row: { time: { start: MS } } });
   });
 
   it('gives an unreadable row no time of its own when createTime is the unreadable field', async () => {

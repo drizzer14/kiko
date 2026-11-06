@@ -191,6 +191,12 @@ const EXEMPTIONS = [
     name: 'txId',
     reason: 'fixtures mirror Binance’s literal txId field',
   },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-test-fixtures.ts',
+    word: 'tx',
+    name: 'txID',
+    reason: 'the internal deposit fixture mirrors the literal txID field of Bybit’s page',
+  },
 ];
 
 const isExempt = (targetPath, word, name) => {

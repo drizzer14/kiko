@@ -124,7 +124,7 @@ describe('the capital walk: windows, pages and marks', () => {
     );
   });
 
-  it('the floor is 729 days back unless the config sets a refused depth', async () => {
+  it('the floor is 729 days back, and the forward windows start there with no cursor', async () => {
     const floor = NOW - 729 * DAY_MS;
     const walk = newWalk({}, ACCOUNT_ID, {});
 
@@ -196,10 +196,9 @@ describe('the capital walk: windows, pages and marks', () => {
     walk.world.deposit = [
       served(AT, depositRow({ id: 'rolled-back', status: 70011, successAt: '', coin: 'BTC' })),
       ...noTimeForms.flatMap((successAt, form) => [
-        withNoTime(`pending-${form}`, { status: 0, successAt }, form * 4),
-        withNoTime(`settled-${form}`, { status: 3, depositType: '0', successAt }, form * 4 + 1),
-        withNoTime(`held-20-${form}`, { status: 3, depositType: '20', successAt }, form * 4 + 2),
-        withNoTime(`held-50-${form}`, { status: 3, depositType: '50', successAt }, form * 4 + 3),
+        withNoTime(`pending-${form}`, { status: 0, successAt }, form * 3),
+        withNoTime(`settled-${form}`, { status: 3, depositType: '0', successAt }, form * 3 + 1),
+        withNoTime(`held-20-${form}`, { status: 3, depositType: '20', successAt }, form * 3 + 2),
       ]),
     ];
     walk.world.internal = [internalAt(created + 20 * SECOND_MS, { id: 'moves-on' })];
@@ -246,7 +245,7 @@ describe('the capital walk: windows, pages and marks', () => {
   });
 
   describe('a stop that is not one record', () => {
-    it('holds the cursor and commits nothing of the span in the forward pass, on a page that drifted', async () => {
+    it('owes only the series whose page drifted in the forward pass, and moves the cursor and the other series on', async () => {
       const walk = newWalk();
       walk.world.deposit = [
         served(
@@ -256,11 +255,11 @@ describe('the capital walk: windows, pages and marks', () => {
       ];
       walk.world.internal = [internalAt(AT)];
 
-      const result = await walk.run();
+      await walk.run();
 
-      expect(walk.keys()).toEqual([]);
-      expect(walk.marks().cursor).toBe(CURSOR);
-      expect(result.complete).toBe(false);
+      expect(walk.keys()).toEqual(['acc-1:internal:5678:BTC']);
+      expect(walk.marks().cursor).toBe(NOW);
+      expect(walk.marks().pending).toEqual([{ start: CURSOR, end: NOW, series: 'deposit' }]);
       expect(loggedCodes(warn)).toContain('bybit-page-drift');
     });
 
