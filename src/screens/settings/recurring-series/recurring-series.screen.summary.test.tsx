@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -9,6 +10,7 @@ import { formatMoney } from '@kiko/currency/format';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { transactionsRepo } from '@kiko/transactions/repo';
 import type { RecurringSeries } from '@kiko/recurring/detection';
+import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 import type SummaryTable from '@kiko/design-system/components/summary-table';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -352,6 +354,69 @@ describe.each(['en', 'uk'] as const)('RecurringSeriesScreen — the table, in %s
       labels.paid,
     ]);
     expect(getByTestId(VALUE.paid)).toHaveTextContent(paidText(), { exact: true });
+  });
+});
+
+describe('RecurringSeriesScreen — the header against the charge cards', () => {
+  const DIVIDER = 'recurring-series-divider';
+
+  it('puts one divider after the summary rows and before the first charge card', async () => {
+    const { toJSON } = await renderSeries(seriesWith());
+    const order = testIdsInOrder(toJSON());
+    const firstCharge = order.findIndex((id) => id.startsWith('recurring-series-charge-'));
+
+    expect(order.filter((id) => id === DIVIDER)).toHaveLength(1);
+    expect(firstCharge).toBeGreaterThan(-1);
+    expect(order.indexOf(VALUE.paid)).toBeGreaterThan(-1);
+    expect(order.indexOf(DIVIDER)).toBeGreaterThan(-1);
+    expect(order.indexOf(VALUE.paid)).toBeLessThan(order.indexOf(DIVIDER));
+    expect(order.indexOf(DIVIDER)).toBeLessThan(firstCharge);
+  });
+
+  it('keeps the divider on a stopped series, whose header is a row longer', async () => {
+    const { getByTestId } = await renderSeries(STOPPED);
+
+    expect(getByTestId(DIVIDER)).toBeTruthy();
+  });
+});
+
+describe('RecurringSeriesScreen — the wrapped summary values', () => {
+  const alignmentOf = (text: { props: { style?: unknown } }) =>
+    StyleSheet.flatten(text.props.style as never)?.textAlign;
+
+  it('right-aligns the recurrence value, so a wrapped line starts at the same edge', async () => {
+    const { getByTestId } = await renderSeries(seriesWith());
+    const value = within(getByTestId(VALUE.repeats)).getByText(
+      i18n.t('recurringCharges.monthlyOnDay', { day: 15 }),
+    );
+
+    expect(alignmentOf(value)).toBe('right');
+  });
+
+  it('right-aligns the status value of a stopped series', async () => {
+    const { getByTestId } = await renderSeries(STOPPED);
+
+    expect(alignmentOf(within(getByTestId(VALUE.status)).getByText(LABELS.en.stopped))).toBe(
+      'right',
+    );
+  });
+
+  it('right-aligns the status value of a quiet series, which is the longer text', async () => {
+    const { getByTestId } = await renderSeries(QUIET);
+    const quietLine = i18n.t('recurringCharges.holdingQuietSince', {
+      holding: 'Card',
+      date: formatDate(QUIET_SINCE),
+    });
+
+    expect(alignmentOf(within(getByTestId(VALUE.status)).getByText(quietLine))).toBe('right');
+  });
+
+  it('leaves the values that never wrap as they were', async () => {
+    const { getByTestId } = await renderSeries(seriesWith());
+
+    expect(
+      alignmentOf(within(getByTestId(VALUE.lastCharge)).getByText(formatDate(OCTOBER))),
+    ).toBeUndefined();
   });
 });
 

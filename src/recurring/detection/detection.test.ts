@@ -944,9 +944,10 @@ describe('detectRecurringSeries', () => {
 
   describe('the merchant key the hide list stores', () => {
     // These keys are stored in settings.recurringMerchantChoices. If merchantNameOf changes, a
-    // stored key may match nothing, so the series shows again and the old line stays in "Hidden"
-    // to clear; or it may match more, so the extra series is hidden and "Hidden" names it. No
-    // migration rewrites keys. A failure here shows the author of the change this consequence.
+    // stored key may match nothing, so the series shows again and the stored hide stays with no
+    // series to remove it; or it may match more, so the extra series is hidden with no way to see
+    // why. No migration rewrites keys. A failure here shows the author of the change this
+    // consequence.
     it.each<[string, string, string, string, string]>([
       ['Netflix', 'Netflix', 'Netflix', 'netflix', 'Netflix'],
       ['ATB 0212', 'ATB 0212', 'ATB 0340', 'atb', 'ATB'],

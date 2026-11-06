@@ -1347,7 +1347,7 @@ export const en = {
           '1': 'Open the "Settings" tab and tap "Recurring charges".',
           '2': 'Kiko finds charges that repeat in your transactions and shows the day they were charged and the last charge. It shows only what already happened, never a future charge.',
           '3': 'Tap a charge to see each of its past transactions, then tap one to open it.',
-          '4': 'If a name doesn\'t really repeat, tap "Not a recurring charge". You can bring it back from "Hidden" at the end of the list.',
+          '4': 'If a name doesn\'t really repeat, touch and hold it or open it, then tap "Not a recurring charge". It leaves the list and the totals in every currency, and new charges won\'t bring it back. Only a mark on one of its transactions brings it back.',
           '5': 'If Kiko missed one, open one of its transactions and choose how often it\'s charged under "Mark as recurring". The mark covers charges close to that transaction\'s amount, so after a big price change, mark a newer charge too. You can remove a mark from the same field or from the charge.',
         },
         title: 'View Recurring Charges',
@@ -1772,7 +1772,6 @@ export const en = {
     emptyMessage:
       'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring.',
     emptyTitle: 'No recurring charges yet',
-    hiddenHeading: 'Hidden',
     holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
     lastChargesTotal: 'Sum of last charges',
@@ -1794,9 +1793,11 @@ export const en = {
     monthlyOnDay: 'Monthly, on day {{day}}',
     noChargeSince: 'No charge since {{date}}',
     notRecurring: 'Not a recurring charge',
+    notRecurringConfirmMessage:
+      '"{{name}}" leaves recurring charges and their totals in every currency, and new charges won\'t bring it back. To bring it back, mark one of its transactions as recurring.',
+    notRecurringConfirmTitle: 'Not a Recurring Charge?',
     paidSoFar: 'All paid so far',
     removeMark: 'Remove mark',
-    showAgain: 'Show again',
     summary: {
       chargeCount: 'Number of charges',
       lastCharge: 'Last charge',

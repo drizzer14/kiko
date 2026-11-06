@@ -705,55 +705,98 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     });
   });
 
-  it('hides the merchant key with its name on a tap, and goes back only after the write', async () => {
-    const { getByTestId, navigation } = await renderNetflix();
+  const CONFIRM_SHEET = 'confirm-sheet';
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+  type NetflixView = Awaited<ReturnType<typeof renderNetflix>>;
+
+  const confirmButtonOf = (view: NetflixView) =>
+    within(view.getByTestId(CONFIRM_SHEET)).getByText('Not a recurring charge');
+
+  const openConfirm = async (view: NetflixView) => {
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+  };
+
+  const confirmHide = async (view: NetflixView) => {
+    await openConfirm(view);
+    await fireEvent.press(confirmButtonOf(view));
+  };
+
+  it('opens the confirm on a tap, and writes nothing and goes back nowhere', async () => {
+    const view = await renderNetflix();
+
+    expect(view.queryByTestId(CONFIRM_SHEET)).toBeNull();
+
+    await openConfirm(view);
+
+    expect(view.getByTestId(CONFIRM_SHEET)).toBeTruthy();
+    expect(hideSpy).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing and stays on the series when the confirm is cancelled', async () => {
+    const view = await renderNetflix();
+
+    await openConfirm(view);
+    await fireEvent.press(within(view.getByTestId(CONFIRM_SHEET)).getByText('Cancel'));
+
+    expect(hideSpy).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+    expect(view.getByTestId(HEADER)).toBeTruthy();
+  });
+
+  it('hides the merchant key with its name on the confirm, and goes back only after the write', async () => {
+    const view = await renderNetflix();
+
+    await confirmHide(view);
 
     expect(hideSpy).toHaveBeenCalledTimes(1);
     expect(hideSpy).toHaveBeenCalledWith('netflix', 'Netflix');
-    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
 
     await act(async () => {
       settleWrite.resolve();
     });
 
-    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
   });
 
   it('does not go back when another screen was opened over it before the write landed', async () => {
-    const { getByTestId, navigation } = await renderNetflix();
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
-    navigation.isFocused.mockReturnValue(false);
+    await confirmHide(view);
+    view.navigation.isFocused.mockReturnValue(false);
     await act(async () => {
       settleWrite.resolve();
     });
 
     expect(hideSpy).toHaveBeenCalledTimes(1);
-    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
   });
 
-  it('blocks a second tap while the write is in flight, and takes one again once it settled', async () => {
-    const { getByTestId } = await renderNetflix();
+  it('blocks a second confirm while the write is in flight, and takes one again once it settled', async () => {
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await openConfirm(view);
+
+    const confirm = confirmButtonOf(view);
+
+    await fireEvent.press(confirm);
+    await fireEvent.press(confirm);
 
     expect(hideSpy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       settleWrite.resolve();
     });
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
 
     expect(hideSpy).toHaveBeenCalledTimes(2);
   });
 
   it('shows the save alert and stays on a rejected write, then lets the user try again', async () => {
-    const { getByTestId, navigation } = await renderNetflix();
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
     await act(async () => {
       settleWrite.reject(new Error('disk full'));
     });
@@ -762,18 +805,18 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
       expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
     );
     expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(navigation.goBack).not.toHaveBeenCalled();
-    expect(getByTestId(HEADER)).toBeTruthy();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+    expect(view.getByTestId(HEADER)).toBeTruthy();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
 
     expect(hideSpy).toHaveBeenCalledTimes(2);
   });
 
   it('shows no save alert when the write succeeds', async () => {
-    const { getByTestId } = await renderNetflix();
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
     await act(async () => {
       settleWrite.resolve();
     });
@@ -782,10 +825,10 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
   });
 
   it('keeps its series, never the neutral text, once the hide has fired and before it goes back', async () => {
-    const { getAllByTestId, getByTestId, queryByTestId, rerender, navigation } =
-      await renderNetflix();
+    const view = await renderNetflix();
+    const { getAllByTestId, getByTestId, queryByTestId, rerender, navigation } = view;
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
 
     // The settings read has landed the hide; the hook still hands over the unfiltered series.
     mockResult = {
