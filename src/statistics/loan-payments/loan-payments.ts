@@ -158,13 +158,30 @@ export const loanInterestEntries = (input: {
 
 const NO_SPLIT: LoanPaymentSplit = { interestMinorUnits: 0, excessMinorUnits: 0 };
 
+const LOAN_ENTRY_PREFIXES = ['loan-interest', 'loan-excess'] as const;
+
+type LoanEntryPrefix = (typeof LOAN_ENTRY_PREFIXES)[number];
+
+const loanEntryIdOf = (prefix: LoanEntryPrefix, paymentId: string): string =>
+  `${prefix}:${paymentId}`;
+
+/**
+ * The id of the payment a derived entry (`loan-interest:<id>`, `loan-excess:<id>`) is made from;
+ * undefined for any other id, a real transaction's included.
+ */
+export const loanPaymentIdOf = (entryId: string): string | undefined =>
+  foldMap(
+    maybe(LOAN_ENTRY_PREFIXES.find((prefix) => entryId.startsWith(loanEntryIdOf(prefix, '')))),
+    (prefix) => entryId.slice(loanEntryIdOf(prefix, '').length),
+  );
+
 const syntheticEntry = (
   transaction: LoanPaymentTransaction,
-  idPrefix: 'loan-interest' | 'loan-excess',
+  idPrefix: LoanEntryPrefix,
   category: LoanPaymentTransaction['category'],
   expenseMinorUnits: number,
 ): TrendTransaction => ({
-  id: `${idPrefix}:${transaction.id}`,
+  id: loanEntryIdOf(idPrefix, transaction.id),
   category,
   amountMinorUnits: -expenseMinorUnits,
   mcc: null,

@@ -222,7 +222,7 @@ export const spendingRowsIn = (
   ledger: SpendingLedger,
   from: number,
   to: number,
-): BreakdownTransaction[] =>
+): TrendTransaction[] =>
   ledger.trendTransactions.filter((entry) => entry.time >= from && entry.time <= to);
 
 /**
