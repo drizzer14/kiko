@@ -61,11 +61,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
 
   return (
     <>
-      {leadingField === undefined ? (
-        valueOutField
-      ) : (
-        <PairedFieldsRow first={leadingField} second={valueOutField} />
-      )}
+      <PairedFieldsRow first={leadingField} second={valueOutField} />
 
       <View ref={destinationFieldRef}>
         <HoldingSelectField

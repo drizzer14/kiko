@@ -5,8 +5,8 @@ import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-fie
 
 export type ExchangeFieldsProps = {
   // A field that takes the first place in the "Value out" row (the transaction form's Type
-  // field), stacked above it at an accessibility text size. Omit it for "Value out" alone.
-  leadingField?: ReactElement;
+  // field), stacked above it at an accessibility text size.
+  leadingField: ReactElement;
   // The outgoing amount, in the source holding's major currency units.
   valueOut: string;
   onChangeValueOut: (text: string) => void;

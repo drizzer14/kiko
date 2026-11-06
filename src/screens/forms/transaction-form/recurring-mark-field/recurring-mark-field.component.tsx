@@ -29,7 +29,13 @@ const RecurringMarkField = ({
   const account = accounts.find((candidate) => candidate.id === holding?.accountId);
   const currency = holding?.currency ?? 'UAH';
   const isOffered = isOfferedForMark(existing, holding, account, ownIbansOf(holdings), Date.now());
-  const { chain, isReady } = useRowMark(existing, currency, isOffered, holdings, accounts);
+  const { chain, detectedPeriod, isReady } = useRowMark(
+    existing,
+    currency,
+    isOffered,
+    holdings,
+    accounts,
+  );
 
   const write = async (): Promise<void> => {
     try {
@@ -58,14 +64,17 @@ const RecurringMarkField = ({
         submitPick();
       }}
       labels={{
-        none: t('forms.transaction.notMarkedRecurring'),
+        none:
+          detectedPeriod === null
+            ? t('forms.transaction.notMarkedRecurring')
+            : t(`forms.transaction.detectedRecurring.${detectedPeriod}`),
         weekly: t('forms.transaction.recurringPeriod.weekly'),
         monthly: t('forms.transaction.recurringPeriod.monthly'),
         everyThreeMonths: t('forms.transaction.recurringPeriod.everyThreeMonths'),
         everySixMonths: t('forms.transaction.recurringPeriod.everySixMonths'),
         yearly: t('forms.transaction.recurringPeriod.yearly'),
       }}
-      emptyOption="none"
+      emptyOption={detectedPeriod === null ? 'none' : undefined}
       placeholder=""
       disabled={!isSettled}
     />
