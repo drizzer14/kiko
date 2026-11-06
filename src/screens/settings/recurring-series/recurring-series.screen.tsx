@@ -266,16 +266,6 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
         ),
       )}
     >
-      <ConfirmSheet
-        visible={isConfirmOpen}
-        title={t('recurringCharges.notRecurringConfirmTitle')}
-        message={t('recurringCharges.notRecurringConfirmMessage', { name: series?.name })}
-        confirmLabel={t('recurringCharges.notRecurring')}
-        destructive
-        onConfirm={confirmHide}
-        onCancel={() => setIsConfirmOpen(false)}
-      />
-
       <ChargeList
         data={charges}
         keyExtractor={({ id }) => id}
@@ -383,6 +373,16 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
           styles.listContent(bottomClearance, contentMargin, floatingFooterEnd),
           contentCap,
         ]}
+      />
+
+      <ConfirmSheet
+        visible={isConfirmOpen}
+        title={t('recurringCharges.notRecurringConfirmTitle')}
+        message={t('recurringCharges.notRecurringConfirmMessage', { name: series?.name })}
+        confirmLabel={t('recurringCharges.notRecurring')}
+        destructive
+        onConfirm={confirmHide}
+        onCancel={() => setIsConfirmOpen(false)}
       />
     </Screen>
   );
