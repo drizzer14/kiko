@@ -109,6 +109,46 @@ describe('TablesScreen', () => {
 
       expect(spokenValue(getByLabelText(`Groceries, ${SPENT_IN}`))).toBe('300.00 ₴');
     });
+
+    describe('beside a credit of the amount of a real debit on another holding', () => {
+      const creditOf = (setsBalance: boolean) => ({
+        id: 'credit',
+        holdingId: 'h1',
+        time: SPENT_AT + 1_000,
+        amountMinorUnits: 100_00,
+        category: 'groceries',
+        setsBalance,
+        exchangeCounterpartHoldingId: null,
+        untrackedCounterpart: null,
+        loanHoldingId: null,
+      });
+      const seedCredit = (setsBalance: boolean) =>
+        mockUseLiveQuery.mockImplementation(
+          answerWith((tables, answer) =>
+            tables[0] === 'transactions'
+              ? [...(answer.data as object[]), creditOf(setsBalance)]
+              : undefined,
+          ),
+        );
+
+      it('counts the debit when the credit sets a balance, as the donut does', async () => {
+        seedCredit(true);
+
+        const { getByLabelText } = await renderTables();
+
+        expect(spokenValue(getByLabelText(`Transport, ${SPENT_IN}`))).toBe('100.00 ₴');
+        expect(spokenValue(getByLabelText(`All, ${SPENT_IN}`))).toBe('400.00 ₴');
+      });
+
+      it('leaves the debit out when the two rows are a pair of own holdings', async () => {
+        seedCredit(false);
+
+        const { getByLabelText, queryByLabelText } = await renderTables();
+
+        expect(queryByLabelText(`Transport, ${SPENT_IN}`)).toBeNull();
+        expect(spokenValue(getByLabelText(`All, ${SPENT_IN}`))).toBe('300.00 ₴');
+      });
+    });
   });
 
   describe('while the data loads', () => {

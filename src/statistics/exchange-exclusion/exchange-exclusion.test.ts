@@ -158,6 +158,48 @@ describe('sameCurrencyMoveTransactionIds', () => {
     ).toEqual(new Set(['synced-debit', 'credit']));
   });
 
+  describe('a row that sets a balance', () => {
+    it('is no partner for a real credit of the same amount', () => {
+      expect(
+        sameCurrencyMoveTransactionIds([
+          leg({ id: 'set-debit', setsBalance: true }),
+          leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 500_00 }),
+        ]).size,
+      ).toBe(0);
+    });
+
+    it('is no partner for a real debit of the same amount', () => {
+      expect(
+        sameCurrencyMoveTransactionIds([
+          leg({ id: 'debit' }),
+          leg({ id: 'set-credit', holdingId: 'cash', amountMinorUnits: 500_00, setsBalance: true }),
+        ]).size,
+      ).toBe(0);
+    });
+
+    it('leaves the credit to the real debit when it comes first in the ledger', () => {
+      expect(
+        sameCurrencyMoveTransactionIds([
+          leg({ id: 'debit' }),
+          leg({ id: 'set-credit', holdingId: 'cash', amountMinorUnits: 500_00, setsBalance: true }),
+          leg({ id: 'credit', holdingId: 'card', amountMinorUnits: 500_00 }),
+        ]),
+      ).toEqual(new Set(['debit', 'credit']));
+    });
+
+    it.each([
+      ['false', { setsBalance: false }],
+      ['absent', {}],
+    ])('still pairs two real legs with the mark %s', (_name, mark) => {
+      expect(
+        sameCurrencyMoveTransactionIds([
+          leg({ id: 'debit', ...mark }),
+          leg({ id: 'credit', holdingId: 'cash', amountMinorUnits: 500_00, ...mark }),
+        ]),
+      ).toEqual(new Set(['debit', 'credit']));
+    });
+  });
+
   it('lets a debit with an untracked counterpart claim nothing', () => {
     expect(
       sameCurrencyMoveTransactionIds([

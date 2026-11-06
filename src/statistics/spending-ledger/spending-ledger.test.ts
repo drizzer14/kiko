@@ -220,6 +220,125 @@ describe('a row that sets a balance', () => {
     expect(donutOf(ledger).map((slice) => slice.key)).not.toContain('opening');
   });
 
+  describe('beside a real row of the opposite sign', () => {
+    const REAL_DEBIT = transactionRow({
+      id: 'real-debit',
+      holdingId: 'card',
+      amountMinorUnits: -6_000,
+      category: 'groceries',
+      time: BASE_TIME + 20 * MINUTE,
+    });
+    const SET_CREDIT = transactionRow({
+      id: 'set-credit',
+      holdingId: 'cash',
+      amountMinorUnits: 6_000,
+      setsBalance: true,
+      time: BASE_TIME + 20 * MINUTE + 1_000,
+    });
+    const MOVE_DEBIT = transactionRow({
+      ...REAL_DEBIT,
+      id: 'move-debit',
+      amountMinorUnits: -8_000,
+      exchangePairId: 'pair-2',
+    });
+    const SET_MOVE_CREDIT = transactionRow({
+      ...SET_CREDIT,
+      id: 'set-move-credit',
+      amountMinorUnits: 8_000,
+      exchangePairId: 'pair-2',
+    });
+    const MARKED_PURCHASE = transactionRow({
+      id: 'marked-purchase',
+      holdingId: 'coin',
+      amountMinorUnits: 9_990_000_000,
+      untrackedCounterpart: 'p2p:UAH:4150.00',
+      setsBalance: true,
+      time: BASE_TIME + 120 * MINUTE,
+    });
+    const NEARER_SET_DEBIT = transactionRow({
+      id: 'nearer-set-debit',
+      holdingId: 'cash',
+      amountMinorUnits: -415_000,
+      setsBalance: true,
+      time: BASE_TIME + 110 * MINUTE,
+    });
+    // The trend carries major units, the donut minor ones.
+    const totalOf = (minorUnits: number) => ({ donut: minorUnits, trend: minorUnits / 100 });
+    const GROCERIES_BEFORE = totalOf(1_500);
+    // The world's loan payment leaves its interest entry in the uncategorized slice.
+    const LOAN_INTEREST = 9_000;
+    const otherOf = (ledger: SpendingLedger) =>
+      donutOf(ledger).find((slice) => slice.key === 'other')?.amount;
+    const sumOf = (amounts: number[]) => amounts.reduce((total, amount) => total + amount, 0);
+    const groceriesOf = (ledger: SpendingLedger) => ({
+      donut: donutOf(ledger).find((slice) => slice.key === 'groceries')?.amount,
+      trend: sumOf(
+        trendOf(ledger)
+          .find((series) => series.key === 'groceries')
+          ?.points.map((point) => point.amount) ?? [],
+      ),
+    });
+
+    it('counts a real debit a marked credit would have cancelled', () => {
+      const ledger = worldWith(SET_CREDIT, REAL_DEBIT);
+
+      expect(ledger.excludedTransactionIds.has('real-debit')).toBe(false);
+      expect(groceriesOf(ledger)).toEqual(totalOf(7_500));
+    });
+
+    it('still pairs the same two rows when neither is marked', () => {
+      const ledger = worldWith({ ...SET_CREDIT, setsBalance: false }, REAL_DEBIT);
+
+      expect(ledger.excludedTransactionIds.has('real-debit')).toBe(true);
+      expect(ledger.excludedTransactionIds.has('set-credit')).toBe(true);
+      expect(groceriesOf(ledger)).toEqual(GROCERIES_BEFORE);
+    });
+
+    it('does not pair a marked partner under a holding the account filter hides', () => {
+      const ledger = buildSpendingLedger(
+        worldInput({
+          transactions: [...WORLD_TRANSACTIONS, SET_CREDIT, REAL_DEBIT],
+          shownHoldings: [CARD],
+        }),
+      );
+
+      expect(ledger.excludedTransactionIds.has('real-debit')).toBe(false);
+      expect(groceriesOf(ledger)).toEqual(totalOf(7_500));
+    });
+
+    it('counts a real debit of a pair id whose credit is marked', () => {
+      const ledger = worldWith(SET_MOVE_CREDIT, MOVE_DEBIT);
+
+      expect(ledger.excludedTransactionIds.has('move-debit')).toBe(false);
+      expect(groceriesOf(ledger)).toEqual(totalOf(9_500));
+    });
+
+    it('pairs a pair id of two unmarked legs', () => {
+      const ledger = worldWith({ ...SET_MOVE_CREDIT, setsBalance: false }, MOVE_DEBIT);
+
+      expect(ledger.excludedTransactionIds.has('move-debit')).toBe(true);
+      expect(ledger.excludedTransactionIds.has('set-move-credit')).toBe(true);
+      expect(groceriesOf(ledger)).toEqual(GROCERIES_BEFORE);
+    });
+
+    it('counts a bank debit whose exchange purchase row is marked', () => {
+      const withoutPurchase = WORLD_TRANSACTIONS.filter((row) => row.id !== 'coin-purchase');
+      const ledger = buildSpendingLedger(
+        worldInput({ transactions: [...withoutPurchase, MARKED_PURCHASE] }),
+      );
+
+      expect(ledger.excludedTransactionIds.has('funding-debit')).toBe(false);
+      expect(otherOf(ledger)).toBe(LOAN_INTEREST + 415_000);
+    });
+
+    it('leaves the funding match to a real debit when a marked debit is nearer', () => {
+      const ledger = worldWith(NEARER_SET_DEBIT);
+
+      expect(ledger.excludedTransactionIds.has('funding-debit')).toBe(true);
+      expect(otherOf(ledger)).toBe(LOAN_INTEREST);
+    });
+  });
+
   it('stays out of spending when the account filter hides its holding', () => {
     const ledger = buildSpendingLedger(
       worldInput({
