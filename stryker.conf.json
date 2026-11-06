@@ -18,7 +18,19 @@
     "**/bottom-sheet.styles.ts",
     "**/entity-icon-tile.styles.ts"
   ],
-  "ignorePatterns": ["ios", "android", "vendor", "coverage", "docs", ".superpowers"],
+  "ignorePatterns": [
+    "ios",
+    "android",
+    "vendor",
+    "coverage",
+    "docs/*",
+    "!docs/design",
+    "docs/design/*",
+    "!docs/design/light-palette",
+    "docs/design/light-palette/*",
+    "!docs/design/light-palette/palette.json",
+    ".superpowers"
+  ],
   "incremental": true,
   "concurrency": 2,
   "reporters": ["clear-text", "progress", "json"],
