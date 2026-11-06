@@ -25,7 +25,7 @@ type NetWorthByAccountInput = {
   book: PriceBook;
 };
 
-export type NetWorthByAccount = {
+type NetWorthByAccount = {
   /** One row per account that has a holding; cells and change in base-currency minor units. */
   rows: { accountId: string; cells: number[]; change: number }[];
   allCells: number[];
