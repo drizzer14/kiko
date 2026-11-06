@@ -1679,10 +1679,13 @@ are built with `createPaneStackNavigator`.
   in a layer over both panes; both panes keep every route and frame (`layerStartOf`,
   `layerRoutesOf`, `pane-assignment.types.d.ts`). The layer is a third stack with a placeholder
   root, `pane-layer-root`, and rests with `pointerEvents` off. Back in the layer closes down to
-  floor 0 (`dismiss` in `pane-router.ts`). The root has a shown, transparent, empty header only
-  while a page is above it, and no header at rest, because a hidden root header hides the shared
-  bar when a swipe starts (implementation note, not a user ruling; its native effect is a
-  device point, not yet seen). Back after a fold and unfold is an open fault with no found cause.
+  floor 0 (`dismiss` in `pane-router.ts`). At rest the root has no header (`headerShown: false`).
+  While a page is above it the root has a shown header with an empty title that copies the
+  page's bar appearance options (`BAR_APPEARANCE_OPTIONS` in
+  `src/navigation/pane-stack/pane-stack-view/pane-slice.ts`), except the large title, so both
+  sides of the swipe share one appearance. A hidden root header hides the shared bar when a
+  swipe starts; a differing appearance fades the bar's background (implementation note, not a
+  user ruling; its native effect is a device point, not yet seen). Back after a fold and unfold is an open fault with no found cause.
 - **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` decides
   by position alone: index 0 takes `rootPane`, every other route, a default included, takes the
   detail pane (so a route pushed while folded, or a reminder rebuild, never lands in the list

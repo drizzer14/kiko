@@ -110,7 +110,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   keeps it mounted, as the native bottom tabs do.
 - `pane-stack-presentation.ts`: `nonPushPresentations`, the pane-stack screens whose options set a
   presentation other than a push; `test-ids-in-order.ts`: `testIdsInOrder`, every testID of a
-  rendered tree in paint order.
+  rendered tree in paint order; `header-configs.ts`: `headerConfigsIn`, the props of every native
+  header config (`RNSScreenStackHeaderConfig`) of a rendered tree in paint order, what
+  native-stack derives from the merged options; assert on it instead of a hand-rolled tree walk.
 - `mock-statistics-data-layer.ts`, `statistics-filter-data.ts`: the mocked data layer a real
   Statistics screen (or Home) mounts on, and its filter fixtures (`answerFilterData`,
   `pressFilterOption`, `transactionRowOf` (a transaction row with defaults), the filter testIDs).
