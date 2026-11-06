@@ -267,7 +267,7 @@ const NAMED_SEEDS: NamedSeed[] = [
       transfer: {
         table: { runs: 8, calls: 106 },
         tableRuns: 'floor',
-        measured: { runs: 52, calls: 1_036 },
+        measured: { runs: 34, calls: 676 },
       },
     },
   },
@@ -337,7 +337,7 @@ describe('Bybit convergence', () => {
       },
     );
 
-    it.failing('a burst commits at least one span per run after its halvings', async () => {
+    it('a burst commits at least one span per run after its halvings', async () => {
       const account = newAccount();
 
       serveSlots(account, BURST_SEED.slots());
@@ -351,15 +351,14 @@ describe('Bybit convergence', () => {
       expect(inBurst.slice(1).every((cursor, run) => cursor > inBurst[run])).toBe(true);
     });
 
-    it('a burst of 5,000 transfers commits one span in four runs: three halvings, then the span', async () => {
+    it('a burst of 5,000 transfers halves three times, then commits a span every run', async () => {
       const account = newAccount();
 
       serveSlots(account, BURST_SEED.slots());
 
       const spacings = spacingsOf((await settle(account.transfer, gap)).cursors);
 
-      expect(Math.max(...spacings)).toBe(4);
-      expect(spacings.filter((run) => run === 4)).toHaveLength(6);
+      expect(spacings).toEqual([1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
     });
 
     it.each(SEEDS)(

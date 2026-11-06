@@ -63,6 +63,8 @@ const CAPITAL_DEPOSIT_TYPE = 'capital-deposit-type';
 
 const CAPITAL_TIME_MISSING = 'capital-time-missing';
 
+const CAPITAL_AMOUNT_INVALID = 'capital-amount-invalid';
+
 const CAPITAL_HOLDING_MISSING = 'capital-holding-missing';
 
 /**
@@ -78,6 +80,7 @@ const CAPITAL_FORWARD_OWES: readonly string[] = [
   CAPITAL_NOT_SETTLED,
   CAPITAL_DEPOSIT_TYPE,
   CAPITAL_TIME_MISSING,
+  CAPITAL_AMOUNT_INVALID,
   BYBIT_PAGE_DRIFT,
   ...AMOUNT_STOP_CODES,
 ];
@@ -165,9 +168,10 @@ const externalIdOf = (accountId: string, kind: string, id: string, coin: string)
 
 /**
  * Map one record of a tracked coin to a row on the Funding holding of its coin: the pages name no
- * wallet for a deposit or a withdrawal, and Funding is where they place them. A record the walk
- * cannot trust (an amount it cannot read exactly, no time to date the row by) stops that record
- * alone, and a skipped one would be silent loss.
+ * wallet for a deposit or a withdrawal, and Funding is where they place them. An amount of zero
+ * moves no money, so it gives no row and owes nothing. A record the walk cannot trust (a negative
+ * amount, an amount it cannot read exactly, no time to date the row by) stops that record alone,
+ * and a skipped one would be silent loss.
  */
 const rowOutcomesOf = (input: {
   accountId: string;
@@ -185,6 +189,14 @@ const rowOutcomesOf = (input: {
   }
 
   const minorUnits = rowMinorUnits(coin, amount);
+
+  if (minorUnits === 0) {
+    return [];
+  }
+
+  if (minorUnits < 0) {
+    throw new BinanceWalkStop(CAPITAL_AMOUNT_INVALID);
+  }
 
   if (time === undefined) {
     throw new BinanceWalkStop(CAPITAL_TIME_MISSING);

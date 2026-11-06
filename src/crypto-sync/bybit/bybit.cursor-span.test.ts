@@ -1,7 +1,12 @@
 import { DAY_MS } from '@kiko/dates';
-import { halfOf, type WalkWindow } from '@kiko/crypto-sync/exchange/walk';
+import {
+  halfOf,
+  type WalkPass,
+  type WalkWindow,
+  type WindowOutcome,
+} from '@kiko/crypto-sync/exchange/walk';
 
-import { readCursorSpan } from './bybit.cursor-span';
+import { plainHintOf, readCursorSpan } from './bybit.cursor-span';
 import { BYBIT_REQUEST_INTERVAL_MS, createBybitHistoryRun } from './bybit.history-budget';
 
 type Row = { id: string; times: number[] };
@@ -396,5 +401,52 @@ describe('readCursorSpan: the budget', () => {
     });
 
     expect(onFirstReadStuck).not.toHaveBeenCalled();
+  });
+});
+
+describe('plainHintOf', () => {
+  const WINDOW: WalkWindow = { start: 100, end: 200 };
+  const RESUME = { from: 130, returned: [], stuck: [] };
+
+  const outcomeWith = (hint: WindowOutcome['hint']): WindowOutcome => ({
+    imported: 2,
+    complete: false,
+    owed: true,
+    started: true,
+    hint,
+  });
+
+  it.each<WalkPass>(['forward', 'rescan'])(
+    'turns a resume on a %s pass into a plain hint from its `from`',
+    (pass) => {
+      const outcome = outcomeWith({ start: 100, end: 160, resume: RESUME });
+
+      expect(plainHintOf(pass, WINDOW, outcome)).toEqual({
+        ...outcome,
+        hint: { start: 130, end: 160 },
+      });
+    },
+  );
+
+  it('leaves a point or owed-range outcome as it is', () => {
+    const outcome = outcomeWith({ start: 100, end: 160, resume: RESUME });
+
+    expect(plainHintOf('pending', WINDOW, outcome)).toBe(outcome);
+  });
+
+  it.each<[string, WindowOutcome['hint']]>([
+    ['a plain hint', { start: 100, end: 160 }],
+    ['no hint', null],
+    ['an absent hint', undefined],
+  ])('leaves %s on a forward pass as it is', (_title, hint) => {
+    const outcome = outcomeWith(hint);
+
+    expect(plainHintOf('forward', WINDOW, outcome)).toBe(outcome);
+  });
+
+  it.each([200, 250])('drops a hint that reaches the window end at %s', (end) => {
+    const outcome = outcomeWith({ start: 100, end, resume: RESUME });
+
+    expect(plainHintOf('forward', WINDOW, outcome)).toEqual({ ...outcome, hint: null });
   });
 });

@@ -1,5 +1,11 @@
 import { rethrow } from 'fnts';
-import { halfOf, type SpanRead, type WalkWindow } from '@kiko/crypto-sync/exchange/walk';
+import {
+  halfOf,
+  type SpanRead,
+  type WalkPass,
+  type WalkWindow,
+  type WindowOutcome,
+} from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type BybitHistoryRun,
@@ -15,6 +21,32 @@ type CursorPage<Row> = { rows: Row[]; nextPageCursor: string | undefined };
  * after which none of the rows read can be trusted.
  */
 type CursorSpanPage<Row> = { kind: 'rows'; rows: Row[] } | { kind: 'drift' };
+
+/**
+ * What a forward or re-scan window that stopped after some of its spans committed hands the next
+ * run: the span it wanted to read next, without the resume. The shared walk drops a resume on
+ * those passes because their cursor keeps what they read, so with the resume the next run would
+ * start again from the whole window and halve again, one halving per run. The cursor moves forward
+ * only, so the plain hint is found again, and it only narrows a read, so it skips no ground. A hint
+ * that ends at or past the window's end is no narrowing: the window end moves with the clock, so
+ * the next run would clip its first span to an end already behind it.
+ */
+export const plainHintOf = (
+  pass: WalkPass,
+  window: WalkWindow,
+  outcome: WindowOutcome,
+): WindowOutcome => {
+  const { hint } = outcome;
+
+  if ((pass !== 'forward' && pass !== 'rescan') || hint?.resume === undefined) {
+    return outcome;
+  }
+
+  return {
+    ...outcome,
+    hint: hint.end >= window.end ? null : { start: hint.resume.from, end: hint.end },
+  };
+};
 
 /**
  * Every reading of a row's window field lies outside the reach. A row with no reading (a pending

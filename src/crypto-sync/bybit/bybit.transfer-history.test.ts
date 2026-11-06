@@ -264,7 +264,7 @@ describe('the transfer walk: what each row is', () => {
       expect(walk.marks().pending).toEqual([pointAt(AT)]);
     });
 
-    it('a transfer from a wallet to itself owes its point and writes no leg', async () => {
+    it('a transfer from a wallet to itself writes no leg and owes nothing', async () => {
       const walk = newWalk();
       walk.world.transfer = [
         transferAt(AT, { fromAccountType: 'UNIFIED', toAccountType: 'UNIFIED' }),
@@ -273,14 +273,30 @@ describe('the transfer walk: what each row is', () => {
       await walk.run();
 
       expect(walk.keys()).toEqual([]);
-      expect(walk.marks().pending).toEqual([pointAt(AT)]);
-      expect(loggedCodes(warn)).toEqual(['transfer-row-unreadable']);
+      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(warn).not.toHaveBeenCalled();
     });
   });
 
   describe('a record the walk cannot trust', () => {
+    it('a transfer of zero writes no leg, owes nothing, and its neighbour imports', async () => {
+      const walk = newWalk();
+      walk.world.transfer = [
+        transferAt(AT, { transferId: 'zero', amount: '0' }),
+        transferAt(AT + SECOND_MS, { transferId: 'good' }),
+      ];
+
+      await walk.run();
+
+      expect(walk.keys()).toEqual([
+        'acc-1:xfer:good:BTC:BTC:fund',
+        'acc-1:xfer:good:BTC:BTC:unified',
+      ]);
+      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it.each([
-      ['zero', '0', 'transfer-amount-invalid'],
       ['negative', '-5', 'transfer-amount-invalid'],
       ['not a number', 'a lot', 'amount-malformed'],
       ['over-precise', '0.123456789', 'amount-precision'],

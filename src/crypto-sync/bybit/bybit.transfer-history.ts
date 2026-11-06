@@ -136,10 +136,11 @@ const walletOf = (word: string): BybitWallet | undefined =>
 /**
  * The two legs of one settled transfer of a tracked coin, each on the coin's own wallet holding:
  * the debit on the source, then the credit on the destination, under one pair id and one key for
- * each (the pair id and the leg's holding key). A transfer that failed is final and gives none. A
- * transfer the walk cannot trust (not settled, a wallet it does not track or the same wallet at
- * both ends, an amount that is no positive exact amount, no time to date the legs by) stops that
- * transfer alone, and a skipped one would be silent loss.
+ * each (the pair id and the leg's holding key). A transfer that failed is final and gives none, and
+ * so does a settled one that moves no money between the holdings Kiko keeps (the same wallet at
+ * both ends, an amount of zero): no leg, and nothing owed. A transfer the walk cannot trust (not
+ * settled, a wallet it does not track, a coin it cannot read, a negative or inexact amount, no time
+ * to date the legs by) stops that transfer alone, and a skipped one would be silent loss.
  */
 const legsOf = (accountId: string, row: TransferRow): PlannedTransferRow[] => {
   const { coin, transferId, amount, time } = row;
@@ -159,13 +160,21 @@ const legsOf = (accountId: string, row: TransferRow): PlannedTransferRow[] => {
     throw new BinanceWalkStop(TRANSFER_WALLET_UNKNOWN);
   }
 
-  if (!isTrackedBybitAsset(coin) || source === destination) {
+  if (!isTrackedBybitAsset(coin)) {
     throw new BinanceWalkStop(TRANSFER_ROW_UNREADABLE);
+  }
+
+  if (source === destination) {
+    return [];
   }
 
   const units = rowMinorUnits(coin, amount);
 
-  if (units <= 0) {
+  if (units === 0) {
+    return [];
+  }
+
+  if (units < 0) {
     throw new BinanceWalkStop(TRANSFER_AMOUNT_INVALID);
   }
 

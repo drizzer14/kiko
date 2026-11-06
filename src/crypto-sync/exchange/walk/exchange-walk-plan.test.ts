@@ -6,6 +6,7 @@ import {
   type WalkMarks,
   type WalkPass,
   type WalkPlan,
+  type WindowOutcome,
 } from './walk';
 import { runExchangeWalkPlan } from './exchange-walk-plan';
 
@@ -55,6 +56,7 @@ const runOver = (input: {
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
   readOnPastUnreadableForward?: boolean;
+  outcomeOf?: (pass: WalkPass, window: OwedWindow, outcome: WindowOutcome) => WindowOutcome;
 }) => {
   const read = input.read ?? jest.fn(async () => undefined);
   const commit = input.commit ?? jest.fn(async () => COMMITTED);
@@ -88,6 +90,7 @@ const runOver = (input: {
       callsOf: input.callsOf,
       owedFirst: input.owedFirst,
       readOnPastUnreadableForward: input.readOnPastUnreadableForward,
+      outcomeOf: input.outcomeOf,
     }),
   };
 };
@@ -328,6 +331,42 @@ describe('runExchangeWalkPlan', () => {
       }).result;
 
       expect(startsRead(read)).toEqual(starts);
+    });
+  });
+
+  describe('the outcome hook', () => {
+    const halved = () =>
+      jest
+        .fn()
+        .mockResolvedValueOnce({ kind: 'split', half: { start: 100, end: 105 } })
+        .mockResolvedValue(undefined);
+
+    it('hands each window outcome to the hook before the plan keeps it, and leaves it as it is with none', async () => {
+      const outcomeOf = jest.fn((_pass, _window, outcome: WindowOutcome) => ({
+        ...outcome,
+        hint: { start: 100, end: 102 },
+      }));
+      const hooked = runOver({
+        plan: planOf({ forward: [owed(100)] }),
+        read: halved(),
+        outcomeOf,
+      });
+      const plain = runOver({ plan: planOf({ forward: [owed(100)] }), read: halved() });
+
+      await hooked.result;
+      await plain.result;
+
+      expect(outcomeOf).toHaveBeenCalledWith(
+        'forward',
+        owed(100),
+        expect.objectContaining({ hint: { start: 100, end: 105 } }),
+      );
+      expect(hooked.write).toHaveBeenCalledWith([
+        { field: 'spanHints', value: { ...NO_HINTS, forward: [{ start: 100, end: 102 }] } },
+      ]);
+      expect(plain.write).toHaveBeenCalledWith([
+        { field: 'spanHints', value: { ...NO_HINTS, forward: [{ start: 100, end: 105 }] } },
+      ]);
     });
   });
 

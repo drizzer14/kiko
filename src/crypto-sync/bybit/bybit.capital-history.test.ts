@@ -56,6 +56,13 @@ const withdrawalAt = (time: number, overrides: Record<string, unknown> = {}) =>
     }),
   );
 
+// The ten-digit time of an internal deposit is a whole second, so its point ends a second later.
+const AMOUNT_SERIES = [
+  ['deposit', 'deposit', depositAt, 'id', 'deposit', 1],
+  ['internal deposit', 'internal', internalAt, 'id', 'internal', SECOND_MS],
+  ['withdrawal', 'withdraw', withdrawalAt, 'withdrawId', 'withdraw', 1],
+] as const;
+
 const pointAt = (time: number, series: CapitalSeries) => ({
   start: time - 1,
   end: time + 1,
@@ -520,6 +527,43 @@ describe('the capital walk: what each row is', () => {
       ]);
       expect(walk.marks().cursor).toBe(NOW);
     });
+
+    it.each(AMOUNT_SERIES)(
+      'a %s of zero writes no row and owes nothing',
+      async (_name, series, recordAt, idField, kind) => {
+        const walk = newWalk();
+        walk.world[series] = [
+          recordAt(AT, { [idField]: 'zero', amount: '0' }),
+          recordAt(AT + 2 * SECOND_MS, { [idField]: 'good' }),
+        ];
+
+        await walk.run();
+
+        expect(walk.keys()).toEqual([`acc-1:${kind}:good:BTC`]);
+        expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+        expect(warn).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(AMOUNT_SERIES)(
+      'a %s with a negative amount owes its point and its neighbour imports',
+      async (_name, series, recordAt, idField, kind, pointEnd) => {
+        const walk = newWalk();
+        walk.world[series] = [
+          recordAt(AT, { [idField]: 'negative', amount: '-5' }),
+          recordAt(AT + 2 * SECOND_MS, { [idField]: 'good' }),
+        ];
+
+        await walk.run();
+
+        expect(walk.keys()).toEqual([`acc-1:${kind}:good:BTC`]);
+        expect(walk.marks().pending).toEqual([{ ...pointAt(AT, series), end: AT + pointEnd }]);
+        expect(walk.marks().cursor).toBe(NOW);
+        expect(warn.mock.calls.map(([, details]) => (details as { code?: string }).code)).toEqual([
+          'capital-amount-invalid',
+        ]);
+      },
+    );
 
     it('owes the point of a row that names a coin the app does not track as a tracked row', async () => {
       const walk = newWalk({

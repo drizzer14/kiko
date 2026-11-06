@@ -29,6 +29,7 @@ import type { WalkId } from '@kiko/crypto-sync/exchange/walk-state';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 import type { ExchangeCredentials } from '@kiko/crypto-sync/exchange/credentials';
 
+import { plainHintOf } from './bybit.cursor-span';
 import { BYBIT_WALK_CONFIG } from './bybit.walk-config';
 import { readBybitCredentials } from './bybit.credentials';
 import { BybitHistoryParseError } from './bybit.history-client';
@@ -259,6 +260,7 @@ export const runBybitWalk = async <Deps extends BybitWalkDeps, Page>(input: {
     isCoolingDown: isBybitCoolingDown,
     isUnreadableWindowError: (error) => error instanceof BybitHistoryParseError,
     callsOf: input.callsOf,
+    outcomeOf: plainHintOf,
     read: (window, span, keepCalls) => input.read(context, window, span, keepCalls),
     commit: (window, span, page, pass) => input.commit(context, window, span, page, pass),
   });
