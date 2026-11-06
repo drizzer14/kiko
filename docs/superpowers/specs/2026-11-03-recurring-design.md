@@ -34,6 +34,9 @@ Answers of 2026-11-03, relayed by the coordinator; words in quotes are the user'
   within 25 percent of each other, or at one price, sit in one chain. m(10, 5, 99) + m(10, 20, 119), detected monthly x10 twice: a
   mark at 99 joins them (119/99 = 1.20) into one x20, "Marked: monthly", no pair fits, and both detected series leave. A mark at 119
   selects the same piece and only sets its period, so the two can never separate. The same holds at equal price.
+  **Was, until 2026-11-06.** Section 8.3 (user bug, DEPLOY 4) keeps one charge per period slot: a mark at 99 now gives the
+  marked 99 x10 beside the detected 119 x10, and a mark at 119 the reverse; at equal price one x10 is marked and the other shows
+  as detected.
 - Q6: "One per chain", relayed by the coordinator: a key holds a list of marks, each its own chain (section 8.2).
 - Approval: "Approve as planned". The mark offers weekly, monthly, every 3 months, every 6 months and yearly.
 
@@ -429,7 +432,7 @@ It writes nothing on a transaction, and it predicts nothing.
 
 | Point | Answer | The code fact it rests on |
 |---|---|---|
-| What a mark covers | **The user's answer to Q5.** The merchant key of the row's stored description, the holding's currency, and section 5.3 step 3's amount chain holding the stored amount. No day test. Past and later charges in the chain join by themselves; a charge outside it does not. Section 6's fit test, the last charge and section 7's stopped read only the chain | The series group is `[key, currency]` (section 4), and `merchantNameOf` cuts only a trailing number (spec of `1.4-category-automation`, section 4), so a name holding the month gives one row per key and a mark links that row alone |
+| What a mark covers | **The user's answer to Q5.** The merchant key of the row's stored description, the holding's currency, and section 5.3 step 3's amount chain holding the stored amount. No day test (was, until 2026-11-06; now section 8.3: at most one charge per period slot). Past and later charges in the chain join by themselves; a charge outside it does not. Section 6's fit test, the last charge and section 7's stopped read only the chain | The series group is `[key, currency]` (section 4), and `merchantNameOf` cuts only a trailing number (spec of `1.4-category-automation`, section 4), so a name holding the month gives one row per key and a mark links that row alone |
 | Which chain a stored amount selects | Inside one `[key, currency]` group: take the magnitudes of the group's charges after the twin fold, add every stored amount of that key and currency as one more amount, sort, and cut where the next exceeds the previous by more than 1.25, with step 3's own function. **Each piece holding a stored amount is a marked chain.** Its charges are the series. So there is no nearest and no tie: one amount is in exactly one piece, and pieces share no row. While a charge at the stored amount exists, this is simply the chain holding that charge. A stored amount sits in the cut like a charge, with or without its row, so it can bridge. A stored amount alone in its piece selects nothing: "Marked, No Charges". The cut reads a multiset, so no output depends on row order, and a new row between two others re-forms the chain by the data alone: 100, 115, 130 is one chain, and removing an unmarked 115 splits it again. Where the 115 is the marked row, its stored amount stays: 99 and 130 with a stored 115 whose row was deleted stay one series until the mark is removed, and 80, 120, 500 with a stored 100 whose row was edited to 500 read one x2 over 80 and 120 | Step 3 sorts and cuts, and adds nothing else (section 5.3), so one function serves both. A stored amount stays in the cut when its row goes, since a mark stores no row id and the row a user taps is often a `hold`, whose amount the settled re-fetch can change (section 4): a marked hold at 835 that settles at 838 keeps its chain. An exact-only match would turn that series into "Marked, No Charges" |
 | The marked row edited or deleted | Nothing is written and the mark does not follow the row. The stored amount stays in the cut: its chain stands if other charges reach it; a row edited out of reach leaves the chain; with none in reach, "Marked, No Charges" | A mark writes nothing on a transaction, and a transaction's write touches no setting |
 | Currency | **A mark covers one currency.** It stores the code of the marked row's holding beside the amount, from the holding, and reads only the group of that key and currency. So 400 UAH and 400 USD never compare, and a USD charge under a name marked in UAH stays as detection finds it. A holding moved to another currency leaves the mark's group: "Marked, No Charges" | Minor units have no meaning without a currency (kiko-domain, "Currencies"; `currencyScale`). A row has no currency of its own, it comes from its holding (section 4). The JSON holds an integer and a code, never a `Money` |
@@ -493,6 +496,58 @@ Results the review of 41be4a687 changed, with Q6's answer. `was` is that draft.
 | 99 x10, one 119, a detected 399 x10, marked at 99, opened by link, a yearly pick on the 119 row, Back | the store moved to 119, the route's 99 missed, the detected 399 by the fallback | the marked x11, yearly: the store still holds 99, and the route's amount lies in the piece's span |
 | 99 and 130, a stored 115 whose row was deleted | "the stored amount never joins what its own row did not join": no world pinned | one x2 until the mark is removed |
 | 80, 120, 500, a stored 100 whose row was edited to 500 | the same | one x2 over 80 and 120 |
+
+### 8.3 One charge per period in a marked chain (user bug, DEPLOY 4, 2026-11-06)
+
+The user's words: "I manually marked a transaction that repeats monthly as a recurring monthly payment, but the matcher did
+match other transactions of the same vendor with similar amounts that occurred during the same month, counting more
+transactions in this recurring payment as a result." Expected, relayed by the coordinator: a monthly series takes at most one
+charge per period; extra same-vendor, similar-amount charges in the same period stay out. This reverses 8.2's "No day test"
+(`was:` there). Cause (kiko:debugger, a real jest run): `chainsOfEntry` in `marked-series.ts` takes every charge of the piece,
+and `markedChainOfAmount` repeats the piece. One cause feeds the series count, its charge list, "All paid so far", the list row's
+last charge and amount (`seriesOfCharges`), the group totals, the stopped read, the date line (an extra breaks `passes` in
+`markedRecurrenceOf`, so "on day 5" falls back to "Marked: monthly") and the form's mark field on the extra row.
+
+**The rule.** The amount cut of 8.2 still chooses the piece, its span and its marks. Then, inside the piece, the charges after
+the twin fold keep at most one per period slot; the rest are **dropped**. The rule holds for every marked period.
+
+| Point | Answer | Why, and the code it reuses |
+|---|---|---|
+| The step of a period | weekly 7 days (`weekStepOf`); monthly 1 month; every 3 months 3; every 6 months 6; yearly 12 (`addMonths`, which clamps the day). A slot is the window around one step, half a step each side: about 3.5 days, 15, 45, 91 and 182 | `WEEKLY`, `MONTHLY` and `YEARLY` in `detection.ts` already hold `slotDays` and `stepForward`; the two mark-only periods add the same pair. Stepping always from the one anchor, never charge to charge, so a clamped day never drifts |
+| The anchor (the chain's rhythm) | Among the piece's charges whose amount is nearest a stored amount of the chain (the newest 12 of them at most), the one whose steps lie nearest the others: the least sum of day gaps from each other such charge to its nearest step of the candidate. A tie goes to the newest | Not calendar months: a due date drifting at a month end (30 Jun, 31 Jul, 1 Sep for August, 30 Sep, 31 Oct) puts two real charges in September; slots on the chain's own day keep all five. Not the newest charge alone and not a plain median: an extra at the stored amount on another day (world C) can be the newest, and the 5th and the 20th sit half a month apart, where a median of offsets flips. The amount filter keeps a near-price twin subscription (world D) from setting the rhythm. Built on `slotPairOf`'s idea (nearest step, least `dayGapOf`), signed both ways |
+| A charge's slot | The step of the anchor nearest the charge, by the least day gap; a tie goes to the earlier step | `slotPairOf`'s own tie ("keeps the fewer slots") |
+| The one kept in a slot | The amount nearest a stored amount of the chain; then the day nearest the slot's step; then the earliest, then the id | The stored amount is the row the user tapped (8.2); the day follows the rhythm; the last two make the result free of row order |
+| What it changes | Only which charges of the piece form the series. The piece, its span (`markedSpan`, the route's lookup key), its marks and its period are as in 8.2 | Every reader above reads the series' charges, so one place fixes all of them |
+| A slot with no charge | Nothing: a skipped month is a gap, as before | |
+| Accepted limit | A charge posted more than half a step late shares a slot with the next period's charge, and one drops. Two charges one day apart at a month end (31 Oct and 1 Nov) share a slot: one is the series' | A real monthly charge cannot sit half a month off its own day and stay one series |
+
+**A dropped charge.** It is in no marked series. Detection is untouched: a detected series shows beside the marked one when
+it shares no row with it (8.2, `detectedBesideMarked`), and the user's "Not a recurring charge" removes it as any detected
+series. So a dropped run that repeats on its own rhythm (a second subscription at a near price, world D) shows as its own
+detected series: that is a true row, and the Q5 consequence at the head of this spec no longer holds. Sporadic dropped charges
+(worlds A to C) form no series and show nowhere.
+
+**The form on a dropped row.** The mark field reads the row as the series does: on a dropped row it shows its "none" option
+(the detected text when a detected series holds the row, else "Not marked") and is disabled, so no pick writes. A pick there
+could not help: a mark at its amount lands in the same piece, and the slot keeps the other charge. A folded twin and a row the
+ledger read does not hold read as before (the chain's period). No caption is added; a caption explaining why would be new
+user text: PENDING, not built unless the user asks.
+
+Results this section changes. `was` is the result at 5ef73606a.
+
+| World | was | now |
+|---|---|---|
+| A: 6 x 100 on the 5th, May to Oct 2026, plus 98 on 20 Aug and 102 on 12 Oct, marked monthly at 100 | one x8, "Marked: monthly", last charge 12 Oct at 102 (the qa copies the exact `was` from the debugger's base run) | one x6, `onDay` 5, last charge 5 Oct at 100; no other row; the field on the 98 and 102 rows: "Not marked", disabled |
+| B: 12 x 100 on the 5th, plus 98 on 20 Aug | one x13 | one x12, `onDay` 5 |
+| C: 100 on 5 Aug, 5 Sep, 5 Oct, plus 100 on 20 Oct | one x4, last charge 20 Oct | one x3, `onDay` 5, last charge 5 Oct: the anchor is 5 Oct, not the newest 20 Oct |
+| D: 12 x 100 on the 5th, plus 12 x 98 on the 20th | one x24 | marked x12 at 100, `onDay` 5, and detected monthly x12 at 98, `onDay` 20 |
+| Month-end drift: 100 on 30 Jun, 31 Jul, 1 Sep, 30 Sep, 31 Oct, marked monthly | one x5 | one x5 (a guard: calendar months would drop one) |
+| m(10, 5, 99) + m(10, 20, 119), marked at 99 | one x20, "Marked: monthly", both detected leave | marked x10 at 99, `onDay` 5, and detected 119 x10, `onDay` 20; marked at 119, the reverse |
+| m(10, 5, 99) + m(10, 20, 99), marked at 99 | one x20 | one x10 marked and the other x10 detected; which one is the anchor's walk, pinned as walked |
+| Apple x12 with purchases at 89, 109, 119, 399, 29, marked at 99 | one x21 | x12 plus each in-reach purchase whose slot holds no Apple charge, last charge 5 Oct at 99 (walked by the qa) |
+| Twelve monthly charges, m(12, 3, 199), marked yearly | one yearly x12, "Marked: yearly" | one per yearly slot around the anchor (walked: x1 or x2), "Marked: yearly" unless the kept charges fit yearly |
+| 20 Dec 2025 and 15 Jan 2026 at 400, marked yearly | one x2, "Marked: yearly" | one x1, 15 Jan 2026, "Marked: yearly" |
+| The daily shop, marked monthly at its first row's amount | one of all rows | one charge per month of its span (counted by the qa) |
 
 ## 9. Screens, entry and links
 

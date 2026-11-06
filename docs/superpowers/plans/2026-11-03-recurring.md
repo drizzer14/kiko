@@ -230,6 +230,9 @@ removeRecurringMarks: (key: string, marks: readonly RecurringMark[]) => Promise<
 
 ## The marked matrix (the contract of task 4/4 step 3)
 
+Rows that `1.4-recurring-visual-2 task 6/6` (one charge per period, spec 8.3) changes are listed with their `was` in that
+task's table; that table wins over a cell below.
+
 The same conventions; each row adds a stored entry for the world's name. A Mark names its period and, where the world holds more than one amount or none at that value, its stored amount; with none named, it stores the amount of the world's rows in their holding's currency (UAH unless the row says). Each table's No entry column is the result with no entry; every row also runs with no entry, and that result must hold. Hide, link and user-text-key flows are in "Marked flows" below. Line is the recurrence line. "marked" means `marks` is set; a detected series beside it has none. A world's rows outside the Expected series are in no series unless it says so. Stopped uses the monthly cutoff of 26 Sep 2026 unless the period differs.
 
 Amount chain worlds. Each cell is hand-walked by spec 5.2, 5.3, 6, 7 and 8.2; the developer re-reads any cell a pin disagrees with and reports it, never edits to green.
@@ -749,6 +752,9 @@ previous one's tip in that order. Task 5/5 is the track's design consistency rev
 floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base. Scope is the three items, the
 final Q5 ruling and the review only.
 
+**M is 6 since 2026-11-06** (was 5): task 6/6 is the user bug of DEPLOY 4 (spec 8.3). Tasks 1/5, 2/5, 3/5 and 5/5 merged
+under those names and keep them; read them as N/6.
+
 **Run-log gaps:** these sets close none and leave all open; none names the recurring screens. Nearest, left open:
 `20261103T2049-kiko-1-4-light-scheme-2/1` and `20261104T1734-kiko-1-4-light-scheme/1` (dark look owed on a device; this
 round's device call can cover the recurring screens in dark).
@@ -966,6 +972,100 @@ topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its 
 - [ ] **step 3/3 Ready.** The track's final READY FOR VERIFY, label `1.4-recurring-visual-2-task-5`, names
   `.superpowers/sdd/1.4-recurring/design-review-1.4-recurring.md` and the fix set's sha (or "no finding").
 
+### 1.4-recurring-visual-2 task 6/6: one charge per period in a marked chain (user bug, DEPLOY 4)
+
+**Spec:** 8.3 (the rule, the anchor, the dropped charge, the form, the `was` table). **Base:** 5ef73606a, or the branch tip
+when the set starts (re-grep every symbol below on it; no line numbers here). **Run-log gaps:** closes none, leaves all open;
+none names the marked chain. **Files (floor 12; mutable floor 4: `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
+`recurring-mark-field.component.tsx`):** those four, `marked-series.test.ts`, `src/test-support/marked-series-chain-worlds.ts`,
+`src/test-support/marked-series-worlds.ts`, `use-row-mark.test.tsx`, `recurring-mark-field.component.test.tsx`,
+`row-recurrence.test.ts`, the suite that pins the Marked flows' "99 x10, one 119 ... yearly pick on the 119 row" (grep
+`recurring-series.screen.marked.test.tsx` first), and kiko-domain's mark rules (drift step). No migration, no column, no text
+key, no seed: no 1.2-upgrade world is touched. **Not "existing suites green unchanged":** each edit below is named with its
+`was`; any other edited expectation is reported, not made. `detection.test.ts` and its matrix stay unedited (detection's
+output does not change).
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection: one definition of the slot rule (spec 8.3)
+export const onePerSlotOf: (
+  charges: readonly Charge[], // folded, oldest first
+  period: RecurringPeriod,
+  storedAmounts: readonly number[],
+) => { kept: Charge[]; dropped: Charge[] }; // kept oldest first
+
+// @kiko/recurring/marked-series: was (charges: { amountMinorUnits }[], marks, amountMinorUnits, currency)
+export const markedChainOfAmount: (
+  charges: readonly Charge[], // one group's charges, unfolded; the function folds
+  marks: readonly RecurringMark[],
+  row: { id: string; amountMinorUnits: number }, // absolute
+  currency: Currency,
+) => { period: RecurringPeriod; marks: readonly RecurringMark[]; holdsRow: boolean } | null;
+```
+
+`onePerSlotOf` lives in `detection.ts` beside `slotPairOf`, with a step table `Record<RecurringPeriod, { slotDays;
+stepForward }>` whose weekly, monthly and yearly entries are `WEEKLY`'s, `MONTHLY`'s and `YEARLY`'s own fields, and every 3 / 6
+months `addMonths(time, 3 * n)` / `6 * n` with 3 / 6 times `AVERAGE_MONTH_DAYS`. A signed nearest-step helper (the
+`slotPairOf` candidates n - 1, n, n + 1 around the rounded signed day count, least `dayGapOf`, tie to the lower n) serves both
+the anchor's cost and each charge's slot; `slotPairOf` itself is not edited. Anchor, slot and tie exactly as spec 8.3's table
+(the newest 12 nearest-amount charges at most, so the anchor costs at most 144 steps). In `marked-series.ts` one inner function
+builds a currency's chains: fold, `piecesOf`, the piece's charges, then `onePerSlotOf(pieceCharges, piece.period,
+piece.marks' amounts)`, returning the kept charges and the dropped ids. `chainsOfEntry` maps it (kept charges become the
+chain's `charges`, before `seriesOfChain`, so the count, list, totals, stopped read, date line and last charge all follow);
+`markedChainOfAmount` finds the chain whose span holds `row.amountMinorUnits` and sets `holdsRow` to "the row's id is not in
+the dropped ids" (a folded twin and a row outside the read stay held, as now). It now needs the charges' times and ids:
+`useRowMark` passes the group's `Charge[]` from `detection.chargeGroups` as they are (no `amountMinorUnits` map) and `{ id:
+row.id, amountMinorUnits: Math.abs(row.amountMinorUnits) }`; `row.id` joins that memo's deps. `RecurringMarkField`: when
+`chain?.holdsRow === false`, `selected` is `'none'` and the field is disabled; `writeMark` is unchanged. Update the doc comments
+of `markedSeriesOf` ("no day test") and `markedChainOfAmount` ("the fold is not needed") to the new rule.
+
+**Named edits, each with its `was` line in the qa commit body** (the qa re-walks every cell by spec 8.3 and reports any
+disagreement, never edits to green):
+
+| Pin | was | now |
+|---|---|---|
+| Marked matrix rows of spec 8.3's table (two detected series one chain; the same at one price; purchases in reach; period conflict; a month apart marked yearly; daily shop) in `marked-series-chain-worlds.ts` / `marked-series-worlds.ts` | spec 8.3 `was` column | spec 8.3 `now` column, walked exactly |
+| Property "never lets two consecutive amounts of a marked series differ by more than 1.25" | over the series' charges and marks | over the piece's charges and marks (kept and dropped): a dropped bridge may leave two kept amounts over 1.25 apart, the piece still holds them |
+| Property "equals the piece of amountPiecesOf for one mark on a charge" | the series' amount set equals the piece | the series' amounts are a subset of the piece, and a piece charge is out only when another charge of its slot is in |
+| Property "never leaves fewer charges on a day and amount than the largest count of one source" | kept >= the largest same-source count | no two kept charges of a marked series share a slot (the fold's own guard stays in `detection.test.ts`'s `foldTwins` pins; the qa names them, or reports none) |
+| "gives a deep-equal result for any row order and any mark order", "shares no charge between two shown series", "shows a detected series only when it shares no row with a marked one", spec 8.2's bridging rows | unchanged | unchanged: guards, each shown failing once by a scratch mutant of the tie's last key (drop the id) or of `detectedBesideMarked` |
+| `markedChainOfAmount` describe, its six cases | amount-only charges, an amount argument | `Charge` fixtures and a `row`; each result also states `holdsRow` |
+| Marked flow "99 x10, one 119, a detected 399 x10, marked at 99, a yearly pick on the 119 row" | the marked x11, yearly | as walked: if the 119 shares a slot with a 99, the field on it is disabled and no pick is possible (the flow pins that); else the pick and one per yearly slot |
+
+- [ ] **step 1/6 (kiko:qa): red pins.** New rows, in the existing world tables and describes (no new file, no new helper
+  copy): worlds A, B, C, D from the debugger's scratch (`marked-same-month.scratch.test.ts`, path in the coordinator's brief)
+  as matrix rows with `markedSeriesOf`, `paidSoFarOf` (the "All paid so far" figure) and `rowRecurrenceOf` on the extra row;
+  the month-end drift world as a guard (green on the base; shown failing by a calendar-month mutant of `onePerSlotOf` once it
+  exists, or recorded in the step-3 review); one `markedChainOfAmount` case per world A and D with `holdsRow: false` on the
+  extra; one `recurring-mark-field` case: a dropped row reads "Not marked", is disabled, and a press writes nothing; one
+  property: no marked series holds two charges of one slot (random ledgers). Then the named edits above. Each red shown failing
+  on the base for the stated reason (counts in the report); `was` values copied from a base run, never typed. Commit
+  `test(recurring): one charge per period in a marked chain`. **Check:** `npx jest src/recurring/marked-series
+  src/recurring/row-recurrence src/recurring/use-row-mark src/screens/forms/transaction-form/recurring-mark-field
+  --maxWorkers=2`, output in a file; reds only where named.
+- [ ] **step 2/6 (kiko:developer): the rule.** The interfaces above, in `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
+  `recurring-mark-field.component.tsx`. No pin edited. Commit `fix(recurring): one charge per period in a marked chain`.
+  **Checks:** fast tier on write; `npx jest src/recurring src/screens/forms/transaction-form/recurring-mark-field
+  src/screens/settings/recurring-charges src/screens/settings/recurring-series src/navigation/settings-stack --maxWorkers=2`
+  (includes `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<set base>` (exit 3: say so, the
+  named set stands). **`check:dup`:** keep test growth small (rows in existing tables, one property); read the
+  `dup-ceilings.tsv` rows of the touched tests; a ceiling never rises; the Stop hook's medium tier runs it.
+- [ ] **step 3/6 Review (kiko:reviewer).** Diff from the set base. Top questions: is there one slot definition, used by both
+  `chainsOfEntry` and `markedChainOfAmount` (fix-divergent-twins)? Can the anchor sit on an extra (world C) or flip on row
+  order? Does any reader of the marked series still see a dropped charge (totals, stopped, last charge, date line, route)? Are
+  the test edits only the named ones, each with its `was`?
+- [ ] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's mark rules ("A mark's chain ... The chain's
+  charges are the series"): add one charge per period slot, the rhythm anchor and the dropped charge. Report the sha or "no
+  drift found".
+- [ ] **step 5/6 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-recurring-visual-2-task-6`
+  once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest. Mutation gates are paused by the
+  user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own base.
+- [ ] **step 6/6 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-6`. Device (next build):
+  the user's own marked series shows one charge a month; its count, "All paid so far", last charge and date line agree; the
+  extra rows read "Not marked" (disabled) in the form; a second same-vendor subscription, if the ledger holds one, shows as
+  its own row.
+
 ---
 
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
@@ -984,6 +1084,7 @@ topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its 
 | visual-2 task 3/5 | 1 (listed in its Files) |
 | visual-2 task 4/5 | VOID (merged into 2/5) |
 | visual-2 task 5/5 | the fix set's own files, measured |
+| visual-2 task 6/6 | 4 (listed in its Files) |
 
 Mutation gates are paused by the user; this table is for a lift.
 
