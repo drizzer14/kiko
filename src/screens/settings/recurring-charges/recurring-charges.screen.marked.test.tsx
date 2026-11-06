@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
@@ -129,16 +129,16 @@ describe('RecurringChargesScreen — marked series', () => {
       ]),
     );
     const state = hookStateOf(ledger, [['Netflix', ['monthly', 250]]]);
-    const { getByTestId, getByText, queryByText } = await renderScreen(state);
+    const { getByTestId, getByText } = await renderScreen(state);
     const [series] = state.markedSeries;
+    const row = within(getByTestId(rowTestId(series.id)));
 
-    expect(getByTestId(rowTestId(series.id))).toBeTruthy();
     expect(getByText(i18n.t('recurringCharges.marked.monthly'))).toBeTruthy();
     expect(
       getByText(i18n.t('recurringCharges.lastCharge', { date: formatDate(series.lastChargeTime) })),
     ).toBeTruthy();
-    expect(getByText(formatMoney(Money.of('UAH', 26000)))).toBeTruthy();
-    expect(queryByText(formatMoney(Money.of('UAH', 25000)))).toBeNull();
+    expect(row.getByText(formatMoney(Money.of('UAH', 26000)))).toBeTruthy();
+    expect(row.queryByText(formatMoney(Money.of('UAH', 25000)))).toBeNull();
   });
 
   describe('a tap', () => {
@@ -192,7 +192,7 @@ describe('RecurringChargesScreen — Marked, No Charges', () => {
   it('lists each piece with its message, its marked line and a remove button, and shows no amount', async () => {
     const netflix = ledgerOf(monthly(6, 3, 250, { prefix: 'netflix' }));
     const state = hookStateOf(netflix, GHOSTS);
-    const { getAllByText, getByText, queryByText } = await renderScreen(state);
+    const { getAllByText, getByTestId, queryByText } = await renderScreen(state);
 
     expect(state.withoutCharges).toHaveLength(4);
     expect(getAllByText(markedEmptyHeading())).toHaveLength(1);
@@ -201,7 +201,11 @@ describe('RecurringChargesScreen — Marked, No Charges', () => {
     expect(getAllByText('Apple')).toHaveLength(3);
     expect(getAllByText('ATB')).toHaveLength(1);
     // The twin: a real series shows its last charge, so the matcher does find an amount.
-    expect(getByText(formatMoney(Money.of('UAH', 25000)))).toBeTruthy();
+    expect(
+      within(getByTestId(rowTestId(idOf(state, 'Netflix')))).getByText(
+        formatMoney(Money.of('UAH', 25000)),
+      ),
+    ).toBeTruthy();
 
     for (const { currency, marks } of state.withoutCharges) {
       for (const { amountMinorUnits } of marks) {
