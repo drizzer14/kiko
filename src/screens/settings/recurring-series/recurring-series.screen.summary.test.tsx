@@ -6,6 +6,7 @@ import { formatDate } from '@kiko/dates';
 import { en, uk } from '@kiko/i18n/locales';
 import { Money } from '@kiko/currency/money';
 import { formatMoney } from '@kiko/currency/format';
+import { activeLocale } from '@kiko/i18n/active-locale';
 import type { transactionsRepo } from '@kiko/transactions/repo';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import type SummaryTable from '@kiko/design-system/components/summary-table';
@@ -139,6 +140,8 @@ const LEDGER = [
 ];
 
 const PAID = 10000 + 20050 + 30025;
+
+const paidText = (): string => formatMoney(Money.of('UAH', PAID), activeLocale());
 
 const ROUTE = {
   seriesId: 'netflix-1',
@@ -276,9 +279,7 @@ describe.each(['en', 'uk'] as const)('RecurringSeriesScreen — the table, in %s
       exact: true,
     });
     expect(header.getByTestId(VALUE.chargeCount)).toHaveTextContent('3', { exact: true });
-    expect(header.getByTestId(VALUE.paid)).toHaveTextContent(formatMoney(Money.of('UAH', PAID)), {
-      exact: true,
-    });
+    expect(header.getByTestId(VALUE.paid)).toHaveTextContent(paidText(), { exact: true });
   });
 
   it('shows a stopped series its status between the last charge and the count', async () => {
@@ -350,9 +351,7 @@ describe.each(['en', 'uk'] as const)('RecurringSeriesScreen — the table, in %s
       labels.chargeCount,
       labels.paid,
     ]);
-    expect(getByTestId(VALUE.paid)).toHaveTextContent(formatMoney(Money.of('UAH', PAID)), {
-      exact: true,
-    });
+    expect(getByTestId(VALUE.paid)).toHaveTextContent(paidText(), { exact: true });
   });
 });
 
