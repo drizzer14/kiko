@@ -739,12 +739,15 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
 **Spec:** section 18 (18.1 the reversals with their "was:", 18.2 totals, 18.3 the table, 18.4 hidden rows, 18.5 the footer,
 18.7 texts, 18.8 answers with Q5). **Branch:** `1.4-recurring-visual-2`, base 85215396e (visual-1 task 3/3's tip, not
 yet in `next`). **Answers (USER 2026-11-06):** Q1 A, Q2 (a stopped series counts, a hidden one does not, plus a way to remove a
-stopped series: Q5), Q3 A plus the hidden amount greyed (`MoneyText tone="muted"`, token `textSecondary`), Q4 B, Q5 "A:
-Remove = hide" with "Long press+delete action". **Texts:** APPROVED 2026-11-06 ("Texts approved"; Q5 A "lgtm"). **Gates:**
-none left; task 1/5 step 1/4 first, then each task on the previous tip. Task 5/5 is the track's design
-consistency review (user rule 2026-11-06). Five change sets, stacked: task 1/5 on this plan's commit, each next one on the
-previous tip. Every count is a floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base.
-Scope is the three items, Q5 and the review only.
+stopped series: Q5), Q4 B, and the FINAL Q5 RULING (USER 2026-11-06, spec 18.8): one action "Not a recurring charge", by long
+press on any series row and the series footer, removes the series entirely; no "Hidden" section, no "Show again"; only a
+mark brings it back. Q3 and the earlier Q5 A are SUPERSEDED (spec 18.8 keeps them as the record). **Texts:** rows of tasks
+1/5 and 3/5 APPROVED 2026-11-06; task 2/5's rows PENDING USER REVIEW (texts-visual-2.md, "Final Q5 ruling texts
+(pending)"). **Order and gates:** 1/5, then 3/5 (the table does not depend on the ruling, so it starts while the texts wait),
+then 2/5 (gated on the pending texts), then 5/5. Task 4/5 is VOID, merged into 2/5. Four change sets, stacked: each on the
+previous one's tip in that order. Task 5/5 is the track's design consistency review (user rule 2026-11-06). Every count is a
+floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base. Scope is the three items, the
+final Q5 ruling and the review only.
 
 **Run-log gaps:** these sets close none and leave all open; none names the recurring screens. Nearest, left open:
 `20261103T2049-kiko-1-4-light-scheme-2/1` and `20261104T1734-kiko-1-4-light-scheme/1` (dark look owed on a device; this
@@ -797,82 +800,114 @@ in the same step (harness-workflow "Removing or renaming a catalogue key").
 - [ ] **step 4/4 Device and Ready.** Both languages: group totals and the total of all against a hand sum of the rows'
   amounts, a UAH and a USD series, a stopped series. READY FOR VERIFY, label `1.4-recurring-visual-2-task-1`.
 
-### 1.4-recurring-visual-2 task 2/5: hidden series in their group, "Show again" on the series screen (item 3)
+### 1.4-recurring-visual-2 task 2/5: "Not a recurring charge" removes a series entirely (item 3, final Q5 ruling)
 
-**Base:** task 1/5's tip. **Files (floor 22; mutable floor 6: `recurring-groups.ts`, `use-recurring-groups.ts`,
-`recurring-charges.screen.tsx`, `recurring-series-row.component.tsx`, `recurring-group-heading.component.tsx`,
-`recurring-series.screen.tsx`).**
-- Modify: `src/recurring/recurring-groups/{recurring-groups.ts,recurring-groups.test.ts}` (a `hidden` input; a group's
-  hidden series after its counted ones; `total` optional);
-  `src/recurring/use-recurring-groups/{use-recurring-groups.ts,use-recurring-groups.test.tsx}` (signature `(shown, hidden)`,
-  the id list from both, the same set as today's `all`); `src/test-support/mock-recurring-groups.ts` (its `satisfies` follows);
-  `recurring-charges.screen.tsx` (remove `hiddenEntriesOf`, `hiddenItemsOf`, `HIDDEN_HEADING_ITEM`, the `hidden` list items,
-  the list's `showAgain`; the empty item when nothing lists); `recurring-series-row/{recurring-series-row.component.tsx,
-  recurring-series-row.props.d.ts,recurring-series-row.component.test.tsx}` (an `isHidden` prop, the tag line, testID
-  `recurring-series-row-hidden-<id>`, the amount `MoneyText tone="muted"`); `recurring-group-heading/{recurring-group-heading.component.tsx,
-  recurring-group-heading.props.d.ts,recurring-group-heading.component.test.tsx}` (no total when absent);
-  `recurring-series.screen.tsx` (the third footer kind, `choices` from `useRecurringSeries`); `src/i18n/locales/{en,uk,title-keys}.ts`.
-- Modify, the Hidden-section pins (grep `recurring-charges-hidden-`, `recurring-charges-show-again-`,
-  `recurring-charges-heading-hidden`, `heading-hidden`, `hiddenHeading`, `HIDDEN_LINE` on the base; at 85215396e):
-  `recurring-charges.screen.test.tsx` (describe `RecurringChargesScreen — hidden merchants`, and `with only hidden
-  merchants`), `recurring-charges.screen.marked.test.tsx` (the `HIDDEN_APPLE` cases and the `ghost` key, the headings list that
-  reads `hiddenHeading`), `recurring-charges.screen.marked-flows.test.tsx` (`HIDDEN_LINE` and the `HIDDEN_AND_MARKED` flows),
-  `recurring-charges.screen.groups.test.tsx` (the item-order world with `heading-hidden`, and `shows no total in "Marked, No
-  Charges" or "Hidden"`), `recurring-series.screen.test.tsx`, `recurring-series.screen.footer.test.tsx`.
-- By measure: `src/navigation/settings-stack/recurring-series.navigator.test.tsx` (a "Show again" late write beside the hide's
-  `a hide write that lands after the user moved on`), `recurring-series.marks.navigator.test.tsx`;
-  `src/recurring/row-recurrence/row-recurrence.properties.test.ts` (its oracle's wording only, spec 18.4; no assertion moves).
-  `settings.repo.test.ts` does not change (`showRecurringMerchantAgain` is unchanged).
+**Was:** "hidden series in their group, "Show again" on the series screen" (round 2 Q3 A, VOID) and task 4/5 "remove a stopped
+series from the list" (Q5 A, VOID, merged here). **Spec:** 18.4, 18.5, 18.7, 18.8 "Final Q5 ruling". **Gate:** the texts
+PENDING USER REVIEW (texts-visual-2.md, "Final Q5 ruling texts (pending)"); no step starts before the coordinator relays the
+user's approval; an edited row is copied as approved. **Base:** task 3/5's tip (runs after 3/5). No migration, no column, no
+store shape change. **Files (floor 21; mutable floor 4: `recurring-charges.screen.tsx`, `recurring-series.screen.tsx`,
+`settings.repo.ts`, `card-context-menu.component.tsx`).**
+- Modify, code:
+  - `src/screens/settings/recurring-charges/recurring-charges.screen.tsx`: remove `HIDDEN_HEADING_ITEM`, `hiddenEntriesOf`,
+    `hiddenItemsOf`, the `'hidden'` list-item kind and the `'hidden'` heading section, their `keyOf` and render arms (testIDs
+    `recurring-charges-heading-hidden`, `recurring-charges-hidden-<key>`, `recurring-charges-show-again-<key>`), `showAgain`,
+    `itemsOf`'s `choices` parameter, every import left unused (`compareText` and others: tsc and knip decide), and the
+    comments that name the hidden section. The `series` arm wraps `RecurringSeriesRow` in `CardContextMenu` for every series
+    (detected, stopped, quiet, marked): `name={series.name}`, `deletable`, `liftOnHold`, `deleteLabel={t('recurringCharges.notRecurring')}`,
+    `deleteTitle={t('recurringCharges.notRecurringConfirmTitle')}`, `deleteMessage` resolving
+    `t('recurringCharges.notRecurringConfirmMessage', { name })`, `onDelete` calling
+    `settingsRepo.hideRecurringMerchant(series.merchantKey, series.name, series.marks ?? [])` with the list's `alertOnCatch`
+    save-error keys. `markedEmpty` rows stay as they are (no hold).
+  - `src/design-system/components/card-context-menu/card-context-menu.component.tsx`: optional `deleteLabel?: string`, the
+    text of the delete item and of the confirm button; omitted, `t('common.delete')` (every current caller unchanged).
+  - `src/settings/settings.repo.ts`: `hideRecurringMerchant(key, name, chain: readonly RecurringMark[] = [])` sets `hidden:
+    true` and drops the stored marks of `chain` (`isSameChain`) in the same `changeRecurringMerchantChoices` write; remove
+    `showRecurringMerchantAgain` (no caller left). `recurringChoiceOf` and `withChoice` stay only if `removeRecurringMarks`
+    still calls them (knip decides).
+  - `src/screens/settings/recurring-series/recurring-series.screen.tsx`: the footer's "Not a recurring charge" opens the shared
+    `ConfirmSheet` (same title, message with the name, `confirmLabel` `notRecurring`, `destructive`); its confirm runs the
+    existing `hide` through `useSubmitOnce`; Cancel writes nothing; the go-back rules unchanged (Q4 B). The marked footer
+    "Remove mark" unchanged.
+  - `src/i18n/locales/{en,uk,title-keys}.ts`: add `recurringCharges.notRecurringConfirmTitle` (also in `TITLE_KEYS`) and
+    `recurringCharges.notRecurringConfirmMessage`; change `help.topics.viewRecurringCharges.steps.4`; remove
+    `recurringCharges.hiddenHeading` (en, uk, `title-keys.ts`) and `recurringCharges.showAgain` (en, uk).
+- Modify, pins (grep on the base `recurring-charges-hidden-`, `recurring-charges-show-again-`, `heading-hidden`,
+  `hiddenHeading`, `showAgain`, `showRecurringMerchantAgain`, `HIDDEN_LINE`, `hideRecurringMerchant`; at 4e61124c7):
+  `recurring-charges.screen.test.tsx` (describe `RecurringChargesScreen — hidden merchants`; the `hiddenHeading`/`showAgain`
+  text pins), `recurring-charges.screen.marked.test.tsx` (`HIDDEN_APPLE`, the `ghost` key, the headings list reading
+  `hiddenHeading`; the qa agent's in-flight edits land first), `recurring-charges.screen.marked-flows.test.tsx` (`HIDDEN_LINE`,
+  the show-again flow), `recurring-charges.screen.groups.test.tsx` (the item-order world with `heading-hidden`, `shows no total
+  in "Marked, No Charges" or "Hidden"`), `recurring-series.screen.test.tsx` (the hide pins), `recurring-series.screen.footer.test.tsx`,
+  `src/settings/settings.repo.test.ts` (the `showAgain` helper, its three cases, describe `showRecurringMerchantAgain`, `touches
+  no transactions row on a hide or a show again`), `card-context-menu.component.test.tsx`,
+  `src/navigation/settings-stack/recurring-series.navigator.test.tsx` (`a hide write that lands after the user moved on`: through
+  the confirm). By measure: `src/i18n/locales/title-keys.call-sites.test.ts` (the footer's `ConfirmSheet title` is a literal
+  `t('key')`, so `TITLE_KEYS` covers it; `deleteTitle` is already a forwarded site: verify), the suite that pins the help
+  steps (grep `viewRecurringCharges.steps` under `src`), `recurring-series.marks.navigator.test.tsx` (no hidden case at
+  4e61124c7). `help-topics.ts` and its test do not change (no step 6).
 
-- [ ] **step 1/5 (kiko:qa): pins, red on the base.** Commit `test(settings): hidden series in their group, "Show again" on the
-  series`. Named edits, one `was:` line each (the "was:" column of spec 18.1):
-  - `recurring-groups.test.ts`: a hidden series lands in its category's group after that group's active and stopped series,
-    newest charge first among the hidden (red); it adds nothing to the group total or the total of all (red: today it is not
-    in the input); a group of hidden series only has no `total` (red); with only hidden series no total of all.
-  - `use-recurring-groups.test.tsx`: the id list is unique and sorted over `shown` and `hidden`; moving one series from
-    `shown` to `hidden` (a hide) adds no new by-ids key (the existing pin, re-pointed).
-  - List suites: no `recurring-charges-heading-hidden` and no `recurring-charges-hidden-*` line in any world (was: a Hidden
-    section with one line per key); a hidden key's detected series renders `recurring-series-row-<id>` inside its group, after
-    that group's stopped row, with the "Hidden" / «Приховано» tag (red); a visible series of another key keeps its place; a
-    hidden key with no detected series renders no row (was: `names a hidden merchant that has no rows now`); hidden and
-    marked: the marked series as before plus the hidden detected series beside it, tagged (was: the "Hidden" line); with only
-    hidden series, the groups and no empty state (was: `shows the empty state and the section together`); no "Hidden" heading
-    text in either language; the "Marked, No Charges" section last with its divider; the divider before a group still keyed
-    by the group.
-  - `recurring-group-heading.component.test.tsx`: with no `total`, no amount renders and the title keeps its box.
-  - `recurring-series-row.component.test.tsx`: `isHidden` adds the tag line under the recurrence line, in the name's column,
-    and renders the amount in `textSecondary` (read the resolved color from the theme, not a hex; red); without it no tag and
-    the amount keeps today's color (guard).
-  - `recurring-series.screen.footer.test.tsx`: on a hidden detected series the footer holds `recurring-series-show-again`,
-    "Show again" / «Показати знову», `variant="primary"`, regular, full width, and no `recurring-series-hide` (red); a tap
-    calls `showRecurringMerchantAgain` with the key once (a double tap once, `useSubmitOnce`), goes back only after the write
-    and only while focused (Q4 B), and a rejected write alerts and stays; a marked series under a hidden key still shows
-    "Remove mark"; a not-hidden detected series still shows "Not a recurring charge", `secondaryTonal` (guards).
-- [ ] **step 2/5 (kiko:developer): code.** Spec 18.4, 18.5. `recurringGroupsOf` takes `hidden`; `RecurringGroup` gains its
-  hidden series and an optional `total`; `useRecurringGroups(shown, hidden)`; the screen splits the detected series by the
-  hide test of 18.4. The row and heading props; theme tokens only (the hidden amount through `MoneyText`'s `muted` tone, no
-  local color). The series screen's footer by kind with `match`, the
-  "Show again" path as the hide's (`useSubmitOnce`, `alertOnCatch`, `navigation.isFocused()`). Catalogue in the same commit:
-  add `hiddenTag`; remove `recurringCharges.hiddenHeading` from `en.ts`, `uk.ts` and `title-keys.ts`; help step 4 in both
-  languages, the approved row byte for byte; grep `hiddenHeading`, `Приховані` and "from \"Hidden\"" in `src`, `docs/superpowers/specs` and the skills on the
-  base first, and edit every hit here. kiko-design-system's footer line (the lone secondary action now has a primary third kind
-  on this screen) in this commit or step 4/5. Run `npx jest src/recurring src/screens/settings/recurring-charges
-  src/screens/settings/recurring-series src/navigation/settings-stack src/help src/screens/settings/help-topic
-  src/i18n/locales --maxWorkers=2`. Commit `feat(settings): hidden series in their group, "Show again" on the series`.
-- [ ] **step 3/5 Review (kiko:reviewer).** Diff from the set's base. Top question: can a hidden series reach a total, or a
-  marked series read as hidden? Second: does a hide or "Show again" now run detection, a whole-ledger read or a new by-ids key
-  (spec 9.5)? Third: is any Hidden-section pin deleted rather than re-pointed, and is every removed key gone from both
-  catalogues, `title-keys.ts` and the help text? No migration.
-- [ ] **step 4/5 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring section (hidden rows, the tag, the
-  totals leave them out, the form unchanged), kiko-design-system (the footer kinds), spec 8.1's text if retrospect asks.
-  Report the sha or "no drift found"; `make doc-suites` after.
-- [ ] **step 5/5 Device and Ready.** Both languages: hide a series, Back, the row in its group with the tag, its amount grey,
-  and the totals without it; open it, "Show again" as the primary footer button, Back, the row untagged and counted; a hidden key beside a
-  marked series. READY FOR VERIFY, label `1.4-recurring-visual-2-task-2`.
+- [ ] **step 1/5 (kiko:qa): pins, red on the base.** Every named edit carries a `was:` line (spec 18.4's matrix). List suites:
+  - a hidden key with no mark: none of its series render, no `recurring-charges-heading-hidden`, no `recurring-charges-hidden-*`,
+    no `recurring-charges-show-again-*`, no "Hidden" / «Приховані» text (red; was: the "Hidden" section with "Show again");
+    its amounts are in no group total and not in the total of all (guard; red on a mutant that passes `every` as `shown`);
+  - a new charge of a hidden key (its newest charge today, after the hide) stays out (guard; red on a mutant that lists a
+    hidden detected series that is active);
+  - a mark on one of its charges brings it back: hidden key plus a mark in that currency lists the marked series and counts
+    it (guard; red on a mutant that filters `markedSeries` by the hide); written through `markRecurringCharge` in the
+    marked-flows suite, the series appears after the write (guard);
+  - only a hidden key: the empty state and nothing after it (red; was: `shows the empty state and the section together`);
+  - the long press, on each of an active, a stopped, a quiet and a marked row (`HOLD_GESTURE_TEST_ID` within the row): the
+    confirm opens titled with the pending title, the message with the row's name, the confirm button
+    (`DELETE_CONFIRM_TEST_ID`) "Not a recurring charge" / «Це не регулярний платіж», `destructive`, and no "Delete" /
+    «Видалити» text (red); a "Marked, No Charges" row has no hold (guard);
+  - one write path: confirm on a detected row calls `settingsRepo.hideRecurringMerchant(key, name, [])` once; on a marked row
+    `(key, name, series.marks)` once; the same spy as the footer pin, and no other `settingsRepo` write runs (red); Cancel
+    calls nothing (red);
+  - after the confirm (the live-query mock of `recurring-mark-live-queries.ts`, by measure): the row and every detected
+    series of that key in another currency leave the list, their amounts leave the group totals and the total of all (red);
+    on a marked row the marked series leaves and the key's detected series does not appear (red);
+  - a rejected write alerts with the save-error keys and the row stays (red); a tap on a row still opens the series (guard).
+  Footer (`recurring-series.screen.footer.test.tsx`, `recurring-series.screen.test.tsx`): a tap on `recurring-series-hide`
+  opens the confirm and writes nothing (red; was: the tap writes); the confirm writes `hideRecurringMerchant(key, name)` once
+  (a double tap once), goes back only after the write and only while focused (Q4 B stands; named edits of `hides the merchant
+  key with its name on a tap, and goes back only after the write` and `does not go back when another screen was opened over it
+  before the write landed`); Cancel stays and writes nothing (red); the marked series still shows "Remove mark" (guard).
+  Navigator: the late-write pin through the confirm (named edit). Repo (`settings.repo.test.ts`): a hide with a chain sets
+  `hidden: true`, drops only that chain's marks and keeps the key's other marks, in one write (red); without a chain as today
+  (guard); the `showRecurringMerchantAgain` cases go with the function (was: show again clears the hide). `CardContextMenu`:
+  `deleteLabel` labels the action-list delete item and the confirm button (red); omitted, both read "Delete" (guard). Help:
+  step 4 in both languages, the approved row byte for byte (red). Commit `test(settings): not a recurring charge removes a
+  series entirely`.
+- [ ] **step 2/5 (kiko:developer): code.** Spec 18.4, 18.5. The Files above; the shared `CardContextMenu` and `ConfirmSheet`,
+  no local sheet, theme tokens only. Before removing `hiddenHeading` and `showAgain`, grep both keys and the literals
+  `Приховані`, "Show again", «Показати знову», `from "Hidden"` in `src`, `__tests__`, the help topics, `docs/superpowers`,
+  `.claude/skills` and `harness/kiko/skills` on the base, and edit every hit in this commit (harness-workflow "Removing or
+  renaming a catalogue key"; at 4e61124c7 kiko-domain names the 'Hidden' section and "Show again"). Run `npx jest
+  src/recurring src/settings src/screens/settings/recurring-charges src/screens/settings/recurring-series
+  src/navigation/settings-stack src/design-system/components/card-context-menu src/help src/screens/settings/help-topic
+  src/i18n/locales --maxWorkers=2`; `npm run check:knip` (no unused export). Commit `feat(settings): not a recurring charge
+  removes a series entirely`.
+- [ ] **step 3/5 Review (kiko:reviewer).** Diff from the set's base. Top question: can a series of a hidden key with no mark
+  reach the list or a total, and does a mark still bring it back? Second: do the hold and the footer share the one write, and
+  does a marked row's write clear only that chain's marks? Third: does `deleteLabel` change any existing `CardContextMenu`
+  caller, and does the hold on every row keep the list's scroll and tap? Fourth: is any removed pin deleted rather than
+  re-pointed, and is every removed key gone from both catalogues, `title-keys.ts`, the help text and the skills? Fifth: does a
+  hide still add no by-ids key and run no detection (9.5)? No migration.
+- [ ] **step 4/5 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring section (no "Hidden" section, the
+  per-key hide with no date, the marked-row write, the only way back), kiko-design-system (`CardContextMenu` `deleteLabel`, a
+  recurring caller; the series footer's confirm), spec 8.1 and 9.2's text if retrospect asks. Report the sha or "no drift
+  found"; `make doc-suites` after.
+- [ ] **step 5/5 Device and Ready.** Both languages: hold an active row, the confirm, the row and its other-currency series
+  gone, totals down; hold a marked row, gone, its detected twin absent; open a detected series, the footer, the confirm, Back;
+  mark one of a removed series' transactions in the form, the series back; Cancel leaves everything; the list scrolls from a
+  held row. READY FOR VERIFY, label `1.4-recurring-visual-2-task-2`.
 
 ### 1.4-recurring-visual-2 task 3/5: the series screen's table (item 2)
 
-**Base:** task 2/5's tip. **Files (floor 9; mutable floor 1: `recurring-series.screen.tsx`).**
+**Base:** task 1/5's tip (was: task 2/5's tip). The next code task after 1/5: the table does not depend on the final Q5
+ruling and its texts are approved, so it starts while task 2/5's texts wait. **Files (floor 9; mutable floor 1:
+`recurring-series.screen.tsx`).**
 - Create: `src/screens/settings/recurring-series/recurring-series.screen.summary.test.tsx`.
 - Modify: `recurring-series.screen.tsx` (the header becomes one `SummaryTable`); `recurring-series.styles.ts` (`paidRow`,
   `paidLabel`, `paidAmount` go if unused); `src/i18n/locales/{en,uk}.ts`.
@@ -901,72 +936,17 @@ in the same step (harness-workflow "Removing or renaming a catalogue key").
   series, a marked one; the largest non-accessibility size and AX1 (a wrapped value keeps its label). READY FOR VERIFY, label
   `1.4-recurring-visual-2-task-3`.
 
-### 1.4-recurring-visual-2 task 4/5: remove a stopped series from the list (spec 18.8 Q5 A, with the long press)
+### 1.4-recurring-visual-2 task 4/5: VOID (merged into task 2/5)
 
-**Answered:** Q5 "A: Remove = hide", "Long press+delete action", texts "lgtm" (2026-11-06). **Base:** task 3/5's tip. **Files
-(floor 17; mutable floor 4: `recurring-charges.screen.tsx`, `recurring-series.screen.tsx`, `help-topics.ts`,
-`card-context-menu.component.tsx`; plus `use-recurring-groups.ts` if the ids input is chosen below).**
-- Modify: `recurring-charges.screen.tsx` (the split of the detected series: hidden AND `isStopped` goes to neither `shown` nor
-  `hidden`; the series item wraps `RecurringSeriesRow` in `CardContextMenu` with `liftOnHold`, `deletable={false}`, and a
-  `closeAction` `{ label: t('recurringCharges.removeFromList'), destructive: true, onPress }` only for a stopped detected
-  series not hidden, else no action, so the row renders bare); `src/design-system/components/card-context-menu/
-  {card-context-menu.component.tsx,card-context-menu.component.test.tsx}` (`closeAction` gains optional `destructive: true`,
-  rendering that item `variant="destructive"`; no confirm, as `runClose` today);
-  `src/recurring/use-recurring-groups/{use-recurring-groups.ts,use-recurring-groups.test.tsx}` (the removed series' ids stay
-  in the by-ids read, so a removal adds no by-ids key, spec 9.5: a third ids-only input or the same `every` list the
-  developer measures); `recurring-series.screen.tsx` (a fourth footer kind); `src/help/{help-topics.ts,help-topics.test.ts}`
-  (`steps.6` in `stepKeys`); `src/i18n/locales/{en,uk}.ts`.
-- One write: the footer and the menu item both call `settingsRepo.hideRecurringMerchant(series.merchantKey, series.name)`, the
-  existing repo write; no new repo function and no list-local copy of the write logic beyond its call and the alert (the list's
-  catch is `alertOnCatch` with the save-error keys, as its other writes).
-- Modify, pins: `recurring-charges.screen.test.tsx`, `recurring-charges.screen.groups.test.tsx`,
-  `recurring-charges.screen.marked.test.tsx` (each world with a hidden stopped series; grep `isStopped: true` beside a hidden
-  key on the base), `recurring-series.screen.footer.test.tsx`, `src/screens/settings/help-topic/help-topic.screen.test.tsx` (if
-  it counts the steps). By measure: `src/navigation/settings-stack/recurring-series.navigator.test.tsx` (a late "Remove from
-  list" write beside the hide's).
-
-- [ ] **step 1/5 (kiko:qa): pins, red on the base.** Named edits with `was:` (was: a hidden stopped series is a "Hidden" row,
-  task 2/5). List: a hidden stopped series renders no row and adds nothing to any total (red); a hidden active series of
-  the same group still renders tagged (guard); a stopped series not hidden still renders and counts (guard, Q2); a group whose
-  only series is hidden and stopped renders no heading (red); the empty state when nothing else lists (red);
-  `use-recurring-groups.test.tsx`: a removal (a stopped series moved to hidden) adds no by-ids key (red if the ids drop).
-  Footer: a stopped detected series not hidden shows `recurring-series-remove`, "Remove from list" / «Прибрати зі списку»,
-  `secondaryTonal`, and no `recurring-series-hide` (red); a tap calls `hideRecurringMerchant(key, name)` once, goes back only
-  after the write and only while focused, a rejected write alerts and stays (Q4 B); an active detected series still shows "Not
-  a recurring charge", a marked stopped series "Remove mark", a hidden series "Show again" (guards). Help: `steps.6` in both
-  languages (red). Long press (list suites, `HOLD_GESTURE_TEST_ID` and `CLOSE_ACTION_TEST_ID` from `CardContextMenu`): a hold
-  on a stopped detected row opens the menu headed by the row's name with one item "Remove from list" / «Прибрати зі списку»
-  in `variant="destructive"` and Cancel, and no `DELETE_ACTION_TEST_ID` and no confirm sheet (red); tapping it calls
-  `hideRecurringMerchant` with the series' key and name once, the same spy and arguments as the footer pin (red); after the
-  write the row leaves the list and its amount leaves its group total and the total of all (red); a rejected write alerts and
-  the row stays (red); a hold on an active row, a hidden row and a marked stopped row shows no remove item (the row renders
-  bare, no `card-context-menu`; guards, red on a mutant that offers it to every row); a tap on a stopped row still opens the
-  series screen (guard). `card-context-menu.component.test.tsx`: a `closeAction` with `destructive: true` renders
-  `variant="destructive"` and runs `onPress` with no confirm (red); without it the item keeps today's default variant (guard).
-  Commit `test(settings): remove a stopped series from the list`.
-- [ ] **step 2/5 (kiko:developer): code.** Spec 18.8 Q5 A and its long press. The split, the row's menu and the footer by
-  kind with `match` (four kinds); the write is the existing hide, no new repo function, no store change; the menu is the
-  shared `CardContextMenu`, no local sheet. Catalogue: `recurringCharges.removeFromList` and
-  `help.topics.viewRecurringCharges.steps.6` into `en.ts` and `uk.ts` together, as approved; `steps.6` into `stepKeys`. Run
-  `npx jest src/recurring src/screens/settings/recurring-charges src/screens/settings/recurring-series
-  src/navigation/settings-stack src/help src/screens/settings/help-topic src/design-system/components/card-context-menu
-  src/i18n/locales --maxWorkers=2`. Commit `feat(settings): remove a stopped series from the list`.
-- [ ] **step 3/5 Review (kiko:reviewer).** Top question: can the removal hide a marked series, drop an active series of the key
-  from the list (it must stay, tagged), or change a by-ids key? Second: do the menu item and the footer share one write, and
-  does any other row get a hold gesture (it would also take the hold from the list's scroll)? Third: does `destructive` change
-  any existing `closeAction` caller (the close-holding sheets)? Fourth: does a hidden series that stops leave the list, and one
-  charged again come back tagged?
-- [ ] **step 4/5 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring section (hidden and stopped is not
-  listed; the long press), kiko-design-system's footer kinds (four) and `CardContextMenu`'s `closeAction` (the destructive
-  flag, a new caller), spec 18.4's "Which series".
-- [ ] **step 5/5 Device and Ready.** Both languages: a stopped series, "Remove from list", Back, gone with the totals down by its
-  amount; a hold on another stopped row, the destructive item, gone the same way, no confirm; a hold on an active row opens
-  nothing and the list still scrolls from it; an active series of the same key stays, tagged. READY FOR VERIFY, label
-  `1.4-recurring-visual-2-task-4`.
+VOID by the user's final Q5 ruling, 2026-11-06 (spec 18.8). Was: "remove a stopped series from the list" (Q5 A): a "Remove
+from list" footer button and a no-confirm long-press item on a stopped detected row only, `closeAction` with a `destructive`
+flag, help step 6. Now: task 2/5 (one action "Not a recurring charge" on every series row and the footer, behind a confirm;
+`CardContextMenu` `deleteLabel`, no `closeAction` change; no step 6). No code was written for it; no label
+`1.4-recurring-visual-2-task-4` is queued.
 
 ### 1.4-recurring-visual-2 task 5/5: Design consistency review (user rule 2026-11-06)
 
-**Base:** task 4/5's tip. Runs after task 4/5's review
+**Base:** task 2/5's tip (was: task 4/5's tip). Runs after task 2/5's review
 and before the track's final READY FOR VERIFY. **Scope, the track's touched screens and components (a floor; measure with
 `git diff --name-only next..<tip> -- src/screens src/design-system` plus the files of
 `.superpowers/sdd/1.4-recurring/READY-visual-1-task-{1,2,3}.md`):** `src/screens/settings/recurring-charges/`
@@ -974,7 +954,7 @@ and before the track's final READY FOR VERIFY. **Scope, the track's touched scre
 `src/screens/settings/recurring-series/recurring-series.screen.tsx`, `src/screens/forms/transaction-form/transaction-form.screen.tsx`
 and its `recurring-mark-field`, `src/screens/forms/exchange-fields/exchange-fields.component.tsx`,
 `src/screens/forms/paired-fields-row/paired-fields-row.component.tsx`, `src/screens/settings/help-topic` (the recurring
-topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its destructive `closeAction`).
+topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its `deleteLabel`) with the series footer's `ConfirmSheet`.
 
 - [ ] **step 1/3 Review (kiko:designer, READ-ONLY).** Over every file of the scope, five points: shared design-system
   components only, no local copies; theme tokens only; the same patterns as the sibling screens (dividers, headers, buttons,
@@ -1000,9 +980,9 @@ topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its 
 | visual-1 task 2/3 | 5 (was 4; `exchange-fields.component.tsx` joins, P3 B; listed in its Files) |
 | visual-1 task 3/3 | 4 (listed in its Files) |
 | visual-2 task 1/5 | 2 (listed in its Files) |
-| visual-2 task 2/5 | 6 (listed in its Files) |
+| visual-2 task 2/5 | 4 (was 6; listed in its Files) |
 | visual-2 task 3/5 | 1 (listed in its Files) |
-| visual-2 task 4/5 | 4 (listed in its Files) |
+| visual-2 task 4/5 | VOID (merged into 2/5) |
 | visual-2 task 5/5 | the fix set's own files, measured |
 
 Mutation gates are paused by the user; this table is for a lift.

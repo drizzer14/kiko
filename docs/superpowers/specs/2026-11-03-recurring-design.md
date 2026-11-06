@@ -1147,11 +1147,12 @@ is in section 9.6 ("The detected period"), 8.2 and 13. Detection itself does not
 
 The user's device check of `next` 258396580, relayed by the coordinator, three items. Words in quotes are the user's (as
 relayed). This section overrides sections 8.1, 9.2, 9.3, 17.2, 17.4 and 17.6 where they differ. Detection, marks, the store,
-the routes, the form's mark field and the reads (17.5) do not change. **Status: Q1 to Q4 answered by the user 2026-11-06
-(18.8); texts approved 2026-11-06 ("Texts approved"). Q5, a way to remove a stopped series from the list (a need the Q2
-answer added), answered 2026-11-06 "A: Remove = hide" with "Long press+delete action"; its texts "lgtm".** Every fact here was
-read at
-85215396e or 6df66759b: re-grep each symbol on the base.
+the routes, the form's mark field and the reads (17.5) do not change. **Status: Q1, Q2 and Q4 answered by the user 2026-11-06
+(18.8); texts approved 2026-11-06 ("Texts approved"). Q3 and Q5 are SUPERSEDED by the user's FINAL Q5 RULING of 2026-11-06
+(18.8, "Final Q5 ruling"): "Not a recurring charge" removes a series from recurring charges entirely, by long press on any
+series row or by the series screen's footer; no "Hidden" section, no hidden rows, no "Show again"; only a mark brings it
+back. Its texts are PENDING USER REVIEW (texts-visual-2.md, "Final Q5 ruling texts (pending)").** Every fact here was read at
+85215396e, 6df66759b or 4e61124c7: re-grep each symbol on the base.
 
 ### 18.1 What this reverses
 
@@ -1159,11 +1160,13 @@ read at
 |---|---|---|
 | A group total (17.4; B, C: "Total = sum of all charges") | the sum of every charge of every series in the group, converted per series | the sum of the LAST charge of each counted series in the group (item 1: "sum only the last payment of each series"), converted per series by the same rule (18.2) |
 | The total of all (17.2, 17.4) | "All paid so far", the sum of the group totals | still the sum of the group totals, so of last charges, labelled "Sum of last charges" (Q1 A) |
-| A hidden series in a total (8.1: a hidden series was not listed, so not counted) | not counted | not counted, now while listed: tagged "Hidden", amount greyed (Q3 A) |
+| A hidden series in a total (8.1: a hidden series was not listed, so not counted) | not counted | not listed, not counted (final Q5 ruling; was, round 2 Q3 A, VOID: listed, tagged "Hidden", amount greyed) |
 | The series screen header (9.3, 17.6) | text lines: recurrence line, last-charge line, charge count, an "All paid so far" row | one `SummaryTable` (18.3) |
-| Hidden merchants on the list (8.1, 9.2, 17.2) | a last "Hidden" section, one line per hidden key with "Show again", even with no rows | no section; each detected series of a hidden key is a row in its category group (18.4) |
-| The series screen's footer on a hidden detected series (9.3, 17.6) | "Not a recurring charge", `secondaryTonal` | "Show again", `primary` (18.5) |
-| A hidden key with no detected series to list (8.1, "even when it has no rows now") | a "Hidden" line with "Show again" | no row: the stored hide hides nothing visible, and is undone on the series screen once a series of the key lists again (18.4) |
+| Hidden merchants on the list (8.1, 9.2, 17.2) | a last "Hidden" section, one line per hidden key with "Show again", even with no rows | no section, no row, no "Show again" (final Q5 ruling, 18.4; was, round 2 Q3 A, VOID: each detected series of a hidden key a tagged row in its group) |
+| The series screen's footer on a hidden detected series (9.3, 17.6) | "Not a recurring charge", `secondaryTonal` | no such screen: a hidden detected series is not listed, so not opened (18.5; was, round 2 item 3, VOID: "Show again", `primary`) |
+| A hidden key with no detected series to list (8.1, "even when it has no rows now") | a "Hidden" line with "Show again" | no row; the stored hide stays and keeps every later series of the key out until a mark (18.4; was, round 2, VOID: undone by "Show again" on the series screen) |
+| How "Not a recurring charge" is reached (9.3) | the detected series' footer only, no confirm | the footer of a detected series, and a long press on ANY series row (detected or marked) through `CardContextMenu`, both behind one confirm (18.5; was, Q5 A, VOID: "Remove from list" on a stopped series only, no confirm) |
+| "Not a recurring charge" on a marked series | not offered (its footer is "Remove mark") | offered by the long press: one write clears that chain's marks AND hides the key (18.5) |
 
 ### 18.2 Totals
 
@@ -1177,7 +1180,7 @@ read at
   `canConvert` rejects is left out of the totals and its row still shows its amount.
 - **Stopped series:** counted with their last charge, as today (`recurringGroupsOf` reduces over every series of a group,
   stopped included; P2). USER 2026-11-06 (Q2): "If "stopped" means recurring in the past, but not anymore, then it can count".
-- **Hidden series:** not counted (Q2: "If by "stopped" you mean hidden, then no"; Q3 A).
+- **Hidden series:** not listed, so not counted (Q2: "If by "stopped" you mean hidden, then no"; final Q5 ruling, 18.4).
 - **The series screen's "All paid so far"** (`paidSoFarOf`) does not change: one series' sum of every listed charge in its own
   currency, a different figure from a group total, and item 1 names group totals only. It moves into the table (18.3).
 - No other total is on these screens (every `MoneyText` of both screens and the row at 85215396e: the row's amount, the group
@@ -1204,48 +1207,78 @@ The table replaces the four header lines, in this order, inside `recurring-serie
 Value testIDs: `recurring-series-summary-repeats`, `-last-charge`, `-status`, `-charge-count`, `-paid`. No title row. The
 `chargeCount` plural key goes (18.7).
 
-### 18.4 Hidden series on the list
+### 18.4 Hidden series on the list (final Q5 ruling, 2026-11-06)
 
-- **Which series:** the list lists the detected series of a hidden key too; a marked series is never hidden (8.1, unchanged).
-  A row is hidden when it has no `marks` and `choices.get(merchantKey)?.hidden === true`.
-- **Grouping:** a hidden series takes its category exactly as a shown one (17.2). `recurringGroupsOf` takes the hidden series
-  as its own input, `hidden`, beside `shown`; a group exists when it holds any listed series.
-- **Look, order, totals (Q3 A, USER 2026-11-06, plus "the amount greyed"):** a hidden row is the regular
-  `RecurringSeriesRow` plus one caption line, `hiddenTag` ("Hidden"), under the recurrence line, and its amount in
-  `MoneyText tone="muted"`, which renders the theme token `textSecondary` (`money-text.component.tsx`, the `'muted'` arm; the
-  same grey as the row's caption lines). It sits after the group's active and stopped series, `newestChargeFirst` among the
-  hidden. It is left out of the group total and the total of all. A group of hidden series only shows its heading with no
-  total; with no counted series at all, no total-of-all row.
-- **Empty state:** shows only when no series of any kind lists (a hidden row counts as listed).
-- "Marked, No Charges" stays as it is, last, with its divider.
-- **The form's mark field** keeps 9.6: a row of a hidden detected series reads "Not marked" (`rowRecurrenceOf` drops it). The
-  property pin `row-recurrence.properties.test.ts` keeps its oracle (the series not hidden); only its wording "what the list
-  shows" becomes "the counted series".
-- **Reads:** none added. The by-ids read already takes every series' ids, hidden ones included (17.5), so a hide or a "Show
-  again" still changes no by-ids key and runs no detection (9.5).
+USER (final Q5 ruling, relayed by the coordinator): "Not a recurring charge" means "remove from recurring charges entirely".
+"There is NO "Hidden" section, NO greyed hidden rows, NO "Show again"." "A new charge does not bring it back. The only way
+back is a mark in the transaction form."
 
-### 18.5 The series screen's footer
+| Case | was (8.1, 9.2, shipped at 4e61124c7) | was (round 2 Q3 A, Q5 A; VOID) | now |
+|---|---|---|---|
+| A detected series of a hidden key, no mark | not listed; the key in the last "Hidden" section | a tagged "Hidden" row in its group, amount greyed, out of the totals; Q5 A: not listed if also stopped | not listed, not in any total |
+| A hidden key, any series | one "Hidden" line with "Show again", even with no rows | no line | no line, no section, no heading |
+| A new charge of a hidden key | stays out (the hide has no date) | listed again as a "Hidden" row | stays out |
+| A mark on one of its charges (the form, 9.6) | the marked series lists | the marked series lists | the marked series lists, counted (the only way back) |
+| A marked series of a hidden key | listed | listed | listed (a hide never hides a marked series, 8.1) |
+| "Show again" | on the "Hidden" line | the series screen's primary footer | gone: no unhide write anywhere |
+| Empty state | no series listed (a "Hidden" section can follow it) | no series of any kind listed | no series listed; only "Marked, No Charges" can follow it |
 
-By kind: a marked series, "Remove mark" (`secondaryTonal`, unchanged); a detected series not hidden, "Not a recurring charge"
-(`secondaryTonal`, unchanged); a hidden detected series, "Show again" (`variant="primary"`, regular size, full width, testID
-`recurring-series-show-again`). It calls `settingsRepo.showRecurringMerchantAgain(series.merchantKey)` through `useSubmitOnce`,
-with `loading` and the save-error alert as the hide. "Show again" as primary is the user's word (item 3); kiko-design-system's
-"the lone secondary footer action" line names this screen and gains the third kind. After either write the screen goes back
-(Q4 B, USER 2026-11-06), with the hide's rules: only after the write, and only while still focused.
+- **Which series:** unchanged from 8.1 (`shownSeriesOf`, `recurring-charges.screen.tsx`): a detected series is listed when
+  `choices.get(merchantKey)?.hidden !== true`; every marked series is listed.
+- **The hide is per merchant KEY with no date** (`hideRecurringMerchant`, `settings.repo.ts`; `RecurringMerchantChoice` holds
+  `name`, `hidden`, `marks`). So one "Not a recurring charge" removes EVERY detected series of that merchant name, in every
+  currency and period, and every later one. The confirm (18.5) says so; the user sees it before the write.
+- **Totals:** a hidden series is not an input of `useRecurringGroups`'s `shown`; its ids stay in the by-ids read through
+  `every`, so a hide adds or drops no by-ids key and runs no detection (9.5, unchanged).
+- **The form's mark field** keeps 9.6: a row of a hidden key with no mark in its currency reads "Not marked" with no ledger
+  read (`isHiddenWithoutMark`, `use-row-mark.ts`), and "Mark as recurring" stays offered: that is the way back.
+- **Stored data:** `hidden: true` stays in `settings.recurring_merchant_choices`; its parser (`recurringMerchantChoicesOf`), its
+  readers (`shownSeriesOf`, `rowRecurrenceOf`, `useRowMark`) and the `.kiko` snapshot (the settings row is copied whole;
+  `restore-recurring-merchant-choices.test.ts`) do not change. A hide stored before this ruling reads the same. No migration.
+
+### 18.5 "Not a recurring charge": where, the write, the confirm
+
+- **Where:** (a) the series screen's footer of a detected series, as today (`recurring-series-hide`, `secondaryTonal`); a
+  marked series keeps "Remove mark" there. (b) A long press on ANY series row of the list (detected, stopped, quiet or
+  marked), through the shared `CardContextMenu` with `liftOnHold` (a plain list). The "Marked, No Charges" rows are not series
+  rows: they keep their own "Remove mark" button and get no hold.
+- **The menu:** the row is a delete-only card (`deletable`, `onDelete`), so a hold opens the shared confirm straight away, as
+  every delete-only card does (templates, reminders, categories). `CardContextMenu` gains one optional prop, `deleteLabel`,
+  the text of its delete item and its confirm button (omitted: `common.delete`, so every current caller renders as before).
+  The row passes `deleteLabel = t('recurringCharges.notRecurring')`, `deleteTitle` and `deleteMessage` (18.7). The action is
+  never called "Delete" (USER: keep the one action "Not a recurring charge").
+- **One write:** `settingsRepo.hideRecurringMerchant(key, name, chain = [])`, the existing write with one optional argument:
+  it sets `hidden: true` on the key and, in the same `changeRecurringMerchantChoices` transaction, drops the stored marks of
+  `chain` (`isSameChain`), keeping every other mark of the key. The footer calls it with no chain (a detected series has no
+  marks); the long press calls it with `series.marks ?? []`. No other write, no list-local copy of its logic.
+- **A marked row (decided by code):** a hide alone never hides a marked series (`shownSeriesOf` appends `markedSeries`
+  whatever the hide), so a hide-only item on a marked row would change nothing on screen, and leaving it off contradicts
+  "ANY series row". So on a marked row the one write clears that chain's marks AND hides the key: the series leaves the list
+  and the totals, the key's detected series stay out by the hide, and a new mark brings it back. Other marked chains of the
+  same key (another currency or amount, marked separately) stay listed.
+- **Confirm (recommended, planned):** yes, on both paths. The action can only be undone through a mark on one of the charges,
+  which the list does not show, and it reaches every series of the merchant name in every currency. The long press reaches the
+  shared `ConfirmSheet` through `CardContextMenu`'s delete path; the footer renders the same `ConfirmSheet` with the same
+  title, message and confirm label (18.7), `destructive`. Cancel writes nothing.
+- **After the write (Q4 B, stands):** the footer path goes back only after the write and only while focused, as today. The
+  list path stays on the list; the row leaves with the settings read. A rejected write alerts with the save-error keys
+  (`alertOnCatch`) and the series stays.
 
 ### 18.6 Guideline 2.5.19 and compliance
 
-No flag or condition: hidden rows, the tag, the table and the footer show whenever their data exists. Nothing new is stored,
-sent or logged. The store and its parser do not change.
+No flag or condition: the table, the hold and the confirm show whenever their data exists. Nothing new is stored, sent or
+logged. The store and its parser do not change; the hide write gains an optional argument only.
 
 ### 18.7 i18n
 
-Rows in `.superpowers/sdd/1.4-recurring/texts-visual-2.md`, APPROVED 2026-11-06 ("Texts approved"; Q5 A's rows "lgtm").
-New: `recurringCharges.lastChargesTotal`, `recurringCharges.hiddenTag`,
-`recurringCharges.summary.{repeats,lastCharge,status,stopped,chargeCount}`. Changed: `help.topics.viewRecurringCharges.steps.4`
-(the "Hidden" section is gone). Removed: `recurringCharges.hiddenHeading` (with its `title-keys.ts` line) and
-`recurringCharges.chargeCount_{one,few,many,other}`. Q5 (18.8) adds `recurringCharges.removeFromList` (the footer button and
-the row's menu item) and `help.topics.viewRecurringCharges.steps.6`.
+Rows in `.superpowers/sdd/1.4-recurring/texts-visual-2.md`. APPROVED 2026-11-06, unchanged:
+`recurringCharges.lastChargesTotal`, `recurringCharges.summary.{repeats,lastCharge,status,stopped,chargeCount}`, the removal of
+`recurringCharges.chargeCount_{one,few,many,other}`. PENDING USER REVIEW ("Final Q5 ruling texts (pending)"): new
+`recurringCharges.notRecurringConfirmTitle` (a `ConfirmSheet` title, in `TITLE_KEYS`) and
+`recurringCharges.notRecurringConfirmMessage`; changed `help.topics.viewRecurringCharges.steps.4`. Reused: the item and confirm
+button `recurringCharges.notRecurring`, Cancel `common.cancel`. Removed: `recurringCharges.hiddenHeading` (with its
+`title-keys.ts` line) and `recurringCharges.showAgain`. VOID, never added: `recurringCharges.hiddenTag`,
+`recurringCharges.removeFromList`, `help.topics.viewRecurringCharges.steps.6`. No step 6.
 
 ### 18.8 Questions for the user
 
@@ -1255,11 +1288,29 @@ Answered 2026-11-06 (relayed by the coordinator); the options not picked are dro
 |---|---|---|
 | Q1 the total of all | A | the sum of the group totals, labelled "Sum of last charges" / «Сума останніх списань» (18.1, 18.2) |
 | Q2 a stopped series' last charge | "If by "stopped" you mean hidden, then no. If "stopped" means recurring in the past, but not anymore, then it can count, but there must be a way to remove stopped from the list." | a stopped series counts, a hidden one does not (18.2); the removal is Q5 |
-| Q3 a hidden row | A, plus "the amount greyed" | tag, after the group's active and stopped rows, out of the totals, amount `textSecondary` (18.4) |
-| Q4 after "Show again" or "Not a recurring charge" | B | the screen goes back, as the hide does (18.5) |
+| Q3 a hidden row | SUPERSEDED by the final Q5 ruling (was: A, plus "the amount greyed") | no hidden row (18.4); was: tag, after the group's active and stopped rows, out of the totals, amount `textSecondary` |
+| Q4 after "Show again" or "Not a recurring charge" | B | the screen goes back after "Not a recurring charge" (18.5); "Show again" is gone |
 
-**Q5. A way to remove a stopped series from the list. ANSWERED 2026-11-06: "A: Remove = hide", with the note "Long
-press+delete action"; texts "lgtm".** Facts (re-grep on the base):
+**Final Q5 ruling, USER 2026-11-06 (relayed by the coordinator). It replaces the Q5 answer below and its "Delete on any
+row" clarification.**
+
+- "Keep ONE action, "Not a recurring charge" (the existing hide)."
+- "It is offered by long press on ANY series row, as a destructive action, through the shared `CardContextMenu`, plus where
+  it already is (the series page footer)."
+- "It means "remove from recurring charges entirely". The series leaves the list and the totals. There is NO "Hidden"
+  section, NO greyed hidden rows, NO "Show again"."
+- "A new charge does not bring it back. The only way back is a mark in the transaction form."
+- "There is NO separate "Remove from list" button."
+- VOID: round 2 Q3 (the "Hidden" tag, the greyed amount on hidden rows, the after-active ordering of hidden rows), the
+  hidden-series footer "Show again", and the Q5 A texts (`removeFromList`, help step 6).
+
+Rules: 18.4 and 18.5. The consequence the user must see: the hide is per merchant key with no date, so one "Not a recurring
+charge" removes every series of that merchant name in every currency (18.4); the confirm says so (18.5, 18.7, texts
+PENDING). Decided by code: on a marked row the one write also clears that chain's marks (18.5).
+
+**Q5 (SUPERSEDED by the final Q5 ruling above; kept as the record). A way to remove a stopped series from the list. Was
+ANSWERED 2026-11-06: "A: Remove = hide", with the note "Long press+delete action"; texts "lgtm".** Facts (re-grep on the
+base):
 `settingsRepo.hideRecurringMerchant(key, name)` sets `hidden: true` on a merchant KEY's entry and keeps its marks
 (`settings.repo.ts`); a hide covers every detected series of that key, all currencies and periods, and never a marked series
 (`shownSeriesOf`, `recurring-charges.screen.tsx`). A series is stopped when its newest charge is before
@@ -1270,7 +1321,7 @@ choice entry holds only `name`, `hidden` and `marks` (`RecurringMerchantChoice`,
 hidden row stays listed, so today's "Not a recurring charge" on a stopped series takes it out of the totals but not off the
 list. The series screen's footer has one button by kind (`recurring-series.screen.tsx`, the `footer` prop; 18.5).
 
-- **A (picked): "Remove from list" hides a stopped series, and a hidden stopped series is not listed.** On a stopped
+- **A (was picked; VOID): "Remove from list" hides a stopped series, and a hidden stopped series is not listed.** On a stopped
   detected series not hidden, the footer reads "Remove from list" (`secondaryTonal`, testID `recurring-series-remove`) and
   writes the same `hideRecurringMerchant`; the screen goes back (Q4 B). The list leaves out a detected series that is hidden
   AND stopped; a hidden active series stays a "Hidden" row (Q3 A). Totals: the series leaves them (hidden does not count, Q2),
@@ -1280,18 +1331,18 @@ list. The series screen's footer has one button by kind (`recurring-series.scree
   series that later stops leaves the list on its own. Data: no new field, no migration, marks untouched. Pins: 18.4's "a hidden
   series lists in its group" gains "unless stopped" (a named edit); the Q3 A worlds with a hidden stopped series move. Texts:
   one button, one help step. Size: the smallest; one predicate in the screen's split, one footer kind, one help step.
-- **The long press (the user's note, read with the coordinator):** the removal is ALSO a long-press menu item on the list
+- **The long press (VOID; was the user's note, read with the coordinator):** the removal is ALSO a long-press menu item on the list
   row of a stopped detected series that is not hidden; the footer button stays. The row is wrapped in the shared
   `CardContextMenu` (`src/design-system/components/card-context-menu/`), `liftOnHold` (a plain list), `deletable={false}`,
   and one action: "Remove from list" in the destructive style. It calls the same `settingsRepo.hideRecurringMerchant(key,
   name)` as the footer (one write; a rejected write alerts as the list's other writes do). Every other row (active, hidden,
   marked) passes no action, so `CardContextMenu` renders it bare: no gesture, no menu.
-- **No confirm (finding):** `CardContextMenu` forces its `ConfirmSheet` on the delete path only (`deletable` + `onDelete`:
+- **No confirm (VOID; the final ruling's confirm is in 18.5):** `CardContextMenu` forces its `ConfirmSheet` on the delete path only (`deletable` + `onDelete`:
   the destructive "Delete" (`common.delete`) item and a `Delete "<name>"` confirm, `confirmDelete`). Its `closeAction`
   (`{ label, onPress }`, used by the close-holding action) runs with no confirm ("the consumer owns its label and its
   confirm", `runClose`) but renders a default `Button`. A hide can be undone, so no confirm: `closeAction` gains an optional
   `destructive: true` that renders that item `variant="destructive"`; today's callers pass none and render as before. The
   menu's header is the row's name and its Cancel is `common.cancel`, so no new text.
 - B (a stored per-series removal) and C (a "Show stopped charges" switch) were not picked.
-- **Open question (not planned):** a marked stopped series gets no menu item, since a hide never hides a marked series and its
+- **Open question (closed by the final ruling, 18.5: a marked row gets the item, and the write clears its marks):** a marked stopped series gets no menu item, since a hide never hides a marked series and its
   way out is "Remove mark" on the series screen. If the user wants a long press there too, it would be a "Remove mark" item.
