@@ -201,6 +201,10 @@ describe('entityDisplayColor', () => {
     expect(entityDisplayColor('#123456', 'dark')).toBe('#123456');
   });
 
+  it('throws on an unset scheme instead of reading it as light', () => {
+    expect(() => entityDisplayColor('#FF9F0A', undefined as never)).toThrow();
+  });
+
   it.each(SWATCHES)('light maps %s by key, in either letter case', (name) => {
     expect(entityDisplayColor(entityColorsDark[name], 'light')).toBe(entityColorsLight[name]);
     expect(entityDisplayColor(entityColorsDark[name].toLowerCase(), 'light')).toBe(

@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+
 import { type ColorScheme, type SwatchName, entityColorsDark, entityColorsLight } from '../palette';
 
 // Entity-color derivations shared across the design system: resolving an
@@ -288,13 +290,13 @@ const lowerLightnessToContrast = (hex: string, minimum: number): string => {
 // maps one of the 14 swatches to its light twin by key, and any other valid hex through the
 // lightness rule above. Every sink of a stored account or holding color goes through here; a
 // write never does, so the database keeps the dark hex.
-export const entityDisplayColor = (canonicalHex: string, scheme: ColorScheme): string => {
-  if (scheme === 'dark') {
-    return canonicalHex;
-  }
-
-  return (
-    lightEntityByDarkHex.get(canonicalHex.toUpperCase()) ??
-    lowerLightnessToContrast(canonicalHex, MINIMUM_LIGHT_CONTRAST)
-  );
-};
+export const entityDisplayColor = (canonicalHex: string, scheme: ColorScheme): string =>
+  match(scheme)
+    .with('dark', () => canonicalHex)
+    .with(
+      'light',
+      () =>
+        lightEntityByDarkHex.get(canonicalHex.toUpperCase()) ??
+        lowerLightnessToContrast(canonicalHex, MINIMUM_LIGHT_CONTRAST),
+    )
+    .exhaustive();

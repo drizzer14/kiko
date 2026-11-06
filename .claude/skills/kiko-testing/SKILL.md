@@ -126,7 +126,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   `src/test-support/reset-statistics-filter-selection.ts`) puts dark first again; call
   `registerLightThemeFirst` after such an import. A suite that never imports
   `@kiko/design-system/unistyles` gets theme `{}` and an undefined colorScheme, which the
-  display map reads as light; a scheme-dependent test imports it.
+  display map throws on; a scheme-dependent test imports it.
+- `light-twin-of-dark.ts`: `lightTwinOfDark`, the light entity hex of each dark swatch hex, for a
+  test that expects a default color mapped through the light set.
 - `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
   where Jest's `findNodeHandle` returns null, for a share-anchor pin.
 
