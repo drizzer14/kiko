@@ -20,7 +20,7 @@ export const isImplicitAccount = <Account extends Pick<AccountRow, 'kind' | 'arc
 ): account is Account & { kind: ImplicitAccountKind; archivedAt: null } =>
   isImplicitAccountKind(account.kind) && account.archivedAt === null;
 
-export type AccountSection = 'main' | ImplicitAccountKind;
+type AccountSection = 'main' | ImplicitAccountKind;
 
 // The order the Accounts screen lists its sections in, wherever the property and debt accounts sit
 // in the accounts query: the main accounts, then the property section, then the debt section.

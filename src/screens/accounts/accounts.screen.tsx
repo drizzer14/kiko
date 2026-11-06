@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { type FC, useMemo } from 'react';
 import {
   accountDisplayName,
@@ -170,13 +171,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     const byKind: Partial<Record<ImplicitAccountKind, AccountRow>> = {};
 
     for (const account of activeAccounts) {
-      const section = accountSectionOf(account);
-
-      if (section === 'main') {
-        main.push(account);
-      } else {
-        byKind[section] = account;
-      }
+      match(accountSectionOf(account))
+        .with('main', () => {
+          main.push(account);
+        })
+        .with('property', 'debt', (kind) => {
+          byKind[kind] = account;
+        })
+        .exhaustive();
     }
 
     return { mainAccounts: main, implicitAccountByKind: byKind };
