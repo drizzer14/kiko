@@ -129,7 +129,7 @@ describe('RecurringChargesScreen — marked series', () => {
       ]),
     );
     const state = hookStateOf(ledger, [['Netflix', ['monthly', 250]]]);
-    const { getByTestId, getByText } = await renderScreen(state);
+    const { getByTestId, getByText, queryByText } = await renderScreen(state);
     const [series] = state.markedSeries;
     const row = within(getByTestId(rowTestId(series.id)));
 
@@ -138,7 +138,7 @@ describe('RecurringChargesScreen — marked series', () => {
       getByText(i18n.t('recurringCharges.lastCharge', { date: formatDate(series.lastChargeTime) })),
     ).toBeTruthy();
     expect(row.getByText(formatMoney(Money.of('UAH', 26000)))).toBeTruthy();
-    expect(row.queryByText(formatMoney(Money.of('UAH', 25000)))).toBeNull();
+    expect(queryByText(formatMoney(Money.of('UAH', 25000)))).toBeNull();
   });
 
   describe('a tap', () => {

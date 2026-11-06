@@ -312,6 +312,7 @@ describe('recurringGroupsOf: the totals', () => {
 
     expect(plain(groups[0].total)).toEqual(plain(expected));
     expect(plain(total)).toEqual({ currency: 'UAH', minorUnits: 5_121 });
+    expect(idsOf(groups[0].series).sort()).toEqual(['netflix', 'spotify']);
   });
 
   it('counts the last charge of a stopped series', () => {
@@ -327,46 +328,6 @@ describe('recurringGroupsOf: the totals', () => {
 
     expect(plain(groups[0].total)).toEqual({ currency: 'UAH', minorUnits: 5_700 });
     expect(plain(total)).toEqual({ currency: 'UAH', minorUnits: 5_700 });
-  });
-
-  describe('with a UAH and a USD series in one group', () => {
-    const usdSeries = seriesOf('spotify', {
-      currency: 'USD',
-      chargeIds: ['cent-1', 'cent-2', 'cent-3'],
-      lastChargeAmountMinorUnits: 3,
-    });
-    const worldOf = (): GroupsInput =>
-      inputOf({
-        shown: [seriesOf('netflix', { lastChargeAmountMinorUnits: 5_000 }), usdSeries],
-        rows: [
-          rowOf('netflix-charge', -5_000, 'media'),
-          rowOf('cent-1', -1, 'media', 'USD'),
-          rowOf('cent-2', -1, 'media', 'USD'),
-          rowOf('cent-3', -1, 'media', 'USD'),
-        ],
-      });
-
-    it('proves the world: converting each row differs from converting the series by one unit', () => {
-      const perRow = [1, 1, 1]
-        .map((cents) => convert(Money.of('USD', cents), 'UAH', RATE_TABLE).minorUnits)
-        .reduce((sum, minorUnits) => sum + minorUnits, 0);
-
-      expect(convert(Money.of('USD', 3), 'UAH', RATE_TABLE).minorUnits).toBe(121);
-      expect(perRow).toBe(120);
-    });
-
-    it('converts the USD sum once, in the base currency, and adds Money', () => {
-      const { groups, total } = recurringGroupsOf(worldOf());
-
-      expect(plain(groups[0].total)).toEqual({ currency: 'UAH', minorUnits: 5_121 });
-      expect(plain(total)).toEqual({ currency: 'UAH', minorUnits: 5_121 });
-    });
-
-    it('keeps both series listed in the group', () => {
-      const { groups } = recurringGroupsOf(worldOf());
-
-      expect(idsOf(groups[0].series).sort()).toEqual(['netflix', 'spotify']);
-    });
   });
 
   it('makes the total of all the sum of the group totals', () => {
