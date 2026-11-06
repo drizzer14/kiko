@@ -295,7 +295,9 @@
   top, when `useWindowDimensions().fontScale >= STACK_FONT_SCALE`. The
   constant sits between React Native's xxxLarge (1.353) and AX1 (1.786)
   values (`node_modules/react-native/React/Base/RCTUtils.mm:367-378`), so
-  the row stacks from AX1. Used by `FieldGroup` (Type + Amount) and
+  the row stacks from AX1. `STACK_FONT_SCALE` lives in `src/design-system/stack-font-scale/`
+  (import `@kiko/design-system/stack-font-scale`; read it for the value). Any row that stacks at
+  large text sizes imports it from there and never redefines it. Used by `FieldGroup` (Type + Amount) and
   `ExchangeFields` (`leadingField` + Value out).
 - **Scroll to the first invalid field.** A form that scrolls to its
   first invalid field on a blocked Save uses `useScrollToField()` from
