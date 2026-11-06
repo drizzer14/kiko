@@ -33,18 +33,43 @@ const formatCryptoBody = (minorUnits: number, scale: number, locale: string): st
   return `${wholeText}${decimalSeparatorOf(locale)}${paddedFraction}`;
 };
 
-const formatFiatBody = (minorUnits: number, scale: number, locale: string): string =>
+const formatFiatBody = (
+  minorUnits: number,
+  scale: number,
+  locale: string,
+  fractionDigits = scale,
+): string =>
   (Math.abs(minorUnits) / 10 ** scale).toLocaleString(locale, {
-    minimumFractionDigits: scale,
-    maximumFractionDigits: scale,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   });
 
-export const formatMoney = (money: Money, locale = 'en-US'): string => {
-  const scale = currencyScale[money.currency];
-  const formatted = isCrypto(money.currency)
-    ? formatCryptoBody(money.minorUnits, scale, locale)
-    : formatFiatBody(money.minorUnits, scale, locale);
-  const sign = money.minorUnits < 0 ? '-' : '';
+// Half rounds away from zero, as `toLocaleString` does, so an amount below half a unit of the last
+// shown digit shows as zero. The comparison stays in integers: no float step decides the edge.
+const roundsToZero = (minorUnits: number, scale: number, fractionDigits: number): boolean =>
+  Math.abs(minorUnits) * 10 ** fractionDigits * 2 < 10 ** scale;
 
-  return applySymbolPlacement(money.currency, sign, formatted);
+type FormatMoneyOptions = {
+  /** Round to this many decimals, for a currency of any scale (a crypto one included). */
+  fractionDigits?: number;
+  /** False writes the number alone; the sign still leads. */
+  symbol?: boolean;
+};
+
+export const formatMoney = (
+  money: Money,
+  locale = 'en-US',
+  options: FormatMoneyOptions = {},
+): string => {
+  const { fractionDigits, symbol = true } = options;
+  const scale = currencyScale[money.currency];
+  const formatted =
+    isCrypto(money.currency) && fractionDigits === undefined
+      ? formatCryptoBody(money.minorUnits, scale, locale)
+      : formatFiatBody(money.minorUnits, scale, locale, fractionDigits);
+  const isRoundedZero =
+    fractionDigits !== undefined && roundsToZero(money.minorUnits, scale, fractionDigits);
+  const sign = money.minorUnits < 0 && !isRoundedZero ? '-' : '';
+
+  return symbol ? applySymbolPlacement(money.currency, sign, formatted) : `${sign}${formatted}`;
 };

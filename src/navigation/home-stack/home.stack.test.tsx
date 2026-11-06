@@ -85,12 +85,13 @@ describe('HomeStack', () => {
     expect(navigator.props.screenOptions).toEqual({ headerShown: false });
   });
 
-  it('roots Home in the primary pane and defaults the companion to Statistics', () => {
+  it('roots Home in the primary pane, defaults the companion to Statistics and gives Tables the whole window', () => {
     const navigator = HomeStack({}) as ReactElement<{ paneConfig: object }>;
 
     expect(navigator.props.paneConfig).toEqual({
       rootPane: 'primary',
       companionDefault: { name: 'Statistics', isDefault: true },
+      wholeWindowRoutes: ['Tables'],
     });
   });
 
@@ -133,6 +134,17 @@ describe('HomeStack', () => {
       headerShown: true,
       ...sharedLargeTitleOptions,
     });
+  });
+
+  // User ruling (small title): the table sits below an opaque bar, never under a large title.
+  it('registers the Tables route with a visible header and its title, and no large-title options', () => {
+    expect(optionsOf('Tables', undefined)).toEqual({ headerShown: true, title: 'Tables' });
+  });
+
+  it('keeps the Tables header on a merged Home', () => {
+    mockMergedHome.isMerged = true;
+
+    expect(optionsOf('Tables', undefined)).toMatchObject({ headerShown: true, title: 'Tables' });
   });
 
   it('leaves the Home root without options of its own', () => {

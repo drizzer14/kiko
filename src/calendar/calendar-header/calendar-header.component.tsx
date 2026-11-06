@@ -5,23 +5,10 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 
+import { MONTH_KEYS } from '../month-keys';
+
 import { styles } from './calendar-header.styles';
 import type { CalendarHeaderProps } from './calendar-header.props';
-
-const MONTH_KEYS = [
-  'january',
-  'february',
-  'march',
-  'april',
-  'may',
-  'june',
-  'july',
-  'august',
-  'september',
-  'october',
-  'november',
-  'december',
-] as const;
 
 // Sunday-first — react-native-calendars' own default firstDay (0) and the
 // column order of the day grid this header sits above when firstDay is 0.

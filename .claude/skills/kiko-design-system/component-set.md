@@ -9,10 +9,16 @@ real set — enumerated at `src/design-system/components/`; read that
 directory listing directly rather than trusting a copy of it here, a
 new component can land between reviews of this skill:
 
-- **TwoPaneLayout** — props `{ companion, primary, mode? }` (`mode` pins
-  the mode the caller has settled on; the default is `useLayoutMode`). Single
-  mode renders only `primary`; columns/rows position two pane frames via
-  `resolvePaneGeometry` (`src/design-system/pane-geometry/pane-geometry.ts`).
+- **TwoPaneLayout** — props are in
+  `src/design-system/components/two-pane-layout/two-pane-layout.props.d.ts`; read them there
+  (`mode` pins the mode the caller has settled on; the default is `useLayoutMode`). `layer` is a
+  stack drawn over both panes in `wholeWindowFrame` (`pane-geometry.ts`, the window below the
+  top-bar band); it moves neither pane, and its screens are told they are in no pane. It is always
+  mounted, because a stack made afresh pushes its first screen instead of starting on it;
+  `isLayerShown` alone gives it touches, the screen reader and `accessibilityViewIsModal`. Both
+  panes keep their frames while it shows. Single mode draws no layer and renders only `primary`;
+  columns/rows position two pane frames via `resolvePaneGeometry`
+  (`src/design-system/pane-geometry/pane-geometry.ts`).
   Flat = a hairline divider; folded = the fold region is the gap. Each pane
   child is given a `PaneContext` (`src/design-system/pane-context/`): the
   window edges the pane touches, which a `Screen` inside it reads.
@@ -32,6 +38,10 @@ new component can land between reviews of this skill:
   an optional `onFieldBlur` prop (`screen.props.d.ts`) that Screen hands to every text field
   inside through `FieldBlurContext` (`src/design-system/field-blur/`): a form that keeps a draft
   passes `onFieldBlur` to Screen and no blur handler to each field;
+  `belowHeader` (plain branch under a SHOWN native header: no top edge and no top-bar pill, via
+  `usePaneScreen` / `useTopClearance`; a plain Screen under a shown header adds the top inset
+  twice, 62 pt measured) and `uncapped` (`useContentCap(isUncapped)`; a `bleedTop` or
+  `bleedBottom` child does not read it), both in `screen.props.d.ts`;
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
   native glass tab bar's measured height. A `floatingFooter` Screen lays its footer over the
@@ -130,10 +140,17 @@ new component can land between reviews of this skill:
   flashes a spinner at all — readiness (`useDataReady`) itself is
   never delayed, only the visual spinner.
 - **DataTable** (`src/design-system/components/data-table/`) — a grid of money amounts: props
-  `{ columns, rows, caption, initialColumnIndex?, testID? }`, strings and display flags only (the
-  caller formats every amount). A fixed first column (at most 40% of the table's measured width, a
-  long label wraps in full), one vertical `ScrollView` holding the caption (scrolls away), the
-  header row (sticky through `stickyHeaderIndices={[1]}`, opaque `surface` ground), then the body;
+  `{ columns, rows, caption, topContent?, emptyContent?, initialColumnIndex?, testID? }`: strings
+  and display flags, plus two `ReactNode` props (the caller formats every amount). A fixed first
+  column (at most 40% of the table's measured width, a long label wraps in full), one vertical
+  `ScrollView` whose child 0 is one `View` holding `topContent` and the caption (both scroll
+  away), the header row (child 1, sticky through
+  `stickyHeaderIndices={[1]}`, opaque `surface` ground), then the body. `stickyHeaderIndices`
+  moves the sticky child's own style to a wrapper, so that child must be a plain `View` that holds
+  the row. `emptyContent` replaces the header and the body: no sticky index, `topContent` stays
+  mounted (a filter sheet in it stays open), the measuring layer is unmounted and the offsets and
+  measured widths reset while it shows
+  (`src/design-system/components/data-table/data-table.component.tsx`);
   the header follows the body's horizontal offset through reanimated's `useScrollOffset`, and a
   horizontal scroll that turns on only when the columns overflow. Every width and row height comes
   from `onLayout` (a hidden measuring layer for text widths; a row is `minHeight` of the taller
@@ -142,7 +159,8 @@ new component can land between reviews of this skill:
   (label, FULL value; role `button` and hint only with `onPress`); header cells are hidden; the
   caption is the `summary`. `SummaryTable` does not fit: it is a label/value stack with no
   columns, header, fixed column or scroll. The caller gives it a bounded height (Screen not
-  scrolling).
+  scrolling). That holds for `Screen belowHeader uncapped` only: the table's own vertical scroll
+  fills a plain Screen.
   React Native's sticky header wrapper reads the raw scroll offset and has no content inset
   handling (read from the code, not measured), so measure before you put this table under
   `bleedTop` with an automatic inset. A `Pressable` that is only inert omits `disabled`, because

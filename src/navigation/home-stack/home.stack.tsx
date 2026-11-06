@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import HomeScreen from '@kiko/screens/home';
 import { useTranslation } from 'react-i18next';
+import TablesScreen from '@kiko/screens/tables';
 import StatisticsScreen from '@kiko/screens/statistics';
 import AccountFormScreen from '@kiko/screens/forms/account-form';
 import HoldingFormScreen from '@kiko/screens/forms/holding-form';
@@ -21,10 +22,12 @@ import { largeTitleScreenOptions } from '../large-title-screen-options';
 const Stack = createPaneStackNavigator<HomeStackParamList>();
 
 // Home is what the outer display shows, so it takes the primary pane; Statistics fills the
-// companion until something else opens there.
+// companion until something else opens there. Tables opens in a layer over both panes, with Home
+// and Statistics still behind it.
 const PANE_CONFIG = {
   rootPane: 'primary',
   companionDefault: { name: 'Statistics', isDefault: true },
+  wholeWindowRoutes: ['Tables'],
 } as const;
 
 /**
@@ -68,6 +71,14 @@ const HomeStack: FC = () => {
           ...largeTitleScreenOptions,
           title: t('statistics.title'),
         }}
+      />
+
+      {/* A small title in an opaque bar, because the table lays out below it, not under a large
+          title. */}
+      <Stack.Screen
+        name="Tables"
+        component={TablesScreen}
+        options={{ headerShown: true, title: t('tables.title') }}
       />
 
       <Stack.Screen
