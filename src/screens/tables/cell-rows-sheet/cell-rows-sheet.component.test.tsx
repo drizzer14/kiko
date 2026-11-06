@@ -31,7 +31,19 @@ const INTEREST: CellRow = {
   native: Money.of('UAH', 9_000),
   base: Money.of('UAH', 9_000),
   paymentId: 'payment',
+  loanPart: 'interest',
 };
+const FEE: CellRow = {
+  id: 'loan-excess:payment',
+  time: COIN_TIME - 1,
+  description: 'Mortgage payment',
+  native: Money.of('UAH', 300),
+  base: Money.of('UAH', 300),
+  paymentId: 'payment',
+  loanPart: 'fee',
+};
+// More rows than a sheet can mount at once: a 12-month Total on a synced card holds this many.
+const MANY_ROWS = 400;
 
 const shown = (rows: readonly CellRow[], visible = true) =>
   render(
@@ -86,21 +98,46 @@ describe('CellRowsSheet', () => {
     expect(total.getByText('205.00 ₴')).toBeTruthy();
   });
 
-  it('says so under a row that is part of a loan payment, and under no other', async () => {
+  it('says under the interest of a loan payment that it is interest, and under no other row', async () => {
     const { getByTestId } = await shown([COFFEE, INTEREST]);
+    const interest = i18n.t('tables.cellRows.loanInterest');
 
+    expect(within(getByTestId('cell-row-loan-interest:payment')).getByText(interest)).toBeTruthy();
+    expect(within(getByTestId('cell-row-coffee')).queryByText(interest)).toBeNull();
+  });
+
+  it('says under the fee of a loan payment that it is a fee, and not interest', async () => {
+    const { getByTestId } = await shown([INTEREST, FEE]);
+    const fee = within(getByTestId('cell-row-loan-excess:payment'));
+
+    expect(fee.getByText(i18n.t('tables.cellRows.loanFee'))).toBeTruthy();
+    expect(fee.queryByText(i18n.t('tables.cellRows.loanInterest'))).toBeNull();
     expect(
-      within(getByTestId('cell-row-loan-interest:payment')).getByText('Part of a loan payment.'),
-    ).toBeTruthy();
-    expect(
-      within(getByTestId('cell-row-coffee')).queryByText('Part of a loan payment.'),
+      within(getByTestId('cell-row-loan-interest:payment')).queryByText(
+        i18n.t('tables.cellRows.loanFee'),
+      ),
     ).toBeNull();
   });
 
-  it('writes a row with no description as such', async () => {
-    const { getByTestId } = await shown([{ ...COFFEE, description: '' }]);
+  it('mounts a window of the rows, never every one of a long list', async () => {
+    const rows = Array.from({ length: MANY_ROWS }, (_unused, index) => ({
+      ...COFFEE,
+      id: `coffee-${index}`,
+    }));
+    const { getAllByTestId, getByTestId } = await shown(rows);
 
-    expect(within(getByTestId('cell-row-coffee')).getByText('No description')).toBeTruthy();
+    expect(getAllByTestId(/^cell-row-/).length).toBeLessThan(MANY_ROWS);
+    expect(getByTestId('cell-row-coffee-0')).toBeTruthy();
+  });
+
+  it('keeps the total of every row in view, though the list shows a window of them', async () => {
+    const rows = Array.from({ length: MANY_ROWS }, (_unused, index) => ({
+      ...COFFEE,
+      id: `coffee-${index}`,
+    }));
+    const { getByTestId } = await shown(rows);
+
+    expect(within(getByTestId('cell-rows-total')).getByText('6,000.00 ₴')).toBeTruthy();
   });
 
   it('is read-only: no row can be pressed', async () => {
@@ -128,16 +165,23 @@ describe('CellRowsSheet', () => {
       });
     });
 
-    it('reads the total, the missing description and the loan caption in the language', async () => {
-      const { getByTestId } = await shown([{ ...COFFEE, description: '' }, INTEREST]);
+    it('reads the total and the loan captions in the language', async () => {
+      const { getByTestId } = await shown([COFFEE, INTEREST, FEE]);
 
-      expect(within(getByTestId('cell-rows-total')).getByText('Разом')).toBeTruthy();
-      expect(within(getByTestId('cell-row-coffee')).getByText('Без опису')).toBeTruthy();
+      expect(within(getByTestId('cell-rows-total')).getByText(i18n.t('tables.total'))).toBeTruthy();
       expect(
         within(getByTestId('cell-row-loan-interest:payment')).getByText(
-          'Частина платежу за кредитом.',
+          i18n.t('tables.cellRows.loanInterest'),
         ),
       ).toBeTruthy();
+      expect(
+        within(getByTestId('cell-row-loan-excess:payment')).getByText(
+          i18n.t('tables.cellRows.loanFee'),
+        ),
+      ).toBeTruthy();
+      expect(i18n.t('tables.cellRows.loanFee')).not.toBe(
+        i18n.t('tables.cellRows.loanFee', { lng: 'en' }),
+      );
     });
   });
 });

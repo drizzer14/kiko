@@ -2,8 +2,9 @@ import { View } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import '@kiko/i18n/init';
+import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
+import { rowDescriberOf } from '@kiko/statistics/cell-rows';
 import { buildSpendingLedger } from '@kiko/statistics/spending-ledger';
 import type DataTable from '@kiko/design-system/components/data-table';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
@@ -79,6 +80,7 @@ const propsOf = (
   rateTable: {},
   baseCurrency: 'UAH',
   defaultCategoryKey: 'other',
+  describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
   sheetGeneration: 0,
   topContent: <View testID="table-controls" />,
   ...overrides,
@@ -279,7 +281,7 @@ describe('CashFlowTable', () => {
   });
 
   describe('a cell that opens the rows behind it', () => {
-    const HINT = 'Shows the rows behind this amount.';
+    const HINT = i18n.t('tables.cellRows.hint');
     // 0 January, 1 February, 2 March, 3 April, 4 May, 5 June, 6 Total, 7 Average. The columns
     // of each line that hold an amount, which are the ones that open.
     const OPENING_COLUMNS: Record<string, number[]> = {
@@ -384,6 +386,34 @@ describe('CashFlowTable', () => {
       expect(
         within(rendered.getByTestId('cell-rows-total')).getByText(
           cellsOf(table, 'expenses')[2].accessibilityValue,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('labels a credit with no description as Home labels it, by its holding', async () => {
+      const { rendered } = await pressed(propsOf(WORLD), 'income', 0);
+
+      expect(
+        within(rendered.getByTestId('cell-row-salary-jan')).getByText(
+          i18n.t('transactions.defaultDescriptionIncome', { name: CARD.name }),
+        ),
+      ).toBeTruthy();
+    });
+
+    it('keeps the total of the sheet equal to its cell when the ledger changes under it', async () => {
+      const props = propsOf(WORLD);
+      const { rendered } = await pressed(props, 'income', 0);
+      const refreshed = propsOf([...WORLD, entry('bonus-jan', 500_00, JANUARY.start + 3_000)], {
+        sheetGeneration: props.sheetGeneration,
+      });
+
+      await rendered.rerender(<CashFlowTable {...refreshed} />);
+      const table = mockDataTable.mock.calls.at(-1)?.[0] as TableProps;
+
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-bonus-jan', 'cell-row-salary-jan']);
+      expect(
+        within(rendered.getByTestId('cell-rows-total')).getByText(
+          cellsOf(table, 'income')[0].accessibilityValue,
         ),
       ).toBeTruthy();
     });

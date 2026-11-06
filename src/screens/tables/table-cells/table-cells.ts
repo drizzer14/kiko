@@ -4,6 +4,7 @@ import { Money } from '@kiko/currency/money';
 import type { CalendarMonth } from '@kiko/dates';
 import { formatMoney } from '@kiko/currency/format';
 import type { Currency } from '@kiko/currency/currency';
+import type { CellRange } from '@kiko/statistics/cell-rows';
 import type { SpendingLedger } from '@kiko/statistics/spending-ledger';
 import type { DataTableCell, DataTableColumn } from '@kiko/design-system/components/data-table';
 
@@ -56,9 +57,7 @@ export const openingCellOf = (
 };
 
 /** The whole period, first month's start to last month's end: the range of a Total cell. */
-export const periodOf = (
-  months: readonly CalendarMonth[],
-): Pick<CalendarMonth, 'start' | 'end'> => ({
+export const periodOf = (months: readonly CalendarMonth[]): CellRange => ({
   start: months[0].start,
   end: months[months.length - 1].end,
 });

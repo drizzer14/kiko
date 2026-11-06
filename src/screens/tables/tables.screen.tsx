@@ -15,6 +15,7 @@ import {
 import Box from '@kiko/design-system/components/box';
 import Screen from '@kiko/design-system/components/screen';
 import type { TablesParams } from '@kiko/navigation/types';
+import { rowDescriberOf } from '@kiko/statistics/cell-rows';
 import { type FC, useEffect, useMemo, useState } from 'react';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -115,6 +116,10 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     accounts,
     shownHoldings: filtered.netWorthHoldings,
   });
+
+  // The label a row shows in the list behind a cell is the one Home shows, so it needs the
+  // holdings' names, and re-reads the language when it changes.
+  const describeRow = useMemo(() => rowDescriberOf(holdings, t), [holdings, t]);
 
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);
   const period = resolveTablePeriod(route.params?.period, periodOptions);
@@ -256,6 +261,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               baseCurrency={baseCurrency}
               defaultCategoryKey={defaultCategoryKey}
               excludedCategories={excludedCategories}
+              describeRow={describeRow}
               sheetGeneration={sheetGeneration}
               topContent={controls}
             />
@@ -269,6 +275,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               rateTable={rateTable}
               baseCurrency={baseCurrency}
               defaultCategoryKey={defaultCategoryKey}
+              describeRow={describeRow}
               sheetGeneration={sheetGeneration}
               topContent={controls}
             />

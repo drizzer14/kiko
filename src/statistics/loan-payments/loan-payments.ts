@@ -165,15 +165,29 @@ type LoanEntryPrefix = (typeof LOAN_ENTRY_PREFIXES)[number];
 const loanEntryIdOf = (prefix: LoanEntryPrefix, paymentId: string): string =>
   `${prefix}:${paymentId}`;
 
+const LOAN_ENTRY_PART: Record<LoanEntryPrefix, 'interest' | 'fee'> = {
+  'loan-interest': 'interest',
+  'loan-excess': 'fee',
+};
+
+const loanEntryPrefixOf = (entryId: string): LoanEntryPrefix | undefined =>
+  LOAN_ENTRY_PREFIXES.find((prefix) => entryId.startsWith(loanEntryIdOf(prefix, '')));
+
 /**
  * The id of the payment a derived entry (`loan-interest:<id>`, `loan-excess:<id>`) is made from;
  * undefined for any other id, a real transaction's included.
  */
 export const loanPaymentIdOf = (entryId: string): string | undefined =>
-  foldMap(
-    maybe(LOAN_ENTRY_PREFIXES.find((prefix) => entryId.startsWith(loanEntryIdOf(prefix, '')))),
-    (prefix) => entryId.slice(loanEntryIdOf(prefix, '').length),
+  foldMap(maybe(loanEntryPrefixOf(entryId)), (prefix) =>
+    entryId.slice(loanEntryIdOf(prefix, '').length),
   );
+
+/**
+ * Which part of its payment a derived entry is: the interest, or the fee above the scheduled
+ * installment; undefined for any other id.
+ */
+export const loanEntryPartOf = (entryId: string): 'interest' | 'fee' | undefined =>
+  foldMap(maybe(loanEntryPrefixOf(entryId)), (prefix) => LOAN_ENTRY_PART[prefix]);
 
 const syntheticEntry = (
   transaction: LoanPaymentTransaction,

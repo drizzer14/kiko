@@ -4,6 +4,7 @@ import { act, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
+import { rowDescriberOf } from '@kiko/statistics/cell-rows';
 import { buildSpendingLedger } from '@kiko/statistics/spending-ledger';
 import type DataTable from '@kiko/design-system/components/data-table';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
@@ -72,6 +73,7 @@ const propsOf = (
   baseCurrency: 'UAH',
   defaultCategoryKey: 'other',
   excludedCategories: new Set<string>(),
+  describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
   sheetGeneration: 0,
   topContent: <View testID="table-controls" />,
   ...overrides,
@@ -327,7 +329,7 @@ describe('CategoryTable', () => {
   });
 
   describe('a cell that opens the rows behind it', () => {
-    const HINT = 'Shows the rows behind this amount.';
+    const HINT = i18n.t('tables.cellRows.hint');
     // 0 January, 1 February, 2 March, 3 April, 4 May, 5 June, 6 Total, 7 Average.
     const MONTH_AND_TOTAL = [0, 1, 4, 5, 6];
 
@@ -422,6 +424,35 @@ describe('CategoryTable', () => {
       );
 
       expect(rowIdsOf(rendered)).toEqual(['cell-row-g-feb']);
+    });
+
+    it('labels a row with no description as Home labels it, by its holding', async () => {
+      const { rendered } = await pressed(propsOf(WORLD), 'category-groceries', 1);
+
+      expect(
+        within(rendered.getByTestId('cell-row-g-feb')).getByText(
+          i18n.t('transactions.defaultDescriptionExpense', { name: CARD.name }),
+        ),
+      ).toBeTruthy();
+    });
+
+    it('keeps the total of the sheet equal to its cell when the ledger changes under it', async () => {
+      const props = propsOf(WORLD);
+      const { rendered } = await pressed(props, 'category-groceries', 1);
+      const refreshed = propsOf(
+        [...WORLD, spend('g-feb-synced', 'groceries', 25_00, FEBRUARY.start + 3_000)],
+        { sheetGeneration: props.sheetGeneration },
+      );
+
+      await rendered.rerender(<CategoryTable {...refreshed} />);
+      const table = mockDataTable.mock.calls.at(-1)?.[0] as TableProps;
+
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-g-feb-synced', 'cell-row-g-feb']);
+      expect(
+        within(rendered.getByTestId('cell-rows-total')).getByText(
+          cellsOf(table, 'category-groceries')[1].accessibilityValue,
+        ),
+      ).toBeTruthy();
     });
 
     it('closes the sheet when the screen stops showing, which moves the generation on', async () => {

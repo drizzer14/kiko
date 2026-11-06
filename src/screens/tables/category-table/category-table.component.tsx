@@ -1,15 +1,15 @@
-import { type FC, useMemo } from 'react';
+import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
-import type { CalendarMonth } from '@kiko/dates';
 import DataTable, {
   type DataTableColumn,
   type DataTableRow,
 } from '@kiko/design-system/components/data-table';
 import Box from '@kiko/design-system/components/box';
+import { type FC, useCallback, useMemo } from 'react';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import EmptyState from '@kiko/design-system/components/empty-state';
-import { type CellRow, expenseRowsOf } from '@kiko/statistics/cell-rows';
 import { buildCategoryByMonth } from '@kiko/statistics/category-by-month';
+import { type CellRange, expenseRowsOf } from '@kiko/statistics/cell-rows';
 import { averageOverComplete, firstCompleteMonthIndex } from '@kiko/statistics/table-period';
 
 import {
@@ -31,6 +31,9 @@ import type { CategoryTableProps } from './category-table.props';
 // resolves colors in cannot show here; the category menu's own slices take the active one.
 const TABLE_SCHEME = 'dark';
 
+/** Which rows a cell opens: a category's, or the All row's, which a held pick narrows. */
+type CellSelector = { kind: 'category'; key: string } | { kind: 'all' };
+
 type Amounts = {
   key: string;
   label: string;
@@ -40,15 +43,14 @@ type Amounts = {
   total: number;
   /** Null when no month is complete yet. */
   average: number | null;
-  /** The rows behind a cell of the row, for a month's range or the period's. */
-  rowsIn: (range: Pick<CalendarMonth, 'start' | 'end'>) => CellRow[];
+  selector: CellSelector;
 };
 
 const rowOf = (
   amounts: Amounts,
   months: CategoryTableProps['months'],
   spoken: Spoken,
-  open: (title: string, rows: readonly CellRow[]) => void,
+  open: (title: string, selector: CellSelector, range: CellRange) => void,
 ): DataTableRow => {
   const totalLabel = `${amounts.label}, ${spoken.t('tables.total')}`;
 
@@ -61,11 +63,11 @@ const rowOf = (
         const label = `${amounts.label}, ${monthTitle(months[index], spoken.t)}`;
 
         return openingCellOf(amount, label, spoken, () =>
-          open(label, amounts.rowsIn(months[index])),
+          open(label, amounts.selector, months[index]),
         );
       }),
       openingCellOf(amounts.total, totalLabel, spoken, () =>
-        open(totalLabel, amounts.rowsIn(periodOf(months))),
+        open(totalLabel, amounts.selector, periodOf(months)),
       ),
       averageCellOf(amounts.average, `${amounts.label}, ${spoken.t('tables.average')}`, spoken),
     ],
@@ -81,12 +83,43 @@ const CategoryTable: FC<CategoryTableProps> = ({
   baseCurrency,
   defaultCategoryKey,
   excludedCategories,
+  describeRow,
   sheetGeneration,
   topContent,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
-  const { open, sheet } = useCellRowsSheet(sheetGeneration);
+  // The sheet computes its rows from this, in render, so it reads the ledger and rates as they are
+  // now, not as they were at the tap. The All cell adds the rows of the categories the table was
+  // built with, so it takes the same held pick.
+  const rowsOf = useCallback(
+    (selector: CellSelector, range: CellRange) => {
+      const display = {
+        categoryDisplay,
+        rateTable,
+        baseCurrency,
+        defaultCategoryKey,
+        describe: describeRow,
+      };
+
+      return match(selector)
+        .with({ kind: 'all' }, () => expenseRowsOf(ledger, range, { excludedCategories }, display))
+        .with({ kind: 'category' }, ({ key }) =>
+          expenseRowsOf(ledger, range, { categoryKey: key }, display),
+        )
+        .exhaustive();
+    },
+    [
+      ledger,
+      categoryDisplay,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      excludedCategories,
+      describeRow,
+    ],
+  );
+  const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf);
   const currentIsPartial = (months.at(-1)?.end ?? 0) >= now;
   const table = useMemo(
     () =>
@@ -119,7 +152,6 @@ const CategoryTable: FC<CategoryTableProps> = ({
     const firstCompleteIndex = firstCompleteMonthIndex(months, firstRowTime, now);
     const averageOf = (cells: number[]) =>
       averageOverComplete(cells, firstCompleteIndex, currentIsPartial);
-    const display = { categoryDisplay, rateTable, baseCurrency, defaultCategoryKey };
 
     return [
       ...table.rows.map((row) =>
@@ -130,15 +162,13 @@ const CategoryTable: FC<CategoryTableProps> = ({
             cells: row.cells,
             total: row.total,
             average: averageOf(row.cells),
-            rowsIn: (range) => expenseRowsOf(ledger, range, { categoryKey: row.key }, display),
+            selector: { kind: 'category', key: row.key },
           },
           months,
           spoken,
           open,
         ),
       ),
-      // The All cell adds the rows of the categories the table was built with, so it takes the
-      // same held pick.
       rowOf(
         {
           key: 'all',
@@ -147,29 +177,14 @@ const CategoryTable: FC<CategoryTableProps> = ({
           cells: table.allCells,
           total: table.allTotal,
           average: averageOf(table.allCells),
-          rowsIn: (range) => expenseRowsOf(ledger, range, { excludedCategories }, display),
+          selector: { kind: 'all' },
         },
         months,
         spoken,
         open,
       ),
     ];
-  }, [
-    table,
-    months,
-    firstRowTime,
-    now,
-    currentIsPartial,
-    baseCurrency,
-    locale,
-    t,
-    ledger,
-    categoryDisplay,
-    rateTable,
-    defaultCategoryKey,
-    excludedCategories,
-    open,
-  ]);
+  }, [table, months, firstRowTime, now, currentIsPartial, baseCurrency, locale, t, open]);
 
   const caption = t('tables.category.caption', { currency: baseCurrency });
   // The empty state goes through the table, so the controls above it are one mounted tree whether

@@ -1,3 +1,4 @@
+import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
 import { calendarMonthsBetween } from '@kiko/dates';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
@@ -5,6 +6,7 @@ import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import {
   BASE_TIME,
   CARD,
+  CASH,
   COUNTED,
   EXCLUDED_BY_ONE_RULE_EACH,
   LOAN_PAYMENT,
@@ -15,7 +17,7 @@ import {
 
 import { buildSpendingLedger } from '../spending-ledger';
 
-import { expenseRowsOf, incomeRowsOf } from '.';
+import { expenseRowsOf, incomeRowsOf, rowDescriberOf } from '.';
 
 const DISPLAY = buildCategoryDisplayMap([
   { key: 'groceries', title: 'Groceries', icon: 'cart' },
@@ -35,6 +37,9 @@ const ledgerOf = (
   shownHoldings: readonly HoldingRow[] = worldInput().shownHoldings,
 ) => buildSpendingLedger(worldInput({ transactions, shownHoldings }));
 
+// The language is read when a row is described, so a test that switches it needs no new describer.
+const DESCRIBE = rowDescriberOf(worldInput().holdings, i18n.t);
+
 const expenseRows = (
   transactions: readonly TransactionRow[],
   pick: Parameters<typeof expenseRowsOf>[2] = {},
@@ -46,13 +51,14 @@ const expenseRows = (
     rateTable,
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
+    describe: DESCRIBE,
   });
 
 const incomeRows = (
   transactions: readonly TransactionRow[],
   range = JANUARY,
   rateTable: Parameters<typeof incomeRowsOf>[2] = RATE_TABLE,
-) => incomeRowsOf(ledgerOf(transactions), range, rateTable, 'UAH');
+) => incomeRowsOf(ledgerOf(transactions), range, rateTable, 'UAH', DESCRIBE);
 
 const rowOf = (id: string, amountMinorUnits: number, overrides: Partial<TransactionRow> = {}) =>
   transactionRow({ id, holdingId: 'card', amountMinorUnits, time: BASE_TIME, ...overrides });
@@ -125,6 +131,7 @@ describe('expenseRowsOf', () => {
           native: Money.of('UAH', 9_000),
           base: Money.of('UAH', 9_000),
           paymentId: 'loan-payment',
+          loanPart: 'interest',
         },
       ]);
     });
@@ -143,6 +150,64 @@ describe('expenseRowsOf', () => {
         ['loan-excess:loan-payment', 300, 'loan-payment'],
         ['loan-interest:loan-payment', 9_000, 'loan-payment'],
       ]);
+    });
+
+    it('tells the interest of a payment from its fee', () => {
+      const withFee = { ...payment, amountMinorUnits: -(909_000 + 300) };
+
+      expect(expenseRows([withFee]).map((row) => [row.id, row.loanPart])).toEqual([
+        ['loan-excess:loan-payment', 'fee'],
+        ['loan-interest:loan-payment', 'interest'],
+      ]);
+    });
+
+    it('has no loanPart on a row that is no part of a loan payment', () => {
+      const [row] = expenseRows([rowOf('coffee', -1_500)]);
+
+      expect(row).not.toHaveProperty('loanPart');
+    });
+
+    it('reads as its payment reads on Home when the payment has no description', () => {
+      const rows = expenseRows([{ ...LOAN_PAYMENT, description: '' }]);
+
+      expect(rows.map((row) => row.description)).toEqual([
+        i18n.t('transactions.defaultDescriptionExpense', { name: CARD.name }),
+      ]);
+    });
+  });
+
+  describe('a row with no description', () => {
+    const cashExpense = rowOf('cash-coffee', -1_500, { holdingId: 'cash', description: '' });
+    const defaultLabel = (lng: string) =>
+      i18n.t('transactions.defaultDescriptionExpense', { name: CASH.name, lng });
+
+    it('reads as Home reads it: the default label of its holding', () => {
+      const [row] = expenseRows([cashExpense]);
+
+      expect(row.description).toBe(defaultLabel('en'));
+    });
+
+    it('keeps a description the row has', () => {
+      const [row] = expenseRows([{ ...cashExpense, description: 'Coffee' }]);
+
+      expect(row.description).toBe('Coffee');
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      afterEach(async () => {
+        await i18n.changeLanguage('en');
+      });
+
+      it('reads in the language, as it does on Home', () => {
+        const [row] = expenseRows([cashExpense]);
+
+        expect(row.description).toBe(defaultLabel('uk'));
+        expect(row.description).not.toBe(defaultLabel('en'));
+      });
     });
   });
 
@@ -242,7 +307,8 @@ describe('incomeRowsOf', () => {
       {
         id: 'gift',
         time: BASE_TIME + MINUTE,
-        description: '',
+        // No description of its own: the default label of its holding, as Home reads it.
+        description: i18n.t('transactions.defaultDescriptionIncome', { name: CARD.name }),
         native: Money.of('UAH', 2_000),
         base: Money.of('UAH', 2_000),
       },
@@ -256,15 +322,19 @@ describe('incomeRowsOf', () => {
     ]);
   });
 
-  it.each(['transfer-in', 'move-in', 'coin-purchase'])(
-    'never shows the credit %s, which a rule excludes',
-    (id) => {
-      const rows = incomeRows([...worldInput().transactions, rowOf('salary', 50_000)]);
+  it('never shows a credit that a rule excludes: a transfer, a move or a coin purchase', () => {
+    const rows = incomeRows([...worldInput().transactions, rowOf('salary', 50_000)]);
 
-      expect(idsOf(rows)).toEqual(['salary']);
-      expect(idsOf(rows)).not.toContain(id);
-    },
-  );
+    expect(idsOf(rows)).toEqual(['salary']);
+  });
+
+  it('shows the default label of its holding for a credit with no description, as Home does', () => {
+    const [row] = incomeRows([rowOf('cash-in', 100, { holdingId: 'cash', description: '' })]);
+
+    expect(row.description).toBe(
+      i18n.t('transactions.defaultDescriptionIncome', { name: CASH.name }),
+    );
+  });
 
   it('never shows a change return, which is netted from the expenses', () => {
     const rows = incomeRows([
@@ -305,6 +375,7 @@ describe('incomeRowsOf', () => {
       JANUARY,
       RATE_TABLE,
       'UAH',
+      DESCRIBE,
     );
 
     expect(idsOf(rows)).toEqual(['salary']);

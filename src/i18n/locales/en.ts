@@ -1445,10 +1445,12 @@ export const en = {
     },
     cellRows: {
       // Read for a cell that opens a list of the rows behind its amount.
-      hint: 'Shows the rows behind this amount.',
-      // The interest or the fee of a loan payment, which is filed under its own category.
-      loanPayment: 'Part of a loan payment.',
-      noDescription: 'No description',
+      hint: 'Shows the transactions behind this amount.',
+      // Under the part of a loan payment above its scheduled installment, which is filed under the
+      // payment's own category.
+      loanFee: 'Fee on a loan payment.',
+      // Under the interest of a loan payment, which is filed under its own category.
+      loanInterest: 'Interest on a loan payment.',
     },
     empty: {
       title: 'No spending in this period',

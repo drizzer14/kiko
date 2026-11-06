@@ -1,1 +1,8 @@
-export { type CellRow, expenseRowsOf, incomeRowsOf } from './cell-rows';
+export {
+  type CellRange,
+  type CellRow,
+  expenseRowsOf,
+  incomeRowsOf,
+  type RowDescriber,
+  rowDescriberOf,
+} from './cell-rows';

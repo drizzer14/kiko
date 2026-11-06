@@ -6,6 +6,7 @@ import {
   type LoanHolding,
   type LoanPaymentTransaction,
   loanPaymentIdOf,
+  loanEntryPartOf,
   loanInterestEntries,
   loanPaymentExcludedTransactionIds,
   LOAN_INTEREST_CATEGORY_KEY,
@@ -456,5 +457,20 @@ describe('loanPaymentIdOf', () => {
 
   it('has no payment for an id that only starts like an entry', () => {
     expect(loanPaymentIdOf('loan-interest-tx-linked')).toBeUndefined();
+  });
+});
+
+describe('loanEntryPartOf', () => {
+  it('tells the interest entry of a payment from its fee entry', () => {
+    expect(loanEntryPartOf('loan-interest:tx-fee')).toBe('interest');
+    expect(loanEntryPartOf('loan-excess:tx-fee')).toBe('fee');
+  });
+
+  it('has no part for a real transaction id', () => {
+    expect(loanEntryPartOf('tx-linked')).toBeUndefined();
+  });
+
+  it('has no part for an id that only starts like an entry', () => {
+    expect(loanEntryPartOf('loan-excess-tx-linked')).toBeUndefined();
   });
 });
