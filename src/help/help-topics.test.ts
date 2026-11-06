@@ -604,6 +604,14 @@ describe('the choices a help step names', () => {
     },
   );
 
+  it('names the main currency in uk step 11 and says which table has no category filter', () => {
+    const step = stepOf(ukValues, 'viewStatistics', 11);
+
+    expect(step).not.toContain('базов');
+    expect(step).toContain('у цілих одиницях основної валюти');
+    expect(step).toContain('У таблиці «Капітал» немає фільтра за категоріями.');
+  });
+
   it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],
     ['uk', ukValues, /лише/i, 'Відсотки за кредитом'],
