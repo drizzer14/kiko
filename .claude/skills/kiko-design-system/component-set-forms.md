@@ -359,7 +359,7 @@
   width and the value wraps inside the row; rows without it lay out exactly as before. The rule
   card on the category form (the rule card under `src/screens/forms/category-form/`) is the caller. At
   very large Dynamic Type a wrapping value can be squeezed narrow; check it on the device.
-  Extracted from the
+  Callers: grep `SummaryTable` under `src/`. Extracted from the
   holding-detail deposit/bond value-breakdown block —
   `HoldingDetailScreen` renders its own
   principal/gross/interest/tax/expected-profit rows through this (and,
@@ -371,13 +371,10 @@
   `textSecondary` value like its ISIN summary, testID
   `bond-form-yield-to-maturity`), passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
-  visual change from before the extraction. The statement-import preview
-  (`StatementPreviewBlock`, `statement-import/statement-preview-block/`) and the
-  column-mapping result section (`MappingResult`) reuse the SAME row
-  layout/alignment/styling for their own summary rows (transaction count,
-  currency, date span) — never the deposit table's value/percent/tax
-  COLUMNS, only its layout. The loan detail's ledger breakdown is a
-  `SummaryTable` too; its linked and scheduled payments are NOT (they are
+  visual change from before the extraction. Every other caller reuses the SAME row
+  layout/alignment/styling for its own summary rows — never the deposit table's
+  value/percent/tax COLUMNS, only its layout. A loan's linked and scheduled
+  payments are NOT `SummaryTable` rows (they are
   `EntryCard` rows in the day-grouped ledger, see **EntryCard**). A property
   owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /
