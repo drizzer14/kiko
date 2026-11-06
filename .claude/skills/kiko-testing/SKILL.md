@@ -160,7 +160,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   handle that drives it and updates each.
 - A `jest.mock` factory replaces the whole module. When an import rewrite makes production code
   resolve a function through a partially mocked module (`holdingsRepo.balanceOf` via the barrel),
-  add that function to the factory; never widen the mock to the real module.
+  add that function to the factory; never put real code into a mock factory to dodge a missing
+  function. A spread of `jest.requireActual(...)` that overrides named exports on purpose is
+  allowed (see `src/crypto-sync/bybit/bybit.capital-history.empty-plan.test.ts`).
   A mock must target the module that holds the call site. After you extract code,
   re-point each mock of a function that the moved code calls from a sibling file
   (a mock on the barrel `exchange/walk` missed `runWalkPlan`, which

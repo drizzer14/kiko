@@ -344,7 +344,9 @@ than restated here:
   them re-imports idempotently rather than losing progress. A walk can also
   REMOVE a row: the fiat walks delete the row of a record read `Refunding` or
   `Refunded` (`SettledSpan.removed`, `commitSettledSpan`'s `remove`, the only
-  delete of a synced row: `transactionsRepo.removeSyncedRows`, by key, no balance move),
+  delete of a synced row: `transactionsRepo.removeSyncedRows`, by key, no balance move; the
+  Bybit capital walk deletes on status 70011 the same way, through the optional `remove` of
+  `commitSettledSpan`, `src/crypto-sync/bybit/bybit.capital-history.ts`),
   after the span's rows and before its not-imported entry and its marks, so a
   crash before the marks has the next run read the span again. In the forward
   pass the owed list and the cursor are one patch list, and in the re-scan the
@@ -749,7 +751,8 @@ probe. An edit of one of these helpers is an edit of every pin on it. The stop c
   follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
   every stop). A span stop (`earn-page-drift`, `earn-holding-missing`) and a row with no time keep
-  R28.
+  R28. Bybit is the opposite (see "Bybit balance sync — notes, set-aside coins, cooling"): a
+  capital page drift is an owed tagged range and the forward pass goes on.
 - **Earn reads at the second (R36).** The Earn endpoints compare a record's whole-second `time`
   to each end of a read at the second, so a read of a span also returns a record in the second its
   start falls in. `settledEarnOf` hands `settleRecords` and `settleUnreadable` a `reach` (the span
@@ -1045,8 +1048,21 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
 
 ## Bybit balance sync — notes, set-aside coins, cooling
 
-Status: set 4 of 1.4-bybit; the history walk of set 6 can extend this section. The code is in
-`src/crypto-sync/bybit/`; read it there and copy no list from here.
+Status: set 5 of 1.4-bybit (the capital walk) is in; the transfer walk of set 6 can extend this
+section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list from here.
+
+- `readCursorSpan` (`bybit.cursor-span.ts`) counts a refused call (`recordBybitFailedCall`) and
+  rethrows it. The reader does not sort rows; the walk sorts them by time, then key
+  (`byTimeThenKey` in `bybit.capital-history.ts`).
+- The lanes, their call caps and the call interval live in `bybit.history-budget.ts`
+  (`BYBIT_LANE_CALL_CAPS`, `BYBIT_REQUEST_INTERVAL_MS`). Read the values there.
+- Every capital row books on FUND. A page drift of a capital series is owed as a range tagged with
+  the series (`driftOf`), and the forward pass goes past it (`CAPITAL_FORWARD_OWES`;
+  `isOwedPast` in `src/crypto-sync/exchange/walk/records.ts`). Binance `earn-page-drift` is the
+  opposite: it stops the run.
+- Deposit type 50 (`NOT_CREDITED_DEPOSIT_TYPE`) is final and owes nothing.
+- `CAPTION_WALKS` for bybit
+  (`src/screens/account-detail/crypto-sync-section/binance-history-status.ts`) is the capital walk.
 
 - The provider (`bybit.provider.ts`) returns state patches. Patch kind `balanceNotes`
   (`src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`, `withBalanceNotes`): a good read

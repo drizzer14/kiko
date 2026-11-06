@@ -403,22 +403,36 @@ Base: set 11 tip (PLANNER CALL 89; was: set 4 tip). Needs the live pages of spec
 way in. Stays out of `next` (O21). A coin with an open order or a loan is on UNIFIED and every row of this walk is on FUND, so those two do not reach this set. A refused FUND coin and a FUND wallet not read do reach it, and set 11 has already covered them: spec section 3, "Which readers". This walk also starts the history list of untracked coins, which set 11 step 5/5 keeps out of the not-read block. Reviewer checks: each early return of spec section 5; settled matrix; no stored cursor; no text that calls a waiting row harmless (O63 (d));
 `withdrawType=2`; O6 sentinel; the floor stays 729 days (R1); rules 45 and 47, and each safe reading of spec section 3 against the page.
 
-- [ ] **step 1/4: budget and config.** `bybit.history-budget.ts` (`BybitLane`, caps 30 and 20 here, set 9 adds its two, interval 1100,
+- [x] **step 1/4: budget and config.** `bybit.history-budget.ts` (`BybitLane`, caps 30 and 20 here, set 9 adds its two, interval 1100,
   `createBybitHistoryRun`, refused call counted), `bybit.walk-config.ts` (`source: 'bybit'`, `bybitAsset`). P16 and
   P12 are MEASURED, and the interval and caps stay (spec section 5).
-- [ ] **step 2/4: `readCursorSpan`** (`bybit.cursor-span.ts`), at the `walkSpans` `read` seam: follows
+- [x] **step 2/4: `readCursorSpan`** (`bybit.cursor-span.ts`), at the `walkSpans` `read` seam: follows
   `nextPageCursor`, `canAfford` per page, `undefined` before a span's first page, `split` over `minSplitMs`, `undefined` at `minSplitMs` or less, with a signal to its caller when that span was the pass's first read (F4, PLANNER CALL 73; capital and transfer ignore it) (a day for capital and transfer, here; 1 second for `log` and `fundingLedger`, from their sets; was: 1 minute, O68 (a); before that a day for all, PLANNER CALL 63; spec section 5, "The pager rule"); a repeat cursor, or a row outside the span
   by both readings of its window field, is `bybit-page-drift` (rule 22, PLANNER CALL 29); an empty or absent cursor, or a page with no row, ends the span; a pending row with no time is never drift, and the time sort leaves it out (rule 19,
   rule 47). No `readIdCursor` or `readSeriesSpan` stretch (O8). Rows A20, A61, A98, Q5 start.
-- [ ] **step 3/4: parsers.** `bybit.history-client.ts`: tracked rule, unreadable, untracked counted never parsed, named
+- [x] **step 3/4: parsers.** `bybit.history-client.ts`: tracked rule, unreadable, untracked counted never parsed, named
   fields only (the list of each series in spec section 3: `result.rows`, and `result.list` for transfer), `BybitHistoryParseError`, time by digit count: 13 ms, 10 the whole second, any other unreadable (A60); an empty, 0 or absent time reads the same (rule 47). A withdrawal's shown `time` is `createTime` (A82). Paths added to `BYBIT_SIGNED_PATHS`.
-- [ ] **step 4/4: the capital walk.** `bybit.capital-history.ts`: series `deposit`, `internal`,
+- [x] **step 4/4: the capital walk.** `bybit.capital-history.ts`: series `deposit`, `internal`,
   `withdraw`; windows 29 days; floor `now - 729 days`, which P12 did not move (R1); `reach` per rule 18;
   a withdrawal's `extentOf` is `createTime` alone (PLANNER CALL 29); `depositType` 0 only (PLANNER CALL 30), and type 50 final, nothing owed (PLANNER CALL 118); removal of 70011; forward owes constant per the
   Transfer rule, holding each code of a waiting status with a time. Every row on FUND, clause W1 (rule 45). The walker stays as it is: a deposit with
   no time and no final status, and a row with an unreadable time, makes no row, and this file tags the range `settleRecords` owes with the series, so `isOwedPast` lets the forward pass go on (rule 47, PLANNER CALL 37, O63 (b); was: owes nothing, CALL 28). The stop codes of these rows join the forward owes list, and so does `bybit-page-drift`, whose range this file tags with its series (rule 22, PLANNER CALL 117). A 70011 row with no time still removes by key (rule 14). Guard on an empty plan
   tests all four lists. Arm: `capital` in `logOnFailure`, `captionWalksOf('bybit')` gains `capital`. Rows A17
   to A22, A27, A30, A35, A39, A41, A60, A82. A failing proof of a safe reading is a report to the planner, never a loosened row.
+
+BACKLOG from the set 5 review (lines checked at a9d04d517):
+
+- BACKLOG c1: if/else over a closed union at `bybit.capital-history.ts:481-487` -> `match().exhaustive()`.
+- BACKLOG c2: `.otherwise()` at `bybit.capital-history.ts:353` and `:363` -> `.exhaustive()`.
+- BACKLOG c3: "this set" in the comment `bybit.history-budget.ts:8-10` and its test title
+  (`bybit.history-budget.test.ts:26`).
+- BACKLOG o1: the `isTrackedBybitAsset` check at `bybit.capital-history.ts:228-230` is unreachable;
+  remove it and its test (`bybit.capital-history.test.ts:524`).
+- BACKLOG o2: `SECOND_MS` is defined in `bybit.history-client.ts:56` and `bybit.capital-history.ts:75` (and in 3 bybit test files) -> import from `@kiko/dates`.
+- BACKLOG: stale comment `src/crypto-sync/exchange/walk/records.ts:322-324` (wrong for a series-tagged range).
+- BACKLOG: the recurring track's optional twin-fold pin (a Bybit row plus an imported twin).
+- BACKLOG: spec rows that name a test title go stale on a rename (A41 moved twice): consider a doc
+  check that the test file of each A-row exists.
 
 ## 1.4-bybit set 6/11: transfer walk and convergence proof (stage B)
 
