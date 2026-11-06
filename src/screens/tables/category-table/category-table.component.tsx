@@ -21,6 +21,9 @@ import { monthColumnLabel, monthTitle } from '../month-column-label';
 import { styles } from './category-table.styles';
 import type { CategoryTableProps } from './category-table.props';
 
+// The table keeps a row's key, title and amounts, never a slice color, so the scheme the breakdown
+// resolves colors in cannot show here; the category menu's own slices take the active one.
+const TABLE_SCHEME = 'dark';
 const NO_VALUE = '–';
 const WHOLE_UNITS = { fractionDigits: 0, symbol: false } as const;
 // The table opens with this many month columns showing, the next column peeking in as the hint
@@ -104,6 +107,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
         baseCurrency,
         defaultCategoryKey,
         excludedCategories,
+        scheme: TABLE_SCHEME,
       }),
     [
       ledger,

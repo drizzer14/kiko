@@ -100,8 +100,9 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
         rateTable,
         baseCurrency,
         defaultCategoryKey,
+        scheme,
       }),
-    [months, ledger, categoryByKey, rateTable, baseCurrency, defaultCategoryKey],
+    [months, ledger, categoryByKey, rateTable, baseCurrency, defaultCategoryKey, scheme],
   );
 
   const categoryOptions = useMemo(
@@ -111,8 +112,9 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
         categories,
         categoryByKey,
         keptKeys: selectedCategories,
+        scheme,
       }),
-    [periodSlices, categories, categoryByKey, selectedCategories],
+    [periodSlices, categories, categoryByKey, selectedCategories, scheme],
   );
   const visibleSelectedCategories = useMemo(
     () => visibleCategorySelection(selectedCategories, categoryByKey, periodSlices),

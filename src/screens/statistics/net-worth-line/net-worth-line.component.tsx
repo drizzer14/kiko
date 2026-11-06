@@ -97,18 +97,6 @@ const X_LABEL_FRACTIONS = [0, 0.5, 1] as const;
 const REFERENCE_DASH = '4 4';
 // Half a caption line, to centre a Y tick label on its gridline.
 const LABEL_HALF_HEIGHT = 8;
-// The line-adjacent gradient stop's opacity (the reference-adjacent stop
-// always fades to fully transparent — see the Stop opacity={0} below). The
-// green/positive band uses `AREA_OPACITY`; the red/negative band needs a
-// higher value on the OLED true-black background (`darkTheme.colors.background`,
-// `#000000`): alpha-compositing a translucent color over a background is
-// `fg * alpha + bg * (1 - alpha)`, so a low alpha blends straight down toward
-// near-black (`bg` contributes ~0) and reads barely visible — `0.5` keeps a
-// shallow dip legible. This is opacity only: the fill color itself still comes
-// from the theme token (`theme.colors.negative`).
-const AREA_OPACITY = 0.3;
-const NEGATIVE_AREA_OPACITY = 0.5;
-
 type Scales = {
   x: (t: number) => number;
   y: (value: number) => number;
@@ -431,10 +419,9 @@ export const buildLineSegments = (
 // point strictly on its side collapses its extreme to `referenceY`, which the
 // caller reads as "empty" (its top === referenceY) and does not render — so a
 // degenerate zero-height gradient is never emitted. Anchoring the 0->opaque
-// ramp (AREA_OPACITY, or NEGATIVE_AREA_OPACITY for red — see
-// those constants) into this sliver is what makes a SHALLOW dip (or rise)
-// show readable color, instead of living where the whole-plot ramp's opacity
-// was ~0.
+// ramp (`theme.chartFill.areaOpacity`, or `negativeAreaOpacity` for red) into
+// this sliver is what makes a SHALLOW dip (or rise) show readable color,
+// instead of living where the whole-plot ramp's opacity was ~0.
 const bandExtremes = (
   points: NetWorthPoint[],
   scales: Scales,
@@ -559,9 +546,13 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
 
   useEffect(() => navigation?.addListener('focus', () => setSelection(null)), [navigation]);
 
-  // The red/negative fill needs more opacity than the green band on the OLED
-  // true-black background (see NEGATIVE_AREA_OPACITY above).
-  const negativeAreaOpacity = NEGATIVE_AREA_OPACITY;
+  // The line-adjacent gradient stop's opacity (the reference-adjacent stop always fades to fully
+  // transparent, see the Stop opacity={0} below), per scheme. In dark the red/negative band needs
+  // a higher value on the OLED true-black background: alpha-compositing a translucent color over
+  // a background is `fg * alpha + bg * (1 - alpha)`, so a low alpha blends straight down toward
+  // near-black and reads barely visible. This is opacity only: the fill color itself still comes
+  // from the theme token (`theme.colors.negative`).
+  const { areaOpacity, negativeAreaOpacity } = theme.chartFill;
   // formatCompactMoney below reads activeLocale() at render/call time, not via
   // a subscription of its own. Subscribing here, the same as MoneyText, is what
   // makes a language switch actually re-render this component's Y-axis money
@@ -782,7 +773,7 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
                       testID="net-worth-line-gradient-positive-stop-line"
                       offset="0"
                       stopColor={theme.colors.positive}
-                      stopOpacity={AREA_OPACITY}
+                      stopOpacity={areaOpacity}
                     />
                     <Stop
                       testID="net-worth-line-gradient-positive-stop-reference"

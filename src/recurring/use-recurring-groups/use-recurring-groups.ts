@@ -10,6 +10,7 @@ import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { recurringGroupsOf } from '@kiko/recurring/recurring-groups';
 import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 import { compareText, type RecurringSeries } from '@kiko/recurring/detection';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 
 const NO_GROUPS = { groups: [], total: undefined };
 
@@ -27,6 +28,7 @@ export const useRecurringGroups = (
   all: readonly RecurringSeries[],
 ) => {
   const isVisible = useIsScreenVisible();
+  const scheme = useActiveColorScheme();
   const liveOptions = { paused: !isVisible } as const;
   // The ids are the key, so one series order or another reads under one and the same query.
   const idsKey = JSON.stringify(
@@ -74,9 +76,10 @@ export const useRecurringGroups = (
             defaultCategoryKey,
             baseCurrency,
             rateTable,
+            scheme,
           })
         : NO_GROUPS,
-    [isReady, shown, rows, categories, defaultCategoryKey, baseCurrency, rateTable],
+    [isReady, shown, rows, categories, defaultCategoryKey, baseCurrency, rateTable, scheme],
   );
 
   return { groups, total, isLoading: !isReady };

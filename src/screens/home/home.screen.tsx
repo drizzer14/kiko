@@ -423,7 +423,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         value: key,
         label: display.title,
         icon: display.icon,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
       });
     }
     // Order the filter options by each category's `sortOrder` (the user-defined
@@ -450,6 +450,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     defaultCategoryKey,
     categoryKeyForRow,
     i18n.language,
+    scheme,
   ]);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((row) => {

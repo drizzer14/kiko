@@ -49,7 +49,7 @@ export const chartSeriesDark = [
 // Light twins of the dark set, from docs/design/light-palette/palette.json (pinned by
 // light-palette-source.test.ts). Stored colors stay the dark hex; these are only the display
 // value. Keyed by the dark set, so a key can never exist on one side only. The dark blocks come
-// first because check-dark.mjs reads this file by text position.
+// first because the palette check reads this file by text position.
 //
 // Tile fill for an account or holding: kept at least 3.8:1 against white, so even the lightened
 // top gradient stop holds a white glyph at 3:1.
@@ -96,3 +96,12 @@ export const categoryColorsLight: Record<SwatchName, string> = {
 export const chartSeriesLight: readonly string[] = (
   ['blue', 'green', 'orange', 'violet', 'teal', 'pink', 'yellow', 'indigo'] as const
 ).map((name) => categoryColorsLight[name]);
+
+// The alpha of the net-worth area band's stop next to the line, from the file's chartParameters
+// (pinned by light-palette-source.test.ts). Dark needs the higher negative alpha because blending
+// toward black loses the color; on white the same alpha as the positive band already reads.
+type ChartFill = { areaOpacity: number; negativeAreaOpacity: number };
+
+export const chartFillDark: ChartFill = { areaOpacity: 0.3, negativeAreaOpacity: 0.5 };
+
+export const chartFillLight: ChartFill = { areaOpacity: 0.3, negativeAreaOpacity: 0.3 };

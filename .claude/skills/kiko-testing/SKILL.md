@@ -120,7 +120,15 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   light theme first and dark first again in the Unistyles jest mock, for a light-world test. The
   mock's `StyleSheet.create` resolves once at module evaluation, so a test of a stylesheet color
   calls `registerLightThemeFirst` before it imports the module, inside `jest.isolateModules`; after
-  the imports it changes only `useUnistyles().theme`.
+  the imports it changes only `useUnistyles().theme`. The mock's `StyleSheet.configure`
+  replaces the theme registry (`node_modules/react-native-unistyles/src/mocks.ts`), so
+  importing a test-support module that imports `@kiko/design-system/unistyles` (for example
+  `src/test-support/reset-statistics-filter-selection.ts`) puts dark first again; call
+  `registerLightThemeFirst` after such an import. A suite that never imports
+  `@kiko/design-system/unistyles` gets theme `{}` and an undefined colorScheme, which the
+  display map throws on; a scheme-dependent test imports it.
+- `light-twin-of-dark.ts`: `lightTwinOfDark`, the light entity hex of each dark swatch hex, for a
+  test that expects a default color mapped through the light set.
 - `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
   where Jest's `findNodeHandle` returns null, for a share-anchor pin.
 
@@ -391,6 +399,8 @@ A test that reads a tracked `docs/` file fails a Stryker dry run, because the `i
 `stryker.conf.json` exclude `docs/*` from the sandbox
 (`src/crypto-sync/binance/binance.privacy-policy.test.ts` and
 `src/i18n/locales/uk.catalog-rules.test.ts` do this); list any new one in that inventory.
+Such a test needs a `!docs/...` re-include chain in `ignorePatterns`; read
+`stryker.conf.json` for the pattern.
 Harness tests under `__tests__/` are out of scope: they read
 rules, scripts, docs, and temp projects.
 

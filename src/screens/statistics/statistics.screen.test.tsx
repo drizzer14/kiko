@@ -63,14 +63,18 @@ jest.mock('@react-navigation/native', () => ({
 
 import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
-import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
@@ -2126,6 +2130,27 @@ describe('StatisticsScreen', () => {
     expect(
       optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart')?.props.tintColor,
     ).toBe(categoryColor('groceries'));
+  });
+
+  it('tints a category filter option through the light map in the light scheme', async () => {
+    registerLightThemeFirst();
+    seedSpending();
+
+    try {
+      const { getByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(CATEGORY_FILTER));
+      });
+
+      const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart')?.props
+        .tintColor;
+
+      expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
+      expect(tint).not.toBe(categoryColor('groceries'));
+    } finally {
+      restoreThemeOrder();
+    }
   });
 
   it('orders the category filter options by the custom category order, not by spending magnitude', async () => {

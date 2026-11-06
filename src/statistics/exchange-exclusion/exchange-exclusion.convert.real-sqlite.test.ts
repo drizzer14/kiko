@@ -93,6 +93,7 @@ const spendingOf = (ledger: Ledger) => {
     baseCurrency: 'UAH' as const,
     defaultCategoryKey: 'other',
     excludedTransactionIds,
+    scheme: 'dark' as const,
   };
   const pie = buildCategoryBreakdown(common);
   const trend = buildCategoryTrend({

@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
 
 // Whether the screen is on screen: the hook pauses every read while it is not.
 const mockUseIsScreenVisible = jest.fn(() => true);

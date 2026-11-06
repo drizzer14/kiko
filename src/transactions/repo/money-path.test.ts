@@ -133,6 +133,7 @@ describe('Money-path guard: split-change + convert prefill', () => {
       rateTable: {},
       baseCurrency: 'UAH',
       defaultCategoryKey: 'groceries',
+      scheme: 'dark',
     });
 
     expect(slices).toHaveLength(1);
@@ -231,6 +232,7 @@ describe('Money-path guard: split-change + convert prefill', () => {
       defaultCategoryKey: 'groceries',
       range: { from: startOfLocalDay(localDaysFrom(now, -3)), to: now },
       bucketDays: 1,
+      scheme: 'dark',
     });
 
     // The affected day's trend value is the NET |payment| − Σreturns = 211_72

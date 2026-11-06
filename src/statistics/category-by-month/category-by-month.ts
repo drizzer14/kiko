@@ -1,6 +1,7 @@
 import type { CalendarMonth } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import type { RateTable } from '@kiko/rates/conversion';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
 
 import { type SpendingLedger, spendingRowsIn } from '../spending-ledger';
@@ -42,6 +43,7 @@ type CategoryTableSources = {
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
+  scheme: ColorScheme;
 };
 
 const breakdownIn = (
@@ -58,6 +60,7 @@ const breakdownIn = (
     defaultCategoryKey: sources.defaultCategoryKey,
     excludedCategories,
     excludedTransactionIds: sources.ledger.excludedTransactionIds,
+    scheme: sources.scheme,
   });
 
 /**
