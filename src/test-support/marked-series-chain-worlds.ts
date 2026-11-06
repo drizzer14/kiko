@@ -171,7 +171,7 @@ export const AMOUNT_CHAIN_WORLDS: readonly MarkedWorld[] = [
     noEntry: [series('monthly', 8, onDay(7))],
     shown: [
       marked('monthly', 5, onDay(7), { isStopped: true }),
-      marked('everyThreeMonths', 3, MARKED_LINE),
+      marked('everyThreeMonths', 2, MARKED_LINE),
     ],
   },
   {

@@ -280,7 +280,11 @@ describe('isReady', () => {
     await fireAgain(rerender);
 
     expect(result.current.isReady).toBe(true);
-    expect(result.current.chain).toEqual({ period: 'yearly', marks: [markOf('yearly', 10_000)] });
+    expect(result.current.chain).toEqual({
+      period: 'yearly',
+      marks: [markOf('yearly', 10_000)],
+      holdsRow: false,
+    });
   });
 
   it('is false on a rejected ledger read with no chain, and a later good fire releases it', async () => {
@@ -295,7 +299,11 @@ describe('isReady', () => {
     await fireAgain(rerender);
 
     expect(result.current.isReady).toBe(true);
-    expect(result.current.chain).toEqual({ period: 'yearly', marks: [markOf('yearly', 10_000)] });
+    expect(result.current.chain).toEqual({
+      period: 'yearly',
+      marks: [markOf('yearly', 10_000)],
+      holdsRow: false,
+    });
   });
 
   it('is true on a ledger read turned off after its rejection: the kept error does not count', async () => {
@@ -321,7 +329,7 @@ describe('the chain of a row', () => {
     const { result } = await renderRowMark(-14_400);
 
     expect(result.current).toEqual({
-      chain: { period: 'yearly', marks: [markOf('yearly', 10_000)] },
+      chain: { period: 'yearly', marks: [markOf('yearly', 10_000)], holdsRow: false },
       detectedPeriod: null,
       isReady: true,
     });
@@ -342,7 +350,11 @@ describe('the chain of a row', () => {
 
     const { result } = await renderRowMark(-9_900);
 
-    expect(result.current.chain).toEqual({ period: 'yearly', marks: [markOf('yearly', 9_900)] });
+    expect(result.current.chain).toEqual({
+      period: 'yearly',
+      marks: [markOf('yearly', 9_900)],
+      holdsRow: true,
+    });
   });
 
   it('says a chain holds the 100 of a month and not the 98 beside it', async () => {

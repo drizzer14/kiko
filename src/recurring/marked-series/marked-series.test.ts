@@ -37,7 +37,6 @@ import {
   ONE_AMOUNT_WORLDS,
   type MarkedWorld,
 } from '@kiko/test-support/marked-series-worlds';
-import type { Currency } from '@kiko/currency/currency';
 import { sweep } from '@kiko/test-support/property-sweep';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import type { RecurringMerchantChoice } from '@kiko/settings';
@@ -49,19 +48,7 @@ import { paidSoFarOf, recurringGroupsOf } from '@kiko/recurring/recurring-groups
 import { AMOUNT_CHAIN_WORLDS } from '@kiko/test-support/marked-series-chain-worlds';
 import { isRecurringCandidate, recurringExcludedIds } from '@kiko/recurring/eligibility';
 
-import type { MarkedEntry } from './marked-series';
-
-type MarkedChainOfRow = (
-  charges: readonly Charge[],
-  marks: readonly RecurringMark[],
-  row: { id: string; amountMinorUnits: number },
-  currency: Currency,
-) => { period: RecurringPeriod; marks: readonly RecurringMark[]; holdsRow: boolean } | null;
-
-// A lookup by name, so this file typechecks before the new signature exists.
-const markedChainOfRow = (
-  jest.requireActual('./marked-series') as { markedChainOfAmount: MarkedChainOfRow }
-).markedChainOfAmount;
+import { type MarkedEntry, markedChainOfAmount as markedChainOfRow } from './marked-series';
 
 const SEED_SPREAD = 104_729;
 const AMOUNT_STEP = 1.25;

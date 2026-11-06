@@ -617,7 +617,7 @@ describe('RecurringSeriesScreen — a marked route after its mark was removed', 
 });
 
 describe('RecurringSeriesScreen — a marked route after a pick on a row of its chain', () => {
-  it('finds the marked x11 by its span, though its period and the detected 399 differ', async () => {
+  it('finds the marked x1 by its span, though its period and the detected 399 differ', async () => {
     const ledger = ledgerOf([
       ...monthly(10, 5, 99, { prefix: 'cheap', description: 'Apple' }),
       ...monthly(1, 12, 119, { prefix: 'odd', description: 'Apple', newest: [2026, 7] }),
@@ -630,9 +630,9 @@ describe('RecurringSeriesScreen — a marked route after a pick on a row of its 
 
     expect(route.period).toBe('monthly');
     expect(markedOf(after, 'Apple').period).toBe('yearly');
-    expect(markedOf(after, 'Apple').chargeIds).toHaveLength(11);
+    expect(markedOf(after, 'Apple').chargeIds).toHaveLength(1);
     expect(detectedOf(after, 'Apple').chargeIds).toHaveLength(10);
-    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('11', { exact: true });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('1', { exact: true });
     expect(getByTestId(REPEATS)).toHaveTextContent(i18n.t('recurringCharges.marked.yearly'), {
       exact: true,
     });

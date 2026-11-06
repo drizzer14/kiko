@@ -125,7 +125,14 @@ const DETECTED_WORLDS: [string, string, World][] = [
   ],
 ];
 const DETECTED_BUT_HIDDEN: World = { ...DETECTED, settingsRows: HIDDEN_KEY };
-const DETECTED_BUT_MARKED: World = { ...DETECTED, settingsRows: STORED_AT_100 };
+// The chain keeps one charge per slot, the 100: the stored amount is the nearest. The 144 row is
+// dropped, so the marked row is the first.
+const DETECTED_BUT_MARKED: World = {
+  ...DETECTED,
+  settingsRows: STORED_AT_100,
+  rowId: 'first',
+  amount: -10_000,
+};
 // A 900 beside the chain is a row of the group outside the found series.
 const OUTSIDE_THE_SERIES: World = {
   ...UNMARKED,

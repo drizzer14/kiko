@@ -330,8 +330,11 @@ describe.each<[string, LayoutMode]>([
 });
 
 describe('Settings stack: a fold with a marked series and its form open', () => {
-  it('keeps the route and its stored amount, and Back shows the marked x11, yearly', async () => {
-    await arrange([...cheap(10), risen, ...dear], [APPLE_AT_99]);
+  it('keeps the route and its stored amount, and Back shows the marked x1, yearly', async () => {
+    // The 119 stands alone in August, a month with no 99, so the monthly series holds its row.
+    const withoutAugust = cheap(10).filter(({ id }) => id !== 'cheap-2');
+
+    await arrange([...withoutAugust, risen, ...dear], [APPLE_AT_99]);
 
     const view = await renderSettings('columns');
 
@@ -347,13 +350,21 @@ describe('Settings stack: a fold with a marked series and its form open', () => 
     expect(seriesParams()).toEqual(routeBefore);
 
     await fieldReads(view, periodLabel('monthly'));
-    await pick(view, periodLabel('yearly'));
+    await fireEvent.press(view.getByLabelText(FIELD_LABEL));
+    await fireEvent.press(view.getByLabelText(periodLabel('yearly')));
+    // Under yearly the one kept charge is another, so the picked row is dropped and reads so.
+    await waitFor(() => {
+      const field = view.getByLabelText(FIELD_LABEL);
+
+      expect(within(field).queryByText(NOT_MARKED)).not.toBeNull();
+      expect(field.props.accessibilityState.disabled).toBe(true);
+    });
     await changeLayout('columns');
 
     expect(seriesParams()).toEqual(routeBefore);
 
     await goBack();
-    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 11 });
+    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 1 });
 
     expect(view.queryByTestId('recurring-series-charge-dear-0')).toBeNull();
   });
