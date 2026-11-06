@@ -1,5 +1,6 @@
 import i18next from 'i18next';
 import { settingsRepo } from '@kiko/settings';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
@@ -248,25 +249,8 @@ type HeaderConfigProps = {
   onPressHeaderBarButtonItem?: (event: { nativeEvent: { buttonId: string } }) => void;
 };
 
-type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
-
-const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfigProps[] => {
-  if (node === null || typeof node === 'string') {
-    return [];
-  }
-
-  return [
-    ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as HeaderConfigProps] : []),
-    ...(node.children ?? []).flatMap(headerConfigsOf),
-  ];
-};
-
 const saveItemOnTopForm = () => {
-  const tree = screen.toJSON() as RenderedNode | RenderedNode[] | null;
-  const roots = Array.isArray(tree) ? tree : [tree];
-
-  const config = roots
-    .flatMap(headerConfigsOf)
+  const config = headerConfigsIn<HeaderConfigProps>(screen.toJSON())
     .filter((candidate) =>
       (candidate.headerRightBarButtonItems ?? []).some((item) => item.title === 'Save'),
     )

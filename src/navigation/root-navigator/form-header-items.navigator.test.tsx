@@ -4,6 +4,7 @@ import {
   type ParamListBase,
 } from '@react-navigation/native';
 import type { LayoutMode } from '@kiko/display-regions';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
@@ -83,24 +84,11 @@ type HeaderConfigProps = {
   onPressHeaderBarButtonItem?: (event: { nativeEvent: { buttonId: string } }) => void;
 };
 
-type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
-
-const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfigProps[] => {
-  if (node === null || typeof node === 'string') {
-    return [];
-  }
-
-  return [
-    ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as HeaderConfigProps] : []),
-    ...(node.children ?? []).flatMap(headerConfigsOf),
-  ];
-};
-
 // The native header config of the form's screen, as native-stack hands it to the native side.
 const formHeader = (): HeaderConfigProps => {
-  const tree = screen.toJSON() as RenderedNode | RenderedNode[] | null;
-  const roots = Array.isArray(tree) ? tree : [tree];
-  const configs = roots.flatMap(headerConfigsOf).filter((config) => config.title === 'Form');
+  const configs = headerConfigsIn<HeaderConfigProps>(screen.toJSON()).filter(
+    (config) => config.title === 'Form',
+  );
 
   expect(configs).toHaveLength(1);
 
