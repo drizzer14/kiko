@@ -74,3 +74,57 @@ describe('indexed evaluation', () => {
     expect(largest).toBeLessThanOrEqual(prepared.withoutName.length + 1);
   });
 });
+
+describe('indexed evaluation with the new kinds', () => {
+  const NEW_RULES_PER_KIND = 20;
+  const MERCHANT_CODES = [5411, 5812, 5541, 4121, 5912];
+  const CONTAINED_TEXTS = ['silpo 17', 'atb 9', 'uber 4', 'bolt', 'нова', 'spotify 3', 'fora 1'];
+
+  // Single-matcher rules updated after every fixture rule, so they win the rows nothing stronger
+  // claims; the texts and codes derive from the index, with no draw from the fixture's generator.
+  const containsRules = Array.from({ length: NEW_RULES_PER_KIND }, (_unused, index) => ({
+    id: `contains-${index}`,
+    category: `contains-category-${index % 4}`,
+    matchers: JSON.stringify([
+      { type: 'nameContains', text: CONTAINED_TEXTS[index % CONTAINED_TEXTS.length] },
+    ]),
+    createdAt: 10_000 + index,
+    updatedAt: 10_000 + index,
+  }));
+  const codeRules = Array.from({ length: NEW_RULES_PER_KIND }, (_unused, index) => ({
+    id: `code-${index}`,
+    category: `code-category-${index % 4}`,
+    matchers: JSON.stringify([
+      { type: 'mcc', code: MERCHANT_CODES[index % MERCHANT_CODES.length] },
+    ]),
+    createdAt: 20_000 + index,
+    updatedAt: 20_000 + index,
+  }));
+  const ownRules = [...containsRules, ...codeRules];
+  const withNewKinds = prepareRules([...rules, ...ownRules]);
+
+  it('picks the same winner as a scan of every rule, for every row of the batch, with the new kinds', () => {
+    const winners = batchSubjects.map((subject) => winningRule(withNewKinds, subject));
+    const disagreements = batchSubjects.filter(
+      (subject, position) =>
+        winners[position] !== withNewKinds.ordered.find((rule) => matchesRule(rule, subject)),
+    );
+    const winnerIds = new Set(winners.map((rule) => rule?.id));
+
+    expect(withNewKinds.unreadable).toEqual([]);
+    expect(withNewKinds.ordered).toHaveLength(rules.length + ownRules.length);
+    expect(disagreements).toEqual([]);
+    expect(containsRules.some((rule) => winnerIds.has(rule.id))).toBe(true);
+    expect(codeRules.some((rule) => winnerIds.has(rule.id))).toBe(true);
+  });
+
+  it('never evaluates more than the rules without a name plus the one named bucket, with the new kinds', () => {
+    const largest = Math.max(
+      ...batchSubjects.map((subject) => candidateRules(withNewKinds, subject).length),
+    );
+
+    expect(withNewKinds.byName.size).toBe(prepared.byName.size);
+    expect(withNewKinds.withoutName).toHaveLength(prepared.withoutName.length + ownRules.length);
+    expect(largest).toBeLessThanOrEqual(withNewKinds.withoutName.length + 1);
+  });
+});

@@ -2,6 +2,7 @@ import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 
+import { runBalanceSync } from '../sync';
 import type { SyncTarget } from '../provider';
 
 import {
@@ -299,6 +300,43 @@ describe('binanceProvider — shared 429/418 cooldown', () => {
     const read = await binanceRead.fetchBalances(deps, target);
 
     expect(read.spotBalanceTexts).toBeUndefined();
+  });
+
+  // The credentials field stops a Connect on an account that is already cooling, so this skip
+  // serves a sync of a connected account: it is quiet by design.
+  it('lets a sync of a connected account with a stamped holding skip quietly: no request, no holding write, no throw', async () => {
+    const deps = makeDeps([{ asset: 'BTC', free: '0.5', locked: '0' }]);
+    const accountId = 'acc-cooldown-run-balance-sync';
+    const upsertHoldings = jest.fn(async () => undefined);
+    const updateAccount = jest.fn(async () => undefined);
+    setBinanceCooldownUntil(accountId, NOW + 60_000);
+
+    const result = await runBalanceSync(binanceRead, deps, {
+      now: () => NOW,
+      targetAccountId: accountId,
+      listAccounts: async () => [
+        {
+          id: accountId,
+          name: 'Exchange',
+          kind: 'crypto',
+          institution: 'binance',
+          bankId: null,
+          icon: null,
+          color: null,
+          sortOrder: 0,
+          archivedAt: null,
+          currency: 'UAH',
+          createdAt: 0,
+        },
+      ],
+      updateAccount,
+      listHoldingsByAccount: async () => [{ ...binanceHolding('BTC'), accountId }],
+      upsertHoldings,
+    });
+
+    expect(result.syncedHoldings).toBe(0);
+    expect(upsertHoldings).not.toHaveBeenCalled();
+    expect(updateAccount).toHaveBeenCalledWith(accountId, { institution: 'binance' });
   });
 
   it('makes requests again once the cooldown instant has passed', async () => {

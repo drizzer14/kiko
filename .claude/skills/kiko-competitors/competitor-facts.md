@@ -231,8 +231,8 @@ Today:
 
 - MCC map: src/monobank/mcc-category/mcc-category.ts has 38 codes; every other code goes to
   `other`.
-- Rules (src/categories/category-rules/): nameIs, nameStartsWith, amount, direction, time; all
-  conditions must match.
+- Rules (src/categories/category-rules/): the matcher kinds are the `CategoryRuleMatcher` union
+  in `category-rules.d.ts`; all conditions must match.
 - "Apply" on a category change adds a rule for the name. Hand-set rows carry
   `categorySetByHand`.
 - normalizeTransactionName fixes only unicode form, spaces and case: "ATB 0212" and "ATB 0340"
@@ -243,9 +243,9 @@ Ideas:
 | # | Change | Gives | Size | Risk |
 |---|---|---|---|---|
 | 1 | More MCC codes (for example hotels, airlines, department stores) | Fewer `other` rows, no user action | S | Old rows keep their category unless also rewritten |
-| 2 | Review list: names in `other`, sorted by count or total; one tap assigns a category and adds the rule | Fastest way to clear old rows | M | Low |
-| 3 | New rule conditions: name contains, MCC, account, counterparty IBAN | "Rent" follows an IBAN; per-account rules | S-M | Backups, see the constraints in this part |
-| 4 | Better "Apply": offer "starts with ATB" when the name ends in a store number | Fewer rules, more matches | S | Wrong guess possible; user confirms |
+| 2 | Review list: names in `other`, sorted by count or total; one tap assigns a category and adds the rule; built on the 1.4 branch, not shipped (`planReviewGroups`, `src/screens/settings/category-review/`) | Fastest way to clear old rows | M | Low |
+| 3 | New rule conditions: all new conditions are built on the 1.4 branch, not shipped; see the `CategoryRuleMatcher` union (`src/categories/category-rules/category-rules.d.ts`) | "Rent" follows an IBAN; per-account rules | S-M | Backups, see the constraints in this part |
+| 4 | Better "Apply": offer "starts with ATB" when the name ends in a store number; built on the 1.4 branch, not shipped, in Apply (`src/screens/forms/transaction-form/category-override-sheet/category-override-sheet.component.tsx`) and the review list (`src/screens/settings/category-review/review-line/review-line.component.tsx`) | Fewer rules, more matches | S | Wrong guess possible; user confirms |
 | 5 | Built-in merchant list, common Ukrainian and European names | Helps CSV and XLSX rows with no MCC | M | Upkeep; partial cover of displaced users' countries |
 | 6 | Suggestions from the user's own history | Names with no rule yet | M | Suggests only; user confirms |
 | 7 | Day-of-month condition (rent on the 1st) | Small help for regular payments | S | Low |
@@ -259,8 +259,9 @@ Constraints for all:
 - A row set by hand never changes.
 - An automatic guess never overwrites a category without confirmation, unless the row has no
   real category yet.
-- An older build reads a new matcher type as unreadable, and that rule never matches (restore
-  of a `.kiko` file into an older build). The spec must cover it.
+- A build that gates on the file's export version refuses a file it cannot read before any rule
+  is read; a build that reads the rule rows treats a rule with an unknown matcher as unreadable,
+  and it never matches. Check the version gate at the tag. The spec must cover it.
 
 Coordinator recommendation: items 1, 2, 4 first, in that order (small, no rule format change,
 most manual work saved), then item 3.

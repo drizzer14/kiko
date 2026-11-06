@@ -539,7 +539,9 @@ The established patterns grouped under this heading:
   pane); when a back button shows, the back button is the cancel. Save
   is never in a form's `Screen` footer. A secondary action (ruling
   2026-10-11: the Edit template form's "Create transaction") may stay
-  in the footer as a lone secondary button. A native bar button does not
+  in the footer as a lone secondary button. The same holds on a `bleedTop` list screen: the
+  recurring series screen's footer button ('Not a recurring charge' / 'Remove mark') is the lone
+  secondary footer action. A native bar button does not
   end editing, so a value derived on blur is settled in the save path
   (see `kiko-code-style`'s "Form validation model"). Tests use the
   helpers in `src/test-support/form-header-items.ts`, never
@@ -578,6 +580,14 @@ The established patterns grouped under this heading:
   and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
   `fetchAccount` (the check) and `saveCredentials`. `CryptoSyncForm` takes a required `source`
   and renders that source's field, nothing for `'other'`; the caller picks the source.
+  `BinanceCredentialsField` checks `isBinanceCoolingDown` after the blank-field check and
+  before `fetchAccount`. On a cooling account it shows the localized
+  `accountDetail.binanceCoolingDown` text, makes no request or write, and keeps the typed
+  pair, so a later press connects once the cooldown ends. After that check it also checks
+  `isBinanceSyncRunning` and shows `accountDetail.binanceSyncStillRunning`.
+  `MonobankConnectField` takes a required `accountId` prop; after the blank check it checks
+  `isMonobankSyncRunning(accountId)` and shows `accountDetail.monobankSyncStillRunning`,
+  with no request.
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
@@ -924,9 +934,11 @@ project-wide rule this follows.
 
 **Percentage widths.** Yoga resolves `%` widths in 32-bit float and
 wraps on a strict `>`, so N equal columns of `100 / N`% can drop the
-last column on some row widths. Always use a slightly smaller rounded
-percentage (see `SEVEN_COLUMN_WIDTH` in `src/design-system/seven-column-width/`) and pin it
-with a test that replays the float math.
+last column on some row widths. For N equal wrapping columns whose widths sum to 100%
+(`flexWrap`), use a slightly smaller rounded percentage (see `SEVEN_COLUMN_WIDTH` in
+`src/design-system/seven-column-width/`) and pin it with a test that replays the float math. A
+single `%` cap beside a `flex: 1` sibling with no `flexWrap` (for example `maxWidth: '60%'` in the
+recurring series row) cannot drop a column, so it needs neither.
 
 Separate sibling React nodes in JSX with a blank line, the same way
 sibling statements are separated in `kiko-code-style`'s "Blank lines

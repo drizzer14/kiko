@@ -122,6 +122,7 @@ import CategoryOverrideSheet from './category-override-sheet';
 import { useCategoryOverride } from './use-category-override';
 import { applySeedFields, resolveHydration } from './hydration';
 import { alongsideInsert, writeTemplate } from './template-save';
+import RecurringMarkField, { markableRowOf } from './recurring-mark-field';
 import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
 import { DEFAULT_MODE, MODE_ICONS, resolveModeOptions } from './mode-options';
@@ -571,6 +572,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     time,
     mode,
     currency: holding?.currency ?? null,
+    accountId: holding?.accountId,
     ruleDescription: (typed) =>
       resolveRuleDescription({ description: typed, holding, existing, holdings, mode, t }),
     initial: { category: opening.selectedCategory, isPicked: opening.userPickedCategory },
@@ -1621,6 +1623,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               onUndoLoanLink={undoLoanLink}
               exchangeFundingCaptionKey={exchangeFundingCaptionKey}
             />
+
+            {foldMap(
+              maybe(markableRowOf(existing, converting, exchangeFundingCaptionKey)),
+              (row) => (
+                <RecurringMarkField existing={row} holdings={holdings} accounts={accounts} />
+              ),
+            )}
 
             {/* After description AND category — the top of the form (above
               holding/type/amount) reads wrong for a supplementary,

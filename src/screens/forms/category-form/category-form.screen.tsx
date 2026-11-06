@@ -12,6 +12,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import type { TimeClock } from '@kiko/dates';
 import { settingsRepo } from '@kiko/settings';
+import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
 import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
@@ -29,12 +30,12 @@ import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { isSameCategory, prepareRules } from '@kiko/categories/category-rules';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
@@ -42,6 +43,7 @@ import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryFormDraft, SettingsStackParamList } from '@kiko/navigation/types';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import { type AccountRow, type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 
 import RuleCard from './rule-card';
 import { type RuleRow, ruleRows, ruleSummary } from './rule-summary';
@@ -70,17 +72,28 @@ const formatRuleAmount = (minorUnits: number, currency: Currency): string =>
 const ruleLinesOf = (
   rules: readonly CategoryRuleRow[],
   categoryKey: string,
+  accounts: readonly AccountRow[],
   t: TFunction,
   clock: TimeClock,
 ): RuleLine[] => {
   const prepared = prepareRules(rules);
+  // An id in no row is a deleted account: it names no holding, so its rule matches nothing.
+  const accountNameOf = (accountId: string): string | null =>
+    foldMap(maybe(accounts.find((account) => account.id === accountId)), (account) =>
+      accountDisplayName(account, t),
+    ) ?? null;
   const belongs = (rule: { category: string }): boolean =>
     isSameCategory(rule.category, categoryKey);
 
   return [
     ...prepared.ordered.filter(belongs).map((rule) => {
       // The line is read off the rows, so it can not say anything the table does not.
-      const rows = ruleRows(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount });
+      const rows = ruleRows(rule.displayMatchers, {
+        t,
+        clock,
+        formatAmount: formatRuleAmount,
+        accountNameOf,
+      });
 
       return { id: rule.id, rows, summary: ruleSummary(rows), isReadable: true };
     }),
@@ -162,7 +175,13 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
     isEdit,
     { cached: true },
   );
-  const isReady = useDataReady(categoriesLoading, rulesLoading, settingsLoading);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(
+    accountsRepo.listQuery(),
+    ['accounts'],
+    isEdit,
+    { cached: true },
+  );
+  const isReady = useDataReady(categoriesLoading, rulesLoading, settingsLoading, accountsLoading);
   const editingCategory = categories.find((row) => row.key === categoryKey);
   // An existing category shows its screen only once every read has landed and the category is in
   // them; until then its fields are not mounted and Save waits.
@@ -174,8 +193,8 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const isDefault = categoryKey === defaultCategoryKey;
   const lines = useMemo(
-    () => foldMap(maybe(categoryKey), (key) => ruleLinesOf(rules, key, t, clock)) ?? [],
-    [rules, categoryKey, t, clock],
+    () => foldMap(maybe(categoryKey), (key) => ruleLinesOf(rules, key, accounts, t, clock)) ?? [],
+    [rules, categoryKey, accounts, t, clock],
   );
 
   const trimmedName = name.trim();

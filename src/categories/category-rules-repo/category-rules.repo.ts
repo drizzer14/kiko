@@ -16,6 +16,7 @@ import {
   type CategoryRuleMatcher,
   type NameRuleKind,
   type PreparedRule,
+  type NameTally,
   isSameCategory,
   matcherSetKey,
   matchesRule,
@@ -25,16 +26,18 @@ import {
   subjectOfStoredRow,
   validateRule,
   winningRule,
+  addToNameTally,
+  rankedNames,
 } from '@kiko/categories/category-rules';
-import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { tidiedNameOf } from '@kiko/transactions/merchant-name';
 import { ruleDescriptionOf } from '@kiko/transactions/row-description';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
-import { smallestSpelling, tidiedNameOf } from '@kiko/transactions/merchant-name';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, not, sql } from 'drizzle-orm';
 
 const REWRITE_PAGE_SIZE = 2000;
 
 const isNameMatcher = (matcher: CategoryRuleMatcher): boolean =>
-  matcher.type === 'nameIs' || matcher.type === 'nameStartsWith';
+  matcher.type === 'nameIs' || matcher.type === 'nameStartsWith' || matcher.type === 'nameContains';
 
 // Every reader of the rules (the insert path, the rewrite, the rule write) needs every rule, so
 // the read has no `where` and no cap: a rule dropped from it would be a category silently not
@@ -58,6 +61,9 @@ export const candidateColumns = {
   untrackedCounterpart: transactions.untrackedCounterpart,
   setsBalance: transactions.setsBalance,
   changeGroupId: transactions.changeGroupId,
+  mcc: transactions.mcc,
+  counterIban: transactions.counterIban,
+  accountId: holdings.accountId,
 };
 
 // `hasNoRealCategory` in SQL, narrowing only: `lower()` folds ASCII alone, so a key in another
@@ -298,6 +304,9 @@ const rowsForNamedRule = async (
         currency: null,
         direction: null,
         minuteOfDay: null,
+        mcc: null,
+        counterIban: null,
+        accountId: null,
       }),
     );
   const rewrittenRows: RewrittenRow[] = [];
@@ -356,37 +365,16 @@ const rowIdsRewrittenBy = async (
 const preparedRuleOf = (prepared: PreparedRules, ruleId: string): PreparedRule | undefined =>
   prepared.ordered.find((rule) => rule.id === ruleId);
 
-// By code unit, never by locale: the order must not depend on the device.
-const compareByCodeUnit = (left: string, right: string): number => {
-  if (left === right) {
-    return 0;
-  }
-
-  return left < right ? -1 : 1;
-};
-
 // Every distinct normalized name once, spelled in full (never as the cut prefix, which would read
-// "ATB, ATB" for two store numbers), the name with the most rows first, then by normalized text.
+// "ATB, ATB" for two store numbers), in the order the review list shows them.
 const listedNamesOf = (rows: readonly RewrittenRow[]): string[] => {
-  const groups = new Map<string, { spelling: string; rowCount: number }>();
+  const tallies = new Map<string, NameTally>();
 
   for (const { name } of rows) {
-    const key = normalizeTransactionName(name);
-    const spelling = tidiedNameOf(name);
-    const group = groups.get(key);
-
-    groups.set(key, {
-      spelling: smallestSpelling([group?.spelling ?? spelling, spelling]),
-      rowCount: (group?.rowCount ?? 0) + 1,
-    });
+    addToNameTally(tallies, normalizeTransactionName(name), tidiedNameOf(name));
   }
 
-  return [...groups.entries()]
-    .sort(
-      ([leftKey, left], [rightKey, right]) =>
-        right.rowCount - left.rowCount || compareByCodeUnit(leftKey, rightKey),
-    )
-    .map(([, group]) => group.spelling);
+  return rankedNames(tallies);
 };
 
 // Writes the saved rule's category onto every row that rule wins, planned from the rows as they
@@ -438,6 +426,9 @@ const planSourceRow = async (
       untrackedCounterpart: transactions.untrackedCounterpart,
       operation: transactions.operation,
       currency: holdings.currency,
+      mcc: transactions.mcc,
+      counterIban: transactions.counterIban,
+      accountId: holdings.accountId,
     })
     .from(transactions)
     .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
@@ -495,23 +486,23 @@ const giveSourceRowCategory = async (
 };
 
 // The rows `applyNameRule` changes, seen before it writes: the rewrite's rows, plus the row the
-// user is editing when the rewrite leaves it out (a hand-set, balance-setting or out-ranked row,
-// which Apply moves anyway) and it does not hold the category yet.
+// user is editing when the rewrite leaves it out, which Apply moves anyway, and it does not hold
+// the category yet.
 const withSourceRow = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
   rewrittenRows: readonly RewrittenRow[],
   sourceTransactionId: string | null,
   savedRule: { id: string; category: string },
-): Promise<RewrittenRow[]> => {
+): Promise<readonly RewrittenRow[]> => {
   if (sourceTransactionId === null || rewrittenRows.some((row) => row.id === sourceTransactionId)) {
-    return [...rewrittenRows];
+    return rewrittenRows;
   }
 
   const plan = await planSourceRow(databaseTransaction, prepared, sourceTransactionId, savedRule);
 
   if (plan === undefined || !plan.isMoved) {
-    return [...rewrittenRows];
+    return rewrittenRows;
   }
 
   return [...rewrittenRows, { id: sourceTransactionId, name: plan.name }];
@@ -523,6 +514,47 @@ export const categoryRulesRepo = {
    * form can prepare the rules once and pre-select a category from the typed description.
    */
   allQuery: () => database.select().from(categoryRules),
+  /**
+   * The rows the review list is planned from, as a reactive Drizzle builder: a stored non-blank
+   * description and no real category. SQL only narrows; `planReviewGroups` decides, so a row a
+   * rule wins or the user picked by hand is read here and left out there. The description test
+   * comes first and the category arms sit in the parentheses of `noRealCategorySql`, so a blank
+   * name in `other` stays out. Nothing here is indexed: the plan scans the table once.
+   */
+  reviewCandidateRowsQuery: () =>
+    database
+      .select(candidateColumns)
+      .from(transactions)
+      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+      .where(and(ne(transactions.description, ''), noRealCategorySql)),
+  /**
+   * The votes a suggestion is read from, as a reactive Drizzle builder: the rows with a real
+   * category, counted per stored description and lowercased category key. A balance-setting,
+   * split-change or exchange row and a blank description are left out; the hand-set, rule-set and
+   * code-set rows all stay in, as each is one row the user has accepted. The negated fragment
+   * keeps its own parentheses, so `not` covers all three of its arms. Nothing here is indexed:
+   * the plan scans the table once and groups with a temporary B-tree.
+   */
+  reviewEvidenceQuery: () =>
+    database
+      .select({
+        description: transactions.description,
+        categoryKey: sql<string>`lower(${transactions.category})`,
+        rowCount: sql<number>`count(*)`,
+      })
+      .from(transactions)
+      .where(
+        and(
+          ne(transactions.description, ''),
+          isNotNull(transactions.category),
+          not(noRealCategorySql),
+          eq(transactions.setsBalance, false),
+          isNull(transactions.changeGroupId),
+          isNull(transactions.exchangeCounterpartHoldingId),
+          isNull(transactions.untrackedCounterpart),
+        ),
+      )
+      .groupBy(transactions.description, sql`lower(${transactions.category})`),
   /**
    * How many rules a category delete takes with it. Every stored rule counts, a rule that can no
    * longer be read included, and the key matches case-insensitively, exactly as the delete does,

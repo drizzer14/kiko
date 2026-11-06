@@ -11,15 +11,30 @@ jest.mock('@kiko/db/client', () => {
   return { database: client.database, write: client.write };
 });
 
+jest.mock('@kiko/transactions/merchant-name', () => {
+  const actual = jest.requireActual('@kiko/transactions/merchant-name') as {
+    merchantNameOf: (name: string) => unknown;
+  };
+
+  return { ...actual, merchantNameOf: jest.fn((name: string) => actual.merchantNameOf(name)) };
+});
+
 import {
+  type CategoryRuleMatcher,
+  type ReviewCandidate,
+  type ReviewEvidence,
+  hasNoRealCategory,
+  isRewriteEligible,
   matchesRule,
   parseRuleMatchers,
+  planReviewGroups,
   planRuleRewrite,
   prepareRules,
   subjectOfStoredRow,
 } from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
 import { IN_CLAUSE_CHUNK_SIZE } from '@kiko/db';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { buildRulesPerformanceFixture } from '@kiko/categories/category-rules/__fixtures__/rules-performance-fixture';
@@ -81,8 +96,8 @@ const seedHoldingsAndRules = (): void => {
 const seedLedger = (): void => {
   const insertRow = mockDatabase.prepare(
     `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category,
-       source, category_set_by_hand)
-     VALUES (?, ?, ?, ?, ?, ?, 'manual', ?)`,
+       source, category_set_by_hand, mcc)
+     VALUES (?, ?, ?, ?, ?, ?, 'manual', ?, ?)`,
   );
 
   mockDatabase.exec('BEGIN');
@@ -95,6 +110,7 @@ const seedLedger = (): void => {
       row.description,
       row.category,
       row.categorySetByHand ? 1 : 0,
+      row.mcc,
     );
   });
   mockDatabase.exec('COMMIT');
@@ -184,7 +200,9 @@ describe('inserting a batch of 10 000 rows against 200 rules', () => {
       expect(ruleWon.length).toBeGreaterThan(100);
       expect(ruleWon.length).toBeLessThan(INSERT_BATCH_SIZE);
       expect(countOf(statements, /^select .* from "category_rules"/i)).toBe(1);
-      expect(countOf(statements, /^select "id", "name", "currency" from "holdings"/i)).toBe(1);
+      expect(
+        countOf(statements, /^select "id", "name", "currency", "account_id" from "holdings"/i),
+      ).toBe(1);
     },
     TEST_TIMEOUT,
   );
@@ -264,6 +282,272 @@ describe('rewriting 50 000 rows for a saved rule', () => {
       );
       // A page is read until one comes back short, so an exact multiple costs one empty page.
       expect(pageReadsOf(statements)).toBe(Math.floor(rows.length / REWRITE_PAGE_SIZE) + 1);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe('rewriting 50 000 rows for a rule with a new condition', () => {
+  const MERCHANT_CODE = 5411;
+  const CONTAINED_TEXT = 'rozetka 1';
+
+  // A one-matcher rule stored under its own id, then saved again with a category no row has, so it
+  // is the newest of its strength once saved, as in the rewrite above.
+  const withOwnRule = (ruleId: string, matcher: CategoryRuleMatcher) => {
+    const matchers = JSON.stringify([matcher]);
+
+    mockDatabase
+      .prepare(
+        'INSERT INTO category_rules (id, category, matchers, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(ruleId, 'seeded', matchers, 9_000, 9_000);
+
+    const plan = planRuleRewrite(
+      prepareRules([
+        ...rules,
+        {
+          id: ruleId,
+          category: REWRITTEN_CATEGORY,
+          matchers,
+          createdAt: 9_000,
+          updatedAt: Date.now(),
+        },
+      ]),
+      ruleId,
+      rows,
+    );
+    const rewrite = async (): Promise<number> =>
+      (
+        await categoryRulesRepo.saveRule({
+          id: ruleId,
+          category: REWRITTEN_CATEGORY,
+          matchers: [matcher],
+          applyToExisting: true,
+        })
+      ).changed;
+
+    return { plan, rewrite };
+  };
+
+  const changedRowIds = (before: Map<string, string | null>): string[] =>
+    [...categoriesById()]
+      .filter(([rowId, category]) => before.get(rowId) !== category)
+      .map(([rowId]) => rowId);
+
+  it(
+    'updates exactly the planned rows of an mcc rule, a page at a time',
+    async () => {
+      seedLedger();
+
+      const { plan, rewrite } = withOwnRule('rule-own-mcc', { type: 'mcc', code: MERCHANT_CODE });
+      const before = categoriesById();
+      const statements = spyOnStatements();
+      const updated = await rewrite();
+
+      expect(plan.length).toBeGreaterThan(0);
+      expect(updated).toBe(plan.length);
+      expect(changedRowIds(before).sort()).toEqual([...plan].sort());
+      expect(countOf(statements, /^update "transactions"/i)).toBe(
+        Math.ceil(plan.length / IN_CLAUSE_CHUNK_SIZE),
+      );
+      // A code is read from the row itself, so every row is paged, and an exact multiple of the
+      // page length costs one empty page.
+      expect(pageReadsOf(statements)).toBe(Math.floor(rows.length / REWRITE_PAGE_SIZE) + 1);
+      expect(blankPageReadsOf(statements)).toEqual([]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'updates exactly the planned rows of a nameContains rule with no page of the ledger',
+    async () => {
+      seedLedger();
+
+      const { plan, rewrite } = withOwnRule('rule-own-contains', {
+        type: 'nameContains',
+        text: CONTAINED_TEXT,
+      });
+      const before = categoriesById();
+      const statements = spyOnStatements();
+      const updated = await rewrite();
+
+      expect(plan.length).toBeGreaterThan(0);
+      expect(updated).toBe(plan.length);
+      expect(changedRowIds(before).sort()).toEqual([...plan].sort());
+      expect(countOf(statements, /^update "transactions"/i)).toBe(
+        Math.ceil(plan.length / IN_CLAUSE_CHUNK_SIZE),
+      );
+      // Only the blank rows' page is read; this ledger has none.
+      expect(pageReadsOf(statements)).toBe(1);
+      expect(blankPageReadsOf(statements)).toHaveLength(1);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe('listing the review groups of 50 000 rows', () => {
+  const candidateRows: ReviewCandidate[] = rows.map((row) => ({
+    ...row,
+    exchangeCounterpartHoldingId: null,
+    untrackedCounterpart: null,
+  }));
+
+  const knownCategoryKeys = (): ReadonlySet<string> =>
+    new Set(
+      (mockDatabase.prepare('SELECT key FROM categories').all() as { key: string }[]).map((row) =>
+        row.key.toLowerCase(),
+      ),
+    );
+
+  // Found by scanning every rule for every row, so it shares neither the name index nor the order
+  // of the checks of the code under test.
+  const bruteForceKept = (known: ReadonlySet<string>): ReviewCandidate[] =>
+    candidateRows.filter(
+      (row) =>
+        hasNoRealCategory(row, known) &&
+        isRewriteEligible(row) &&
+        !prepared.ordered.some((rule) => matchesRule(rule, subjectOfStoredRow(row))),
+    );
+
+  it(
+    'plans the review list from one candidate read',
+    async () => {
+      seedLedger();
+
+      const known = knownCategoryKeys();
+      const statements = spyOnStatements();
+      const read = await categoryRulesRepo.reviewCandidateRowsQuery();
+      const groups = planReviewGroups(prepared, read, known, []);
+
+      expect(countOf(statements, /^select .* from "transactions"/i)).toBe(1);
+      expect(countOf(statements, /^(insert|update|delete)/i)).toBe(0);
+      expect(read.length).toBeGreaterThan(0);
+      expect(read.length).toBeLessThan(rows.length);
+      expect(groups.length).toBeGreaterThan(0);
+      expect(groups).toEqual(planReviewGroups(prepared, candidateRows, known, []));
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'planReviewGroups keeps only what the brute-force filter keeps',
+    () => {
+      const known = knownCategoryKeys();
+      const kept = bruteForceKept(known);
+      const keptByKey = new Map<string, number>();
+
+      for (const row of kept) {
+        const { key } = merchantNameOf(row.description);
+
+        keptByKey.set(key, (keptByKey.get(key) ?? 0) + 1);
+      }
+
+      const groups = planReviewGroups(prepared, candidateRows, known, []);
+
+      expect(kept.length).toBeGreaterThan(0);
+      expect(kept.length).toBeLessThan(rows.length);
+      expect(new Map(groups.map((group) => [group.key, group.rowCount]))).toEqual(keptByKey);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'calls merchantNameOf once per distinct description',
+    () => {
+      jest.mocked(merchantNameOf).mockClear();
+      planReviewGroups(prepared, candidateRows, knownCategoryKeys(), []);
+
+      const described = jest.mocked(merchantNameOf).mock.calls.map(([name]) => name);
+
+      expect(described.length).toBeGreaterThan(0);
+      expect(new Set(described).size).toBe(described.length);
+      expect(described.length).toBeLessThanOrEqual(
+        new Set(rows.map((row) => row.description)).size,
+      );
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'calls merchantNameOf once per distinct name across the rows and the evidence',
+    () => {
+      const known = knownCategoryKeys();
+      const merchantNameCalls = jest.mocked(merchantNameOf);
+
+      merchantNameCalls.mockClear();
+      planReviewGroups(prepared, candidateRows, known, []);
+
+      const namesOfRows = new Set(merchantNameCalls.mock.calls.map(([name]) => name));
+      const namesOfEvidenceOnly = Array.from({ length: 5 }, (_, index) => `Evidence Only ${index}`);
+      // Each name the rows describe is filed under two categories, the way the evidence read
+      // returns it, so the same name reaches the plan from the rows and from two evidence rows.
+      const evidence: ReviewEvidence[] = [...namesOfRows, ...namesOfEvidenceOnly].flatMap(
+        (description) => [
+          { description, categoryKey: 'groceries', rowCount: 2 },
+          { description, categoryKey: 'dining', rowCount: 1 },
+        ],
+      );
+
+      merchantNameCalls.mockClear();
+      planReviewGroups(prepared, candidateRows, known, evidence);
+
+      const described = merchantNameCalls.mock.calls.map(([name]) => name);
+
+      expect(namesOfRows.size).toBeGreaterThan(0);
+      expect(evidence.length).toBeGreaterThan(namesOfRows.size);
+      expect(described).toHaveLength(namesOfRows.size + namesOfEvidenceOnly.length);
+      expect(new Set(described)).toEqual(new Set([...namesOfRows, ...namesOfEvidenceOnly]));
+    },
+    TEST_TIMEOUT,
+  );
+
+  it('reviewCandidateRowsQuery scans the table with no temp B-tree', () => {
+    const { sql: statement, params } = categoryRulesRepo.reviewCandidateRowsQuery().toSQL();
+    const plan = (
+      mockDatabase
+        .prepare(`EXPLAIN QUERY PLAN ${statement}`)
+        .all(...(params as (string | number)[])) as { detail: string }[]
+    ).map((step) => step.detail);
+
+    expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
+    expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
+  });
+
+  it(
+    'reviewEvidenceQuery scans with a temp B-tree for the group, and returns one row per pair',
+    async () => {
+      seedLedger();
+
+      const known = knownCategoryKeys();
+      const query = categoryRulesRepo.reviewEvidenceQuery();
+      const { sql: statement, params } = query.toSQL();
+      const plan = (
+        mockDatabase
+          .prepare(`EXPLAIN QUERY PLAN ${statement}`)
+          .all(...(params as (string | number)[])) as { detail: string }[]
+      ).map((step) => step.detail);
+      const expected = new Map<string, number>();
+
+      for (const row of candidateRows) {
+        if (row.description !== '' && row.category !== null && !hasNoRealCategory(row, known)) {
+          const pair = JSON.stringify([row.description, row.category.toLowerCase()]);
+
+          expected.set(pair, (expected.get(pair) ?? 0) + 1);
+        }
+      }
+
+      const read = await query;
+
+      expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
+      expect(plan.join('\n')).toMatch(/USE TEMP B-TREE FOR GROUP BY/);
+      expect(expected.size).toBeGreaterThan(0);
+      expect(expected.size).toBeLessThan(rows.length);
+      expect(read).toHaveLength(expected.size);
+      expect(
+        new Map(
+          read.map((row) => [JSON.stringify([row.description, row.categoryKey]), row.rowCount]),
+        ),
+      ).toEqual(expected);
     },
     TEST_TIMEOUT,
   );

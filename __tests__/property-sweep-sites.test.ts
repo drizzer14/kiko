@@ -33,6 +33,7 @@ const unsweptLists = (file: string): string[] => {
 describe('property sweep sites', () => {
   it('finds exactly the seed-list test files', () => {
     expect(seedSites()).toEqual([
+      'src/categories/category-rules/plan-review-groups.test.ts',
       'src/crypto-sync/binance/binance.convert-history.properties.test.ts',
       'src/crypto-sync/binance/binance.dust-history.properties.test.ts',
       'src/crypto-sync/binance/binance.fiat-history.properties.test.ts',
@@ -45,6 +46,9 @@ describe('property sweep sites', () => {
       'src/crypto-sync/binance/binance.walks.multi-coin.properties.test.ts',
       'src/crypto-sync/bybit/bybit.keys.property.test.ts',
       'src/currency/currency-group/currency-group.test.ts',
+      'src/recurring/detection/detection.test.ts',
+      'src/recurring/eligibility/eligibility.test.ts',
+      'src/recurring/marked-series/marked-series.test.ts',
       'src/statistics/internal-transfers/internal-transfers.test.ts',
       'src/transactions/merchant-name/merchant-name.test.ts',
     ]);

@@ -98,7 +98,9 @@ const rulesReadsOf = (statements: string[]): number =>
   statements.filter((sql) => /^select .* from "category_rules"/i.test(sql)).length;
 
 const currencyReadsOf = (statements: string[]): number =>
-  statements.filter((sql) => /^select "id", "name", "currency" from "holdings"/i.test(sql)).length;
+  statements.filter((sql) =>
+    /^select "id", "name", "currency", "account_id" from "holdings"/i.test(sql),
+  ).length;
 
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
@@ -238,6 +240,102 @@ describe('a rule at insert', () => {
     });
 
     expect(storedRows().map((row) => row.flag)).toEqual([0, 0]);
+  });
+});
+
+describe('an mcc rule at insert', () => {
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
+
+  it('an mcc rule wins a new synced row', async () => {
+    insertRule('coded', 'travel', [mccRule(5411)]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('coded-row', { description: 'Anything', category: 'shops', mcc: 5411 }),
+      syncItem('other-code', { description: 'Anything', category: 'shops', mcc: 5812 }),
+    ]);
+
+    expect(categoryOf('coded-row')).toBe('travel');
+    expect(categoryOf('other-code')).toBe('shops');
+  });
+
+  it('a row with no code is left for the MCC fallback', async () => {
+    insertRule('coded', 'travel', [mccRule(5411)]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('null-code', { category: 'shops', mcc: null }),
+      syncItem('no-code', { category: 'groceries', mcc: undefined }),
+    ]);
+
+    expect(categoryOf('null-code')).toBe('shops');
+    expect(categoryOf('no-code')).toBe('groceries');
+  });
+});
+
+describe('an account and an IBAN rule at insert', () => {
+  const accountRule = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
+  const ibanRule = (iban: string): CategoryRuleMatcher => ({ type: 'counterIban', iban });
+
+  beforeEach(() => {
+    run("INSERT INTO accounts (id, name, kind) VALUES ('other-account', 'Cash', 'cash')");
+    run(
+      `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units)
+       VALUES ('wallet', 'other-account', 'Wallet', 'cash', 'UAH', 0)`,
+    );
+  });
+
+  it('an account rule wins a new synced row on a holding of that account only', async () => {
+    insertRule('card-account', 'travel', [accountRule('account')]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('on-account', { holdingId: 'card', category: 'shops' }),
+      syncItem('on-usd', { holdingId: 'usd', category: 'shops' }),
+      syncItem('elsewhere', { holdingId: 'wallet', category: 'shops' }),
+    ]);
+
+    expect(categoryOf('on-account')).toBe('travel');
+    expect(categoryOf('on-usd')).toBe('travel');
+    expect(categoryOf('elsewhere')).toBe('shops');
+  });
+
+  it('an account rule on an id in no row wins no row', async () => {
+    insertRule('gone', 'travel', [accountRule('deleted-account')]);
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { category: 'shops' })]);
+
+    expect(categoryOf('k1')).toBe('shops');
+  });
+
+  it('an IBAN rule wins a new synced transfer, across case and spacing', async () => {
+    insertRule('own-iban', 'transfers', [ibanRule(OWN_IBAN)]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('spaced', {
+        category: 'shops',
+        counterIban: 'ua21 3223 1300 0002 6007 2335 6600 1',
+      }),
+      syncItem('exact', { category: 'shops', counterIban: OWN_IBAN }),
+      syncItem('other', { category: 'shops', counterIban: 'UA733220010000026201112223334' }),
+      syncItem('none', { category: 'shops', counterIban: null }),
+    ]);
+
+    expect(categoryOf('spaced')).toBe('transfers');
+    expect(categoryOf('exact')).toBe('transfers');
+    expect(categoryOf('other')).toBe('shops');
+    expect(categoryOf('none')).toBe('shops');
+  });
+
+  it('an account beside an IBAN needs both', async () => {
+    insertRule('both', 'transfers', [accountRule('account'), ibanRule(OWN_IBAN)]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('both-hold', { holdingId: 'card', category: 'shops', counterIban: OWN_IBAN }),
+      syncItem('wrong-account', { holdingId: 'wallet', category: 'shops', counterIban: OWN_IBAN }),
+      syncItem('no-iban', { holdingId: 'card', category: 'shops', counterIban: null }),
+    ]);
+
+    expect(categoryOf('both-hold')).toBe('transfers');
+    expect(categoryOf('wrong-account')).toBe('shops');
+    expect(categoryOf('no-iban')).toBe('shops');
   });
 });
 

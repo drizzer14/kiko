@@ -99,10 +99,10 @@ export const balanceSetIdsOf = (ledger: readonly LedgerRow[]): Set<string> =>
  * feed the breakdown (`spendingRowsIn`) — exclusion is by id, so an out-of-range leg excluded
  * here never reaches the breakdown anyway.
  */
-export const ledgerRowsOf = (
-  transactions: readonly TransactionRow[],
-  holdings: readonly HoldingRow[],
-): LedgerRow[] => {
+export const ledgerRowsOf = <Row extends Pick<TransactionRow, 'holdingId'>>(
+  transactions: readonly Row[],
+  holdings: readonly Pick<HoldingRow, 'id' | 'currency'>[],
+): (Row & { currency: HoldingRow['currency'] })[] => {
   const currencyByHolding = new Map(holdings.map((holding) => [holding.id, holding.currency]));
 
   return transactions.flatMap((transaction) => {
@@ -143,7 +143,7 @@ export const loanHoldingsOf = (holdings: readonly HoldingRow[]): HoldingRow[] =>
  * one of these is an own-account transfer (excluded from the spending pie); a 4829 to any other
  * IBAN is a genuine P2P payment (kept).
  */
-export const ownIbansOf = (holdings: readonly HoldingRow[]): Set<string> => {
+export const ownIbansOf = (holdings: readonly Pick<HoldingRow, 'metadata'>[]): Set<string> => {
   const ibans = new Set<string>();
 
   for (const holding of holdings) {
@@ -163,8 +163,8 @@ export const ownIbansOf = (holdings: readonly HoldingRow[]): Set<string> => {
  * of the map, and the matcher counts such a holding as a bank side.
  */
 export const accountKindByHoldingIdOf = (
-  accounts: readonly AccountRow[],
-  holdings: readonly HoldingRow[],
+  accounts: readonly Pick<AccountRow, 'id' | 'kind'>[],
+  holdings: readonly Pick<HoldingRow, 'id' | 'accountId'>[],
 ): Map<string, AccountRow['kind']> => {
   const kindByAccountId = new Map(accounts.map((account) => [account.id, account.kind]));
 

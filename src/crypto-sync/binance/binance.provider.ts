@@ -452,7 +452,8 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     // Checked BEFORE even reading credentials, so a cooling-down account makes
     // ZERO Binance requests; returning no balances (never throwing) keeps the
     // "balance sync never fails because of the history walk" contract even
-    // when the history walk is the one that set the cooldown.
+    // when the history walk is the one that set the cooldown. The credentials field stops a Connect
+    // on an account that is already cooling, so this return serves a sync of a connected account.
     if (isBinanceCoolingDown(target.accountId, deps.now())) {
       return { balances: [] };
     }

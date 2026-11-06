@@ -99,6 +99,8 @@ const UNCHECKED_HEADING_SITES: Record<string, string> = {
     'a month name and a year, not a phrase that has a casing role',
   'navigation/settings-stack/settings.stack.tsx#helpTopicById(route.params.topicId).titleKey':
     'the help topic’s title, whose key help-topics.test.ts requires in TITLE_KEYS for every topic',
+  'navigation/settings-stack/settings.stack.tsx#route.params.name':
+    'the recurring series’ title, the merchant’s own text from the route',
   'screens/settings/help/help.screen.tsx#group.titleKey':
     'the help group’s title, whose key help-topics.test.ts requires in TITLE_KEYS for every group',
   'screens/forms/category-form/category-form.screen.tsx#displayName':
@@ -110,6 +112,8 @@ const UNCHECKED_HEADING_SITES: Record<string, string> = {
   'screens/accounts/implicit-account-heading/implicit-account-heading.component.tsx#accountDisplayName(account, t)':
     'the implicit account’s display name, the localized default or the name the user typed',
   'screens/settings/reminders/reminders.screen.tsx#group.name': 'the user-entered account name',
+  'screens/settings/recurring-charges/recurring-group-heading/recurring-group-heading.component.tsx#title':
+    'the category’s display name, the localized default or the title the user typed',
   'screens/statement-import/statement-preview-block/statement-preview-block.component.tsx#stats.displayName':
     'the statement format name the parser reports, a bank brand name',
 };

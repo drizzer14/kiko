@@ -140,7 +140,10 @@ project-level pointer to this section.
   committing, and keep only inserted lines.
 - A pure rule several features need lives in a folder whose own barrel
   exports it (`src/holdings/account-currency`), never a sub-barrel of a
-  plain feature: the import is denied as alias-skips-barrel.
+  plain feature: the import is denied as alias-skips-barrel. The settings barrel is read
+  widely, so a module that `@kiko/settings` loads by value never reaches
+  `@kiko/recurring/detection`; a list both need goes in a leaf such as
+  `src/recurring/recurring-periods`.
 - Bundle migrations into the app and apply them on launch through
   `src/db/run-migrations.ts` — NOT drizzle's own
   `drizzle-orm/op-sqlite/migrator` + `useMigrations`, which misreads
@@ -1242,6 +1245,16 @@ See `kiko-domain`'s "Spending-exclusion pipeline" section for the
 module pointers (the section lists them) — read it there rather than a
 duplicated list here.
 
+The recurring-charge detection reads the whole ledger live through
+`transactionsRepo.recurringLedgerQuery` in `useRecurringSeries`
+(`src/recurring/use-recurring-series/`). Its memo is gated on `useDataReady` over all three
+reads (rows, holdings, accounts), so it never detects over a half-loaded set: the
+`useDataReady` rule in the `useLiveQuery` consumer rule section of this file applies.
+`src/recurring/use-recurring-groups/use-recurring-groups.ts` makes four reads
+(`listWithContextByIdsQuery(ids)`, `categoriesRepo.allQuery()`, `ratesRepo.allQuery()`,
+`settingsRepo.getQuery()`), each a `useLiveQuery` with `paused: !isVisible`, gated by
+`useDataReady`; none is a whole-ledger read or detection.
+
 For the crypto re-sync request (`resyncRequest`) and the Binance exchange sync (balance reads,
 history walks, walk marks) see `kiko-exchange-sync`.
 
@@ -1422,7 +1435,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   migration leaves as REAL (exponent, >= 1e21) alone, bounds an import-key
   amount token to int64, and returns the same object and byte-identical
   matchers text when nothing is rescaled; pinned by
-  `src/data-transfer/snapshot/with-usdt-rescaled.test.ts`.
+  `src/data-transfer/snapshot/with-usdt-rescaled.test.ts`. The rescale reads no settings
+  column, so a future scale change of a currency must also rewrite the marks in the recurring
+  merchant choices map (`src/settings/recurring-merchant-choices.ts`), which store minor units.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
@@ -1781,8 +1796,10 @@ are built with `createPaneStackNavigator`.
   account form does not show the "Connected as <client name>" status of a Connect made before the
   fold: the status is local state in `MonobankConnectField`
   (`src/design-system/components/monobank-connect-field/`), the name comes from the token's
-  `fetchClientInfo`, and no name is stored. A re-tap of Connect re-syncs the same account (known
-  limit, user-accepted 2026-10-10, no fix planned). Proof on two panes:
+  `fetchClientInfo`, and no name is stored. The field takes
+  `accountId` to check for a running sync, and storage stays in the screen closure. A re-tap of
+  Connect re-syncs the same account (known limit, user-accepted 2026-10-10, no fix planned).
+  Proof on two panes:
   `accounts.stack.draft.navigator.test.tsx`.
 - **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
   tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab

@@ -21,6 +21,7 @@ import {
   addAccountCurrencyColumn,
   addFundingMatchRowsTable,
   addMccCategoriesBackfilledColumn,
+  addRecurringMerchantChoicesColumn,
   addTransactionOperationColumn,
   applyAllMigrations,
   applyMigrationsThrough,
@@ -240,6 +241,7 @@ const scaleTwoDatabase = (): DatabaseSync => {
   addTransactionOperationColumn(target);
   addMccCategoriesBackfilledColumn(target);
   addFundingMatchRowsTable(target);
+  addRecurringMerchantChoicesColumn(target);
   seedScaleTwoDatabase(target);
 
   return target;

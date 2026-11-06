@@ -115,6 +115,14 @@ describe('SettingsStack', () => {
     expect(titleByScreen().CategoryRuleForm).toBe('New Rule');
   });
 
+  it('registers the review screen with its localized title', () => {
+    const title = i18n.t('categoryReview.title');
+
+    expect(title).not.toBe('categoryReview.title');
+    expect(screenElements().map((screen) => screen.props.name)).toContain('CategoryReview');
+    expect(optionsOf('CategoryReview')).toEqual({ title });
+  });
+
   it('registers the reminders list and the reminder form it opens', () => {
     const titles = titleByScreen();
     expect(titles.Reminders).toBe('Reminders');
@@ -123,6 +131,11 @@ describe('SettingsStack', () => {
 
   it('registers the templates list with its title', () => {
     expect(titleByScreen().TransactionTemplates).toBe('Transaction Templates');
+  });
+
+  it('registers the recurring charges list with its title', () => {
+    expect(screenElements().map((screen) => screen.props.name)).toContain('RecurringCharges');
+    expect(titleByScreen().RecurringCharges).toBe('Recurring Charges');
   });
 
   // The list opens the Transaction form, and an empty picker's "Add holding" row opens the

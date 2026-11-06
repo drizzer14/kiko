@@ -29,6 +29,9 @@ const storedSubject = (
     amountMinorUnits: minorUnitsOf(amountMajor, currency),
     time,
     currency,
+    mcc: null,
+    counterIban: null,
+    accountId: null,
   });
 
 const amountRule = (
@@ -85,6 +88,9 @@ describe('amount matcher', () => {
           amountMinorUnits: -satoshi,
           time: NOON,
           currency: 'BTC',
+          mcc: null,
+          counterIban: null,
+          accountId: null,
         }),
       ),
     ).toBe(true);
@@ -136,6 +142,7 @@ describe('draft subjects', () => {
       currency: 'UAH',
       direction: 'expense',
       time: NOON,
+      accountId: null,
       ...overrides,
     });
 
@@ -250,5 +257,129 @@ describe('name matchers', () => {
 
   it('a name rule and an amount rule both have to hold', () => {
     expect(matches([nameIs('silpo'), amountRule('gt', 100)], named('Silpo'))).toBe(false);
+  });
+});
+
+describe('the nameContains and mcc conditions', () => {
+  const nameContains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
+
+  const named = (description: string | null) => storedSubject(-10, 'UAH', description);
+  const withMcc = (mcc: number | null) => {
+    const row = {
+      description: 'Silpo',
+      amountMinorUnits: -1000,
+      time: NOON,
+      currency: 'UAH' as const,
+      mcc,
+      counterIban: null,
+      accountId: null,
+    };
+
+    return subjectOfStoredRow(row);
+  };
+
+  it('nameContains matches inside a normalized name', () => {
+    expect(matches([nameContains('market')], named('Silpo Market 12'))).toBe(true);
+    expect(matches([nameContains('silpo')], named('Silpo Market 12'))).toBe(true);
+    expect(matches([nameContains('12')], named('Silpo Market 12'))).toBe(true);
+  });
+
+  it('nameContains matches across case and spacing', () => {
+    expect(matches([nameContains('  SILPO   market ')], named('mega silpo MARKET 5'))).toBe(true);
+    expect(matches([nameContains('Сільпо')], named('  МЕГА   СІЛЬПО  '))).toBe(true);
+  });
+
+  it('a blank name matches no nameContains', () => {
+    expect(matches([nameContains('x')], named(''))).toBe(false);
+    expect(matches([nameContains('x')], named('   '))).toBe(false);
+    expect(matches([nameContains('x')], named(null))).toBe(false);
+  });
+
+  it('mcc matches its own code', () => {
+    expect(matches([mccRule(5411)], withMcc(5411))).toBe(true);
+    expect(matches([mccRule(0)], withMcc(0))).toBe(true);
+  });
+
+  it('mcc on a null value does not match', () => {
+    expect(matches([mccRule(5411)], withMcc(null))).toBe(false);
+    expect(matches([mccRule(0)], withMcc(null))).toBe(false);
+  });
+
+  it('mcc does not match another code', () => {
+    expect(matches([mccRule(5411)], withMcc(5412))).toBe(false);
+    expect(matches([mccRule(5411)], withMcc(0))).toBe(false);
+  });
+});
+
+describe('the account and counterIban conditions', () => {
+  const accountRule = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
+  const ibanRule = (iban: string): CategoryRuleMatcher => ({ type: 'counterIban', iban });
+
+  const IBAN = 'UA733220010000026201112223334';
+
+  const withColumns = (columns: {
+    accountId?: string | null;
+    counterIban?: string | null;
+    mcc?: number | null;
+    description?: string | null;
+  }) =>
+    subjectOfStoredRow({
+      description: 'Silpo',
+      amountMinorUnits: -1000,
+      time: NOON,
+      currency: 'UAH',
+      mcc: null,
+      accountId: null,
+      counterIban: null,
+      ...columns,
+    });
+
+  it('account matches its own id', () => {
+    expect(matches([accountRule('account-1')], withColumns({ accountId: 'account-1' }))).toBe(true);
+  });
+
+  it('account does not match another id', () => {
+    expect(matches([accountRule('account-1')], withColumns({ accountId: 'account-2' }))).toBe(
+      false,
+    );
+  });
+
+  it('account on a row with no holding does not match', () => {
+    expect(matches([accountRule('account-1')], withColumns({ accountId: null }))).toBe(false);
+  });
+
+  it('counterIban matches across case and spacing', () => {
+    const spacedLowerCase = 'ua73 3220 0100 0002 6201 1122 2333 4';
+
+    expect(matches([ibanRule(spacedLowerCase)], withColumns({ counterIban: IBAN }))).toBe(true);
+    expect(matches([ibanRule(IBAN)], withColumns({ counterIban: spacedLowerCase }))).toBe(true);
+  });
+
+  it('counterIban does not match another IBAN', () => {
+    expect(
+      matches([ibanRule(IBAN)], withColumns({ counterIban: 'UA213223130000026007233566001' })),
+    ).toBe(false);
+  });
+
+  it('counterIban on a null value does not match', () => {
+    expect(matches([ibanRule(IBAN)], withColumns({ counterIban: null }))).toBe(false);
+  });
+
+  it.each([
+    ['a blank name', { type: 'nameContains', text: 'x' } as const, { description: '' }],
+    ['a null mcc', { type: 'mcc', code: 5411 } as const, { mcc: null }],
+    ['a null account', accountRule('account-1'), { accountId: null }],
+    ['a null IBAN', ibanRule(IBAN), { counterIban: null }],
+  ])('every new kind on a missing value does not match: %s', (_label, matcher, columns) => {
+    expect(matches([matcher], withColumns(columns))).toBe(false);
+  });
+
+  it('an account and an IBAN rule both have to hold', () => {
+    const rule = [accountRule('account-1'), ibanRule(IBAN)];
+
+    expect(matches(rule, withColumns({ accountId: 'account-1', counterIban: IBAN }))).toBe(true);
+    expect(matches(rule, withColumns({ accountId: 'account-1', counterIban: null }))).toBe(false);
+    expect(matches(rule, withColumns({ accountId: null, counterIban: IBAN }))).toBe(false);
   });
 });

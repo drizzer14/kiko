@@ -161,6 +161,9 @@ const buildRows = (): RewriteCandidate[] => {
       categorySetByHand: random() < 0.1,
       setsBalance: false,
       changeGroupId: null,
+      mcc: index % 4 === 0 ? 5411 : null,
+      counterIban: index % 5 === 0 ? `UA${String(index).padStart(27, '0')}` : null,
+      accountId: `account-${index % 7}`,
     };
   });
 };

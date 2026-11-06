@@ -14,6 +14,7 @@ export const transactionFormDataLayer = {
       listAllQuery: query,
       distinctDescriptionsQuery: query,
       latestManualHoldingQuery: query,
+      recurringLedgerQuery: query,
     },
   },
   categoriesRepo: { categoriesRepo: { allQuery: query } },

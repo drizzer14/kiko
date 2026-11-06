@@ -25,6 +25,12 @@ import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/fo
 import CategoryFormScreen from './category-form.screen';
 
 type CategoryData = { key: string; title: string; icon: string; color: string | null };
+type AccountData = {
+  id: string;
+  name: string;
+  kind: 'bank' | 'cash' | 'property' | 'debt';
+  archivedAt: number | null;
+};
 type RuleData = {
   id: string;
   category: string;
@@ -57,6 +63,7 @@ const mockDeleteRule = jest.fn();
 const mockSetDefault = jest.fn();
 let mockCategories: CategoryData[] = [];
 let mockRules: RuleData[] = [];
+let mockAccounts: AccountData[] = [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
 let mockCategoriesIsLoading = false;
 // `false` = the categories read did not apply a result of its own, as after a failed read.
@@ -88,6 +95,9 @@ jest.mock('@kiko/design-system/components/button', () => {
     },
   };
 });
+jest.mock('@kiko/accounts', () => ({
+  accountsRepo: { listQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
@@ -122,6 +132,10 @@ jest.mock('@kiko/db/use-live-query', () => ({
 
     if (keys?.[0] === 'category_rules') {
       return { data: mockRules, isLoading: mockRulesIsLoading, isFresh: true };
+    }
+
+    if (keys?.[0] === 'accounts') {
+      return { data: mockAccounts, isLoading: false, isFresh: true };
     }
 
     return {
@@ -225,6 +239,7 @@ describe('CategoryFormScreen', () => {
       OTHER,
     ];
     mockRules = [];
+    mockAccounts = [];
     // `other` is the seeded default catch-all.
     mockSettingsRows = [{ defaultCategoryKey: 'other' }];
     mockCategoriesIsLoading = false;
@@ -709,6 +724,36 @@ describe('CategoryFormScreen', () => {
       const { getAllByTestId } = await renderForm('groceries');
 
       expectRow(getAllByTestId('rule-card')[0] as RenderedElement, 'Time is after', '6:00 PM');
+    });
+
+    it('shows the account of a rule by its live name, and a gone one as Deleted account', async () => {
+      mockAccounts = [{ id: 'account-1', name: 'Main card', kind: 'bank', archivedAt: null }];
+      mockRules = [
+        ruleOf('live', 'groceries', [{ type: 'account', accountId: 'account-1' }], 2000),
+        ruleOf('gone', 'groceries', [{ type: 'account', accountId: 'account-9' }], 1000),
+      ];
+
+      const { getAllByTestId } = await renderForm('groceries');
+      const [live, gone] = getAllByTestId('rule-card') as RenderedElement[];
+
+      expectRow(live as RenderedElement, 'Account', 'Main card');
+      expectRow(gone as RenderedElement, 'Account', 'Deleted account');
+    });
+
+    it('shows the IBAN of a rule in full', async () => {
+      mockRules = [
+        ruleOf('transfer', 'groceries', [
+          { type: 'counterIban', iban: 'UA733220010000026201112223334' },
+        ]),
+      ];
+
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expectRow(
+        getAllByTestId('rule-card')[0] as RenderedElement,
+        'Counterparty IBAN',
+        'UA733220010000026201112223334',
+      );
     });
 
     it('says the rule can not be read when its stored conditions are not valid', async () => {

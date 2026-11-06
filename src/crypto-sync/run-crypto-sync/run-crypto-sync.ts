@@ -142,11 +142,15 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
  * per account. The check and set are SYNCHRONOUS (no `await` before the map
  * is written), so two overlapping triggers cannot both slip past into their
  * own run; the lock releases the instant the run settles — success OR
- * failure — so a later, non-overlapping sync starts fresh.
+ * failure — so a later, non-overlapping sync starts fresh. A Connect checks
+ * `isBinanceSyncRunning` first, because this join would hand it a run that holds the old pair.
  */
 const inFlightBinanceSyncs = new Map<string, Promise<BalanceSyncResult>>();
 
 const inFlightBybitSyncs = new Map<string, Promise<BalanceSyncResult>>();
+
+export const isBinanceSyncRunning = (accountId: string): boolean =>
+  inFlightBinanceSyncs.has(accountId);
 
 const joinedOrStarted = (
   inFlight: Map<string, Promise<BalanceSyncResult>>,

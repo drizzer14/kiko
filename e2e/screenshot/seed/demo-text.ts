@@ -54,6 +54,7 @@ const uk = {
   templateBuyEuros: 'Купівля євро',
   templateDinner: 'Вечеря з друзями',
   kfcRefund: 'KFC: повернення коштів',
+  mokkoCoffee: 'Мокко Кава',
 };
 
 /**
@@ -119,6 +120,7 @@ const en: DemoText = {
   templateBuyEuros: 'Buy euros',
   templateDinner: 'Dinner with friends',
   kfcRefund: 'KFC: refund',
+  mokkoCoffee: 'Mokko Coffee',
 };
 
 export const demoText = { uk, en } satisfies Record<AppLanguage, DemoText>;

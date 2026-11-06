@@ -1,3 +1,5 @@
+import maybe, { foldMap } from 'fnts/maybe';
+import { ibanKeyOf } from '@kiko/transactions/iban';
 import type { Currency } from '@kiko/currency/currency';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
@@ -34,12 +36,18 @@ export const subjectOfStoredRow = (row: {
   amountMinorUnits: number;
   time: number;
   currency: Currency | null;
+  mcc: number | null;
+  counterIban: string | null;
+  accountId: string | null;
 }): RuleSubject => ({
   normalizedName: normalizeTransactionName(row.description ?? ''),
   absoluteMinorUnits: Math.abs(row.amountMinorUnits),
   currency: row.currency,
   direction: directionOf(row.amountMinorUnits),
   minuteOfDay: minuteOfDayOf(row.time),
+  mcc: row.mcc,
+  counterIban: foldMap(maybe(row.counterIban), ibanKeyOf) ?? null,
+  accountId: row.accountId,
 });
 
 export const subjectOfDraft = (draft: {
@@ -48,10 +56,15 @@ export const subjectOfDraft = (draft: {
   currency: Currency | null;
   direction: RuleDirection;
   time: number;
+  accountId: string | null;
 }): RuleSubject => ({
   normalizedName: normalizeTransactionName(draft.description),
   absoluteMinorUnits: draft.absoluteMinorUnits,
   currency: draft.currency,
   direction: draft.direction,
   minuteOfDay: minuteOfDayOf(draft.time),
+  // A form draft has no merchant code or IBAN yet, so those rules never pre-select one.
+  mcc: null,
+  counterIban: null,
+  accountId: draft.accountId,
 });

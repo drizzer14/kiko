@@ -4,10 +4,12 @@ import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
+import Card from '@kiko/design-system/components/card';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import SettingsRow from '@kiko/screens/settings/settings-row';
 import { categoryKeyOf } from '@kiko/categories/category-rules';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -138,27 +140,40 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
         </Box>
       }
     >
-      {/* A hold that moves reorders (through the shared `onGridDragEnd`, which persists only a
-          real move); a hold that stays still opens the delete menu; a quick tap opens the page.
-          A drag persists the whole order from the rows on screen, so it never starts from the
-          cached, possibly one-read-old order. */}
-      <Sortable.Grid
-        data={categories}
-        sortEnabled={categoriesFresh}
-        activeItemScale={1.03}
-        columns={1}
-        overDrag="vertical"
-        rowGap={theme.spacing(4)}
-        scrollableRef={scrollableRef}
-        autoScrollActivationOffset={75}
-        keyExtractor={categoryKeyExtractor}
-        renderItem={renderCategoryCard}
-        onDragStart={onDragStart}
-        onActiveItemDropped={onActiveItemDropped}
-        onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-          onGridDragEnd({ fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
-        }
-      />
+      <Box gap={4}>
+        {/* Shown with or without data and under no condition: the review screen explains itself
+            when it has nothing to list, so a reviewer on a clean install can still open it. */}
+        <Card padding={3}>
+          <SettingsRow
+            testID="category-review-entry"
+            icon={genericEntitySymbol.category}
+            label={t('categoryReview.entryLabel')}
+            onPress={() => navigation.navigate('CategoryReview')}
+          />
+        </Card>
+
+        {/* A hold that moves reorders (through the shared `onGridDragEnd`, which persists only a
+            real move); a hold that stays still opens the delete menu; a quick tap opens the page.
+            A drag persists the whole order from the rows on screen, so it never starts from the
+            cached, possibly one-read-old order. */}
+        <Sortable.Grid
+          data={categories}
+          sortEnabled={categoriesFresh}
+          activeItemScale={1.03}
+          columns={1}
+          overDrag="vertical"
+          rowGap={theme.spacing(4)}
+          scrollableRef={scrollableRef}
+          autoScrollActivationOffset={75}
+          keyExtractor={categoryKeyExtractor}
+          renderItem={renderCategoryCard}
+          onDragStart={onDragStart}
+          onActiveItemDropped={onActiveItemDropped}
+          onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+            onGridDragEnd({ fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
+          }
+        />
+      </Box>
     </Screen>
   );
 };

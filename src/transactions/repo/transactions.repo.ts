@@ -1527,11 +1527,11 @@ type RuledBatch = {
 
 // Apply the category rules at insert time: the winning rule of a row replaces its category, and a
 // row no rule wins keeps the bank's. The rules are read once per call and prepared once, and the
-// names and currencies of the batch's holdings are read only when some rule is readable (an amount
-// matcher compares the holding's currency; a name matcher reads the label of a blank row, which
-// names its holding). A row whose holding is not found has no currency, so only the rules that
-// need none can match it. Chunked over the holding ids (a large import can span many holdings) —
-// see `IN_CLAUSE_CHUNK_SIZE`.
+// names, currencies and accounts of the batch's holdings are read only when some rule is readable
+// (an amount matcher compares the holding's currency; a name matcher reads the label of a blank
+// row, which names its holding; an account matcher reads its account). A row whose holding is not
+// found has no currency or account, so only the rules that need none can match it. Chunked over
+// the holding ids (a large import can span many holdings) — see `IN_CLAUSE_CHUNK_SIZE`.
 const withCategoryRules = async (
   databaseTransaction: typeof database,
   batch: NewTransaction[],
@@ -1548,6 +1548,7 @@ const withCategoryRules = async (
 
   const holdingNameById = new Map<string, string>();
   const holdingCurrencyById = new Map<string, Currency>();
+  const accountIdById = new Map<string, string>();
 
   // A leg's counterpart holding is read with the batch's own, because a blank leg's label names it.
   for (const holdingIdChunk of chunkRows(
@@ -1562,11 +1563,17 @@ const withCategoryRules = async (
     IN_CLAUSE_CHUNK_SIZE,
   )) {
     for (const holding of await databaseTransaction
-      .select({ id: holdings.id, name: holdings.name, currency: holdings.currency })
+      .select({
+        id: holdings.id,
+        name: holdings.name,
+        currency: holdings.currency,
+        accountId: holdings.accountId,
+      })
       .from(holdings)
       .where(inArray(holdings.id, holdingIdChunk))) {
       holdingNameById.set(holding.id, holding.name);
       holdingCurrencyById.set(holding.id, holding.currency);
+      accountIdById.set(holding.id, holding.accountId);
     }
   }
 
@@ -1592,6 +1599,9 @@ const withCategoryRules = async (
         amountMinorUnits: input.amountMinorUnits,
         time: input.time,
         currency: holdingCurrencyById.get(input.holdingId) ?? null,
+        mcc: input.mcc ?? null,
+        counterIban: input.counterIban ?? null,
+        accountId: accountIdById.get(input.holdingId) ?? null,
       }),
     );
 
@@ -2144,6 +2154,30 @@ export const transactionsRepo = {
   // over time. `listWithContextBetweenQuery` is a display projection joined to
   // the holding and account for their names, which this read has no use for.
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
+  // The recurring detection's whole ledger in the columns its matchers read. No `where`: the
+  // transfer and funding matchers need credits, crypto rows and blank rows, so no predicate
+  // narrows it. No `orderBy`: the detection sorts by itself, and an order would only add a sort
+  // step or a time-index walk, the plan a real-engine test pins to a plain scan.
+  recurringLedgerQuery: () =>
+    database
+      .select({
+        id: transactions.id,
+        holdingId: transactions.holdingId,
+        amountMinorUnits: transactions.amountMinorUnits,
+        time: transactions.time,
+        description: transactions.description,
+        mcc: transactions.mcc,
+        counterIban: transactions.counterIban,
+        categorySetByHand: transactions.categorySetByHand,
+        setsBalance: transactions.setsBalance,
+        changeGroupId: transactions.changeGroupId,
+        exchangePairId: transactions.exchangePairId,
+        exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+        untrackedCounterpart: transactions.untrackedCounterpart,
+        loanHoldingId: transactions.loanHoldingId,
+        source: transactions.source,
+      })
+      .from(transactions),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
   /**
@@ -2354,6 +2388,14 @@ export const transactionsRepo = {
           foldMap(maybe(to), (end) => lte(transactions.time, end)),
         ),
       )
+      .orderBy(desc(transactions.time)),
+  /**
+   * The context rows of the given ids, newest first. An id list of any length binds one
+   * parameter, and the result is a builder because `useLiveQuery` needs `toSQL`.
+   */
+  listWithContextByIdsQuery: (ids: readonly string[]) =>
+    contextRowsQuery()
+      .where(sql`${transactions.id} IN (SELECT value FROM json_each(${JSON.stringify(ids)}))`)
       .orderBy(desc(transactions.time)),
   /**
    * The earliest and latest time of the whole ledger (`listWithContextBetweenQuery`

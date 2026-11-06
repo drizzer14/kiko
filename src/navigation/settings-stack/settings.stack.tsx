@@ -15,7 +15,10 @@ import ImportDataScreen from '@kiko/screens/settings/import-data';
 import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import CategoryFormScreen from '@kiko/screens/forms/category-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
+import CategoryReviewScreen from '@kiko/screens/settings/category-review';
 import CategoryRuleFormScreen from '@kiko/screens/forms/category-rule-form';
+import RecurringSeriesScreen from '@kiko/screens/settings/recurring-series';
+import RecurringChargesScreen from '@kiko/screens/settings/recurring-charges';
 import TransactionTemplatesScreen from '@kiko/screens/settings/transaction-templates';
 
 import {
@@ -68,6 +71,12 @@ const SettingsStack: FC = () => {
         options={{ title: t('settings.categories') }}
       />
 
+      <Stack.Screen
+        name="CategoryReview"
+        component={CategoryReviewScreen}
+        options={{ title: t('categoryReview.title') }}
+      />
+
       {/* An existing category's screen sets its own title from the category's name, so it starts
           empty: the raw route name never shows while the category is still being read. */}
       <Stack.Screen
@@ -112,6 +121,19 @@ const SettingsStack: FC = () => {
         name="TransactionTemplates"
         component={TransactionTemplatesScreen}
         options={{ title: t('transactionTemplates.title') }}
+      />
+
+      <Stack.Screen
+        name="RecurringCharges"
+        component={RecurringChargesScreen}
+        options={{ title: t('recurringCharges.title') }}
+      />
+
+      {/* The title is the merchant's own text from the route, never a catalogue string. */}
+      <Stack.Screen
+        name="RecurringSeries"
+        component={RecurringSeriesScreen}
+        options={({ route }) => ({ title: route.params.name })}
       />
 
       {/* The template forms, and the create forms their empty holding picker opens: they sit

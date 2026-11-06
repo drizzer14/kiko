@@ -9,9 +9,13 @@ export type TimeOperator = 'before' | 'after';
 export type CategoryRuleMatcher =
   | { type: 'nameIs'; text: string }
   | { type: 'nameStartsWith'; text: string }
+  | { type: 'nameContains'; text: string }
   | { type: 'amount'; operator: AmountOperator; minorUnits: number; currency: Currency }
   | { type: 'direction'; direction: RuleDirection }
-  | { type: 'time'; operator: TimeOperator; minuteOfDay: number };
+  | { type: 'time'; operator: TimeOperator; minuteOfDay: number }
+  | { type: 'mcc'; code: number }
+  | { type: 'account'; accountId: string }
+  | { type: 'counterIban'; iban: string };
 
 export type NameRuleKind = 'nameIs' | 'nameStartsWith';
 
@@ -60,6 +64,9 @@ export type RuleSubject = {
   currency: Currency | null;
   direction: RuleDirection | null;
   minuteOfDay: number | null;
+  mcc: number | null;
+  counterIban: string | null;
+  accountId: string | null;
 };
 
 export type RewriteCandidate = {
@@ -72,9 +79,35 @@ export type RewriteCandidate = {
   categorySetByHand: boolean;
   setsBalance: boolean;
   changeGroupId: string | null;
+  mcc: number | null;
+  counterIban: string | null;
+  accountId: string | null;
 };
 
-export type MccBackfillRow = RewriteCandidate & { mcc: number | null };
+// A candidate with the two exchange markers the review list leaves out: the candidate columns
+// already select both.
+export type ReviewCandidate = RewriteCandidate & {
+  exchangeCounterpartHoldingId: string | null;
+  untrackedCounterpart: string | null;
+};
+
+// The rows the user has already filed, counted per stored description and category key: the
+// votes a suggestion is read from.
+export type ReviewEvidence = { description: string; categoryKey: string; rowCount: number };
+
+// The category most of a merchant's filed rows hold: `agreeing` of `total` rows with a real
+// category.
+export type ReviewSuggestion = { category: string; agreeing: number; total: number };
+
+export type ReviewGroup = {
+  key: string;
+  // One per normalized name, in its full tidied spelling, most rows first.
+  names: readonly string[];
+  rowCount: number;
+  newestTime: number;
+  rule: { kind: NameRuleKind; text: string };
+  suggestion: ReviewSuggestion | null;
+};
 
 export type RuleValidation =
   | { kind: 'valid' }

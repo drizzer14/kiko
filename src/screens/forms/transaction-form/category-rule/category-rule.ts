@@ -18,13 +18,14 @@ import { DEFAULT_CATEGORY_KEY, resolveCategoryDisplay } from '@kiko/categories/c
 import type { CategoryOverrideSheetProps } from '../category-override-sheet/category-override-sheet.props';
 
 // What the form holds of a transaction while it is filled in, as far as a rule can read it.
-// `currency` is the picked holding's, null while no holding is picked.
+// `currency` and `accountId` are the picked holding's, null while no holding is picked.
 export type CategoryDraft = {
   description: string;
   amount: string;
   time: number;
   mode: FormMode;
   currency: Currency | null;
+  accountId: string | null;
 };
 
 // A blank or unreadable amount, or one with no holding to give it a currency, is unknown, so a
@@ -46,6 +47,7 @@ const subjectInDirection = (draft: CategoryDraft, direction: RuleDirection): Rul
     currency: draft.currency,
     direction,
     time: draft.time,
+    accountId: draft.accountId,
   });
 
 // The subject the rules see for a draft, or null in exchange mode, which carries no category. A

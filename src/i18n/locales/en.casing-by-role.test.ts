@@ -67,6 +67,13 @@ const PROPER_NOUNS = new Set([
   'Settings',
   'Ukrainian',
   'Europe',
+  'Mondays',
+  'Tuesdays',
+  'Wednesdays',
+  'Thursdays',
+  'Fridays',
+  'Saturdays',
+  'Sundays',
 ]);
 
 // A capital letter that stands for a number the user picks ("Every N days"),
