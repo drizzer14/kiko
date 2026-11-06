@@ -634,6 +634,11 @@ export const uk: typeof en = {
       createTransaction: 'Створити транзакцію',
       description: 'Опис',
       descriptionPlaceholder: 'Кава',
+      detectedRecurring: {
+        monthly: 'Виявлено: щомісяця',
+        weekly: 'Виявлено: щотижня',
+        yearly: 'Виявлено: щороку',
+      },
       editTemplateTitle: 'Редагувати шаблон',
       editTitle: 'Редагувати транзакцію',
       entryModeLabel: 'Спосіб введення',

@@ -1,5 +1,4 @@
 import { StyleSheet } from 'react-native';
-import type { ComponentType } from 'react';
 import { render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
@@ -8,25 +7,8 @@ import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
-type Props = {
-  title: string;
-  icon: string;
-  color: string;
-  total: Money;
-  testID: string;
-  totalTestID: string;
-};
-
-// A runtime lookup, so the file typechecks while the component is missing.
-const RecurringGroupHeading = (props: Props) => {
-  const Heading = (
-    jest.requireActual('./recurring-group-heading.component') as {
-      default: ComponentType<Props>;
-    }
-  ).default;
-
-  return <Heading {...props} />;
-};
+import RecurringGroupHeading from './recurring-group-heading.component';
+import type { RecurringGroupHeadingProps as Props } from './recurring-group-heading.props';
 
 const TOTAL = Money.of('UAH', 123456);
 

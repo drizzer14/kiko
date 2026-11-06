@@ -12,10 +12,11 @@ import {
   settingsModuleWith as mockSettingsModuleWith,
   taggedQuery as mockTaggedQuery,
 } from '@kiko/test-support/recurring-mark-live-queries';
+import { nowOf } from '@kiko/test-support/recurring-ledger';
 import { EMPTY_DRAFT } from '@kiko/transaction-templates/draft';
-import { saveItem } from '@kiko/test-support/form-header-items';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 import { transactionFormDataLayer as mockDataLayer } from '@kiko/test-support/transaction-form-data-layer';
 import '@kiko/design-system/unistyles';
@@ -403,14 +404,14 @@ describe('the reads on mount', () => {
         enabled && tables[0] === 'transactions' && !READS_BEFORE_THE_FIELD.includes(kind ?? ''),
     );
 
-  it('reads no new transactions query when no mark lies under the key and currency', async () => {
+  it('reads the whole ledger for an offered row under a name with no mark', async () => {
     const rendered = await open(routeOf());
 
     expect(rendered.getByLabelText(FIELD_LABEL)).toBeTruthy();
-    expect(newTransactionReads()).toEqual([]);
+    expect(newTransactionReads().map(({ kind }) => kind)).toContain('recurringLedger');
   });
 
-  it('reads none for a mark in another currency, and the field still shows', async () => {
+  it('reads it for a mark in another currency, and the field still shows', async () => {
     mockLive.reads.settings = {
       rows: netflixSettingsOf({ marks: [markOf('monthly', 14_400, 'USD')] }),
       isLoading: false,
@@ -420,6 +421,19 @@ describe('the reads on mount', () => {
     const rendered = await open(routeOf());
 
     expect(rendered.getByLabelText(FIELD_LABEL)).toBeTruthy();
+    expect(newTransactionReads().map(({ kind }) => kind)).toContain('recurringLedger');
+  });
+
+  it('reads none for a hidden name with no mark, and the field reads "Not marked"', async () => {
+    mockLive.reads.settings = {
+      rows: netflixSettingsOf({ hidden: true }),
+      isLoading: false,
+      error: undefined,
+    };
+
+    const rendered = await open(routeOf());
+
+    expect(rendered.getByText('Not marked')).toBeTruthy();
     expect(newTransactionReads()).toEqual([]);
   });
 
@@ -433,5 +447,68 @@ describe('the reads on mount', () => {
     await open(routeOf());
 
     expect(newTransactionReads().map(({ kind }) => kind)).toContain('recurringLedger');
+  });
+});
+
+describe('the form does not wait for detection', () => {
+  const DETECTED_LEDGER = [
+    chargeRowOf('first', 2, -10_000, { description: 'Netflix 4412' }),
+    chargeRowOf('second', 1, -12_000, { description: 'Netflix 4412' }),
+    chargeRowOf(ROW_ID, 0, -14_400, { description: 'Netflix 4412' }),
+  ];
+  let clockSpy: jest.SpyInstance;
+
+  // Held loading: the suite's `mockLive.reads`, never landed until the end.
+  beforeEach(() => {
+    clockSpy = jest.spyOn(Date, 'now').mockReturnValue(nowOf());
+    mockLive.reads.recurringLedger = { rows: [], isLoading: true, error: undefined };
+  });
+
+  afterEach(() => {
+    clockSpy.mockRestore();
+  });
+
+  const expectFieldWaiting = (rendered: Rendered): void => {
+    expect(rendered.getByLabelText(FIELD_LABEL)).toBeTruthy();
+    expect(isDisabled(rendered)).toBe(true);
+    expect(rendered.queryByText('Not marked')).toBeNull();
+    expect(rendered.queryByText(/^Detected/)).toBeNull();
+  };
+
+  it('shows the fields, takes a typed amount and saves while the ledger read has not landed', async () => {
+    const rendered = await open(routeOf());
+
+    expect(rendered.getByLabelText('Description')).toBeTruthy();
+    expect(rendered.getByLabelText('Amount')).toBeTruthy();
+    expectFieldWaiting(rendered);
+
+    await fireEvent.changeText(rendered.getByLabelText('Amount'), '250');
+
+    expect(rendered.getByLabelText('Amount').props.value).toBe('250');
+    expectFieldWaiting(rendered);
+
+    await pressSave(navigation.setOptions);
+
+    expect(
+      mockTransactionWrite.mock.calls
+        .filter(([name]) => name === 'update')
+        .map(([, payload]) => [payload.transactionId, payload.amountMinorUnits]),
+    ).toEqual([[ROW_ID, -25_000]]);
+    expect(navigation.goBack).toHaveBeenCalled();
+    expectFieldWaiting(rendered);
+  });
+
+  it('reads "Detected: monthly" and enables the field once the ledger read lands', async () => {
+    const rendered = await open(routeOf());
+
+    expectFieldWaiting(rendered);
+
+    mockLive.landLedger(DETECTED_LEDGER);
+    await act(async () => {
+      await rendered.rerender(formElement(routeOf()));
+    });
+
+    expect(rendered.getByText('Detected: monthly')).toBeTruthy();
+    expect(isDisabled(rendered)).toBe(false);
   });
 });

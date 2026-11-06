@@ -1250,6 +1250,11 @@ The recurring-charge detection reads the whole ledger live through
 (`src/recurring/use-recurring-series/`). Its memo is gated on `useDataReady` over all three
 reads (rows, holdings, accounts), so it never detects over a half-loaded set: the
 `useDataReady` rule in the `useLiveQuery` consumer rule section of this file applies.
+`useRowMark` (`src/recurring/use-row-mark/use-row-mark.ts`) also reads `recurringLedgerQuery`
+for every row the form offers, except a row under a hidden key with no mark in its currency,
+gated on the settings read settling. It runs `chargeGroupsOf` once per ledger fire and detection
+on the row's own group alone; a settings fire (a hide or a mark write) runs no detection (spec
+9.5).
 `src/recurring/use-recurring-groups/use-recurring-groups.ts` makes four reads
 (`listWithContextByIdsQuery(ids)`, `categoriesRepo.allQuery()`, `ratesRepo.allQuery()`,
 `settingsRepo.getQuery()`), each a `useLiveQuery` with `paused: !isVisible`, gated by

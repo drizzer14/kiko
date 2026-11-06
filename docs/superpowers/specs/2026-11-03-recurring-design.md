@@ -644,12 +644,12 @@ marked in that currency. The matched-transfer row is still offered and left out 
 
 **The detected period (item 13, USER 2026-11-05 "A: Everywhere").** was (task 4/4): "a row under an unmarked name costs what it
 did": no ledger read in the field, and "Not marked" on a row that a detected series holds. now: `useRowMark` enables
-`recurringLedgerQuery` for **every row it offers**, whatever its marks, runs `chargeGroupsOf` once per ledger fire, and then
+`recurringLedgerQuery` for **every row it offers**, whatever its marks, except a row under a hidden key with no mark in this row's currency (that row reads "Not marked" and the ledger is not read for it), runs `chargeGroupsOf` once per ledger fire, and then
 `seriesOfGroups` on the row's own `[key, currency]` group alone (`seriesOfGroups` maps each group on its own, so one group gives
 that group's series exactly), the marked pass for that key (`markedSeriesOf`, `detectedBesideMarked`) and the hide. One pure
 function, shared with the list, decides it, so the form and the list agree on every row. A row that a shown detected series
 holds reads "Detected: weekly", "Detected: monthly" or "Detected: yearly" (section 13). A row in a marked chain reads its marked
-period, as before. A row in no shown series reads "Not marked", and so does a row of a hidden key or a row outside the found
+period, as before. A row in no shown series reads "Not marked", and so does a row of a hidden key with no mark in its currency (with no ledger read) or a row outside the found
 series (an outlier amount). The same from every place the form opens (8.2, "The two form paths"). A pick on the first row of the
 sheet (which reads "Detected: ..." on a detected row) writes nothing, as "Not marked" writes nothing. A period pick adds a mark
 through today's add path, and the overlap rule then drops the detected series.

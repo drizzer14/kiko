@@ -45,26 +45,13 @@ jest.mock('@kiko/settings', () => {
   };
 });
 
-import type { Currency } from '@kiko/currency/currency';
 import type { RecurringSeries } from '@kiko/recurring/detection';
+
+import { useRecurringGroups } from './use-recurring-groups';
 
 type ReadName = 'by-ids' | 'categories' | 'rates' | 'settings';
 
 type Props = { shown: RecurringSeries[]; all: RecurringSeries[] };
-
-type HookResult = {
-  groups: { key: string; series: RecurringSeries[]; total: { minorUnits: number } }[];
-  total: { currency: Currency; minorUnits: number } | undefined;
-  isLoading: boolean;
-};
-
-// A runtime lookup, so the file typechecks while the module is missing.
-const useRecurringGroups = (shown: RecurringSeries[], all: RecurringSeries[]): HookResult =>
-  (
-    jest.requireActual('./use-recurring-groups') as {
-      useRecurringGroups: (shown: RecurringSeries[], all: RecurringSeries[]) => HookResult;
-    }
-  ).useRecurringGroups(shown, all);
 
 const READS: ReadName[] = ['by-ids', 'categories', 'rates', 'settings'];
 
