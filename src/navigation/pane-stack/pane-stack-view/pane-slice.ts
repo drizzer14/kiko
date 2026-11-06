@@ -108,7 +108,7 @@ const LAYER_ROOT_HEADER: NativeStackNavigationOptions = {
 };
 
 // The options that decide how a bar's background is drawn: its fill, blur, shadow, custom
-// background and large-title ground. UIKit moves the shared bar from one page's appearance to the
+// background and large-title ground. UIKit moves the shared bar from one page's bar look to the
 // other's during the swipe, so a root that differs in any of them fades the bar's background away.
 // The page over the root has them from its stack's `screenOptions` or its own, and the root, which
 // is described apart from both, takes them from that page. Its title, back button and items stay
