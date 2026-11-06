@@ -1068,6 +1068,10 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   detection. The chain's charges are the series, with the mark's period; the stored amount joins
   the cut like a charge, so it can bridge two charges. Pieces share no row, and a detected series
   that shares a row with a marked one leaves whole.
+- A marked chain keeps at most one charge per period slot: `onePerSlotOf` in
+  `src/recurring/detection/detection.ts` (spec 8.3; read it for the slot and tie rules). A row it
+  drops reads 'Not marked' (or its detected text) and its mark field is disabled;
+  `markedChainOfAmount` in `src/recurring/marked-series/marked-series.ts` returns `holdsRow`.
 - The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
 - The accepted false stop: a subscription that goes on at a price outside the chain shows "No
   charge since" until the user re-marks. This is the user's ruling, not a defect.

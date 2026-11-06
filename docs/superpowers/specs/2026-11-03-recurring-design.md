@@ -548,6 +548,7 @@ Results this section changes. `was` is the result at 5ef73606a.
 | Twelve monthly charges, m(12, 3, 199), marked yearly | one yearly x12, "Marked: yearly" | one per yearly slot around the anchor (walked: x1 or x2), "Marked: yearly" unless the kept charges fit yearly |
 | 20 Dec 2025 and 15 Jan 2026 at 400, marked yearly | one x2, "Marked: yearly" | one x1, 15 Jan 2026, "Marked: yearly" |
 | The daily shop, marked monthly at its first row's amount | one of all rows | one charge per month of its span (counted by the qa) |
+| Two marks in two pieces without the bridging row: every 3 months on 7 Aug, 7 Sep, 7 Oct | not recorded | x2 (7 Aug and 7 Oct; 7 Sep shares the 7 Oct slot); the `marked-series.test.ts` matrix row of that name |
 
 ## 9. Screens, entry and links
 
