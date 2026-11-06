@@ -1,3 +1,4 @@
+import { sumOf } from '@kiko/numbers';
 import { Money } from '@kiko/currency/money';
 import type { CalendarMonth } from '@kiko/dates';
 import { canConvert } from '@kiko/rates/net-worth-view';
@@ -9,7 +10,7 @@ import { averageOverComplete } from '../table-period';
 import { buildCategoryByMonth } from '../category-by-month';
 import type { LedgerRow, SpendingLedger } from '../spending-ledger';
 
-type CashFlowLine = {
+export type CashFlowLine = {
   /** One amount per month, in base-currency minor units. */
   cells: number[];
   total: number;
@@ -24,8 +25,6 @@ type CashFlow = {
   /** Net over income; a null where income is zero. */
   savingsRate: { cells: (number | null)[]; total: number | null; average: number | null };
 };
-
-const sumOf = (values: readonly number[]): number => values.reduce((sum, value) => sum + value, 0);
 
 /** Net over income: null at zero income, so a rate is never zero-for-nothing or infinity. */
 const rateOf = (net: number | null, income: number | null): number | null =>

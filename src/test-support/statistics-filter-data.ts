@@ -42,7 +42,7 @@ const CATEGORIES = [
 ];
 
 /** The columns the ledger and its exclusion matchers read from a row, as the database returns. */
-export type FilterTransaction = Pick<
+type FilterTransaction = Pick<
   TransactionRow,
   | 'id'
   | 'holdingId'

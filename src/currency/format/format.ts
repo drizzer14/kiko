@@ -59,7 +59,7 @@ const formatFiatBody = (
     maximumFractionDigits: fractionDigits,
   });
 
-// Half rounds away from zero, as `toLocaleString` does, so an amount below half a unit of the last
+// Half rounds away from zero, as `roundedToDigits` does, so an amount below half a unit of the last
 // shown digit shows as zero. The comparison stays in integers: no float step decides the edge.
 const roundsToZero = (minorUnits: number, scale: number, fractionDigits: number): boolean =>
   Math.abs(minorUnits) * 10 ** fractionDigits * 2 < 10 ** scale;

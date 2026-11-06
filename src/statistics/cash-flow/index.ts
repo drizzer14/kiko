@@ -1,1 +1,1 @@
-export { buildCashFlow, isIncomeRow } from './cash-flow';
+export { buildCashFlow, type CashFlowLine, isIncomeRow } from './cash-flow';

@@ -132,6 +132,7 @@ describe('the income matrix', () => {
     ['an exchange leg', { exchangeCounterpartHoldingId: 'card' }],
     ['a P2P purchase row', { untrackedCounterpart: 'p2p:UAH:4150.00' }],
     ['a bank purchase row', { untrackedCounterpart: 'bank:UAH:4150.00' }],
+    ['a card purchase row', { untrackedCounterpart: 'card:UAH:4150.00' }],
   ])('leaves out %s, by its marker', (_name, marker) => {
     expect(incomeOf([rowOf('leg', 9_990_000, marker)])).toBe(0);
   });
@@ -190,7 +191,8 @@ describe('the income matrix', () => {
 
   it('counts a bank credit from a Binance fiat withdrawal: a wrong value by the ruling', () => {
     const flow = flowOf([
-      rowOf('spot-debit', -60_000, { holdingId: 'fiat', exchangeCounterpartHoldingId: 'card' }),
+      // As the Binance sync writes a fiat withdrawal: the marked debit of the coin's Spot holding.
+      rowOf('spot-debit', -60_000, { holdingId: 'fiat', untrackedCounterpart: 'bank:UAH:600.00' }),
       rowOf('bank-credit', 60_000, { time: BASE_TIME + MINUTE }),
     ]);
 
