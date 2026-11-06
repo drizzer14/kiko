@@ -92,6 +92,21 @@ const expiryLineFragments = [
   'Kiko could not read when this Bybit key ends',
 ];
 
+// The tests of the calling suite run in Ukrainian, and English is put back after each.
+const inUkrainian = () => {
+  beforeEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+};
+
 const shownExpiryLines = (queryByText: (text: string, options: { exact: false }) => unknown) =>
   expiryLineFragments.filter((fragment) => queryByText(fragment, { exact: false }) !== null);
 
@@ -193,17 +208,7 @@ describe('the key expiry line of a Bybit account', () => {
   });
 
   describe('in Ukrainian', () => {
-    beforeEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-    });
-
-    afterEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
-    });
+    inUkrainian();
 
     it.each([
       [1, 'Ключ Bybit діє ще 1 день. Подовжте його на Bybit; ключ лишається той самий.'],
@@ -282,26 +287,23 @@ describe('the notes of a Bybit account', () => {
     expect(getByText('Bybit refused this key for Funding', { exact: false })).toBeTruthy();
   });
 
-  it('names the wallet of each coin set aside for a loan, and says its balance is from an earlier sync', async () => {
+  it.each([
+    [
+      'set aside for a loan',
+      { borrowed: ['BTC', 'ETH'] },
+      'Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
+    ],
+    [
+      'with an open order',
+      { openOrder: ['BTC', 'ETH'] },
+      'Bybit may hold part of this coin for an open order, so Kiko does not read its balance now. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
+    ],
+  ])('names the wallet of each coin %s', async (_title, unified, text) => {
     const { getByText, queryAllByText } = await renderState('bybit', {
       walks: {},
-      balanceNotes: { unified: { borrowed: ['BTC', 'ETH'] }, fund: {} },
+      balanceNotes: { unified, fund: {} },
     });
-    const line = (coin: string) =>
-      `${coin}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.`;
-
-    expect(getByText(line('BTC (Unified)'))).toBeTruthy();
-    expect(queryAllByText(line('ETH (Unified)'))).toHaveLength(1);
-    expect(queryAllByText(line('ETH'))).toHaveLength(0);
-  });
-
-  it('names the wallet of each coin with an open order', async () => {
-    const { getByText, queryAllByText } = await renderState('bybit', {
-      walks: {},
-      balanceNotes: { unified: { openOrder: ['BTC', 'ETH'] }, fund: {} },
-    });
-    const line = (coin: string) =>
-      `${coin}: Bybit may hold part of this coin for an open order, so Kiko does not read its balance now. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.`;
+    const line = (coin: string) => `${coin}: ${text}`;
 
     expect(getByText(line('BTC (Unified)'))).toBeTruthy();
     expect(queryAllByText(line('ETH (Unified)'))).toHaveLength(1);
@@ -365,17 +367,7 @@ describe('the notes of a Bybit account', () => {
   });
 
   describe('in Ukrainian', () => {
-    beforeEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-    });
-
-    afterEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
-    });
+    inUkrainian();
 
     it('gives the refused and borrowed lines in Ukrainian', async () => {
       const { getByText } = await renderState('bybit', {
@@ -474,17 +466,7 @@ describe('a Binance or wallet account beside the Bybit lines', () => {
   );
 
   describe('in Ukrainian', () => {
-    beforeEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-    });
-
-    afterEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
-    });
+    inUkrainian();
 
     it('shows Binance no Bybit line either', async () => {
       const { queryByText } = await renderState('binance', { walks: {}, ...bybitFacts });
@@ -582,17 +564,7 @@ describe('CryptoSyncSection for a Bybit account', () => {
   });
 
   describe('in Ukrainian', () => {
-    beforeEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-    });
-
-    afterEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
-    });
+    inUkrainian();
 
     it('names the exchange in the not-tracked line', async () => {
       const { getByText } = await renderState('bybit', {

@@ -1,9 +1,16 @@
 import { DAY_MS } from '@kiko/dates';
 import { coinListPatchesOf, walkStateFake } from '@kiko/test-support/walk-marks';
 
+import {
+  entryAt,
+  logWalkOf,
+  quoteLegAt,
+  silencedWarnings,
+  spotAt,
+  sumsByHolding,
+} from './bybit.log-test-fixtures';
 import { NOW } from './bybit.client-test-fixtures';
 import { ACCOUNT_ID, served } from './bybit.capital-test-fixtures';
-import { entryAt, logWalkOf, quoteLegAt, spotAt, sumsByHolding } from './bybit.log-test-fixtures';
 import { NEVER_READ, SPOT_TRADE_ID, spotLogRow, withoutField } from './bybit.history-test-fixtures';
 
 const CURSOR = NOW - 3 * DAY_MS;
@@ -36,8 +43,31 @@ const pointAt = (time: number) => ({
   since: NOW,
 });
 
-const loggedCodes = (warn: jest.SpyInstance): unknown[] =>
-  warn.mock.calls.map(([, details]) => (details as { code?: string }).code);
+const GOOD_KEY = keyOf('good', AT + SECOND_MS, 'BTC');
+
+// The rows given, then one good row a second after them.
+const walkBesideGood = async (...rows: ReturnType<typeof spotAt>[]) => {
+  const walk = newWalk();
+  walk.world.log = [...rows, spotAt(AT + SECOND_MS, { id: 'good' })];
+
+  await walk.run();
+
+  return walk;
+};
+
+const walkOfOneSpot = async (overrides: Record<string, unknown>) => {
+  const walk = newWalk();
+  walk.world.log = [spotAt(AT, overrides)];
+
+  await walk.run();
+
+  return walk;
+};
+
+const expectOneBoughtBtcRow = (walk: Walk) => {
+  expect(walk.rows().map((row) => row.amountMinorUnits)).toEqual([BOUGHT_BTC]);
+  expect(walk.marks().pending).toEqual([]);
+};
 
 const storedStateOf = async (walk: Walk) =>
   JSON.parse((await walk.readState()) ?? '{}') as { logKinds?: string[] };
@@ -47,15 +77,7 @@ const sumByHolding = (walk: Walk): Record<string, number> => sumsByHolding(walk.
 // Every row of these suites is built on the field words of the docs page's TRADE sample: no page
 // shows a spot row, and none was read live.
 describe('the log walk: what each row is', () => {
-  let warn: jest.SpyInstance;
-
-  beforeEach(() => {
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
+  const warned = silencedWarnings();
 
   describe('a spot trade', () => {
     it('a spot row writes one leg of change with the fee inside, marked out of spending, and pairs by order', async () => {
@@ -173,13 +195,13 @@ describe('the log walk: what each row is', () => {
     });
 
     it('a change past the scale of its coin rounds, and still imports', async () => {
-      const walk = newWalk();
-      walk.world.log = [spotAt(AT, { qty: '0.003000004', fee: '0.000003', change: '0.002997004' })];
+      const walk = await walkOfOneSpot({
+        qty: '0.003000004',
+        fee: '0.000003',
+        change: '0.002997004',
+      });
 
-      await walk.run();
-
-      expect(walk.rows().map((row) => row.amountMinorUnits)).toEqual([BOUGHT_BTC]);
-      expect(walk.marks().pending).toEqual([]);
+      expectOneBoughtBtcRow(walk);
     });
 
     it('a log leg that rounds to zero writes no row and leaves the other leg', async () => {
@@ -201,15 +223,11 @@ describe('the log walk: what each row is', () => {
     });
 
     it('an amount past the safe integer owes its point, lists its coin as oversized, and its neighbour imports', async () => {
-      const walk = newWalk();
-      walk.world.log = [
+      const walk = await walkBesideGood(
         spotAt(AT, { id: 'huge', qty: '99999999999', fee: '0', change: '99999999999' }),
-        spotAt(AT + SECOND_MS, { id: 'good' }),
-      ];
+      );
 
-      await walk.run();
-
-      expect(walk.keys()).toEqual([keyOf('good', AT + SECOND_MS, 'BTC')]);
+      expect(walk.keys()).toEqual([GOOD_KEY]);
       expect(walk.marks().pending).toEqual([pointAt(AT)]);
       expect(coinListPatchesOf(walk.deps)).toContainEqual({
         kind: 'coinList',
@@ -217,7 +235,7 @@ describe('the log walk: what each row is', () => {
         list: 'history',
         tickers: ['BTC'],
       });
-      expect(loggedCodes(warn)).toEqual(['amount-too-large']);
+      expect(warned.codes()).toEqual(['amount-too-large']);
     });
   });
 
@@ -240,18 +258,14 @@ describe('the log walk: what each row is', () => {
     });
 
     it('one key with two values owes both of their point, and its neighbour imports', async () => {
-      const walk = newWalk();
-      walk.world.log = [
+      const walk = await walkBesideGood(
         spotAt(AT, { id: 'key' }),
         spotAt(AT, { id: 'key', qty: '0.002003', change: '0.002' }),
-        spotAt(AT + SECOND_MS, { id: 'good' }),
-      ];
+      );
 
-      await walk.run();
-
-      expect(walk.keys()).toEqual([keyOf('good', AT + SECOND_MS, 'BTC')]);
+      expect(walk.keys()).toEqual([GOOD_KEY]);
       expect(walk.marks().pending).toEqual([pointAt(AT)]);
-      expect(loggedCodes(warn)).toEqual(['log-key-conflict']);
+      expect(warned.codes()).toEqual(['log-key-conflict']);
     });
 
     it('a row read twice in one span, with the same change, imports once', async () => {
@@ -294,44 +308,30 @@ describe('the log walk: what each row is', () => {
       ['change holds a plus sign', { change: '+0.002997' }],
       ['fee is text', { fee: 'a lot' }],
     ])('%s: no row, one range, and the neighbour imports', async (_name, overrides) => {
-      const walk = newWalk();
-      walk.world.log = [
-        spotAt(AT, { id: 'bad', ...overrides }),
-        spotAt(AT + SECOND_MS, { id: 'good' }),
-      ];
+      const walk = await walkBesideGood(spotAt(AT, { id: 'bad', ...overrides }));
 
-      await walk.run();
-
-      expect(walk.keys()).toEqual([keyOf('good', AT + SECOND_MS, 'BTC')]);
+      expect(walk.keys()).toEqual([GOOD_KEY]);
       expect(walk.marks().pending).toEqual([wholeSpan]);
       expect(walk.marks().cursor).toBe(NOW);
-      expect(loggedCodes(warn)).toEqual(['log-spot-check-failed']);
+      expect(warned.codes()).toEqual(['log-spot-check-failed']);
     });
 
     it('an empty fee counts as zero', async () => {
-      const walk = newWalk();
-      walk.world.log = [spotAt(AT, { fee: '', qty: '0.002997', change: '0.002997' })];
+      const walk = await walkOfOneSpot({ fee: '', qty: '0.002997', change: '0.002997' });
 
-      await walk.run();
-
-      expect(walk.rows().map((row) => row.amountMinorUnits)).toEqual([BOUGHT_BTC]);
-      expect(walk.marks().pending).toEqual([]);
+      expectOneBoughtBtcRow(walk);
     });
 
     it.each(['fee', 'qty', 'change', 'orderId', 'id', 'symbol'])(
       'a spot row with no %s did not parse: no row, one range',
       async (field) => {
-        const walk = newWalk();
-        walk.world.log = [
+        const walk = await walkBesideGood(
           served(AT, withoutField(spotLogRow({ transactionTime: String(AT) }), field)),
-          spotAt(AT + SECOND_MS, { id: 'good' }),
-        ];
+        );
 
-        await walk.run();
-
-        expect(walk.keys()).toEqual([keyOf('good', AT + SECOND_MS, 'BTC')]);
+        expect(walk.keys()).toEqual([GOOD_KEY]);
         expect(walk.marks().pending).toEqual([wholeSpan]);
-        expect(loggedCodes(warn)).toEqual(['log-row-unreadable']);
+        expect(warned.codes()).toEqual(['log-row-unreadable']);
       },
     );
 
@@ -362,19 +362,15 @@ describe('the log walk: what each row is', () => {
 
       expect(walk.keys()).toEqual([]);
       expect(walk.marks().pending).toEqual([wholeSpan]);
-      expect(loggedCodes(warn)).toEqual(['log-row-unreadable']);
+      expect(warned.codes()).toEqual(['log-row-unreadable']);
     });
 
     it('an item that is no row owes its span, and the neighbour imports', async () => {
-      const walk = newWalk();
-      walk.world.log = [
+      const walk = await walkBesideGood(
         served(AT, 'not a row' as unknown as Record<string, unknown>),
-        spotAt(AT + SECOND_MS, { id: 'good' }),
-      ];
+      );
 
-      await walk.run();
-
-      expect(walk.keys()).toEqual([keyOf('good', AT + SECOND_MS, 'BTC')]);
+      expect(walk.keys()).toEqual([GOOD_KEY]);
       expect(walk.marks().pending).toEqual([wholeSpan]);
     });
 
@@ -383,15 +379,12 @@ describe('the log walk: what each row is', () => {
       ['zero', '0'],
       ['absent', undefined],
     ])('a spot row whose time is %s makes no row and owes its span', async (_name, time) => {
-      const walk = newWalk();
-      walk.world.log = [spotAt(AT, { id: 'late', transactionTime: time })];
-
-      await walk.run();
+      const walk = await walkOfOneSpot({ id: 'late', transactionTime: time });
 
       expect(walk.keys()).toEqual([]);
       expect(walk.marks().pending).toEqual([wholeSpan]);
       expect(walk.marks().cursor).toBe(NOW);
-      expect(loggedCodes(warn)).toEqual(['log-time-missing']);
+      expect(warned.codes()).toEqual(['log-time-missing']);
     });
 
     it('a range owed is read again by a later run and clears once the row passes the check', async () => {
@@ -413,33 +406,21 @@ describe('the log walk: what each row is', () => {
       ['a symbol with the coin at both ends', { symbol: 'BTCUSDBTC' }],
       ['an other coin that no asset marker can name', { symbol: 'BTC:X' }],
     ])('%s: no row, one range', async (_name, overrides) => {
-      const walk = newWalk();
-      walk.world.log = [
-        spotAt(AT, { id: 'odd', ...overrides }),
-        spotAt(AT + SECOND_MS, { id: 'good' }),
-      ];
+      const walk = await walkBesideGood(spotAt(AT, { id: 'odd', ...overrides }));
 
-      await walk.run();
-
-      expect(walk.keys()).toEqual([keyOf('good', AT + SECOND_MS, 'BTC')]);
+      expect(walk.keys()).toEqual([GOOD_KEY]);
       expect(walk.marks().pending).toEqual([wholeSpan]);
-      expect(loggedCodes(warn)).toEqual(['log-coin-pair-unreadable']);
+      expect(warned.codes()).toEqual(['log-coin-pair-unreadable']);
     });
   });
 
   describe('the tradeId guard', () => {
     it('a spot row with an empty tradeId writes nothing and owes one range', async () => {
-      const walk = newWalk();
-      walk.world.log = [
-        spotAt(AT, { id: 'bare', tradeId: '' }),
-        spotAt(AT + SECOND_MS, { id: 'good' }),
-      ];
+      const walk = await walkBesideGood(spotAt(AT, { id: 'bare', tradeId: '' }));
 
-      await walk.run();
-
-      expect(walk.keys()).toEqual([keyOf('good', AT + SECOND_MS, 'BTC')]);
+      expect(walk.keys()).toEqual([GOOD_KEY]);
       expect(walk.marks().pending).toEqual([wholeSpan]);
-      expect(loggedCodes(warn)).toEqual(['log-trade-id-missing']);
+      expect(warned.codes()).toEqual(['log-trade-id-missing']);
     });
 
     it('a summary row with an empty tradeId does not double, and a summary row with one is the named double', async () => {
@@ -478,7 +459,7 @@ describe('the log walk: what each row is', () => {
         walk.rows(),
         walk.marks(),
         (walk.deps.patchExchangeState as jest.Mock).mock.calls,
-        warn.mock.calls,
+        warned.spy().mock.calls,
       ]);
 
       expect(written).not.toContain(SPOT_TRADE_ID);
@@ -621,7 +602,7 @@ describe('the log walk: what each row is', () => {
 
       expect((await storedStateOf(walk)).logKinds).toEqual(['bonuses', 'derivatives']);
       expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
-      expect(warn).not.toHaveBeenCalled();
+      expect(warned.spy()).not.toHaveBeenCalled();
     });
 
     it('names the kinds before the cursor moves', async () => {
@@ -665,6 +646,6 @@ describe('the log walk: what each row is', () => {
 
     expect(walk.keys()).toEqual([]);
     expect(walk.marks().cursor).toBe(CURSOR);
-    expect(loggedCodes(warn)).toContain('log-holding-missing');
+    expect(warned.codes()).toContain('log-holding-missing');
   });
 });

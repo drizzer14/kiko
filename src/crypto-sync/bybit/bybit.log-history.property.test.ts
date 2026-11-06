@@ -3,9 +3,15 @@ import { sweep } from '@kiko/test-support/property-sweep';
 import { walkStateFake } from '@kiko/test-support/walk-marks';
 import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 
+import {
+  logWalkOf,
+  quoteLegAt,
+  silencedWarnings,
+  spotAt,
+  sumsByHolding,
+} from './bybit.log-test-fixtures';
 import { NOW } from './bybit.client-test-fixtures';
 import { ACCOUNT_ID } from './bybit.capital-test-fixtures';
-import { logWalkOf, quoteLegAt, spotAt, sumsByHolding } from './bybit.log-test-fixtures';
 
 // Q8: random fills of one trade, read as one row per fill or as one row per order, in any page
 // order and any page size, read twice, with a summary row that has an empty tradeId added at
@@ -124,15 +130,7 @@ const sumsOf = async (world: World, rows: ReturnType<typeof perFill>) => {
 };
 
 describe('the log walk, over random fills of one trade', () => {
-  let warn: jest.SpyInstance;
-
-  beforeEach(() => {
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
+  silencedWarnings();
 
   it.each(SEEDS)(
     'the sum per coin holds under any form and any read order, and an empty tradeId row never adds: seed %i',

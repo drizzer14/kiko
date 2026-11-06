@@ -4,8 +4,8 @@ import { walkStateFake } from '@kiko/test-support/walk-marks';
 import { NOW } from './bybit.client-test-fixtures';
 import { BybitRefusalError } from './bybit.client';
 import { isBybitCoolingDown } from './bybit.cooldown';
-import { logWalkOf, spotAt } from './bybit.log-test-fixtures';
 import { BybitHistoryParseError } from './bybit.history-client';
+import { logWalkOf, silencedWarnings, spotAt } from './bybit.log-test-fixtures';
 import { ACCOUNT_ID, CURSOR_PREFIX, readsOf, served } from './bybit.capital-test-fixtures';
 
 const CURSOR = NOW - 3 * DAY_MS;
@@ -28,9 +28,6 @@ const newWalk = (
 
 type Walk = ReturnType<typeof newWalk>;
 
-const loggedCodes = (warn: jest.SpyInstance): unknown[] =>
-  warn.mock.calls.map(([, details]) => (details as { code?: string }).code);
-
 const storedDenseSpans = async (walk: Walk) =>
   (JSON.parse((await walk.readState()) ?? '{}') as { denseSpans?: unknown }).denseSpans;
 
@@ -47,15 +44,7 @@ const denseWritesOf = (walk: Walk): unknown[] =>
 // Every row of this suite is built on the field words of the docs page's TRADE sample: no page with
 // a spot row was read live.
 describe('the log walk: windows, pages and marks', () => {
-  let warn: jest.SpyInstance;
-
-  beforeEach(() => {
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
+  const warned = silencedWarnings();
 
   it('the floor is 729 days back, and the forward windows are 7 days from there with no cursor', async () => {
     const floor = NOW - 729 * DAY_MS;
@@ -141,7 +130,7 @@ describe('the log walk: windows, pages and marks', () => {
     await walk.run();
 
     expect(walk.keys()).toHaveLength(1);
-    expect(loggedCodes(warn)).not.toContain('bybit-page-drift');
+    expect(warned.codes()).not.toContain('bybit-page-drift');
   });
 
   it('the rolling floor drops owed ground it passes unread, points too, and cuts a range that reaches back past it', async () => {
@@ -188,7 +177,7 @@ describe('the log walk: windows, pages and marks', () => {
         { start: NOW - 10 * DAY_MS, end: NOW - 3 * DAY_MS, series: 'log' },
       ]);
       expect(result.complete).toBe(false);
-      expect(loggedCodes(warn)).toContain('bybit-page-drift');
+      expect(warned.codes()).toContain('bybit-page-drift');
     });
 
     it('owes the span of a page that drifted in the re-scan', async () => {
@@ -253,9 +242,15 @@ describe('the log walk: windows, pages and marks', () => {
     const sameInstant = (count: number, at: number) =>
       Array.from({ length: count }, (_unused, index) => spotAt(at, { id: `burst-${index}` }));
 
-    it('a span at the floor that a full lane cannot finish writes one mark, and a later run that is stuck there writes none', async () => {
+    const walkOfFullLane = () => {
       const walk = newWalk({ fake: { pageSize: 1 } }, ACCOUNT_ID, { cursor: SPAN_START });
       walk.world.log = sameInstant(25, NOW - 1_400);
+
+      return walk;
+    };
+
+    it('a span at the floor that a full lane cannot finish writes one mark, and a later run that is stuck there writes none', async () => {
+      const walk = walkOfFullLane();
 
       await walk.run();
 
@@ -293,8 +288,7 @@ describe('the log walk: windows, pages and marks', () => {
     });
 
     it('a span of more than a second that a full lane cannot finish splits and writes none', async () => {
-      const walk = newWalk({ fake: { pageSize: 1 } }, ACCOUNT_ID, { cursor: SPAN_START });
-      walk.world.log = sameInstant(25, NOW - 1_400);
+      const walk = walkOfFullLane();
 
       await walk.run();
 

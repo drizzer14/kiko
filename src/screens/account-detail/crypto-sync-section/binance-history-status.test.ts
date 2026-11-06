@@ -220,30 +220,24 @@ describe('historyOwesRange', () => {
     );
   });
 
-  it('is true when one walk owes a range, whichever the others hold', () => {
+  it.each([
+    ['a range', { fiatPayments: { cursor: NOW, pending: [{ start: 1, end: 3 }] } }],
+    [
+      'an old point',
+      {
+        p2p: {
+          cursor: NOW,
+          pending: [{ start: 1, end: 3, kind: 'point', since: NOW - 2 * DAY_MS }],
+        },
+      },
+    ],
+  ])('is true when one walk owes %s, whichever the others hold', (_label, owingWalk) => {
     expect(
       historyOwesRange(
         stateOf({
           capital: { cursor: NOW, pending: [] },
           earn: { cursor: NOW, pending: [{ start: 1, end: 3, kind: 'point' }] },
-          fiatPayments: { cursor: NOW, pending: [{ start: 1, end: 3 }] },
-        }),
-        NOW,
-        'binance',
-      ),
-    ).toBe(true);
-  });
-
-  it('is true when one walk owes an old point, whichever the others hold', () => {
-    expect(
-      historyOwesRange(
-        stateOf({
-          capital: { cursor: NOW, pending: [] },
-          earn: { cursor: NOW, pending: [{ start: 1, end: 3, kind: 'point' }] },
-          p2p: {
-            cursor: NOW,
-            pending: [{ start: 1, end: 3, kind: 'point', since: NOW - 2 * DAY_MS }],
-          },
+          ...owingWalk,
         }),
         NOW,
         'binance',

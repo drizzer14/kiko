@@ -139,6 +139,10 @@ export const fakeBybit = (options: FakeOptions = {}) => {
 export const readsOf = (reads: SentRead[], series: BybitSeries): SentRead[] =>
   reads.filter((read) => read.series === series);
 
+/** The run budget of a walk whose clock a test moves, and whose waits take no time. */
+export const historyRunAt = (clock: { now: number }) =>
+  createBybitHistoryRun({ now: () => clock.now, sleep: async () => undefined });
+
 /** A stored row, as the in-memory repository keeps it. */
 type StoredRow = {
   holdingId: string;
@@ -264,13 +268,7 @@ export const capitalWalkOf = (worldOptions: WorldOptions) => {
   };
 
   const run = (accountId = ACCOUNT_ID) =>
-    syncBybitCapitalHistory(
-      {
-        targetAccountId: accountId,
-        run: createBybitHistoryRun({ now: () => clock.now, sleep: async () => undefined }),
-      },
-      deps,
-    );
+    syncBybitCapitalHistory({ targetAccountId: accountId, run: historyRunAt(clock) }, deps);
 
   return {
     ...world,

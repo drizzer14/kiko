@@ -1,7 +1,6 @@
 import { syncBybitLogHistory } from './bybit.log-history';
 import { spotLogRow } from './bybit.history-test-fixtures';
-import { createBybitHistoryRun } from './bybit.history-budget';
-import { ACCOUNT_ID, inMemoryWalkOf, served } from './bybit.capital-test-fixtures';
+import { ACCOUNT_ID, historyRunAt, inMemoryWalkOf, served } from './bybit.capital-test-fixtures';
 
 type SyncDeps = NonNullable<Parameters<typeof syncBybitLogHistory>[1]>;
 
@@ -42,6 +41,28 @@ export const sumsByHolding = (
 };
 
 /**
+ * Silences `console.warn` in each test of the calling suite. `spy` is the warn spy of the running
+ * test, and `codes` the `code` of each warning it was given.
+ */
+export const silencedWarnings = () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  return {
+    spy: () => warn,
+    codes: (): unknown[] =>
+      warn.mock.calls.map(([, details]) => (details as { code?: string }).code),
+  };
+};
+
+/**
  * One account's log walk on the in-memory world: the rows it adds, the holdings it creates, and
  * the walk state it writes.
  */
@@ -51,13 +72,7 @@ export const logWalkOf = (worldOptions: WorldOptions) => {
   const deps: SyncDeps = { ...world.deps, ...worldOptions.overrides };
 
   const run = (accountId = ACCOUNT_ID) =>
-    syncBybitLogHistory(
-      {
-        targetAccountId: accountId,
-        run: createBybitHistoryRun({ now: () => clock.now, sleep: async () => undefined }),
-      },
-      deps,
-    );
+    syncBybitLogHistory({ targetAccountId: accountId, run: historyRunAt(clock) }, deps);
 
   return {
     ...world,

@@ -510,7 +510,7 @@ export const logKindsEntryOf = (stored: unknown): ReadEntry<string[]> => {
  * Each series' start parses alone, so a start that is no time is dropped and named while the other
  * stays. A key that is no series reads as nothing, so at most two entries are ever read.
  */
-export const denseSpansEntryOf = (stored: unknown): ReadEntry<DenseSpans> => {
+const denseSpansEntryOf = (stored: unknown): ReadEntry<DenseSpans> => {
   const starts = recordOf('denseSpans', stored, timeOrUndefined);
 
   return {
