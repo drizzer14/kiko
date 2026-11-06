@@ -31,23 +31,23 @@ const seriesWith = (overrides: Partial<RecurringSeries>): RecurringSeries => ({
 
 // Sunday first, as `Date.prototype.getDay` numbers a weekday.
 const WEEKDAY_LINES_EN = [
-  'Charged weekly, on Sundays',
-  'Charged weekly, on Mondays',
-  'Charged weekly, on Tuesdays',
-  'Charged weekly, on Wednesdays',
-  'Charged weekly, on Thursdays',
-  'Charged weekly, on Fridays',
-  'Charged weekly, on Saturdays',
+  'Weekly, on Sundays',
+  'Weekly, on Mondays',
+  'Weekly, on Tuesdays',
+  'Weekly, on Wednesdays',
+  'Weekly, on Thursdays',
+  'Weekly, on Fridays',
+  'Weekly, on Saturdays',
 ];
 
 const WEEKDAY_LINES_UK = [
-  'Списувалося щотижня, у неділю',
-  'Списувалося щотижня, у понеділок',
-  'Списувалося щотижня, у вівторок',
-  'Списувалося щотижня, у середу',
-  'Списувалося щотижня, у четвер',
-  'Списувалося щотижня, у пʼятницю',
-  'Списувалося щотижня, у суботу',
+  'Щотижня, у неділю',
+  'Щотижня, у понеділок',
+  'Щотижня, у вівторок',
+  'Щотижня, у середу',
+  'Щотижня, у четвер',
+  'Щотижня, у пʼятницю',
+  'Щотижня, у суботу',
 ];
 
 const MARKED: Recurrence = { kind: 'marked' };
@@ -175,10 +175,10 @@ describe('recurrence text in English', () => {
 
   markedCases({
     lines: MARKED_LINES_EN,
-    monthlyOnDay: 'Charged monthly, on day 15',
-    weeklyOnMonday: 'Charged weekly, on Mondays',
-    yearlyOn: 'Charged yearly, on 07.03',
-    monthly: 'Charged monthly',
+    monthlyOnDay: 'Monthly, on day 15',
+    weeklyOnMonday: 'Weekly, on Mondays',
+    yearlyOn: 'Yearly, on 07.03',
+    monthly: 'Monthly',
     emptyMessage:
       'No transactions near the amount you marked count here now. ' +
       'Transfers, exchanges and loan payments are left out.',
@@ -188,17 +188,12 @@ describe('recurrence text in English', () => {
 
   describe('recurrenceLine', () => {
     it.each<[string, RecurringPeriod, Recurrence, string]>([
-      ['a monthly day', 'monthly', { kind: 'onDay', day: 15 }, 'Charged monthly, on day 15'],
-      [
-        'a monthly day near',
-        'monthly',
-        { kind: 'aroundDay', day: 12 },
-        'Charged monthly, around day 12',
-      ],
-      ['the last day', 'monthly', { kind: 'lastDay' }, 'Charged monthly, on the last day'],
-      ['a monthly series with no pattern', 'monthly', { kind: 'none' }, 'Charged monthly'],
-      ['a weekly series with no pattern', 'weekly', { kind: 'none' }, 'Charged weekly'],
-      ['a yearly series with no pattern', 'yearly', { kind: 'none' }, 'Charged yearly'],
+      ['a monthly day', 'monthly', { kind: 'onDay', day: 15 }, 'Monthly, on day 15'],
+      ['a monthly day near', 'monthly', { kind: 'aroundDay', day: 12 }, 'Monthly, around day 12'],
+      ['the last day', 'monthly', { kind: 'lastDay' }, 'Monthly, on the last day'],
+      ['a monthly series with no pattern', 'monthly', { kind: 'none' }, 'Monthly'],
+      ['a weekly series with no pattern', 'weekly', { kind: 'none' }, 'Weekly'],
+      ['a yearly series with no pattern', 'yearly', { kind: 'none' }, 'Yearly'],
     ])('reads %s', (_name, period, recurrence, expected) => {
       expect(recurrenceLineOf(period, recurrence)).toBe(expected);
     });
@@ -213,7 +208,29 @@ describe('recurrence text in English', () => {
     it('reads a yearly date as day and month', () => {
       expect(formatDayMonth(YEARLY_TIME)).toBe('07.03');
       expect(recurrenceLineOf('yearly', { kind: 'onDate', time: YEARLY_TIME })).toBe(
-        'Charged yearly, on 07.03',
+        'Yearly, on 07.03',
+      );
+    });
+
+    it('never says Charged on a recurrence line', () => {
+      const lines = [
+        recurrenceLineOf('monthly', { kind: 'onDay', day: 1 }),
+        recurrenceLineOf('monthly', { kind: 'aroundDay', day: 1 }),
+        recurrenceLineOf('monthly', { kind: 'lastDay' }),
+        recurrenceLineOf('monthly', { kind: 'none' }),
+        recurrenceLineOf('weekly', { kind: 'none' }),
+        recurrenceLineOf('weekly', { kind: 'onWeekday', weekday: 3 }),
+        recurrenceLineOf('yearly', { kind: 'none' }),
+        recurrenceLineOf('yearly', { kind: 'onDate', time: YEARLY_TIME }),
+      ];
+
+      expect(lines).toHaveLength(8);
+      expect(lines.some((line) => line.includes('Charged'))).toBe(false);
+    });
+
+    it('labels the total of a series', () => {
+      expect(i18n.getResource('en', 'translation', 'recurringCharges.paidSoFar')).toBe(
+        'All paid so far',
       );
     });
   });
@@ -262,10 +279,10 @@ describe('recurrence text in Ukrainian', () => {
 
   markedCases({
     lines: MARKED_LINES_UK,
-    monthlyOnDay: 'Списувалося щомісяця, 15 числа',
-    weeklyOnMonday: 'Списувалося щотижня, у понеділок',
-    yearlyOn: 'Списувалося щороку, 07.03',
-    monthly: 'Списувалося щомісяця',
+    monthlyOnDay: 'Щомісяця, 15 числа',
+    weeklyOnMonday: 'Щотижня, у понеділок',
+    yearlyOn: 'Щороку, 07.03',
+    monthly: 'Щомісяця',
     emptyMessage:
       'Зараз тут немає транзакцій, близьких до позначеної суми, які враховуються. ' +
       'Перекази, обміни й платежі за кредитом не враховуються.',
@@ -275,17 +292,17 @@ describe('recurrence text in Ukrainian', () => {
 
   describe('recurrenceLine', () => {
     it.each<[string, RecurringPeriod, Recurrence, string]>([
-      ['a monthly day', 'monthly', { kind: 'onDay', day: 15 }, 'Списувалося щомісяця, 15 числа'],
+      ['a monthly day', 'monthly', { kind: 'onDay', day: 15 }, 'Щомісяця, 15 числа'],
       [
         'a monthly day near',
         'monthly',
         { kind: 'aroundDay', day: 12 },
-        'Списувалося щомісяця, близько 12 числа',
+        'Щомісяця, близько 12 числа',
       ],
-      ['the last day', 'monthly', { kind: 'lastDay' }, 'Списувалося щомісяця, в останній день'],
-      ['a monthly series with no pattern', 'monthly', { kind: 'none' }, 'Списувалося щомісяця'],
-      ['a weekly series with no pattern', 'weekly', { kind: 'none' }, 'Списувалося щотижня'],
-      ['a yearly series with no pattern', 'yearly', { kind: 'none' }, 'Списувалося щороку'],
+      ['the last day', 'monthly', { kind: 'lastDay' }, 'Щомісяця, в останній день'],
+      ['a monthly series with no pattern', 'monthly', { kind: 'none' }, 'Щомісяця'],
+      ['a weekly series with no pattern', 'weekly', { kind: 'none' }, 'Щотижня'],
+      ['a yearly series with no pattern', 'yearly', { kind: 'none' }, 'Щороку'],
     ])('reads %s', (_name, period, recurrence, expected) => {
       expect(recurrenceLineOf(period, recurrence)).toBe(expected);
     });
@@ -300,18 +317,18 @@ describe('recurrence text in Ukrainian', () => {
     it('spells Friday with the modifier letter apostrophe', () => {
       const line = recurrenceLineOf('weekly', { kind: 'onWeekday', weekday: 5 });
 
-      expect(line).toBe('Списувалося щотижня, у пʼятницю');
+      expect(line).toBe('Щотижня, у пʼятницю');
       expect(line).toContain('ʼ');
       expect(line).not.toContain("'");
     });
 
     it('reads a yearly date as day and month', () => {
       expect(recurrenceLineOf('yearly', { kind: 'onDate', time: YEARLY_TIME })).toBe(
-        'Списувалося щороку, 07.03',
+        'Щороку, 07.03',
       );
     });
 
-    it('opens every line in the past frame, never with Списання', () => {
+    it('names only the rhythm, with no Списувалося and no Списання', () => {
       const lines = [
         recurrenceLineOf('monthly', { kind: 'onDay', day: 1 }),
         recurrenceLineOf('monthly', { kind: 'aroundDay', day: 1 }),
@@ -319,12 +336,19 @@ describe('recurrence text in Ukrainian', () => {
         recurrenceLineOf('monthly', { kind: 'none' }),
         recurrenceLineOf('weekly', { kind: 'none' }),
         recurrenceLineOf('weekly', { kind: 'onWeekday', weekday: 3 }),
+        recurrenceLineOf('yearly', { kind: 'none' }),
         recurrenceLineOf('yearly', { kind: 'onDate', time: YEARLY_TIME }),
       ];
 
-      expect(lines).toHaveLength(7);
-      expect(lines.every((line) => line.startsWith('Списувалося '))).toBe(true);
+      expect(lines).toHaveLength(8);
+      expect(lines.some((line) => line.includes('Списувалося'))).toBe(false);
       expect(lines.some((line) => line.startsWith('Списання'))).toBe(false);
+    });
+
+    it('labels the total of a series', () => {
+      expect(i18n.getResource('uk', 'translation', 'recurringCharges.paidSoFar')).toBe(
+        'Усього сплачено',
+      );
     });
   });
 

@@ -10,6 +10,7 @@ import { chargesAt } from '@kiko/test-support/marked-series-worlds';
 import { ledgerOf, monthly, chargeOf, at } from '@kiko/test-support/recurring-ledger';
 import { hookStateOf, type MarkedNames } from '@kiko/test-support/marked-series-hook-result';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
+import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
 import RecurringChargesScreen from './recurring-charges.screen';
 
@@ -21,6 +22,11 @@ let mockResult: HookState;
 
 jest.mock('@kiko/recurring/use-recurring-series', () => ({
   useRecurringSeries: () => mockResult,
+}));
+
+jest.mock('@kiko/recurring/use-recurring-groups', () => ({
+  useRecurringGroups: (shown: Parameters<typeof mockUseRecurringGroups>[0]) =>
+    mockUseRecurringGroups(shown),
 }));
 
 const mockOpenInPane = jest.fn();
@@ -43,7 +49,6 @@ const renderScreen = async (state: HookState) => {
 };
 
 const ROW = /^recurring-series-row-/;
-const STOPPED_HEADING = 'recurring-charges-heading-stopped';
 const EMPTY = 'recurring-charges-empty';
 
 const markedEmptyHeading = (): string => i18n.t('recurringCharges.markedEmptyHeading');
@@ -110,7 +115,6 @@ describe('RecurringChargesScreen — marked series', () => {
     expect(shownOrder(getAllByTestId)).toEqual([
       rowTestId(idOf(state, 'Spotify')),
       rowTestId(idOf(state, 'Apple')),
-      STOPPED_HEADING,
       rowTestId(idOf(state, 'Dropbox')),
       rowTestId(idOf(state, 'Gym')),
     ]);
@@ -241,18 +245,15 @@ describe('RecurringChargesScreen — Marked, No Charges', () => {
     expect(queryByTestId(EMPTY)).toBeNull();
   });
 
-  it('puts the section after the stopped one and before the hidden one', async () => {
+  it('puts the section after the series and before the hidden one', async () => {
+    // One series, so the ten rows the list draws first reach the hidden section.
     const state = hookStateOf(
-      mixedLedger(),
-      [...MIXED_MARKED, ['Ghost', ['yearly', 50]]],
+      ledgerOf(monthly(6, 3, 250, { prefix: 'netflix' })),
+      [['Ghost', ['yearly', 50]]],
       new Map([['zeta', { name: 'Zeta', hidden: true as const }]]),
     );
     const { getAllByText } = await renderScreen(state);
-    const headings = [
-      i18n.t('recurringCharges.stoppedHeading'),
-      markedEmptyHeading(),
-      i18n.t('recurringCharges.hiddenHeading'),
-    ];
+    const headings = [markedEmptyHeading(), i18n.t('recurringCharges.hiddenHeading')];
 
     expect(
       getAllByText(new RegExp(`^(${headings.join('|')})$`)).map((node) => node.props.children),

@@ -32,6 +32,7 @@ const SelectField = <Option extends string>({
   disabled,
   error,
   emptyAction,
+  emptyOption,
   testID,
 }: SelectFieldProps<Option>): ReactElement => {
   const [open, setOpen] = useState(false);
@@ -95,7 +96,7 @@ const SelectField = <Option extends string>({
         onPress={handleOpen}
         icon={foldMap(selectedOption, (option) => icons?.[option])}
         value={foldMap(selectedOption, (option) => labels[option]) ?? placeholder}
-        valueTone={selected === null ? 'textSecondary' : 'textPrimary'}
+        valueTone={selected === null || selected === emptyOption ? 'textSecondary' : 'textPrimary'}
         error={error}
         testID={testID}
       />

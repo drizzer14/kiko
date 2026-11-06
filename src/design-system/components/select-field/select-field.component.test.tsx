@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 
 import '@kiko/design-system/unistyles';
@@ -6,6 +7,16 @@ import SelectField from '.';
 import type { SelectFieldProps } from './select-field.props';
 
 type Kind = 'a' | 'b' | 'c';
+
+// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  get default() {
+    return mockTextVariantTone;
+  },
+}));
+
+const toneOf = (element: { props: Record<string, unknown> }): unknown => element.props.tone;
 
 const options: readonly Kind[] = ['a', 'b', 'c'];
 const labels: Record<Kind, string> = { a: 'Alpha', b: 'Beta', c: 'Gamma' };
@@ -46,6 +57,26 @@ describe('SelectField', () => {
     const { getByTestId } = await setup();
 
     expect(getByTestId('kind-field')).toHaveTextContent('Alpha');
+  });
+
+  describe('the value tone', () => {
+    it('reads textSecondary when the selected option is the empty option', async () => {
+      const { getByText } = await setup({ selected: 'a', emptyOption: 'a' });
+
+      expect(toneOf(getByText('Alpha'))).toBe('textSecondary');
+    });
+
+    it('reads textPrimary when another option than the empty option is selected', async () => {
+      const { getByText } = await setup({ selected: 'b', emptyOption: 'a' });
+
+      expect(toneOf(getByText('Beta'))).toBe('textPrimary');
+    });
+
+    it('reads textPrimary with no empty option', async () => {
+      const { getByText } = await setup({ selected: 'a' });
+
+      expect(toneOf(getByText('Alpha'))).toBe('textPrimary');
+    });
   });
 
   it('shows the placeholder when nothing is selected yet', async () => {

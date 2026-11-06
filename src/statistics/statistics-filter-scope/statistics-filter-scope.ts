@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import type { AccountRow, CategoryRow, HoldingRow } from '@kiko/db';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
@@ -72,11 +73,12 @@ export const buildFilterScope = (input: {
 export const buildAccountOptions = (
   optionAccounts: readonly AccountRow[],
   t: TFunction,
+  scheme: ColorScheme,
 ): FilterOption[] =>
   optionAccounts.map((account) => ({
     value: account.id,
     label: accountDisplayName(account, t),
-    ...accountIdentity(account),
+    ...accountIdentity(account, scheme),
   }));
 
 /**

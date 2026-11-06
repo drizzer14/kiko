@@ -13,6 +13,7 @@ export type {
   SettingsStackParamList,
   StatisticsStackParamList,
   TabParamList,
+  TablesParams,
   TransactionFormDraft,
   TransactionFormParams,
 } from './types';

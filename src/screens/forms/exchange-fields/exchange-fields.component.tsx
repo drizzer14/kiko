@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import TextField from '@kiko/design-system/components/text-field';
+import PairedFieldsRow from '@kiko/screens/forms/paired-fields-row';
 import HoldingSelectField from '@kiko/screens/forms/holding-select-field';
 
 import type { ExchangeFieldsProps } from './exchange-fields.props';
@@ -39,23 +40,28 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
   valueInFieldRef,
   showsDate = true,
   required = true,
+  leadingField,
 }) => {
   const { t } = useTranslation();
 
+  const valueOutField = (
+    <View ref={valueOutFieldRef}>
+      <TextField
+        label={t('forms.transaction.valueOut')}
+        value={valueOut}
+        onChangeText={onChangeValueOut}
+        keyboardType="decimal-pad"
+        placeholder={t('forms.transaction.valueOutPlaceholder')}
+        suffix={valueOutSuffix}
+        error={valueOutError}
+        required={required}
+      />
+    </View>
+  );
+
   return (
     <>
-      <View ref={valueOutFieldRef}>
-        <TextField
-          label={t('forms.transaction.valueOut')}
-          value={valueOut}
-          onChangeText={onChangeValueOut}
-          keyboardType="decimal-pad"
-          placeholder={t('forms.transaction.valueOutPlaceholder')}
-          suffix={valueOutSuffix}
-          error={valueOutError}
-          required={required}
-        />
-      </View>
+      <PairedFieldsRow first={leadingField} second={valueOutField} />
 
       <View ref={destinationFieldRef}>
         <HoldingSelectField

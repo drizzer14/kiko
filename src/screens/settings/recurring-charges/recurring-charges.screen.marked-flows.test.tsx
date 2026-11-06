@@ -6,6 +6,7 @@ import type { RecurringMark } from '@kiko/recurring/detection';
 import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
 import { monthly, ledgerOf, nowOf, type Ledger } from '@kiko/test-support/recurring-ledger';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
+import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
 import RecurringChargesScreen from './recurring-charges.screen';
 
@@ -29,6 +30,11 @@ jest.mock('@kiko/db/use-live-query', () => ({
 
     return { data, isLoading: false, isFresh: true };
   },
+}));
+
+jest.mock('@kiko/recurring/use-recurring-groups', () => ({
+  useRecurringGroups: (shown: Parameters<typeof mockUseRecurringGroups>[0]) =>
+    mockUseRecurringGroups(shown),
 }));
 
 jest.mock('@kiko/transactions/repo', () => {

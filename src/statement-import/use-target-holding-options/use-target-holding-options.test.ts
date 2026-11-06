@@ -1,4 +1,5 @@
 import { renderHook } from '@testing-library/react-native';
+import '@kiko/design-system/unistyles';
 
 const mockUseLiveQuery = jest.fn();
 jest.mock('@kiko/db/use-live-query', () => ({

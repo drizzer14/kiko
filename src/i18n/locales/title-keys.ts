@@ -142,7 +142,6 @@ export const TITLE_KEYS = new Set([
   'home.title',
   'recurringCharges.hiddenHeading',
   'recurringCharges.markedEmptyHeading',
-  'recurringCharges.stoppedHeading',
   'recurringCharges.title',
   'reminders.form.createTitle',
   'reminders.form.editTitle',
@@ -176,5 +175,7 @@ export const TITLE_KEYS = new Set([
   'statistics.spendingTrendByCategory',
   'statistics.title',
   'statistics.trendFilter.title',
+  'tables.period.sheetTitle',
+  'tables.title',
   'transactionTemplates.title',
 ]);

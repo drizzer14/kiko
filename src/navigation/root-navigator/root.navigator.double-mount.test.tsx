@@ -305,6 +305,86 @@ const accountRow = (id: string, name: string, kind: string) => ({
   bankId: null,
 });
 
+// The Tables screen reads the same sources as Statistics. Pressing the Statistics button covers
+// that Statistics beside or under it, and a covered screen must not read a write.
+describe('the Tables screen opened from the Statistics button', () => {
+  beforeEach(() => {
+    mockSubscriptions.clear();
+    mockReads = [];
+    mockRows = { accounts: [accountRow('cash', 'Cash', 'cash')] };
+    mockLayoutMode = 'columns';
+  });
+
+  const pressTablesButton = async (rendered: Awaited<ReturnType<typeof walkTabs>>) => {
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId('statistics-open-tables'));
+    });
+  };
+
+  const subscriptionsOf = (instance: string): Subscription[] =>
+    [...mockSubscriptions.values()].filter((subscription) => subscription.instance === instance);
+
+  const readersOfAWrite = async (): Promise<string[]> => {
+    mockReads = [];
+
+    await act(async () => {
+      mockWrite('transactions');
+    });
+
+    return [...new Set(mockReads.map(({ instance }) => instance))].sort();
+  };
+
+  // Tables is in a layer over both panes, so the screens beside and under it are paused: they stay
+  // mounted and in view behind it, and only Tables reads a write.
+  it('on the Home tab with two panes, keeps Statistics where it is, not read again and paused, and a later write reads from Tables only', async () => {
+    const rendered = await walkTabs();
+
+    const kept = subscriptionsOf('HomeTab/Statistics');
+
+    mockReads = [];
+    await pressTablesButton(rendered);
+
+    expect(kept.length).toBeGreaterThan(0);
+    expect(subscriptionsOf('HomeTab/Tables').length).toBeGreaterThan(0);
+    expect(mockReads.some(({ instance }) => instance === 'HomeTab/Statistics')).toBe(false);
+    expect(subscriptionsOf('HomeTab/Statistics')).toHaveLength(kept.length);
+    expect(subscriptionsOf('HomeTab/Statistics').every((own, at) => own === kept[at])).toBe(true);
+    expect(subscriptionsOf('HomeTab/Statistics').every(({ isPaused }) => isPaused)).toBe(true);
+    expect(await readersOfAWrite()).toEqual(['HomeTab/Tables']);
+  });
+
+  it('on the Statistics tab, keeps Statistics beside Tables, paused, and a later write reads from Tables only', async () => {
+    const rendered = await walkTabs();
+
+    await goTo('StatisticsTab');
+
+    const kept = subscriptionsOf('StatisticsTab/Statistics');
+
+    await pressTablesButton(rendered);
+
+    expect(kept.length).toBeGreaterThan(0);
+    expect(subscriptionsOf('StatisticsTab/Statistics')).toEqual(kept);
+    expect(subscriptionsOf('StatisticsTab/Statistics').every(({ isPaused }) => isPaused)).toBe(
+      true,
+    );
+    expect(await readersOfAWrite()).toEqual(['StatisticsTab/Tables']);
+  });
+
+  it('with one pane, the covered Statistics reads nothing', async () => {
+    mockLayoutMode = 'single';
+    const rendered = await walkTabs();
+
+    await goTo('StatisticsTab');
+    await pressTablesButton(rendered);
+
+    const covered = subscriptionsOf('StatisticsTab/Statistics');
+
+    expect(covered.length).toBeGreaterThan(0);
+    expect(covered.every(({ isPaused }) => isPaused)).toBe(true);
+    expect(await readersOfAWrite()).toEqual(['StatisticsTab/Tables']);
+  });
+});
+
 const accountsRoutes = (): StackRoute[] => {
   const tab = navigationRef.getRootState()?.routes.find(({ name }) => name === 'AccountsTab');
 

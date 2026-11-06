@@ -21,6 +21,11 @@ export const entityColorsDark = {
   gray: '#98989D', // systemGray (dark)
 } as const;
 
+export type SwatchName = keyof typeof entityColorsDark;
+
+// Which of the two registered themes a surface reads; carried on each theme.
+export type ColorScheme = 'dark' | 'light';
+
 // Categorical palette for charts (line series / pie slices). Eight hues, each
 // distinct from its neighbours. Consumers cycle with
 // `series[i % series.length]`.
@@ -40,3 +45,54 @@ export const chartSeriesDark = [
   '#FFD60A', // systemYellow
   '#5E5CE6', // systemIndigo
 ] as const satisfies readonly string[];
+
+// Light twins of the dark set, from docs/design/light-palette/palette.json (pinned by
+// light-palette-source.test.ts). Stored colors stay the dark hex; these are only the display
+// value. Keyed by the dark set, so a key can never exist on one side only. The dark blocks come
+// first because check-dark.mjs reads this file by text position.
+//
+// Tile fill for an account or holding: kept at least 3.8:1 against white, so even the lightened
+// top gradient stop holds a white glyph at 3:1.
+export const entityColorsLight: Record<SwatchName, string> = {
+  white: '#3A3A3C',
+  khaki: '#8A8434',
+  brown: '#8C6A43',
+  yellow: '#A67C00',
+  blue: '#0066E6',
+  green: '#1F8A3B',
+  mint: '#008A83',
+  violet: '#9B3FD1',
+  red: '#E0352B',
+  orange: '#C46A00',
+  teal: '#0A869E',
+  pink: '#D6204A',
+  indigo: '#3A38B8',
+  gray: '#6E6E73',
+};
+
+// A separate set because a category hue is also a chart line and pie slice on a white card, and
+// the lightest passing hue keeps eight slices apart; the entity set keeps a safety margin instead.
+export const categoryColorsLight: Record<SwatchName, string> = {
+  white: '#48484A',
+  khaki: '#8B8535',
+  brown: '#A07A4B',
+  yellow: '#A67C00',
+  blue: '#0066E6',
+  green: '#1E8E3E',
+  mint: '#00958D',
+  violet: '#A546DB',
+  red: '#E5392F',
+  orange: '#C86C00',
+  teal: '#0C8CA6',
+  pink: '#E0305A',
+  indigo: '#4240C4',
+  gray: '#7C7C80',
+};
+
+// The same eight hues in the same order as chartSeriesDark, read from the category set. The subset
+// invariant above is about entityColors and does not carry over: a light chart hue is a subset of
+// categoryColorsLight (by construction here, pinned by palette.contrast.test.ts), not of
+// entityColorsLight.
+export const chartSeriesLight: readonly string[] = (
+  ['blue', 'green', 'orange', 'violet', 'teal', 'pink', 'yellow', 'indigo'] as const
+).map((name) => categoryColorsLight[name]);

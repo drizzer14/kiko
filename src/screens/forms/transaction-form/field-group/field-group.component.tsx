@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import ExchangeFields from '@kiko/screens/forms/exchange-fields';
 import TextField from '@kiko/design-system/components/text-field';
+import PairedFieldsRow from '@kiko/screens/forms/paired-fields-row';
 import ConvertExchangeFields from '@kiko/screens/forms/convert-exchange-fields';
 
 import type { FieldGroupProps } from './field-group.props';
@@ -48,6 +49,7 @@ const FieldGroup = (props: FieldGroupProps): ReactElement => {
   if (props.isExchange) {
     return (
       <ExchangeFields
+        leadingField={props.typeField}
         valueOut={props.amount}
         onChangeValueOut={props.onChangeAmount}
         valueOutSuffix={props.amountSuffix}
@@ -75,24 +77,29 @@ const FieldGroup = (props: FieldGroupProps): ReactElement => {
 
   return (
     <>
-      <View ref={props.amountFieldRef}>
-        <TextField
-          label={props.t('forms.fields.amount')}
-          value={props.amount}
-          onChangeText={props.onChangeAmount}
-          editable={!props.isReadOnly}
-          keyboardType="decimal-pad"
-          placeholder={props.t('forms.transaction.amountPlaceholder')}
-          suffix={props.amountSuffix}
-          // A read-only (synced) row's amount never gates save, so it carries
-          // no required marker; a manual add/edit always needs a positive
-          // amount.
-          required={required && !props.isReadOnly}
-          error={props.amountError}
-          invalid={props.amountInvalid}
-          inputRef={props.amountInputRef}
-        />
-      </View>
+      <PairedFieldsRow
+        first={props.typeField}
+        second={
+          <View ref={props.amountFieldRef}>
+            <TextField
+              label={props.t('forms.fields.amount')}
+              value={props.amount}
+              onChangeText={props.onChangeAmount}
+              editable={!props.isReadOnly}
+              keyboardType="decimal-pad"
+              placeholder={props.t('forms.transaction.amountPlaceholder')}
+              suffix={props.amountSuffix}
+              // A read-only (synced) row's amount never gates save, so it carries
+              // no required marker; a manual add/edit always needs a positive
+              // amount.
+              required={required && !props.isReadOnly}
+              error={props.amountError}
+              invalid={props.amountInvalid}
+              inputRef={props.amountInputRef}
+            />
+          </View>
+        }
+      />
 
       <TextField
         label={props.t('forms.transaction.description')}

@@ -5,6 +5,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { isSyncedAccount } from '@kiko/holdings/deletable';
 import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet';
 
 type TargetHoldingOptions = {
@@ -41,6 +42,7 @@ export const useTargetHoldingOptions = (accountId: string): TargetHoldingOptions
   const { data: accountRows, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
     'accounts',
   ]);
+  const scheme = useActiveColorScheme();
   const accountById = new Map(accountRows.map((row) => [row.id, row] as const));
   const accountIsSynced = foldMap(maybe(accountById.get(accountId)), isSyncedAccount) ?? false;
 
@@ -51,7 +53,7 @@ export const useTargetHoldingOptions = (accountId: string): TargetHoldingOptions
       name: holding.name,
       accountId: holding.accountId,
       accountName: accountById.get(holding.accountId)?.name ?? '',
-      ...holdingIdentity(holding),
+      ...holdingIdentity(holding, scheme),
     }));
 
   return { options, isLoading: holdingsLoading || accountsLoading };

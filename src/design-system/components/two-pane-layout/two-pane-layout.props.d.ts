@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import type { LayoutMode } from '@kiko/display-regions';
 
 export type TwoPaneLayoutProps = {
@@ -11,4 +11,10 @@ export type TwoPaneLayoutProps = {
   // What the companion pane asks of a columns window; equal halves without it. The layout may
   // grant more (a list pane floor) and ignores it in rows and beside a fold.
   companionShare?: number;
+  // A stack over both panes, in the window's frame, that moves neither: its screens are told they
+  // are in no pane. It stays mounted whether it shows a screen or not, because a stack made afresh
+  // pushes its first screen instead of starting on it; `isLayerShown` says whether it holds one,
+  // and only then does it take touches and the screen reader. Single mode draws no layer.
+  layer?: ReactElement;
+  isLayerShown?: boolean;
 };

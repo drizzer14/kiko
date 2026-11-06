@@ -7,6 +7,7 @@ import {
   resolveCategoryDisplay,
   resolveCategoryKey,
 } from '@kiko/categories/category-display';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +17,6 @@ import Screen, {
   useScrollIndicatorProps,
   useAutomaticScrollClearance,
 } from '@kiko/design-system/components/screen';
-import { FlatList, Pressable } from 'react-native';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Text from '@kiko/design-system/components/text';
@@ -26,15 +26,19 @@ import LargeTitleHeading, {
   useLargeTitleScroll,
 } from '@kiko/design-system/components/large-title-heading';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
+import { paidSoFarOf } from '@kiko/recurring/recurring-groups';
 import { type FC, useCallback, useMemo, useState } from 'react';
 import type { RecurringSeries } from '@kiko/recurring/detection';
+import MoneyText from '@kiko/design-system/components/money-text';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
+import { FlatList, type FlatListProps, Pressable } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
+import { useFloatingFooterEnd } from '@kiko/design-system/floating-footer';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
@@ -84,6 +88,24 @@ const seriesOfRoute = (
     marked.find((candidate) => isOfRoute(candidate) && candidate.chargeIds.includes(seriesId)) ??
     sameMerchant.find(({ id }) => id === seriesId) ??
     (sameKind.length === 1 ? sameKind[0] : undefined)
+  );
+};
+
+type ChargeRow = Awaited<ReturnType<typeof transactionsRepo.listWithContextByIdsQuery>>[number];
+
+type ChargeListProps = Omit<FlatListProps<ChargeRow>, 'contentContainerStyle'> & {
+  contentContainerStyle: (
+    floatingFooterEnd: number | undefined,
+  ) => FlatListProps<ChargeRow>['contentContainerStyle'];
+};
+
+// The charges' FlatList, a descendant of `Screen` only so it can read the floating footer's end
+// padding, which the screen component itself, being `Screen`'s parent, cannot.
+const ChargeList: FC<ChargeListProps> = ({ contentContainerStyle, ...listProps }) => {
+  const floatingFooterEnd = useFloatingFooterEnd();
+
+  return (
+    <FlatList {...listProps} contentContainerStyle={contentContainerStyle(floatingFooterEnd)} />
   );
 };
 
@@ -200,8 +222,34 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
     .otherwise(() => undefined);
 
   return (
-    <Screen bleedTop>
-      <FlatList
+    // The lone action is secondary, never a primary: it takes the series out of the list, the way
+    // the Edit template footer's lone action does.
+    <Screen
+      bleedTop
+      floatingFooter
+      footer={foldMap(maybe(series), ({ marks }) =>
+        marks === undefined ? (
+          <Button
+            variant="secondaryTonal"
+            loading={isHiding}
+            onPress={onHide}
+            testID="recurring-series-hide"
+          >
+            {t('recurringCharges.notRecurring')}
+          </Button>
+        ) : (
+          <Button
+            variant="secondaryTonal"
+            loading={isRemovingMark}
+            onPress={onRemoveMark}
+            testID="recurring-series-remove-mark"
+          >
+            {t('recurringCharges.removeMark')}
+          </Button>
+        ),
+      )}
+    >
+      <ChargeList
         data={charges}
         keyExtractor={({ id }) => id}
         renderItem={({ item: row }) => {
@@ -255,32 +303,18 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
                 <Text variant="caption" tone="textSecondary">
                   {t('recurringCharges.chargeCount', { count: series.chargeIds.length })}
                 </Text>
-              </Box>
-            )}
-          </>
-        }
-        ListFooterComponent={
-          <>
-            {series !== undefined && (
-              <Box style={styles.footer}>
-                {series.marks === undefined ? (
-                  <Button
-                    variant="secondary"
-                    loading={isHiding}
-                    onPress={onHide}
-                    testID="recurring-series-hide"
-                  >
-                    {t('recurringCharges.notRecurring')}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    loading={isRemovingMark}
-                    onPress={onRemoveMark}
-                    testID="recurring-series-remove-mark"
-                  >
-                    {t('recurringCharges.removeMark')}
-                  </Button>
+
+                {/* Only once the rows have landed: the sum of a half-read list would be wrong. */}
+                {!rowsLoading && (
+                  <Box direction="row" style={styles.paidRow}>
+                    <Box style={styles.paidLabel}>
+                      <Text variant="body">{t('recurringCharges.paidSoFar')}</Text>
+                    </Box>
+
+                    <Box style={styles.paidAmount}>
+                      <MoneyText money={paidSoFarOf(series, charges)} />
+                    </Box>
+                  </Box>
                 )}
               </Box>
             )}
@@ -291,7 +325,10 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
         contentInsetAdjustmentBehavior="automatic"
         {...scrollIndicatorProps}
         style={styles.list}
-        contentContainerStyle={[styles.listContent(bottomClearance, contentMargin), contentCap]}
+        contentContainerStyle={(floatingFooterEnd) => [
+          styles.listContent(bottomClearance, contentMargin, floatingFooterEnd),
+          contentCap,
+        ]}
       />
     </Screen>
   );
