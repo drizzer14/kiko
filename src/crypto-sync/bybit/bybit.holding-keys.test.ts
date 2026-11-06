@@ -3,6 +3,7 @@ import { CURATED_COIN_CODES } from '@kiko/currency/coins';
 import {
   bybitKeyOf,
   coinHoldingName,
+  exchangePairIdOf,
   holdingKeyOf,
   partsOfHoldingKey,
   walletLabelOf,
@@ -14,6 +15,13 @@ describe('holdingKeyOf', () => {
     expect(holdingKeyOf('BTC', 'unified')).toBe('BTC:unified');
     expect(holdingKeyOf('BTC', 'fund')).toBe('BTC:fund');
     expect(holdingKeyOf('USDT', 'unified')).toBe('USDT:unified');
+  });
+});
+
+describe('exchangePairIdOf', () => {
+  it('adds the coin to the id of the move, so two coins that share one id never share a pair', () => {
+    expect(exchangePairIdOf('acc-1:xfer:abc', 'BTC')).toBe('acc-1:xfer:abc:BTC');
+    expect(exchangePairIdOf('acc-1:xfer:abc', 'USDT')).toBe('acc-1:xfer:abc:USDT');
   });
 });
 

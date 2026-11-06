@@ -4,51 +4,43 @@ import {
   AMOUNT_STOP_CODES,
   BinanceWalkStop,
   commitExchangeSpan,
-  type ExchangeStateDeps,
-  exchangeStateDepsOf,
-  isPoint,
   joinSettled,
   type OwedWindow,
-  placeWalletRows,
-  planWalkPasses,
-  readPendingMark,
-  readWalkMarks,
-  readWalkRoundRobins,
   rowMinorUnits,
-  runExchangeWalkPlan,
   type SettledSpan,
   settleRecords,
   type SpanCommit,
   type SpanRead,
-  walkMarkWriterOf,
-  type WalkMarkWriter,
-  type WalkMarks,
   type WalkPass,
-  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
-import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
-import type { ExchangeCredentials } from '@kiko/crypto-sync/exchange/credentials';
 
 import {
-  BybitHistoryParseError,
+  BYBIT_PAGE_DRIFT,
+  type BybitRowWalkDeps,
+  type BybitWalkContext,
+  byTimeThenKey,
+  defaultBybitRowWalkDeps,
+  driftOf,
+  flooredStart,
+  placeBybitRows,
+  readUnderCooldown,
+  runBybitWalk,
+  taggedWith,
+} from './bybit.walk-run';
+import {
   fetchDepositPage,
   fetchInternalDepositPage,
   fetchWithdrawalPage,
+  timeOfItem,
 } from './bybit.history-client';
 import { holdingKeyOf } from './bybit.holding-keys';
 import { readCursorSpan } from './bybit.cursor-span';
-import { BYBIT_WALK_CONFIG } from './bybit.walk-config';
-import { readBybitCredentials } from './bybit.credentials';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
-import { BybitRateLimitError, type BybitReadOptions } from './bybit.client';
-import { isBybitCoolingDown, setBybitCooldownUntil } from './bybit.cooldown';
-import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun, NO_WEIGHTS } from './bybit.history-budget';
+import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun } from './bybit.history-budget';
 
 const CAPITAL_SERIES = ['deposit', 'internal', 'withdraw'] as const;
 
@@ -60,19 +52,8 @@ type CapitalSeries = (typeof CAPITAL_SERIES)[number];
  */
 const WINDOW_MS = 29 * DAY_MS;
 
-/**
- * No capital series states how far back it keeps records, and an empty answer proves nothing, so
- * the floor trails the clock by a fixed span a little under two years.
- */
-const HISTORY_DAYS = 729;
-
-/** A record that settles late can sit this far behind the cursor, so the re-scan starts there. */
-const OVERLAP_MS = DAY_MS;
-
 /** A window costs one call per series, and the lane spends its calls on windows. */
 const MAX_WINDOWS = BYBIT_LANE_CALL_CAPS.capital / CAPITAL_SERIES.length;
-
-const SECOND_MS = 1_000;
 
 const CAPITAL_ROW_UNREADABLE = 'capital-row-unreadable';
 
@@ -81,8 +62,6 @@ const CAPITAL_NOT_SETTLED = 'capital-not-settled';
 const CAPITAL_DEPOSIT_TYPE = 'capital-deposit-type';
 
 const CAPITAL_TIME_MISSING = 'capital-time-missing';
-
-const CAPITAL_PAGE_DRIFT = 'bybit-page-drift';
 
 const CAPITAL_HOLDING_MISSING = 'capital-holding-missing';
 
@@ -99,7 +78,7 @@ const CAPITAL_FORWARD_OWES: readonly string[] = [
   CAPITAL_NOT_SETTLED,
   CAPITAL_DEPOSIT_TYPE,
   CAPITAL_TIME_MISSING,
-  CAPITAL_PAGE_DRIFT,
+  BYBIT_PAGE_DRIFT,
   ...AMOUNT_STOP_CODES,
 ];
 
@@ -164,14 +143,7 @@ type CapitalOutcome =
   | { kind: 'row'; row: PlannedCapitalRow }
   | { kind: 'removal'; externalId: string };
 
-type BybitCapitalHistoryDeps = ExchangeStateDeps & {
-  now: () => number;
-  fetchImpl: typeof fetch;
-  readCredentials: (accountId: string) => Promise<ExchangeCredentials | undefined>;
-  listHoldings: (accountId: string) => Promise<HoldingRow[]>;
-  /** Creates a wallet holding the walk needs at zero; never touches an existing one. */
-  ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
-  addTransactions: (rows: BybitCapitalRow[]) => Promise<number>;
+type BybitCapitalHistoryDeps = BybitRowWalkDeps<BybitCapitalRow> & {
   removeTransactions: (externalIds: readonly string[]) => Promise<number>;
   fetchDepositPage: typeof fetchDepositPage;
   fetchInternalDepositPage: typeof fetchInternalDepositPage;
@@ -179,31 +151,14 @@ type BybitCapitalHistoryDeps = ExchangeStateDeps & {
 };
 
 const defaultBybitCapitalHistoryDeps: BybitCapitalHistoryDeps = {
-  ...exchangeStateDepsOf('bybit'),
-  now: () => Date.now(),
-  fetchImpl: fetch,
-  readCredentials: readBybitCredentials,
-  listHoldings: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
-  ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
-  addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
+  ...defaultBybitRowWalkDeps,
   removeTransactions: (externalIds) => transactionsRepo.removeSyncedRows('bybit', externalIds),
   fetchDepositPage,
   fetchInternalDepositPage,
   fetchWithdrawalPage,
 };
 
-type CapitalContext = {
-  deps: BybitCapitalHistoryDeps;
-  run: BybitHistoryRun;
-  accountId: string;
-  apiKey: string;
-  secret: string;
-  options: BybitReadOptions;
-  marks: WalkMarks;
-  plan: WalkPlan;
-  write: WalkMarkWriter;
-  floorMs: number;
-};
+type CapitalContext = BybitWalkContext<BybitCapitalHistoryDeps>;
 
 const externalIdOf = (accountId: string, kind: string, id: string, coin: string): string =>
   `${accountId}:${kind}:${id}:${coin}`;
@@ -332,12 +287,7 @@ const outcomesOf = (accountId: string, record: CapitalRecord): CapitalOutcome[] 
  * The time a record shows. A withdrawal's is its `createTime`, which never changes, so the row
  * keeps its day when it settles and its point does not move when `updateTime` does.
  */
-const timeOfRecord = (record: CapitalRecord): WalkWindow | undefined =>
-  match(record.item)
-    .returnType<WalkWindow | undefined>()
-    .with({ kind: 'row' }, ({ row }) => row.time)
-    .with({ kind: P.union('unreadable', 'untracked') }, ({ time }) => time)
-    .exhaustive();
+const timeOfRecord = (record: CapitalRecord): WalkWindow | undefined => timeOfItem(record.item);
 
 /**
  * The ticker of a record of a coin the walk does not track, once the record is settled: the walk
@@ -361,23 +311,6 @@ const keyOf = (record: CapitalRecord): string =>
       ({ item }) => item.row.id,
     )
     .otherwise(() => '');
-
-const startOf = (record: CapitalRecord): number =>
-  timeOfRecord(record)?.start ?? Number.POSITIVE_INFINITY;
-
-/**
- * Oldest first, a record with no time last, ties by key: Bybit documents no order for these
- * routes, so the span is sorted before it is settled and the rows it commits do not depend on the
- * order of its pages.
- */
-const byTimeThenKey = (left: CapitalRecord, right: CapitalRecord): number =>
-  startOf(left) - startOf(right) || keyOf(left).localeCompare(keyOf(right));
-
-/**
- * Bybit compares these windows at the second, so a record just before a span's start can be in it:
- * the reach of a read starts at the whole second the span starts in.
- */
-const flooredStart = (span: WalkWindow): number => Math.floor(span.start / SECOND_MS) * SECOND_MS;
 
 /**
  * Where the records of a span may sit before a page counts as drifted. A deposit's `successAt`
@@ -490,30 +423,6 @@ const readSeriesOf = async (
   return { kind: 'page', page: { bySeries, drifted } };
 };
 
-/**
- * Fetch one span of a window. `undefined` is a clean stop: the budget ran out, or Bybit
- * rate-limited (which also sets the account's cooldown). Any other error rethrows, leaving every
- * earlier span's commit in place.
- */
-const readSpan = async (
-  context: CapitalContext,
-  window: OwedWindow,
-  span: WalkWindow,
-  keep: number,
-): Promise<SpanRead<SpanRecords> | undefined> => {
-  try {
-    return await readSeriesOf(context, seriesOf(window), span, keep);
-  } catch (error) {
-    if (error instanceof BybitRateLimitError) {
-      setBybitCooldownUntil(context.accountId, context.deps.now() + error.retryAfterMs);
-
-      return undefined;
-    }
-
-    throw error;
-  }
-};
-
 const plannedRowsOf = (outcomes: CapitalOutcome[]): PlannedCapitalRow[] =>
   outcomes.flatMap((outcome) =>
     match(outcome)
@@ -549,7 +458,7 @@ const settledSeriesOf = (input: {
   const settled = settleRecords<CapitalRecord, CapitalOutcome>({
     span,
     reach: POINT_REACH[series](span, floorMs),
-    records: [...records].sort(byTimeThenKey),
+    records: [...records].sort(byTimeThenKey(timeOfRecord, keyOf)),
     rowsOf: (record) => outcomesOf(accountId, record),
     extentOf: timeOfRecord,
     seriesOf: () => series,
@@ -560,17 +469,9 @@ const settledSeriesOf = (input: {
     ...settled,
     rows: plannedRowsOf(settled.rows),
     removed: removalsOf(settled.rows),
-    owed: settled.owed.map((ground) => (isPoint(ground) ? ground : { ...ground, series })),
+    owed: taggedWith(series, settled.owed),
   };
 };
-
-/** The ground a series left owed because its pages drifted: the span, in that series alone. */
-const driftOf = (span: WalkWindow, drifted: CapitalSeries[]): SettledSpan<never> => ({
-  rows: [],
-  codes: drifted.length > 0 ? [CAPITAL_PAGE_DRIFT] : [],
-  owed: drifted.map((series) => ({ ...span, series })),
-  returned: [],
-});
 
 const settledSpanOf = (
   context: CapitalContext,
@@ -607,101 +508,12 @@ const commitSpan = (
     pass,
     span,
     settled: settledSpanOf(context, span, records),
-    place: (planned) =>
-      placeWalletRows({
-        accountId: context.accountId,
-        planned,
-        config: BYBIT_WALK_CONFIG,
-        listHoldings: context.deps.listHoldings,
-        ensureHoldings: context.deps.ensureHoldings,
-        missingCode: CAPITAL_HOLDING_MISSING,
-      }),
+    place: (planned) => placeBybitRows(context, planned, CAPITAL_HOLDING_MISSING),
     restartMs: BYBIT_RESTART_FLOOR_MS,
     series: window.series,
     forwardOwes: CAPITAL_FORWARD_OWES,
     remove: context.deps.removeTransactions,
   });
-
-const runSync = async (
-  deps: BybitCapitalHistoryDeps,
-  accountId: string,
-  run: BybitHistoryRun,
-): Promise<WalkResult> => {
-  const now = deps.now();
-
-  if (isBybitCoolingDown(accountId, now)) {
-    return { imported: 0, complete: false };
-  }
-
-  const credentials = await deps.readCredentials(accountId);
-
-  if (credentials === undefined) {
-    return { imported: 0, complete: true };
-  }
-
-  const stored = await readWalkMarks(deps, accountId, 'capital');
-  const { cursor, rescan: rescanCursor } = stored;
-  const write = walkMarkWriterOf(deps, accountId, 'capital');
-  const roundRobins = await readWalkRoundRobins({ stored, write });
-  const floorMs = now - HISTORY_DAYS * DAY_MS;
-  const pending = await readPendingMark({
-    stored: stored.pending,
-    owedIfUnreadable: { start: floorMs, end: cursor ?? floorMs },
-    knownSeries: CAPITAL_SERIES,
-    write,
-  });
-  const plan = planWalkPasses({
-    cursor,
-    rescanCursor,
-    pointCursor: roundRobins.pointCursor,
-    rangeCursor: roundRobins.rangeCursor,
-    backfillCursor: roundRobins.backfillCursor,
-    pending,
-    floorMs,
-    endTime: now,
-    windowMs: WINDOW_MS,
-    overlapMs: OVERLAP_MS,
-    maxWindows: MAX_WINDOWS,
-  });
-
-  // Owed ground and owed points count: a clock that stepped back can leave nothing to read forward
-  // or behind while ground is still owed.
-  if ([plan.forward, plan.rescan, plan.pending, plan.points].every((list) => list.length === 0)) {
-    return { imported: 0, complete: false };
-  }
-
-  const context: CapitalContext = {
-    deps,
-    run,
-    accountId,
-    apiKey: credentials.apiKey,
-    secret: credentials.secret,
-    options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor, rescanCursor, ...roundRobins, pending },
-    plan,
-    write,
-    floorMs,
-  };
-
-  const result = await runExchangeWalkPlan({
-    context,
-    lane: 'capital',
-    cost: NO_WEIGHTS,
-    isCoolingDown: isBybitCoolingDown,
-    isUnreadableWindowError: (error) => error instanceof BybitHistoryParseError,
-    callsOf,
-    read: (window, span, keepCalls) => readSpan(context, window, span, keepCalls),
-    commit: (window, span, records, pass) => commitSpan(context, window, span, records, pass),
-  });
-  const lastForwardEnd = foldMap(maybe(plan.forward.at(-1)), (window) => window.end);
-
-  // A plan holds a capped number of windows: a forward pass that ends before now leaves history
-  // behind the windows it read.
-  return {
-    ...result,
-    complete: result.complete && (lastForwardEnd === undefined || lastForwardEnd >= now),
-  };
-};
 
 /**
  * Import the deposits, internal deposits and withdrawals of every tracked coin as rows on the
@@ -716,8 +528,17 @@ export const syncBybitCapitalHistory = (
   request: { targetAccountId: string; run: BybitHistoryRun },
   overrides: Partial<BybitCapitalHistoryDeps> = {},
 ): Promise<WalkResult> =>
-  runSync(
-    { ...defaultBybitCapitalHistoryDeps, ...overrides },
-    request.targetAccountId,
-    request.run,
-  );
+  runBybitWalk({
+    deps: { ...defaultBybitCapitalHistoryDeps, ...overrides },
+    accountId: request.targetAccountId,
+    run: request.run,
+    walkId: 'capital',
+    lane: 'capital',
+    series: CAPITAL_SERIES,
+    windowMs: WINDOW_MS,
+    maxWindows: MAX_WINDOWS,
+    callsOf,
+    read: (context, window, span, keep) =>
+      readUnderCooldown(context, () => readSeriesOf(context, seriesOf(window), span, keep)),
+    commit: commitSpan,
+  });

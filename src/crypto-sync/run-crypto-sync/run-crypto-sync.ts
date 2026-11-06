@@ -12,6 +12,7 @@ import {
   createBybitHistoryRun,
   defaultBybitDeps,
   syncBybitCapitalHistory,
+  syncBybitTransferHistory,
 } from '../bybit';
 import {
   type BinanceHistoryRun,
@@ -183,8 +184,8 @@ const runBinanceSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult>
   joinedOrStarted(inFlightBinanceSyncs, targetAccountId, runBinanceSyncAndImport);
 
 /**
- * The Bybit arm: the balance sync, the write of the lists it read, then the capital history walk.
- * The join covers all of it, with the same per-account key as Binance's.
+ * The Bybit arm: the balance sync, the write of the lists it read, then the capital and transfer
+ * history walks. The join covers all of it, with the same per-account key as Binance's.
  */
 const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyncResult> => {
   const { syncedHoldings, exchangeState } = await runBalanceSync(bybitProvider, defaultBybitDeps, {
@@ -206,6 +207,11 @@ const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyn
 
   await logOnFailure('[bybit sync] capital history failed', () =>
     syncBybitCapitalHistory({ targetAccountId, run }),
+  );
+  // After the capital walk, so a rate limit it met (the shared cooldown) skips this one, and each
+  // walk fails in its own log.
+  await logOnFailure('[bybit sync] transfer history failed', () =>
+    syncBybitTransferHistory({ targetAccountId, run }),
   );
 
   return { syncedHoldings };

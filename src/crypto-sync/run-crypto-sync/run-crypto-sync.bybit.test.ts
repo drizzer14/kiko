@@ -3,12 +3,17 @@ const mockCreateBinanceHistoryRun = jest.fn();
 const mockSyncBinanceTransactions = jest.fn();
 const mockPatchExchangeState = jest.fn();
 const mockSyncBybitCapitalHistory = jest.fn();
+const mockSyncBybitTransferHistory = jest.fn();
 
 // `./sync` pulls the repos into the graph, and the Binance barrel loads every walk; replacing both
 // keeps this a pure dispatch test, and a walk that ran for a Bybit request would show here. The
-// Bybit capital walk is replaced the same way, so what it is given is all this suite looks at.
+// Bybit capital and transfer walks are replaced the same way, so what they are given is all this
+// suite looks at.
 jest.mock('@kiko/crypto-sync/bybit/bybit.capital-history', () => ({
   syncBybitCapitalHistory: (...args: unknown[]) => mockSyncBybitCapitalHistory(...args),
+}));
+jest.mock('@kiko/crypto-sync/bybit/bybit.transfer-history', () => ({
+  syncBybitTransferHistory: (...args: unknown[]) => mockSyncBybitTransferHistory(...args),
 }));
 jest.mock('@kiko/crypto-sync/sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
@@ -43,6 +48,64 @@ describe('runCryptoSync for Bybit', () => {
     jest.clearAllMocks();
     mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 2 });
     mockSyncBybitCapitalHistory.mockResolvedValue({ imported: 0, complete: true });
+    mockSyncBybitTransferHistory.mockResolvedValue({ imported: 0, complete: true });
+  });
+
+  describe('the transfer history walk', () => {
+    it('runs once after the capital walk, on the run the capital walk was given', async () => {
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockSyncBybitTransferHistory).toHaveBeenCalledTimes(1);
+      expect(mockSyncBybitTransferHistory).toHaveBeenCalledWith({
+        targetAccountId: 'acc-1',
+        run: { gate: expect.any(Object), budget: expect.any(Object) },
+      });
+      expect(mockSyncBybitTransferHistory.mock.calls[0][0].run).toBe(
+        mockSyncBybitCapitalHistory.mock.calls[0][0].run,
+      );
+      expect(mockSyncBybitCapitalHistory.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSyncBybitTransferHistory.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('still runs when the capital walk fails, and logs only the name of the failure', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockSyncBybitCapitalHistory.mockRejectedValueOnce(new Error('Failed query: params SECRET'));
+
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockSyncBybitTransferHistory).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('[bybit sync] capital history failed', {
+        name: 'Error',
+        code: undefined,
+      });
+      warn.mockRestore();
+    });
+
+    it('still resolves with the balance result when the walk fails, logging only its name', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockSyncBybitTransferHistory.mockRejectedValueOnce(new Error('Failed query: params SECRET'));
+
+      const result = await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(result).toEqual({ syncedHoldings: 2 });
+      expect(warn).toHaveBeenCalledWith('[bybit sync] transfer history failed', {
+        name: 'Error',
+        code: undefined,
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+      warn.mockRestore();
+    });
+
+    it('does not run when the balance sync fails', async () => {
+      mockRunBalanceSync.mockRejectedValueOnce(new Error('read boom'));
+
+      await expect(
+        runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' }),
+      ).rejects.toThrow('read boom');
+
+      expect(mockSyncBybitTransferHistory).not.toHaveBeenCalled();
+    });
   });
 
   describe('the capital history walk', () => {

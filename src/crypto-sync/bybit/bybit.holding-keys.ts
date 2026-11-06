@@ -18,6 +18,12 @@ const isBybitWallet = (value: string): value is BybitWallet =>
  */
 export const holdingKeyOf = (code: Currency, wallet: BybitWallet): string => `${code}:${wallet}`;
 
+/**
+ * The id the legs of one move of one coin share, from the id of the move. Two coins can share that
+ * id, and deleting a leg deletes its pair, so every pair id adds its coin.
+ */
+export const exchangePairIdOf = (moveId: string, code: Currency): string => `${moveId}:${code}`;
+
 type HoldingKeyParts = { code: Currency; wallet: BybitWallet };
 
 /** The coin and wallet a stored key names; a key `holdingKeyOf` never makes names none. */

@@ -431,28 +431,34 @@ describe('the history caption over the P2P and fiat walks', () => {
 describe('the caption walks of each provider', () => {
   const owedCapital = () => stateOf({ capital: { cursor: NOW, pending: [{ start: 1, end: 3 }] } });
 
-  it('Binance compares its 8 walks and Bybit compares only its own', () => {
+  it('Binance compares its 8 walks and Bybit compares its capital and transfer walks', () => {
     const state = withEveryCursor(NOW, {});
 
     expect(walkCursorsOf(state, 'binance')).toHaveLength(8);
-    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW]);
+    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW, NOW]);
   });
 
-  it('Bybit compares the capital walk alone, and no cursor of a state it cannot read', () => {
+  it('Bybit compares its capital and transfer walks alone, and no cursor of a state it cannot read', () => {
     const state = stateOf({
       capital: { cursor: NOW - HOUR_MS },
+      transfer: { cursor: NOW - 2 * HOUR_MS },
       pay: { cursor: NOW - 9 * DAY_MS },
     });
 
-    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW - HOUR_MS]);
-    expect(walkCursorsOf(parseExchangeState('{not json'), 'bybit')).toEqual([null]);
-    expect(walkCursorsOf(stateOf({}), 'bybit')).toEqual([null]);
+    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW - HOUR_MS, NOW - 2 * HOUR_MS]);
+    expect(walkCursorsOf(parseExchangeState('{not json'), 'bybit')).toEqual([null, null]);
+    expect(walkCursorsOf(stateOf({}), 'bybit')).toEqual([null, null]);
   });
 
-  it('Bybit owes a range of its capital walk, and no range of a walk it does not read', () => {
+  it('Bybit owes a range of its capital walk and of its transfer walk, and no range of a walk it does not read', () => {
     const owedPay = stateOf({ pay: { cursor: NOW, pending: [{ start: 1, end: 3 }] } });
+    const owedTransfer = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'transfer' }] },
+    });
 
     expect(historyOwesRange(owedCapital(), NOW, 'bybit')).toBe(true);
+    expect(historyOwesRange(owedTransfer, NOW, 'bybit')).toBe(true);
     expect(historyOwesRange(owedPay, NOW, 'bybit')).toBe(false);
     expect(historyOwesRange(owedPay, NOW, 'binance')).toBe(true);
   });

@@ -568,6 +568,7 @@ describe('CryptoSyncSection for a Bybit account', () => {
     const state = {
       walks: {
         capital: { cursor: SYNCED_AT },
+        transfer: { cursor: SYNCED_AT },
         pay: { pending: [{ start: 1, end: 3 }] },
       },
     };

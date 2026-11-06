@@ -1,3 +1,4 @@
+import { match, P } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
@@ -124,6 +125,16 @@ type BybitHistoryItem<Row> = { times: readonly number[] } & (
       time: WalkWindow | undefined;
     }
 );
+
+/** The time an item shows: a row's own, or the one that could be read of an item that is no row. */
+export const timeOfItem = (
+  item: BybitHistoryItem<{ time: WalkWindow | undefined }>,
+): WalkWindow | undefined =>
+  match(item)
+    .returnType<WalkWindow | undefined>()
+    .with({ kind: 'row' }, ({ row }) => row.time)
+    .with({ kind: P.union('unreadable', 'untracked') }, ({ time }) => time)
+    .exhaustive();
 
 /**
  * One page of one series. `rows` holds every item of the page, whatever its kind, which is the

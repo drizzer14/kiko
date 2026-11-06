@@ -10,6 +10,9 @@ export const ACCOUNT_ID = 'acc-1';
 
 export type CapitalSeries = 'deposit' | 'internal' | 'withdraw';
 
+/** The series the fake serves: the three capital routes and the transfer route. */
+export type BybitSeries = CapitalSeries | 'transfer';
+
 /**
  * A row the fake exchange holds, and the instant its window test uses for the row: the instant a
  * route filters on, which a test sets apart from the row's own fields. No instant is a row that no
@@ -22,10 +25,11 @@ export const served = (at: number | undefined, row: Record<string, unknown>): Se
   at,
 });
 
-const SERIES_OF_PATH: Record<string, CapitalSeries> = {
+const SERIES_OF_PATH: Record<string, BybitSeries> = {
   '/v5/asset/deposit/query-record': 'deposit',
   '/v5/asset/deposit/query-internal-record': 'internal',
   '/v5/asset/withdraw/query-record': 'withdraw',
+  '/v5/asset/transfer/query-inter-transfer-list': 'transfer',
 };
 
 type PageOrder = 'ascending' | 'descending' | 'scrambled';
@@ -36,13 +40,13 @@ type FakeOptions = {
   /** A window that starts inside a second holds the rows of that whole second. */
   secondLevelStart?: boolean;
   /** Answers every call of a series with this code instead of its rows. */
-  refuse?: { series: CapitalSeries; retCode: number };
+  refuse?: { series: BybitSeries; retCode: number };
   /** Answers a series with a body that holds no list. */
-  malformed?: CapitalSeries;
+  malformed?: BybitSeries;
 };
 
 export type SentRead = {
-  series: CapitalSeries;
+  series: BybitSeries;
   startTime: number;
   endTime: number;
   cursor: string | undefined;
@@ -69,13 +73,18 @@ const orderedBy = (rows: ServedRow[], order: PageOrder): ServedRow[] => {
 };
 
 /**
- * A Bybit that answers the three capital routes from `world`, a page of `pageSize` rows at a time
- * with the offset as its cursor, and records every read it was sent. The world is changed between
- * runs by assigning its lists.
+ * A Bybit that answers the three capital routes and the transfer route from `world`, a page of
+ * `pageSize` rows at a time with the offset as its cursor, and records every read it was sent. The
+ * world is changed between runs by assigning its lists.
  */
 export const fakeBybit = (options: FakeOptions = {}) => {
   const { pageSize = 50, order = 'ascending', secondLevelStart = false } = options;
-  const world: Record<CapitalSeries, ServedRow[]> = { deposit: [], internal: [], withdraw: [] };
+  const world: Record<BybitSeries, ServedRow[]> = {
+    deposit: [],
+    internal: [],
+    withdraw: [],
+    transfer: [],
+  };
   const reads: SentRead[] = [];
 
   const inWindow = (held: ServedRow, startTime: number, endTime: number): boolean => {
@@ -84,7 +93,7 @@ export const fakeBybit = (options: FakeOptions = {}) => {
     return held.at !== undefined && from <= held.at && held.at <= endTime;
   };
 
-  const bodyOf = (series: CapitalSeries, startTime: number, endTime: number, offset: number) => {
+  const bodyOf = (series: BybitSeries, startTime: number, endTime: number, offset: number) => {
     if (options.refuse?.series === series) {
       return envelopeOf(options.refuse.retCode);
     }
@@ -100,7 +109,7 @@ export const fakeBybit = (options: FakeOptions = {}) => {
     const next = offset + pageSize;
 
     return envelopeOf(0, {
-      rows: held.slice(offset, next).map(({ row }) => row),
+      [series === 'transfer' ? 'list' : 'rows']: held.slice(offset, next).map(({ row }) => row),
       nextPageCursor: next < held.length ? `${CURSOR_PREFIX}${next}` : '',
     });
   };
@@ -123,46 +132,42 @@ export const fakeBybit = (options: FakeOptions = {}) => {
   return { world, reads, fetchImpl };
 };
 
-export const readsOf = (reads: SentRead[], series: CapitalSeries): SentRead[] =>
+export const readsOf = (reads: SentRead[], series: BybitSeries): SentRead[] =>
   reads.filter((read) => read.series === series);
 
 /** A stored row, as the in-memory repository keeps it. */
-type StoredCapitalRow = {
+type StoredRow = {
   holdingId: string;
   amountMinorUnits: number;
   time: number;
   source: 'bybit';
   externalId: string;
   description: string;
+  exchangePairId?: string;
+  exchangeCounterpartHoldingId?: string;
 };
 
-type SyncDeps = NonNullable<Parameters<typeof syncBybitCapitalHistory>[1]>;
-
-type WorldOptions = {
+type WalkWorldOptions = {
   /** The walk state of the account: a `walkStateFake`, made by the test. */
-  state: {
-    deps: ExchangeStateDeps;
-    marksOf: (walkName: 'capital') => Record<string, unknown>;
-  };
+  state: { deps: ExchangeStateDeps };
   fake?: FakeOptions;
   now?: number;
-  /** Replaces a dependency of the walk (a page reader, say). */
-  overrides?: Partial<SyncDeps>;
 };
 
 /**
- * One account's capital walk on a fake Bybit and in-memory repositories: the rows it adds and
- * removes, the holdings it creates, and the walk state it writes.
+ * A fake Bybit and in-memory repositories for one account's history walk: the rows it adds, the
+ * holdings it creates, and the walk state it writes. The deps are what every Bybit walk reads
+ * through, and a walk adds its own.
  */
-export const capitalWalkOf = (worldOptions: WorldOptions) => {
+export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
   const bybit = fakeBybit(worldOptions.fake);
   const { state } = worldOptions;
   const holdings: HoldingRow[] = [];
-  const stored = new Map<string, StoredCapitalRow>();
+  const stored = new Map<string, StoredRow>();
   const calls: string[] = [];
   const clock = { now: worldOptions.now ?? NOW };
 
-  const deps: SyncDeps = {
+  const deps = {
     ...state.deps,
     patchExchangeState: jest.fn(
       async (...patch: Parameters<ExchangeStateDeps['patchExchangeState']>) => {
@@ -187,7 +192,7 @@ export const capitalWalkOf = (worldOptions: WorldOptions) => {
         } as unknown as HoldingRow);
       }
     }),
-    addTransactions: jest.fn(async (rows: StoredCapitalRow[]) => {
+    addTransactions: jest.fn(async (rows: StoredRow[]) => {
       calls.push('add');
 
       return rows.filter((row) => {
@@ -198,6 +203,38 @@ export const capitalWalkOf = (worldOptions: WorldOptions) => {
         return isNew;
       }).length;
     }),
+  };
+
+  return {
+    ...bybit,
+    deps,
+    clock,
+    holdings,
+    calls,
+    stored,
+    rows: (): StoredRow[] => [...stored.values()],
+    keys: (): string[] => [...stored.keys()],
+  };
+};
+
+type SyncDeps = NonNullable<Parameters<typeof syncBybitCapitalHistory>[1]>;
+
+type WorldOptions = WalkWorldOptions & {
+  state: { marksOf: (walkName: 'capital') => Record<string, unknown> };
+  /** Replaces a dependency of the walk (a page reader, say). */
+  overrides?: Partial<SyncDeps>;
+};
+
+/**
+ * One account's capital walk on the in-memory world: the rows it adds and removes, the holdings
+ * it creates, and the walk state it writes.
+ */
+export const capitalWalkOf = (worldOptions: WorldOptions) => {
+  const world = inMemoryWalkOf(worldOptions);
+  const { clock, calls, stored } = world;
+
+  const deps: SyncDeps = {
+    ...world.deps,
     removeTransactions: jest.fn(async (externalIds: readonly string[]) => {
       calls.push('remove');
 
@@ -216,14 +253,9 @@ export const capitalWalkOf = (worldOptions: WorldOptions) => {
     );
 
   return {
-    ...bybit,
+    ...world,
     deps,
-    clock,
-    holdings,
-    calls,
     run,
-    rows: (): StoredCapitalRow[] => [...stored.values()],
-    keys: (): string[] => [...stored.keys()],
-    marks: () => state.marksOf('capital'),
+    marks: () => worldOptions.state.marksOf('capital'),
   };
 };
