@@ -21,18 +21,6 @@ export const styles = StyleSheet.create((theme) => ({
   header: {
     paddingBottom: theme.spacing(4),
   },
-  // What the series paid so far: the label on the left, the money opposite it.
-  paidRow: {
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  paidLabel: {
-    flex: 1,
-    marginRight: theme.spacing(3),
-  },
-  paidAmount: {
-    flexShrink: 0,
-  },
   // The gap below each card, so the charges read as a stack of cards, as Home's rows do.
   chargeCard: {
     marginBottom: theme.spacing(2),

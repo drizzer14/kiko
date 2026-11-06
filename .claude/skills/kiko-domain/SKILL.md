@@ -1083,9 +1083,12 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   series' category is its newest charge's, folded to the default category when it has none or it
   is unknown; groups follow the Categories screen order; within a group the active series come
   before the stopped ones; 'Marked, No Charges' and 'Hidden' are their own sections with no total.
-  A total is the all-time sum of the shown series' charges, one conversion per series sum into the
-  base currency, as the category breakdown converts; a currency with no rate is left out of the
-  total. The detail's 'All paid so far' is `paidSoFarOf` in the series' own currency.
+  A total is the sum of the shown series' LAST charges (`lastChargeAmountMinorUnits`), one
+  `convert` per series into the base currency; `canConvert` is the guard, so a currency with no
+  rate is left out of the totals and its series stays listed. A stopped series counts. The row
+  reads 'Sum of last charges' (`recurringCharges.lastChargesTotal`). The series screen's 'All
+  paid so far' is `paidSoFarOf`, the sum of every charge in the series' own currency; it covers
+  only the series screen, never a list total.
 - One choice map holds every key's hide flag and its list of marks, one entry per key; removing
   a mark clears only that mark, and "Show again" clears only the hide.
 - The transaction form's mark field shows 'Detected: <period>' (keys
