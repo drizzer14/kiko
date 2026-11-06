@@ -116,6 +116,11 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   `pressFilterOption`, the filter testIDs).
 - `reset-statistics-filter-selection.ts`: `resetStatisticsFilterSelection`, an `afterEach` that
   puts the session-long Statistics account and category picks back on "all".
+- `light-theme-registered.ts`: `registerLightThemeFirst` and `restoreThemeOrder`, which put the
+  light theme first and dark first again in the Unistyles jest mock, for a light-world test. The
+  mock's `StyleSheet.create` resolves once at module evaluation, so a test of a stylesheet color
+  calls `registerLightThemeFirst` before it imports the module, inside `jest.isolateModules`; after
+  the imports it changes only `useUnistyles().theme`.
 - `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
   where Jest's `findNodeHandle` returns null, for a share-anchor pin.
 

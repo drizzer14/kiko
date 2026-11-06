@@ -1,5 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import { entityColorsLight } from '@kiko/design-system/palette';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
 
@@ -129,11 +130,24 @@ describe('buildFilterScope', () => {
 
 describe('buildAccountOptions', () => {
   it('names an implicit account by its display name and tints each option with its identity', () => {
-    const options = buildAccountOptions([BANK, LOANS], i18n.t);
+    const options = buildAccountOptions([BANK, LOANS], i18n.t, 'dark');
 
     expect(options).toEqual([
-      { value: 'bank', label: 'bank', ...accountIdentity(BANK) },
-      { value: 'loans', label: i18n.t('accounts.implicitName.debt'), ...accountIdentity(LOANS) },
+      { value: 'bank', label: 'bank', ...accountIdentity(BANK, 'dark') },
+      {
+        value: 'loans',
+        label: i18n.t('accounts.implicitName.debt'),
+        ...accountIdentity(LOANS, 'dark'),
+      },
+    ]);
+  });
+
+  it('tints each option with the light twin of its identity color in the light scheme', () => {
+    const options = buildAccountOptions([BANK, LOANS], i18n.t, 'light');
+
+    expect(options.map((option) => option.color)).toEqual([
+      entityColorsLight.white,
+      entityColorsLight.red,
     ]);
   });
 });

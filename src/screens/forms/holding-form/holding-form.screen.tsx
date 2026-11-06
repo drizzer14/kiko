@@ -33,13 +33,13 @@ import Screen from '@kiko/design-system/components/screen';
 import { type TextInputInstance, View } from 'react-native';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { holdingIconPool } from '@kiko/holdings/entity-icon-pool';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import HoldingTypeField from '@kiko/screens/forms/holding-type-field';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
@@ -52,12 +52,14 @@ import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import { isCurrencyExpectedForHoldingType } from '@kiko/holdings/holding-currency';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import { entityDisplayColor, resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { type FC, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type ImplicitAccountKind, isImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
@@ -118,6 +120,7 @@ const buildPaymentHoldingOptions = (
   accountNameById: ReadonlyMap<string, string>,
   loanCurrency: Currency,
   selectedHoldingId: string | null,
+  scheme: ColorScheme,
 ): HoldingSelectOption[] => {
   const openOptions = holdings
     .filter(
@@ -126,7 +129,7 @@ const buildPaymentHoldingOptions = (
         candidate.currency === loanCurrency &&
         !isLedgerlessHoldingType(candidate.type),
     )
-    .map((candidate) => toHoldingOption(candidate, accountNameById));
+    .map((candidate) => toHoldingOption(candidate, accountNameById, scheme));
 
   if (selectedHoldingId === null || openOptions.some((option) => option.id === selectedHoldingId)) {
     return openOptions;
@@ -138,7 +141,7 @@ const buildPaymentHoldingOptions = (
     return openOptions;
   }
 
-  return [...openOptions, toHoldingOption(selectedHolding, accountNameById)];
+  return [...openOptions, toHoldingOption(selectedHolding, accountNameById, scheme)];
 };
 
 // Which field fills the Type slot. A `property` account's only type IS its
@@ -465,6 +468,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // (setColor(holding.color) below): a stored empty-string color reaches
   // here as an unusable value the bare pattern would let through as ''.
   const effectiveColor = resolveEntityColor(color, defaultHoldingColor[type]);
+  const scheme = useActiveColorScheme();
 
   // Keep the selected type valid for what the form currently OFFERS. The account
   // loads asynchronously, so once its option set is known, a default (or
@@ -520,6 +524,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
     accountNameById,
     currency,
     loanFields.paymentHoldingId,
+    scheme,
   );
   // `push`, not `navigate`: `navigate` to this form's own route name only
   // changes this route's params, which would turn the loan form into the new
@@ -855,7 +860,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
               type,
               metadata: { category: property.category, kind: loanFields.kind },
             })}
-            iconColor={effectiveColor}
+            iconColor={entityDisplayColor(effectiveColor, scheme)}
             name={name}
             onChangeName={setName}
             onSelectIcon={setIcon}
@@ -868,7 +873,12 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
           />
         </View>
 
-        <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
+        <ColorPicker
+          label={t('forms.fields.color')}
+          value={effectiveColor}
+          swatchSet="entity"
+          onSelect={setColor}
+        />
 
         <Divider testID="form-divider" />
 

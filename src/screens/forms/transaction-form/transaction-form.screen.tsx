@@ -52,6 +52,7 @@ import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import { useExchangeFundingCaption } from '@kiko/statistics/exchange-funding-match';
@@ -398,11 +399,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The picker's eligible options (open, non-synced, transaction-eligible),
   // Accounts-ordered — also the fallback source when the user has no manual
   // history to default from.
+  const scheme = useActiveColorScheme();
   const primaryOptions = buildPrimaryOptions(
     holdings,
     accountNameById,
     accountOrderById,
     accountById,
+    scheme,
   );
   // B's default-holding seam: the holding of the newest MANUAL row, read once so
   // an empty create can pre-select it. `isLoading` gates the seed below so the
@@ -446,6 +449,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     accountOrderById,
     holdingId,
     isExchangeCreateDestinationType,
+    scheme,
   );
   // The row's current loan link, resolved once and reused everywhere below
   // (options, visibility, and the field's own render props) rather than
@@ -466,6 +470,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     accountOrderById,
     currency,
     loanLinkState.selectedLoanHoldingId,
+    scheme,
   );
 
   const convertView = resolveConvertView(
@@ -479,6 +484,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     accountById,
     holdingId,
     t,
+    scheme,
   );
 
   const [amount, setAmount] = useState(opening.amount);
@@ -1081,6 +1087,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       accountById,
       currency,
       pickedElsewhere,
+      scheme,
     );
   };
 
