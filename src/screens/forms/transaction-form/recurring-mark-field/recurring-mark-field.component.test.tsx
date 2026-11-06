@@ -21,6 +21,7 @@ import {
 } from '@kiko/test-support/recurring-mark-live-queries';
 import type { RecurringLedgerRow } from '@kiko/recurring/detection';
 import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 
@@ -38,18 +39,13 @@ jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: { recurringLedgerQuery: () => mockTaggedQuery('recurringLedger') },
 }));
 jest.mock('@kiko/settings', () => mockSettingsModuleWith(mockWrites.repo));
-// Text's tone -> color mapping is a react-native-unistyles variant that the Jest setup cannot
-// resolve from a rendered style, so the mock surfaces the `tone` prop on the host element.
-jest.mock('@kiko/design-system/components/text', () => {
-  const { Text: RNText } = require('react-native');
-
-  return {
-    __esModule: true,
-    default: ({ children, ...rest }: { children: unknown }) => (
-      <RNText {...rest}>{children}</RNText>
-    ),
-  };
-});
+// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  get default() {
+    return mockTextVariantTone;
+  },
+}));
 
 type World = {
   settingsRows: SettingsRows;

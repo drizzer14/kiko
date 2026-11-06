@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -20,6 +20,7 @@ const noop = (): void => {};
 const setup = async (overrides: Partial<Parameters<typeof ExchangeFields>[0]> = {}) =>
   render(
     <ExchangeFields
+      leadingField={<View />}
       valueOut=""
       onChangeValueOut={noop}
       valueOutSuffix=""
