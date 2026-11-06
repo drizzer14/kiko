@@ -602,7 +602,8 @@ describe('DataTable', () => {
   });
 
   describe('palette independence', () => {
-    // Every theme the store offers today; a light palette adds a row here and nothing else.
+    // Dark only: the store registers two themes, but the jest unistyles mock paints the first
+    // registered one (dark), so a light row would fail on the mock rather than on the table.
     const themes = { dark: darkTheme };
     const tokenColors = (theme: typeof darkTheme) => new Set<unknown>(Object.values(theme.colors));
     const colorsIn = (element: { props: { style?: unknown } }) =>

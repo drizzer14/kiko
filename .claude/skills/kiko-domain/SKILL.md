@@ -1027,6 +1027,13 @@ it, so Save asks for a pick.
 `reviewCandidateRowsQuery`, `name-tally.ts` and the `CategoryReview` route
 (`src/navigation/settings-stack/settings.stack.tsx`) build and show it.
 
+A review line may carry a suggestion from the user's history. `reviewEvidenceQuery`
+(`src/categories/category-rules-repo/category-rules.repo.ts`) is the fourth read; `addVotes` and
+`suggestionOf` in `plan-review-groups.ts` turn its rows into votes. Only real categories vote,
+and votes count under the merchant key. The thresholds (`SUGGESTION_MIN_AGREEING_ROWS`,
+`SUGGESTION_MIN_SHARE`) live in that file and are not exported: read them there. Nothing is
+written until the user taps the chip.
+
 ## Spending-exclusion pipeline
 
 An internal money movement (cash-out, own-account transfer, one leg of

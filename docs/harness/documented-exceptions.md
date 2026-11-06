@@ -646,17 +646,33 @@ verified usage, not dead weight:
   keeps large NON-SOURCE, NON-TEST-READ dirs out of that copy: `ios` and
   `android` (native projects; pre-existing), plus `vendor` (the vendored
   CocoaPods Ruby bundle under `vendor/bundle/ruby/...`), `coverage`
-  (generated jest coverage), `docs` (Markdown, never imported), and
-  `.superpowers` (gitignored SDD scratch). Each was verified to have ZERO
-  filesystem reads from any test or source module (grep of every
+  (generated jest coverage), `docs` (Markdown; every file but one, see the
+  keep-list), and `.superpowers` (gitignored SDD scratch). `docs` is
+  ignored one level at a time (`docs/*`, `docs/design/*`,
+  `docs/design/light-palette/*`), each followed by the `!` rule that
+  re-includes the next level down, because Stryker's walk never descends into
+  an ignored folder and a lone `!docs/design/light-palette/palette.json`
+  under a bare `docs` rule re-includes the whole of `docs`
+  (`project-reader.js` `resolveInputFileNames`; probed against the real
+  walk: 3047 sandbox files against 3046 before, the one extra being
+  `docs/design/light-palette/palette.json`). Each of the others was verified
+  to have ZERO filesystem reads from any test or source module (grep of every
   `*.test.ts(x)` / `__tests__/**` / jest setup for `readFileSync`,
-  `existsSync`, `__dirname`, `require` of a non-module path). **KEEP-LIST**
+  `existsSync`, `__dirname`, `require` of a non-module path), except the
+  `docs` readers named next. **KEEP-LIST**
   — external paths tests DO read, which must stay in the sandbox and are
-  therefore NOT ignored: `drizzle/migrations/**` (read by
+  therefore NOT ignored: `docs/design/light-palette/palette.json` (read at
+  load by `src/design-system/palette/light-palette-source.test.ts`);
+  `drizzle/migrations/**` (read by
   `src/db/schema.*.test.ts`, `src/categories/repo/categories.repo.test.ts`,
   and `src/db/__fixtures__/seed-category-colors.ts` via `__dirname`
   +`node:fs`) and `scripts/checks/*.sh` (read by the `__tests__/mutation-*`
-  wrapper tests). `reports/` is deliberately kept: Stryker's incremental
+  wrapper tests). **Open gap, not changed here**:
+  `src/crypto-sync/binance/binance.privacy-policy.test.ts` and
+  `src/i18n/locales/uk.catalog-rules.test.ts` read `docs/privacy-policy*.md` and
+  `docs/privacy-site/*` at module load with a bare `readFileSync` and no fallback; those
+  files are not on the keep-list, so a mutation run that selects either suite fails its
+  dry run with ENOENT. `reports/` is deliberately kept: Stryker's incremental
   report (`incremental: true`) is read from the PROJECT ROOT and is already
   in the always-ignored set, so keeping the dir is harmless and safer than
   excluding it. `ios` stays ignored even though `__tests__/info-plist.test.ts`

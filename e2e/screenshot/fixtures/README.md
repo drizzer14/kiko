@@ -47,8 +47,8 @@ Home list and charts on the last 30 days before the **device date**
 (`src/dates/default-range.ts`), and the newest demo row sits four days before the
 anchor (Silpo, then Uklon on day 5, then the two day 6 rows). So the files fill Home and the
 charts from the anchor day onward, but they thin out as the device date moves past it: the
-default 30-day window holds 42 rows on the anchor day, 34 a week later, 23 after two weeks,
-9 after three, and none from the 27th day on. The data thins from about the second week, so
+default 30-day window holds 49 rows on the anchor day, 40 a week later, 26 after two weeks,
+10 after three, and none from the 27th day on. The data thins from about the second week, so
 about four weeks is an upper bound, not a safe age: a file anchored on a past day imports fine
 but shows a sparse, then empty, Home list and spending charts.
 
@@ -129,6 +129,17 @@ number. Tapping it shows the transactions that would move, `Varus 0212` and `Var
 moves nothing until Move is tapped. `Varus` is a Latin brand name in both files, as `Novus` is.
 The rows raise the card's opening deposit by their total, so the card keeps its end balance.
 `build-demo-snapshot.test.ts` pins that the only name with a prefix is this one.
+
+## The suggestion rows
+
+Four Monobank card rows named `Mokko Coffee` (`Мокко Кава` in the Ukrainian file) sit 11, 17, 22
+and 25 days before the anchor, at uneven gaps so they cannot read as a monthly series. The first
+three are filed under Dining; the one 25 days back stays in the default category. In Settings,
+open Categories, then "Sort transactions without a category": the `Mokko Coffee` line shows a
+Dining chip, 3 of 3, and a tap on it files that one row. The `Varus` line shows no chip, because
+none of its rows is filed.
+The rows raise the card's opening deposit by their total, so the card keeps its end balance.
+`build-demo-snapshot.test.ts` pins the suggestion on this line and none on `Varus`.
 
 ## The steady bills
 

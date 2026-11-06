@@ -91,6 +91,14 @@ export type ReviewCandidate = RewriteCandidate & {
   untrackedCounterpart: string | null;
 };
 
+// The rows the user has already filed, counted per stored description and category key: the
+// votes a suggestion is read from.
+export type ReviewEvidence = { description: string; categoryKey: string; rowCount: number };
+
+// The category most of a merchant's filed rows hold: `agreeing` of `total` rows with a real
+// category.
+export type ReviewSuggestion = { category: string; agreeing: number; total: number };
+
 export type ReviewGroup = {
   key: string;
   // One per normalized name, in its full tidied spelling, most rows first.
@@ -98,6 +106,7 @@ export type ReviewGroup = {
   rowCount: number;
   newestTime: number;
   rule: { kind: NameRuleKind; text: string };
+  suggestion: ReviewSuggestion | null;
 };
 
 export type RuleValidation =
