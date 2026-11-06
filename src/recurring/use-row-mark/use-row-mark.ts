@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
-import { match } from 'ts-pattern';
 import {
   type DetectedPeriod,
   type RecurringInput,
   chargeGroupsOf,
   groupKeyOf,
 } from '@kiko/recurring/detection';
+import { match, P } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { startOfLocalDay } from '@kiko/dates';
 import { settingsRepo } from '@kiko/settings';
@@ -98,7 +98,8 @@ export const useRowMark = (
       foldMap(maybe(detection), (found) =>
         match(rowRecurrenceFromDetection(found, { key, rowId: row.id, choices, today }))
           .with({ kind: 'detected' }, ({ period }) => period)
-          .otherwise(() => null),
+          .with({ kind: P.union('marked', 'none') }, () => null)
+          .exhaustive(),
       ) ?? null,
     [detection, key, row.id, choices, today],
   );

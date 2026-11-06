@@ -92,6 +92,15 @@ const MARKED_UNDER_CONSTRUCTOR = settingsRowsOf('constructor', {
   name: 'Constructor',
   marks: [markOf('yearly', 10_000)],
 });
+const HIDDEN_UNDER_CONSTRUCTOR = settingsRowsOf('constructor', {
+  name: 'Constructor',
+  hidden: true,
+});
+const HIDDEN_AND_MARKED_UNDER_CONSTRUCTOR = settingsRowsOf('constructor', {
+  name: 'Constructor',
+  hidden: true,
+  marks: [markOf('yearly', 10_000)],
+});
 
 // The ids of the ledgers' rows, by their amount.
 const ROW_ID_OF_AMOUNT: Record<number, string> = {
@@ -140,6 +149,11 @@ const SILENT_CASES: [string, Scenario, Scenario][] = [
     'a hidden entry marked only in another currency',
     { settingsRows: HIDDEN_AND_MARKED_IN_DOLLARS },
     { settingsRows: HIDDEN_AND_MARKED_IN_DOLLARS, currency: 'USD' },
+  ],
+  [
+    'a hide-only entry under a plain-object member name',
+    { settingsRows: HIDDEN_UNDER_CONSTRUCTOR, description: 'constructor' },
+    { settingsRows: HIDDEN_AND_MARKED_UNDER_CONSTRUCTOR, description: 'constructor' },
   ],
   [
     'a row not offered',

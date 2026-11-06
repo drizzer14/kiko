@@ -27,25 +27,13 @@ import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
 import { entryOf, randomEntriesOf } from '@kiko/test-support/marked-series-world';
 
+import { rowRecurrenceOf } from './row-recurrence';
+
 type Choices = ReadonlyMap<string, RecurringMerchantChoice>;
 type Shown =
   | { kind: 'marked'; period: RecurringPeriod; marks: readonly RecurringMark[] }
   | { kind: 'detected'; period: RecurringPeriod }
   | { kind: 'none' };
-type RowRecurrenceModule = {
-  rowRecurrenceOf: (input: {
-    chargeGroups: ChargeGroups;
-    key: string;
-    currency: Currency;
-    rowId: string;
-    choices: Choices;
-    today: number;
-  }) => Shown;
-};
-
-// A runtime lookup, so the pin fails by itself while the module is missing and the file still
-// typechecks.
-const rowRecurrenceModule = (): RowRecurrenceModule => jest.requireActual('./row-recurrence');
 
 const SEED_SPREAD = 104_729;
 const FIRST_SEED = 3;
@@ -158,7 +146,7 @@ describe('rowRecurrenceOf over random ledgers, marks and hides', () => {
   it('gives every row the answer the list shows for it', () => {
     for (const { ledger, choices, groups, shown } of worlds) {
       for (const row of ledger.rows) {
-        const answer = rowRecurrenceModule().rowRecurrenceOf({
+        const answer = rowRecurrenceOf({
           chargeGroups: groups,
           key: merchantNameOf(row.description).key,
           currency: currencyOf(ledger, row),

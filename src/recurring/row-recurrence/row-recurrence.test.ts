@@ -1,8 +1,6 @@
 import {
   type ChargeGroups,
-  type DetectedPeriod,
   type RecurringMark,
-  type RecurringPeriod,
   type seriesOfGroups,
   chargeGroupsOf,
   groupKeyOf,
@@ -21,26 +19,11 @@ import type { Currency } from '@kiko/currency/currency';
 import type { RecurringMerchantChoice } from '@kiko/settings';
 import { entryOf, type MarkSpec } from '@kiko/test-support/marked-series-world';
 
+import { type RowRecurrence, rowRecurrenceOf } from './row-recurrence';
+
 type Choices = ReadonlyMap<string, RecurringMerchantChoice>;
-type RowRecurrence =
-  | { kind: 'marked'; period: RecurringPeriod; marks: readonly RecurringMark[] }
-  | { kind: 'detected'; period: DetectedPeriod }
-  | { kind: 'none' };
-type RowRecurrenceInput = {
-  chargeGroups: ChargeGroups;
-  key: string;
-  currency: Currency;
-  rowId: string;
-  choices: Choices;
-  today: number;
-};
-type RowRecurrenceModule = { rowRecurrenceOf: (input: RowRecurrenceInput) => RowRecurrence };
 type Where = { key?: string; currency?: Currency };
 type Entry = { name: string; marks?: MarkSpec[]; isHidden?: boolean };
-
-// A runtime lookup, per test, so each pin fails by itself while the module is missing and the file
-// still typechecks.
-const rowRecurrenceModule = (): RowRecurrenceModule => jest.requireActual('./row-recurrence');
 
 const seriesCalls: ChargeGroups[] = [];
 
@@ -92,7 +75,7 @@ const recurrenceOf = (
   choices: Choices = NO_CHOICES,
   { key = 'netflix', currency = 'UAH' }: Where = {},
 ): RowRecurrence =>
-  rowRecurrenceModule().rowRecurrenceOf({
+  rowRecurrenceOf({
     chargeGroups: chargeGroupsOf(ledger, NOW),
     key,
     currency,
@@ -284,7 +267,7 @@ describe('the work rowRecurrenceOf does', () => {
 
     expect(full.groups.size).toBe(2);
 
-    rowRecurrenceModule().rowRecurrenceOf({
+    rowRecurrenceOf({
       chargeGroups: full,
       key: 'netflix',
       currency: 'UAH',

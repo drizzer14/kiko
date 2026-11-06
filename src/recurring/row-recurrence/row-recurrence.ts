@@ -19,7 +19,7 @@ import type { RecurringMerchantChoice } from '@kiko/settings';
 
 type Choices = ReadonlyMap<string, RecurringMerchantChoice>;
 
-type RowRecurrence =
+export type RowRecurrence =
   | { kind: 'marked'; period: RecurringPeriod; marks: readonly RecurringMark[] }
   | { kind: 'detected'; period: DetectedPeriod }
   | { kind: 'none' };
@@ -109,8 +109,6 @@ export const rowRecurrenceFromDetection = (
  * What the series list shows for one row, found without the list: both screens give a row the same
  * answer. It is the two steps in a row; the form runs the first on a ledger fire only and the
  * second on a settings fire.
- *
- * @public Only the pins call this composition (by a runtime lookup, which Knip cannot follow).
  */
 export const rowRecurrenceOf = ({
   chargeGroups,
