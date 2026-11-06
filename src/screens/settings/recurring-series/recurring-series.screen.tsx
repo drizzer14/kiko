@@ -40,6 +40,7 @@ import type { SettingsStackParamList } from '@kiko/navigation/types';
 import { FlatList, type FlatListProps, Pressable } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
+import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
 import { useFloatingFooterEnd } from '@kiko/design-system/floating-footer';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -129,6 +130,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
   // of `goBack`; the series it removed stays on screen until then. Only this screen's own write
   // sets it: the same removal made elsewhere shows the neutral text.
   const [removedSeries, setRemovedSeries] = useState<RecurringSeries>();
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const series = removedSeries ?? seriesOfRoute(detectedSeries, markedSeries, route.params);
   const isVisible = useIsScreenVisible();
   // Paused under the form a charge opens: on Back the last rows show until the one re-read lands.
@@ -188,6 +190,10 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
     }
   };
   const { onPress: onHide, isSubmitting: isHiding } = useSubmitOnce(hide);
+  const confirmHide = (): void => {
+    setIsConfirmOpen(false);
+    onHide();
+  };
   // The same way out as the hide, for the marks of the marked series on screen.
   const removeMark = async (): Promise<void> => {
     if (series?.marks === undefined) {
@@ -243,7 +249,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
           <Button
             variant="secondaryTonal"
             loading={isHiding}
-            onPress={onHide}
+            onPress={() => setIsConfirmOpen(true)}
             testID="recurring-series-hide"
           >
             {t('recurringCharges.notRecurring')}
@@ -260,6 +266,16 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
         ),
       )}
     >
+      <ConfirmSheet
+        visible={isConfirmOpen}
+        title={t('recurringCharges.notRecurringConfirmTitle')}
+        message={t('recurringCharges.notRecurringConfirmMessage', { name: series?.name })}
+        confirmLabel={t('recurringCharges.notRecurring')}
+        destructive
+        onConfirm={confirmHide}
+        onCancel={() => setIsConfirmOpen(false)}
+      />
+
       <ChargeList
         data={charges}
         keyExtractor={({ id }) => id}
