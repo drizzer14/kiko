@@ -8,6 +8,12 @@ import {
   fetchUnifiedBalance,
   signedBybitGet,
 } from './bybit.client';
+import {
+  fetchDepositPage,
+  fetchInternalDepositPage,
+  fetchTransferPage,
+  fetchWithdrawalPage,
+} from './bybit.history-client';
 import { BYBIT_SIGNED_PATHS } from './bybit.endpoints';
 import { API_KEY, SECRET, answerWith, envelopeOf } from './bybit.client-test-fixtures';
 
@@ -17,9 +23,15 @@ const ROOT = path.join(__dirname, '../../..');
 // other path can reach the client without this file changing in the same commit.
 const READ_PATHS = [
   '/v5/account/wallet-balance',
+  '/v5/asset/deposit/query-internal-record',
+  '/v5/asset/deposit/query-record',
   '/v5/asset/transfer/query-account-coins-balance',
+  '/v5/asset/transfer/query-inter-transfer-list',
+  '/v5/asset/withdraw/query-record',
   '/v5/user/query-api',
 ];
+
+const FIRST_PAGE = { span: { start: 0, end: 1 }, cursor: undefined };
 
 const ENV_FILES = [path.join(ROOT, '.env.example'), path.join(ROOT, '.env.test')];
 
@@ -50,22 +62,26 @@ describe('the closed list of Bybit reads', () => {
     }
 
     expect(sent.map((request) => pathOf(request.url))).toEqual(READ_PATHS);
-    expect(sent.map((request) => request.init.method)).toEqual(['GET', 'GET', 'GET']);
+    expect(sent.map((request) => request.init.method)).toEqual(READ_PATHS.map(() => 'GET'));
   });
 
   it('every read the client exports goes through the listed paths with GET', async () => {
     const { fetchImpl, sent } = answerWith({
-      body: envelopeOf(0, { list: [{ coin: [] }], balance: [] }),
+      body: envelopeOf(0, { list: [{ coin: [] }], balance: [], rows: [] }),
     });
     const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(fetchImpl);
 
     await fetchKeyInfo(API_KEY, SECRET);
     await fetchUnifiedBalance(API_KEY, SECRET);
     await fetchFundBalance(API_KEY, SECRET);
+    await fetchDepositPage(API_KEY, SECRET, FIRST_PAGE);
+    await fetchInternalDepositPage(API_KEY, SECRET, FIRST_PAGE);
+    await fetchWithdrawalPage(API_KEY, SECRET, FIRST_PAGE);
+    await fetchTransferPage(API_KEY, SECRET, FIRST_PAGE);
     fetchSpy.mockRestore();
 
     expect(sent.map((request) => pathOf(request.url)).sort()).toEqual(READ_PATHS);
-    expect(sent.map((request) => request.init.method)).toEqual(['GET', 'GET', 'GET']);
+    expect(sent.map((request) => request.init.method)).toEqual(READ_PATHS.map(() => 'GET'));
   });
 });
 
