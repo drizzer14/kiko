@@ -502,6 +502,50 @@ describe('the choices a help step names', () => {
   );
 
   it.each([
+    [
+      'en',
+      enValues,
+      [
+        'more than 2 minutes apart or only one side was synced',
+        'from one of your own IBANs',
+        'a category you pick with "Categories" narrows the category table only',
+      ],
+      'are the figures of the category table',
+    ],
+    [
+      'uk',
+      ukValues,
+      [
+        'понад 2 хвилини або синхронізовано лише одну',
+        'з вашого власного IBAN',
+        'звужує лише таблицю за категоріями',
+      ],
+      'це дані таблиці за категоріями',
+    ],
+  ] as const)(
+    'names in %s the own transfers and the own-IBAN credit that income can get wrong, and no longer ties the expenses to a held category pick',
+    (_language, values, wrongRows, falseClaim) => {
+      const step = stepOf(values, 'viewStatistics', 10);
+
+      for (const wrongRow of wrongRows) {
+        expect(step).toContain(wrongRow);
+      }
+
+      expect(step).not.toContain(falseClaim);
+    },
+  );
+
+  it('words the refund credit of step 10 in uk without the change-return word, with «вважається» and the bank account in full', () => {
+    const step = stepOf(ukValues, 'viewStatistics', 10);
+
+    expect(step).not.toContain('Повернення коштів');
+    expect(step).not.toContain('рахується');
+    expect(step).not.toContain('на ваш банк ');
+    expect(step).toContain('вважається');
+    expect(step).toContain('на ваш банківський рахунок');
+  });
+
+  it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],
     ['uk', ukValues, /лише/i, 'Відсотки за кредитом'],
   ] as const)(
