@@ -411,9 +411,10 @@ describe('DataTable', () => {
       // What the device reports: a layout event for each measuring view that is mounted, none for
       // one that is not.
       const reportWidths = async (rendered: Rendered, widths: Record<string, number>) => {
-        const mounted = rendered.queryAllByTestId(/^table-measure-(labels|column-.+)$/, {
-          includeHiddenElements: true,
-        });
+        const mounted = rendered.queryAllByTestId(
+          new RegExp(`^${PREFIX}-measure-(labels|column-.+)$`),
+          { includeHiddenElements: true },
+        );
 
         for (const view of mounted) {
           const key = String(view.props.testID).replace(`${PREFIX}-measure-`, '');
