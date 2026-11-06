@@ -224,23 +224,23 @@ block fails it.
 
 ## Native chrome follows the window
 
-The window's interface style decides the scheme of every native view: the OS sets it, and
-`Appearance.setColorScheme` sets it for the Light and Dark modes. No file pins a scheme beside
-it, and no file switches the Unistyles theme by hand. Three pre-write guard rules in
+The window's interface style decides the scheme of every native view. The only allowed switch is
+`Appearance.setColorScheme`, and only the set 6 appearance control calls it. No file pins a
+scheme beside it, and no file switches the Unistyles theme by hand. Three pre-write guard rules in
 `rules/semgrep-prewrite.yml` keep it so; each has a fixture pair under `rules/fixtures/`.
 
 - `kiko-no-unistyles-set-theme`: no call of `UnistylesRuntime.setTheme` or
-  `UnistylesRuntime.setAdaptiveThemes`. Unistyles' `adaptiveThemes` setting, passed to
-  `StyleSheet.configure`, is the one theme switch, and it follows the window. A manual call is a
-  second switch that can disagree with the native chrome, and on Unistyles 3.3.0 these two calls
-  were the #1179 path. Reading `UnistylesRuntime.themeName` stays allowed.
+  `UnistylesRuntime.setAdaptiveThemes`. The window's scheme is the one source, and the allowed
+  switch is `Appearance.setColorScheme`. A manual call is a second switch that can disagree with
+  the native chrome, and on Unistyles 3.3.0 these two calls were the #1179 path. Reading
+  `UnistylesRuntime.themeName` stays allowed.
 - `kiko-no-hard-coded-native-scheme`: no `colorScheme="dark"` or `colorScheme="light"` JSX prop
   (`colorScheme="system"` follows the window, as `GlassSurface` and `BottomSheet` set it), no
   `keyboardAppearance` of `'dark'` or `'light'` as a prop or an object field (an input that sets
   none takes the window's style), and no `headerBlurEffect` whose string ends in `Dark` or
-  `Light` in any case (`systemChromeMaterial` has no scheme in its name, so it follows the
-  window; `large-title-screen-options.ts` uses it). A pinned value keeps the view in the old
-  scheme when the window changes, and the dark-only app hid that.
+  `Light` in any case, as an object field (`systemChromeMaterial` has no scheme in its name, so
+  the bar's own style picks it; `large-title-screen-options.ts` uses it). A pinned value keeps
+  the view in the old scheme when the window changes, and the dark-only app hid that.
 - `kiko-no-nested-text`: no `Text` or `MoneyText` inside a `Text`. Unistyles 3.6.0 (issue #1329)
   leaves a nested `Text` on its old color under a Reanimated view when the theme changes; the fix
   (PR #1353) ships in 3.8.0, so the nested form waits for that version. The tree has no nested
@@ -372,9 +372,9 @@ every one of them, so scan this list rather than the reference files for what is
   glass path's tint; (3) every large-title native stack takes
   `screenOptions={largeTitleScreenOptions}`
   (`src/navigation/large-title-screen-options/`), which on this tier adds
-  `headerBlurEffect: 'systemChromeMaterial'` (no scheme in the name: it follows the window's
-  interface style, which is Dark while the plist pins it) plus `headerLargeStyle:
-  { backgroundColor: 'transparent' }` (the at-rest large title stays
+  `headerBlurEffect: 'systemChromeMaterial'` (no scheme in the name: the blur takes the nav bar's
+  own style override, which native-stack sets from the navigation theme's `dark` flag) plus
+  `headerLargeStyle: { backgroundColor: 'transparent' }` (the at-rest large title stays
   transparent, only the scrolled bar blurs), because react-native-screens
   builds a transparent appearance with no background effect there. On
   iOS 26+ it passes neither option. A new large-title stack, or a screen

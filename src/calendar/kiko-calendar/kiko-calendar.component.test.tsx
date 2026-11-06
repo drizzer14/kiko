@@ -1,11 +1,10 @@
 import { View } from 'react-native';
-import { render } from '@testing-library/react-native';
-import Calendar from 'react-native-calendars/src/calendar';
-
 import {
   registerLightThemeFirst,
   restoreThemeOrder,
 } from '@kiko/test-support/light-theme-registered';
+import { render } from '@testing-library/react-native';
+import Calendar from 'react-native-calendars/src/calendar';
 import '@kiko/design-system/unistyles';
 import KikoCalendar from './kiko-calendar.component';
 

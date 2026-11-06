@@ -31,7 +31,7 @@ import type { KikoCalendarProps } from './kiko-calendar.props';
 //      (its own weekday-label row, via the SAME `firstDay` prop, which
 //      react-native-calendars forwards to a custom header automatically) read
 //      this, so the two stay in sync.
-// It also applies the app's dark calendar theme so callers don't repeat it.
+// It also applies the calendar theme of the active scheme so callers don't repeat it.
 const KikoCalendar: FC<KikoCalendarProps> = ({
   testID,
   markedDates,

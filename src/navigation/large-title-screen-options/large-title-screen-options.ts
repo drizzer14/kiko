@@ -7,7 +7,8 @@ import type { NativeStackNavigationOptions } from '@react-navigation/native-stac
  * Below iOS 26, react-native-screens builds a transparent bar style with
  * no background effect, so once the large title collapses the bar is fully
  * see-through. `headerBlurEffect` gives the scrolled bar a blur whose material has no scheme
- * in its name, so it takes the window's interface style; `headerLargeStyle` keeps the at-rest
+ * in its name, so it takes the nav bar's own style override, which native-stack sets from the
+ * navigation theme's `dark` flag; `headerLargeStyle` keeps the at-rest
  * large title transparent, so the blur shows only when scrolled. On iOS 26+ the system draws
  * its own Liquid Glass bar, so neither option is passed and that look stays untouched.
  *
