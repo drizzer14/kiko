@@ -1685,7 +1685,8 @@ are built with `createPaneStackNavigator`.
   `src/navigation/pane-stack/pane-stack-view/pane-slice.ts`), except the large title, so both
   sides of the swipe share one appearance. A hidden root header hides the shared bar when a
   swipe starts; a differing appearance fades the bar's background (implementation note, not a
-  user ruling; its native effect is a device point, not yet seen). Back after a fold and unfold is an open fault with no found cause.
+  user ruling; its native effect is a device point, not yet seen).
+  Back after a fold and unfold is an open fault with no found cause.
 - **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` decides
   by position alone: index 0 takes `rootPane`, every other route, a default included, takes the
   detail pane (so a route pushed while folded, or a reminder rebuild, never lands in the list
