@@ -364,7 +364,12 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
           }
         />
 
-        <ColorPicker label={t('forms.fields.color')} value={previewColor} onSelect={setColor} />
+        <ColorPicker
+          label={t('forms.fields.color')}
+          value={previewColor}
+          swatchSet="category"
+          onSelect={setColor}
+        />
 
         {isEdit && (
           <>

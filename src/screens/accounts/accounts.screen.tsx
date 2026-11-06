@@ -42,6 +42,7 @@ import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { useIsScreenVisible, useOpenInPane } from '@kiko/navigation/pane-stack';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { type AccountRow, type HoldingRow, useDataReady, useLiveQuery } from '@kiko/db';
@@ -89,6 +90,7 @@ const useSectionTotals = (
 const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const scheme = useActiveColorScheme();
   // Deliberately `paused` (not `enabled`) while another tab or an account's
   // own screens show: this screen stays mounted, so its subscriptions stay and
   // a write elsewhere only marks each query dirty — hiding Accounts costs no
@@ -287,7 +289,7 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
       now,
       priceBook,
     );
-    const { icon, color } = accountIdentity(item);
+    const { icon, color } = accountIdentity(item, scheme);
 
     return (
       <CardContextMenu

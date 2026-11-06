@@ -56,12 +56,12 @@ const EntityIconTile: FC<EntityIconTileProps> = ({
   // WCAG AA contrast on the palette's lighter swatches (`white`, `yellow`,
   // `khaki`, `mint`, `teal` — see `isLightEntityColor`'s own doc comment in
   // `entity-tint.ts`), reading as a near-invisible icon, so the glyph tint
-  // adapts to the tile's own resolved hue: `theme.colors.background` (the
-  // app's true-black token, already used everywhere else as the dark
-  // extreme) on a light tile, the standard white `onAccent` on a dark one —
-  // never a raw hex literal for either.
+  // adapts to the tile's own resolved hue: `theme.colors.glyphOnLightTile`
+  // on a light tile (not `background`, which is a pale gray in the light
+  // theme), the standard white `onAccent` on a dark one — never a raw hex
+  // literal for either.
   const glyphTintColor = isLightEntityColor(color)
-    ? theme.colors.background
+    ? theme.colors.glyphOnLightTile
     : theme.colors.onAccent;
 
   return (

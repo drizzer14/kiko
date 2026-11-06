@@ -48,9 +48,8 @@ export const chartSeriesDark = [
 
 // Light twins of the dark set, from docs/design/light-palette/palette.json (pinned by
 // light-palette-source.test.ts). Stored colors stay the dark hex; these are only the display
-// value. Keyed by the dark set, so a key can never exist on one side only. They sit below the dark
-// sets so the dark blocks keep their original place in this file, and a diff against the base
-// shows them untouched.
+// value. Keyed by the dark set, so a key can never exist on one side only. The dark blocks come
+// first because check-dark.mjs reads this file by text position.
 //
 // Tile fill for an account or holding: kept at least 3.8:1 against white, so even the lightened
 // top gradient stop holds a white glyph at 3:1.
