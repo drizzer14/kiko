@@ -71,9 +71,13 @@ const seriesOf = (id: string, overrides: Partial<RecurringSeries> = {}): Recurri
   ...overrides,
 });
 
-const NETFLIX = seriesOf('netflix', { chargeIds: ['b3', 'b1'] });
-const SPOTIFY = seriesOf('spotify', { chargeIds: ['a2', 'b1'], currency: 'USD' });
-const ICLOUD = seriesOf('icloud', { chargeIds: ['c0'] });
+const NETFLIX = seriesOf('netflix', { chargeIds: ['b3', 'b1'], lastChargeAmountMinorUnits: 5_000 });
+const SPOTIFY = seriesOf('spotify', {
+  chargeIds: ['a2', 'b1'],
+  currency: 'USD',
+  lastChargeAmountMinorUnits: 1,
+});
+const ICLOUD = seriesOf('icloud', { chargeIds: ['c0'], lastChargeAmountMinorUnits: 700 });
 const NEW_MARK = seriesOf('gym', { chargeIds: ['d9'] });
 
 // A row id two series both hold is one id in the read.
@@ -217,11 +221,8 @@ describe('the groups the hook hands over', () => {
 
     expect(result.current.isLoading).toBe(false);
     expect(result.current.groups.map((group) => group.key)).toEqual(['media', 'general']);
-    expect(result.current.groups.map((group) => group.total.minorUnits)).toEqual([
-      10_000 + 40,
-      700,
-    ]);
-    expect(result.current.total).toEqual({ currency: 'UAH', minorUnits: 10_740 });
+    expect(result.current.groups.map((group) => group.total.minorUnits)).toEqual([5_000 + 40, 700]);
+    expect(result.current.total).toEqual({ currency: 'UAH', minorUnits: 5_740 });
   });
 });
 

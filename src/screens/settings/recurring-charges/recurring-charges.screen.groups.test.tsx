@@ -202,13 +202,14 @@ describe('RecurringChargesScreen — category groups', () => {
     ]);
   });
 
-  it('shows the paid-so-far label and the sum of the group totals in the total of all', async () => {
+  it('shows the last-charges label and the sum of the group totals in the total of all', async () => {
     worldOf(TWO_GROUPS);
 
     const { getByTestId } = await renderScreen();
     const total = within(getByTestId('recurring-charges-total'));
 
-    expect(total.getByText('All paid so far')).toBeTruthy();
+    expect(total.getByText('Sum of last charges')).toBeTruthy();
+    expect(total.queryByText('All paid so far')).toBeNull();
     expect(total.getByText(moneyText(60000 + 89700 + 19800))).toBeTruthy();
   });
 
@@ -258,6 +259,30 @@ describe('RecurringChargesScreen — category groups', () => {
     expect(shown.map(({ id }) => id).sort()).toEqual(['netflix', 'power']);
     expect(all.map(({ id }) => id).sort()).toEqual(['netflix', 'power', 'spotify']);
     expect(queryByTestId(rowId('Spotify'))).toBeNull();
+  });
+});
+
+describe('RecurringChargesScreen — the total row label, in uk', () => {
+  beforeEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('reads the total of all as the sum of last charges', async () => {
+    worldOf(TWO_GROUPS);
+
+    const { getByTestId } = await renderScreen();
+    const total = within(getByTestId('recurring-charges-total'));
+
+    expect(total.getByText('Сума останніх списань')).toBeTruthy();
+    expect(total.queryByText('Усього сплачено')).toBeNull();
   });
 });
 

@@ -245,31 +245,89 @@ describe('recurringGroupsOf: the order of groups and of series', () => {
 });
 
 describe('recurringGroupsOf: the totals', () => {
-  it('sums `-amountMinorUnits` over the rows of a series, skipping a row of another currency', () => {
-    const series = seriesOf('netflix', { chargeIds: ['a', 'b', 'c'] });
+  it('adds the last charge of a series of three charges to its group, not the three', () => {
+    const series = seriesOf('netflix', {
+      chargeIds: ['newest', 'middle', 'oldest'],
+      lastChargeAmountMinorUnits: 300,
+    });
 
     const { groups } = recurringGroupsOf(
       inputOf({
         shown: [series],
         rows: [
-          rowOf('a', -1_000, 'media'),
-          rowOf('b', -2_500, 'media'),
-          rowOf('c', -777, 'media', 'USD'),
+          rowOf('newest', -300, 'media'),
+          rowOf('middle', -200, 'media'),
+          rowOf('oldest', -100, 'media'),
         ],
       }),
     );
 
-    expect(plain(groups[0].total)).toEqual({ currency: 'UAH', minorUnits: 3_500 });
+    expect(plain(groups[0].total)).toEqual({ currency: 'UAH', minorUnits: 300 });
+  });
+
+  it('counts `lastChargeAmountMinorUnits` when the newest row is missing from the rows', () => {
+    const series = seriesOf('netflix', {
+      chargeIds: ['missing', 'middle', 'oldest'],
+      lastChargeAmountMinorUnits: 300,
+    });
+
+    const { groups } = recurringGroupsOf(
+      inputOf({
+        shown: [series],
+        rows: [rowOf('middle', -200, 'media'), rowOf('oldest', -150, 'media')],
+      }),
+    );
+
+    expect(plain(groups[0].total)).toEqual({ currency: 'UAH', minorUnits: 300 });
+  });
+
+  it('converts the last charge of a USD series once, at the rate table, and adds Money', () => {
+    const series = seriesOf('spotify', {
+      currency: 'USD',
+      chargeIds: ['cent-2', 'cent-1'],
+      lastChargeAmountMinorUnits: 3,
+    });
+
+    const { groups, total } = recurringGroupsOf(
+      inputOf({
+        shown: [seriesOf('netflix', { lastChargeAmountMinorUnits: 5_000 }), series],
+        rows: [
+          rowOf('netflix-charge', -5_000, 'media'),
+          rowOf('cent-2', -1, 'media', 'USD'),
+          rowOf('cent-1', -1, 'media', 'USD'),
+        ],
+      }),
+    );
+    const expected = Money.of('UAH', 5_000).add(convert(Money.of('USD', 3), 'UAH', RATE_TABLE));
+
+    expect(plain(groups[0].total)).toEqual(plain(expected));
+    expect(plain(total)).toEqual({ currency: 'UAH', minorUnits: 5_121 });
+  });
+
+  it('counts the last charge of a stopped series', () => {
+    const { groups, total } = recurringGroupsOf(
+      inputOf({
+        shown: [
+          seriesOf('netflix', { lastChargeAmountMinorUnits: 5_000 }),
+          seriesOf('old-gym', { isStopped: true, lastChargeAmountMinorUnits: 700 }),
+        ],
+        rows: [rowOf('netflix-charge', -5_000, 'media'), rowOf('old-gym-charge', -700, 'media')],
+      }),
+    );
+
+    expect(plain(groups[0].total)).toEqual({ currency: 'UAH', minorUnits: 5_700 });
+    expect(plain(total)).toEqual({ currency: 'UAH', minorUnits: 5_700 });
   });
 
   describe('with a UAH and a USD series in one group', () => {
     const usdSeries = seriesOf('spotify', {
       currency: 'USD',
       chargeIds: ['cent-1', 'cent-2', 'cent-3'],
+      lastChargeAmountMinorUnits: 3,
     });
     const worldOf = (): GroupsInput =>
       inputOf({
-        shown: [seriesOf('netflix'), usdSeries],
+        shown: [seriesOf('netflix', { lastChargeAmountMinorUnits: 5_000 }), usdSeries],
         rows: [
           rowOf('netflix-charge', -5_000, 'media'),
           rowOf('cent-1', -1, 'media', 'USD'),
@@ -303,30 +361,39 @@ describe('recurringGroupsOf: the totals', () => {
 
   it('makes the total of all the sum of the group totals', () => {
     const shown = [
-      seriesOf('media-usd', { currency: 'USD' }),
-      seriesOf('bills-usd', { currency: 'USD' }),
-      seriesOf('general-uah'),
+      seriesOf('media-usd-first', { currency: 'USD', lastChargeAmountMinorUnits: 1 }),
+      seriesOf('media-usd-second', { currency: 'USD', lastChargeAmountMinorUnits: 1 }),
+      seriesOf('bills-usd', { currency: 'USD', lastChargeAmountMinorUnits: 1 }),
+      seriesOf('general-uah', { lastChargeAmountMinorUnits: 300 }),
     ];
 
     const { groups, total } = recurringGroupsOf(
       inputOf({
         shown,
         rows: [
-          rowOf('media-usd-charge', -1, 'media', 'USD'),
+          rowOf('media-usd-first-charge', -1, 'media', 'USD'),
+          rowOf('media-usd-second-charge', -1, 'media', 'USD'),
           rowOf('bills-usd-charge', -1, 'bills', 'USD'),
           rowOf('general-uah-charge', -300, 'general'),
         ],
       }),
     );
 
-    expect(groups.map((group) => group.total.minorUnits)).toEqual([40, 40, 300]);
-    expect(plain(total)).toEqual({ currency: 'UAH', minorUnits: 380 });
+    expect(groups.map((group) => group.total.minorUnits)).toEqual([80, 40, 300]);
+    expect(plain(total)).toEqual({
+      currency: 'UAH',
+      minorUnits: groups.reduce((sum, group) => sum + group.total.minorUnits, 0),
+    });
+    expect(total?.minorUnits).toBe(420);
   });
 
   it('leaves a currency the rate table cannot convert out of the totals, its series still listed', () => {
     const { groups, total } = recurringGroupsOf(
       inputOf({
-        shown: [seriesOf('netflix'), seriesOf('coin-subscription', { currency: 'BTC' })],
+        shown: [
+          seriesOf('netflix', { lastChargeAmountMinorUnits: 5_000 }),
+          seriesOf('coin-subscription', { currency: 'BTC', lastChargeAmountMinorUnits: 100_000 }),
+        ],
         rows: [
           rowOf('netflix-charge', -5_000, 'media'),
           rowOf('coin-subscription-charge', -100_000, 'media', 'BTC'),
