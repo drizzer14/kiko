@@ -12,7 +12,7 @@ import { renderStackInContainer, stackProbe } from '@kiko/test-support/navigator
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
-import type { RecurringPeriod } from '@kiko/recurring/detection';
+import type { DetectedPeriod, RecurringPeriod } from '@kiko/recurring/detection';
 
 import HomeStack from '../home-stack';
 import { SETTLE_DELAY_MS } from '../pane-stack';
@@ -105,6 +105,9 @@ const ROUTES_TO_SERIES = ['Settings', 'RecurringCharges', 'RecurringSeries'];
 const periodLabel = (period: RecurringPeriod): string =>
   i18next.t(`forms.transaction.recurringPeriod.${period}`);
 
+const detectedLabel = (period: DetectedPeriod): string =>
+  i18next.t(`forms.transaction.detectedRecurring.${period}`);
+
 const apple = { description: 'Apple' } as const;
 const cheap = (count: number) => monthly(count, 5, 99, { ...apple, prefix: 'cheap' });
 const dear = monthly(10, 20, 399, { ...apple, prefix: 'dear' });
@@ -154,10 +157,10 @@ const fieldReads = async (view: View, label: string): Promise<void> => {
   });
 };
 
-const pick = async (view: View, label: string): Promise<void> => {
+const pick = async (view: View, label: string, readsAfter = label): Promise<void> => {
   await fireEvent.press(view.getByLabelText(FIELD_LABEL));
   await fireEvent.press(view.getByLabelText(label));
-  await fieldReads(view, label);
+  await fieldReads(view, readsAfter);
 };
 
 // A change between one pane and two reaches the stack once the mode has held still.
@@ -244,7 +247,7 @@ describe.each<[string, LayoutMode]>([
     await openSeries(view, 'charge-4');
     await expectDetectedSeries(view);
     await openCharge(view, 'charge-0');
-    await fieldReads(view, NOT_MARKED);
+    await fieldReads(view, detectedLabel('monthly'));
     await pick(view, periodLabel('monthly'));
     await goBack();
 
@@ -261,14 +264,22 @@ describe.each<[string, LayoutMode]>([
     await openSeries(view, 'charge-7');
     await expectDetectedSeries(view);
     await openCharge(view, 'charge-0');
-    await fieldReads(view, NOT_MARKED);
+    await fieldReads(view, detectedLabel('monthly'));
     await pick(view, periodLabel('monthly'));
     await goBack();
     await expectNeutralText(view);
   });
 
-  it.each<[string, Row[], Mark, string, string, number]>([
-    ['one detected series', NETFLIX_FIVE, NETFLIX_AT_100, 'charge-4', 'charge-0', 5],
+  it.each<[string, Row[], Mark, string, string, number, string]>([
+    [
+      'one detected series',
+      NETFLIX_FIVE,
+      NETFLIX_AT_100,
+      'charge-4',
+      'charge-0',
+      5,
+      detectedLabel('monthly'),
+    ],
     [
       'Apple 99 beside detected 399',
       [...cheap(10), ...dear],
@@ -276,6 +287,7 @@ describe.each<[string, LayoutMode]>([
       'cheap-9',
       'cheap-0',
       10,
+      detectedLabel('monthly'),
     ],
     [
       'marks-only 99 x2 beside detected 399 x10',
@@ -284,10 +296,11 @@ describe.each<[string, LayoutMode]>([
       'cheap-1',
       'cheap-0',
       2,
+      NOT_MARKED,
     ],
   ])(
     'shows the neutral text on Back after "Not marked" on a marked series: %s',
-    async (_world, rows, mark, rowId, chargeId, count) => {
+    async (_world, rows, mark, rowId, chargeId, count, readsAfter) => {
       await arrange(rows, [mark]);
 
       const view = await renderSettings(mode);
@@ -296,7 +309,7 @@ describe.each<[string, LayoutMode]>([
       await expectMarkedSeries(view, { count });
       await openCharge(view, chargeId);
       await fieldReads(view, periodLabel('monthly'));
-      await pick(view, NOT_MARKED);
+      await pick(view, NOT_MARKED, readsAfter);
       await goBack();
       await expectNeutralText(view);
     },
@@ -353,7 +366,7 @@ describe('Settings stack: a fold with a marked series and its form open', () => 
 describe('The mark field reads the same state from Home and from a series link', () => {
   const FIELD_BY_ROW: [string, string, string, string][] = [
     ['a row of the marked chain', 'cheap-0', 'cheap-9', periodLabel('monthly')],
-    ['a row of the other chain', 'dear-0', 'dear-9', NOT_MARKED],
+    ['a row of the other chain', 'dear-0', 'dear-9', detectedLabel('monthly')],
   ];
 
   it.each(FIELD_BY_ROW)('opened from Home: %s', async (_chain, chargeId, _seriesRow, label) => {

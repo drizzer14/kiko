@@ -95,7 +95,13 @@ export const recurringGroupsOf = ({
   for (const entry of inGroupOrder) {
     const key = categoryKeyOf(entry);
 
-    seriesByKey.set(key, [...(seriesByKey.get(key) ?? []), entry]);
+    const inKey = seriesByKey.get(key);
+
+    if (inKey === undefined) {
+      seriesByKey.set(key, [entry]);
+    } else {
+      inKey.push(entry);
+    }
   }
 
   const groups = keys.flatMap((key): RecurringGroup[] => {

@@ -5,9 +5,11 @@ import { useWindowDimensions, View } from 'react-native';
 import { styles } from './paired-fields-row.styles';
 import type { PairedFieldsRowProps } from './paired-fields-row.props';
 
-// The font scale from which two paired fields stack: iOS's first accessibility text size, AX1.
-// Apple's type-size table gives the body style 17 pt at the default size and 28 pt at AX1, so
-// 28 / 17; the largest regular size, xxxLarge, is 23 / 17 (about 1.35) and stays a row.
+// The font scale from which two paired fields stack. React Native's own table
+// (`RCTUtils.mm`) maps the largest regular text size, xxxLarge, to 1.353, which stays a row, and
+// the first accessibility size, AX1, to 1.786, which stacks. 28 / 17 (about 1.647) lies between
+// them, so each side is clear of the threshold by a margin that a rounding of the scale cannot
+// cross.
 export const STACK_FONT_SCALE = 28 / 17;
 
 // Two fields side by side in one row, as `DateTimeRow` lays Date and Time, and one above the other
