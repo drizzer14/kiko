@@ -1772,7 +1772,7 @@ export const en = {
     emptyMessage:
       'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring.',
     emptyTitle: 'No recurring charges yet',
-    holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
+    holdingQuietSince: '"{{holding}}": no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
     lastChargesTotal: 'Sum of last charges',
     listChangedMessage: 'Go back to see your recurring charges as they are now.',
