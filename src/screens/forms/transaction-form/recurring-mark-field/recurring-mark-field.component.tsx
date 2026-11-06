@@ -52,13 +52,16 @@ const RecurringMarkField = ({
   }
 
   const isSettled = isReady && !isSubmitting;
+  // A row the chain drops reads as the series does: in no chain, and a pick there could not help.
+  const isDropped = chain?.holdsRow === false;
+  const markedPeriod = isDropped ? 'none' : (chain?.period ?? 'none');
 
   return (
     <SelectField
       label={t('forms.transaction.markRecurring')}
       sheetTitle={t('forms.transaction.markRecurringSheetTitle')}
       options={OPTIONS}
-      selected={isSettled ? (chain?.period ?? 'none') : null}
+      selected={isSettled ? markedPeriod : null}
       onSelect={(option) => {
         picked.current = option;
         submitPick();
@@ -76,7 +79,7 @@ const RecurringMarkField = ({
       }}
       emptyOption={detectedPeriod === null ? 'none' : undefined}
       placeholder=""
-      disabled={!isSettled}
+      disabled={!isSettled || isDropped}
     />
   );
 };

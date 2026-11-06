@@ -45,6 +45,8 @@ type Found = { charges: Charge[]; rule: PeriodRule };
 
 type SlotPair = { slots: number; deviation: number };
 
+type SlotStep = Pick<PeriodRule, 'slotDays' | 'stepForward'>;
+
 type PassOptions = { withAmounts: boolean; minimumCharges?: number };
 
 type KeptCharge = { charge: Charge; absorbed: Set<Charge['source']> };
@@ -64,6 +66,10 @@ const AROUND_DAY_SPREAD = 6;
 const CHARGES_PER_EXTRA_JUMP = 24;
 const WEEK_DAYS = 7;
 const MONTHS_PER_YEAR = 12;
+const MONTHS_PER_QUARTER = 3;
+const MONTHS_PER_HALF_YEAR = 6;
+// The newest charges at the nearest amount that may set the rhythm: at most 144 steps to cost.
+const ANCHOR_CANDIDATES = 12;
 // The month's last day and the next month's first are one day apart in a 31-day month.
 const DAYS_IN_LONGEST_MONTH = 31;
 const AVERAGE_MONTH_DAYS = 30.4375;
@@ -248,6 +254,103 @@ const slotPairOf = (earlier: Charge, later: Charge, rule: PeriodRule): SlotPair 
 
 const slotPairsOf = (charges: readonly Charge[], rule: PeriodRule): SlotPair[] =>
   charges.slice(1).map((later, index) => slotPairOf(charges[index], later, rule));
+
+// The step of a period, for any of the five: a mark's own every 3 and every 6 months step by
+// calendar months like monthly does, and are 3 and 6 times its average length.
+const monthsStepOf = (months: number): SlotStep => ({
+  slotDays: months * AVERAGE_MONTH_DAYS,
+  stepForward: (time, slots) => addMonths(time, months * slots),
+});
+
+const SLOT_STEPS: Record<RecurringPeriod, SlotStep> = {
+  weekly: WEEKLY,
+  monthly: MONTHLY,
+  everyThreeMonths: monthsStepOf(MONTHS_PER_QUARTER),
+  everySixMonths: monthsStepOf(MONTHS_PER_HALF_YEAR),
+  yearly: YEARLY,
+};
+
+const signedDaysBetween = (from: number, to: number): number =>
+  daysBetween(from, to) - daysBetween(to, from);
+
+// `slotPairOf`'s nearest step, signed: a charge before the anchor sits in a negative slot. A tie
+// keeps the lower slot, so the pick never depends on the order of the charges.
+const signedSlotPairOf = (anchorTime: number, time: number, step: SlotStep): SlotPair => {
+  const nearest = Math.round(signedDaysBetween(anchorTime, time) / step.slotDays);
+
+  return [nearest - 1, nearest, nearest + 1]
+    .map((slots) => ({ slots, deviation: dayGapOf(step.stepForward(anchorTime, slots), time) }))
+    .reduce((best, candidate) => (candidate.deviation < best.deviation ? candidate : best));
+};
+
+const amountReachOf = (amount: number, storedAmounts: readonly number[]): number =>
+  minOf(storedAmounts.map((stored) => Math.abs(amount - stored)));
+
+// The anchor is a charge, never an average: calendar months would split a due date that drifts
+// at a month end, and a median of days flips between two days half a month apart. Only the
+// charges nearest a stored amount set the rhythm, so a second subscription at a near price
+// cannot.
+const anchorOf = (
+  charges: readonly Charge[],
+  step: SlotStep,
+  storedAmounts: readonly number[],
+): Charge => {
+  const nearestReach = minOf(charges.map(({ amount }) => amountReachOf(amount, storedAmounts)));
+  const candidates = charges
+    .filter(({ amount }) => amountReachOf(amount, storedAmounts) === nearestReach)
+    .slice(-ANCHOR_CANDIDATES);
+  const costed = candidates.map((candidate) => ({
+    candidate,
+    cost: total(
+      candidates.map(({ time }) => signedSlotPairOf(candidate.time, time, step).deviation),
+    ),
+  }));
+
+  // The candidates run oldest first, so `<=` hands a tie to the newest.
+  return costed.reduce((best, next) => (next.cost <= best.cost ? next : best)).candidate;
+};
+
+/**
+ * The charges of a marked chain with at most one per period slot, `charges` folded and oldest
+ * first. Slots count from one anchor charge, never charge to charge, so a clamped month end does
+ * not drift. The charge kept in a slot is the one nearest a stored amount, then nearest the
+ * slot's step, then the earliest, then by id, so no row order changes the answer.
+ */
+export const onePerSlotOf = (
+  charges: readonly Charge[],
+  period: RecurringPeriod,
+  storedAmounts: readonly number[],
+): { kept: Charge[]; dropped: Charge[] } => {
+  if (charges.length === 0) {
+    return { kept: [], dropped: [] };
+  }
+
+  const step = SLOT_STEPS[period];
+  const anchor = anchorOf(charges, step, storedAmounts);
+  const bySlot = groupedBy(
+    charges.map((charge) => ({
+      charge,
+      reach: amountReachOf(charge.amount, storedAmounts),
+      ...signedSlotPairOf(anchor.time, charge.time, step),
+    })),
+    ({ slots }) => slots,
+  );
+  const ranked = [...bySlot.values()].map((slot) =>
+    slot.sort(
+      (left, right) =>
+        left.reach - right.reach ||
+        left.deviation - right.deviation ||
+        compareCharges(left.charge, right.charge),
+    ),
+  );
+
+  return {
+    kept: ranked.map(([best]) => best.charge).sort(compareCharges),
+    dropped: ranked
+      .flatMap((slot) => slot.slice(1).map(({ charge }) => charge))
+      .sort(compareCharges),
+  };
+};
 
 const isFit = (pair: SlotPair, rule: PeriodRule): boolean =>
   pair.slots >= 1 && pair.slots <= rule.maximumSlots && pair.deviation <= rule.tolerance;
