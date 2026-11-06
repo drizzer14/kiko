@@ -1048,21 +1048,35 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
 
 ## Bybit balance sync — notes, set-aside coins, cooling
 
-Status: set 5 of 1.4-bybit (the capital walk) is in; the transfer walk of set 6 can extend this
+Status: sets 5 and 6 of 1.4-bybit (the capital and transfer walks) are in; later sets extend this
 section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list from here.
 
 - `readCursorSpan` (`bybit.cursor-span.ts`) counts a refused call (`recordBybitFailedCall`) and
   rethrows it. The reader does not sort rows; the walk sorts them by time, then key
-  (`byTimeThenKey` in `bybit.capital-history.ts`).
+  (`byTimeThenKey` in `src/crypto-sync/bybit/bybit.walk-run.ts`).
+- Every Bybit walk runs through `runBybitWalk` (`src/crypto-sync/bybit/bybit.walk-run.ts`). It
+  passes `plainHintOf` (`src/crypto-sync/bybit/bybit.cursor-span.ts`) as the optional `outcomeOf`
+  of `runExchangeWalkPlan` (`src/crypto-sync/exchange/walk/exchange-walk-plan.ts`): after a commit
+  on a forward or re-scan pass the next run starts from the span it wanted, not from the whole
+  window, so a burst converges in a few halvings. Binance passes no `outcomeOf`, so its run is
+  unchanged.
+- The transfer walk (`bybit.transfer-history.ts`) reads 7-day windows (`WINDOW_MS`), writes both
+  legs of a transfer with one pair id per coin (`exchangePairIdOf`), in the series `transfer`
+  (`TRANSFER_SERIES`). A wallet name Kiko does not know owes the point
+  (`TRANSFER_WALLET_UNKNOWN`). In `legsOf`, a zero amount and a transfer from a wallet to the
+  same wallet give no row and owe nothing; a negative amount owes (`TRANSFER_AMOUNT_INVALID`;
+  the capital walk's code is `capital-amount-invalid`, `CAPITAL_AMOUNT_INVALID`).
 - The lanes, their call caps and the call interval live in `bybit.history-budget.ts`
   (`BYBIT_LANE_CALL_CAPS`, `BYBIT_REQUEST_INTERVAL_MS`). Read the values there.
 - Every capital row books on FUND. A page drift of a capital series is owed as a range tagged with
-  the series (`driftOf`), and the forward pass goes past it (`CAPITAL_FORWARD_OWES`;
-  `isOwedPast` in `src/crypto-sync/exchange/walk/records.ts`). Binance `earn-page-drift` is the
-  opposite: it stops the run.
+  the series (`driftOf` in `src/crypto-sync/bybit/bybit.walk-run.ts`), and the forward pass goes
+  past it (`CAPITAL_FORWARD_OWES`; `isOwedPast` in
+  `src/crypto-sync/exchange/walk/records.ts`). Binance `earn-page-drift` is the opposite: it stops
+  the run.
 - Deposit type 50 (`NOT_CREDITED_DEPOSIT_TYPE`) is final and owes nothing.
 - `CAPTION_WALKS` for bybit
-  (`src/screens/account-detail/crypto-sync-section/binance-history-status.ts`) is the capital walk.
+  (`src/screens/account-detail/crypto-sync-section/binance-history-status.ts`) is the capital and
+  transfer walks.
 
 - The provider (`bybit.provider.ts`) returns state patches. Patch kind `balanceNotes`
   (`src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`, `withBalanceNotes`): a good read
