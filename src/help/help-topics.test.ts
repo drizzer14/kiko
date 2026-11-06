@@ -507,7 +507,7 @@ describe('the choices a help step names', () => {
       enValues,
       [
         'more than 2 minutes apart or only one side was synced',
-        'from the IBAN of an account Kiko tracks',
+        'a transfer from one of your Monobank cards that Kiko syncs',
         'a category you pick with "Categories" narrows the category table only',
       ],
       'are the figures of the category table',
@@ -517,13 +517,13 @@ describe('the choices a help step names', () => {
       ukValues,
       [
         'понад 2 хвилини або синхронізовано лише одну',
-        'з IBAN рахунку, який відстежує Кіко',
+        'переказ з вашої картки Monobank, яку синхронізує Кіко',
         'звужує лише таблицю за категоріями',
       ],
       'це дані таблиці за категоріями',
     ],
   ] as const)(
-    'names in %s the own transfers and the tracked-account IBAN credit that income can get wrong, and a category pick that narrows only the category table',
+    'names in %s the own transfers and the synced Monobank card credit that income can get wrong, and a category pick that narrows only the category table',
     (_language, values, wrongRows, falseClaim) => {
       const step = stepOf(values, 'viewStatistics', 10);
 
@@ -535,7 +535,7 @@ describe('the choices a help step names', () => {
     },
   );
 
-  it('words the refund credit of step 10 in uk without the change-return word, with «вважається» and the bank account in full', () => {
+  it('words the refund credit of step 10 in uk without the change-return word and with the bank account in full', () => {
     const step = stepOf(ukValues, 'viewStatistics', 10);
 
     expect(step).not.toContain('Повернення коштів');
