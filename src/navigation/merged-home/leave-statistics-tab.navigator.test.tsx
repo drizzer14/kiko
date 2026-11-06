@@ -46,16 +46,48 @@ type ShownRoute = { key: string; name: string };
 // A native stack that renders nothing but records the routes each pane is handed: the screens
 // inside are not under test, the routes are.
 const mockShownRoutes: ShownRoute[] = [];
-jest.mock('@react-navigation/native-stack', () => ({
-  ...jest.requireActual('@react-navigation/native-stack'),
-  NativeStackView: ({ state }: { state: { routes: ShownRoute[] } }) => {
-    for (const { key, name } of state.routes) {
-      mockShownRoutes.push({ key, name });
-    }
 
-    return null;
-  },
-}));
+// What each shown route does when the native stack reports its finished dismissal, which is the
+// stack's own `onDismissed` handler: a pop that names the route it came from.
+const mockDismissals = new Map<string, () => void>();
+jest.mock('@react-navigation/native-stack', () => {
+  const { StackActions } = jest.requireActual('@react-navigation/native');
+
+  return {
+    ...jest.requireActual('@react-navigation/native-stack'),
+    NativeStackView: ({
+      state,
+      descriptors,
+    }: {
+      state: { routes: ShownRoute[] };
+      descriptors: Record<
+        string,
+        {
+          navigation: {
+            dispatch: (action: object) => void;
+            getState: () => { key: string };
+          };
+        }
+      >;
+    }) => {
+      for (const { key, name } of state.routes) {
+        mockShownRoutes.push({ key, name });
+
+        const { navigation } = descriptors[key];
+
+        mockDismissals.set(key, () =>
+          navigation.dispatch({
+            ...StackActions.pop(1),
+            source: key,
+            target: navigation.getState().key,
+          }),
+        );
+      }
+
+      return null;
+    },
+  };
+});
 
 const setLargeWindow = async (isLarge: boolean): Promise<void> => {
   await act(async () => {
@@ -137,6 +169,12 @@ const openIn = async (tab: string, screen: string, params: object): Promise<void
       payload: { openerKey: opener?.key, route: { name: screen, params } },
       target: stack?.key,
     });
+  });
+};
+
+const dismissNatively = async (key: string): Promise<void> => {
+  await act(async () => {
+    mockDismissals.get(key)?.();
   });
 };
 
@@ -282,6 +320,84 @@ describe('the Statistics tab when the window turns into a merged Home', () => {
       await elapse(SETTLE_DELAY_MS - 1);
 
       expect(stackOf('HomeTab')).toBeUndefined();
+    });
+  });
+
+  // Tables is in a layer over both panes, above the routes the panes hold: above Home, which is its
+  // way back, not alone in the companion pane.
+  describe('with Tables open above the Statistics root', () => {
+    const period = { kind: 'year', year: 2024 };
+
+    beforeEach(async () => {
+      await renderTabs('StatisticsTab');
+      await openIn('StatisticsTab', 'Tables', { period });
+    });
+
+    it('carries Tables and its period to the Home tab, above Home', async () => {
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+
+      expect(focusedTab()).toBe('HomeTab');
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home', 'Tables']);
+      expect(home?.routes.at(-1)?.params).toEqual({ period });
+    });
+
+    it('opens Tables above Home, which keeps its pane, so that Home is its Back', async () => {
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+
+      expect(home?.panes[home?.routes[0]?.key ?? '']).toBe('primary');
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home', 'Tables']);
+    });
+
+    it('hands Tables to the layer of the Home stack, after a placeholder root named as Home', async () => {
+      mockShownRoutes.length = 0;
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+
+      expect(mockShownRoutes).toContainEqual({ key: 'pane-layer-root', name: 'Home' });
+      expect(mockShownRoutes).toContainEqual({ key: home?.routes.at(-1)?.key, name: 'Tables' });
+    });
+
+    it('goes back from the carried Tables to Home, which is left with no layer page', async () => {
+      await setLargeWindow(true);
+      await settle();
+
+      const tables = stackOf('HomeTab')?.routes.at(-1);
+
+      mockShownRoutes.length = 0;
+      await dismissNatively(tables?.key ?? '');
+
+      const home = stackOf('HomeTab');
+
+      expect(tables?.name).toBe('Tables');
+      expect(focusedTab()).toBe('HomeTab');
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home']);
+      expect(mockShownRoutes).toContainEqual({ key: 'pane-layer-root', name: 'Home' });
+      expect(mockShownRoutes.map(({ name }) => name)).not.toContain('Tables');
+    });
+  });
+
+  // The form the user typed in goes along, and Tables opens over it: both are in the Home stack,
+  // and Back from Tables returns to the form with its draft.
+  describe('with Tables open above a form over the Statistics root', () => {
+    it('carries the form and Tables, in order, with the draft of the form', async () => {
+      await renderTabs('StatisticsTab');
+      await openIn('StatisticsTab', 'TransactionForm', typedForm);
+      await openIn('StatisticsTab', 'Tables', { period: { kind: 'year', year: 2024 } });
+      await setLargeWindow(true);
+      await settle();
+
+      const home = stackOf('HomeTab');
+
+      expect(home?.routes.map(({ name }) => name)).toEqual(['Home', 'TransactionForm', 'Tables']);
+      expect(home?.routes[1]?.params).toEqual(typedForm);
     });
   });
 

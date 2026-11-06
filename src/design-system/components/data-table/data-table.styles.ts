@@ -7,6 +7,13 @@ export const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
   },
+  // Grows to the scroll's height, so the empty content can fill what the top content leaves.
+  scrollContent: {
+    flexGrow: 1,
+  },
+  top: {
+    gap: theme.spacing(3),
+  },
   caption: {
     ...theme.typography.caption,
     color: theme.colors.textSecondary,

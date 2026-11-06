@@ -1,8 +1,10 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import { createElement, Fragment } from 'react';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 import {
   defaultRouteKey,
+  layerRoutesOf,
   type Pane,
   type PaneConfig,
   paneDefault,
@@ -81,6 +83,86 @@ export const paneSlice = (
       };
     }) ?? null
   );
+};
+
+export type LayerSlice = Pick<PaneSlice, 'state' | 'descriptors'> & {
+  // The route on top of the layer, or null while it holds only its placeholder root.
+  topKey: string | null;
+};
+
+const LAYER_ROOT_KEY = 'pane-layer-root';
+
+// What the layer's root shows nothing of: no title, and a ground that lets the panes through
+// behind the sliding page.
+const LAYER_ROOT_OPTIONS: NativeStackNavigationOptions = {
+  title: '',
+  contentStyle: { backgroundColor: 'transparent' },
+};
+
+// A header that is there and shows nothing. Root and the page over it share one navigation bar, so
+// a root with no header hides the page's own bar when a swipe back starts; a root with this one
+// keeps it, and the swipe can be cancelled with the bar in place.
+const LAYER_ROOT_HEADER: NativeStackNavigationOptions = {
+  headerShown: true,
+  headerTransparent: true,
+  headerTitle: '',
+  headerShadowVisible: false,
+};
+
+// The page under Tables in this stack is the untitled placeholder root, so a Back label or a menu
+// of earlier titles would list nothing: the button is the chevron alone.
+const LAYER_BACK_OPTIONS: NativeStackNavigationOptions = {
+  headerBackButtonDisplayMode: 'minimal',
+  headerBackButtonMenuEnabled: false,
+};
+
+/**
+ * The stack of the layer over both panes: a placeholder root that draws nothing, then the routes
+ * from the first whole-window route up, which the panes leave out. The root is there at rest too,
+ * so the stack is never made afresh and Tables is pushed onto it, with the header the root shows
+ * only while a page is over it. None for a config that lists no whole-window route.
+ */
+export const layerSlice = (
+  state: PaneStackState,
+  config: PaneConfig,
+  descriptors: NativeStackViewProps['descriptors'],
+  describe: NativeStackViewProps['describe'],
+): LayerSlice | null => {
+  const listed = config.wholeWindowRoutes ?? [];
+  const first = state.routes[0];
+
+  if (listed.length === 0 || first === undefined) {
+    return null;
+  }
+
+  const routes = layerRoutesOf(state.routes, config);
+  const root: PaneStackRoute = { key: LAYER_ROOT_KEY, name: first.name };
+  const overlaid = Object.fromEntries(
+    routes
+      .filter(({ key, name }) => listed.includes(name) && key in descriptors)
+      .map(({ key }) => [
+        key,
+        { ...descriptors[key], options: { ...descriptors[key].options, ...LAYER_BACK_OPTIONS } },
+      ]),
+  );
+
+  return {
+    state: stateOf(state, [root, ...routes]),
+    topKey: routes.at(-1)?.key ?? null,
+    descriptors: {
+      ...descriptors,
+      [root.key]: {
+        ...describe(root, true),
+        // The descriptor type wants an element, not null: an empty fragment draws nothing.
+        render: () => createElement(Fragment),
+        options: {
+          ...LAYER_ROOT_OPTIONS,
+          ...(routes.length > 0 ? LAYER_ROOT_HEADER : { headerShown: false }),
+        },
+      },
+      ...overlaid,
+    },
+  };
 };
 
 /**
