@@ -163,6 +163,7 @@ describe('a row that sets a balance', () => {
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
       excludedTransactionIds: ledger.excludedTransactionIds,
+      scheme: 'dark',
     });
   const trendOf = (ledger: SpendingLedger) =>
     buildCategoryTrend({
@@ -174,6 +175,7 @@ describe('a row that sets a balance', () => {
       range,
       bucketDays: 1,
       excludedTransactionIds: ledger.excludedTransactionIds,
+      scheme: 'dark',
     });
   const worldWith = (...rows: ReturnType<typeof transactionRow>[]) =>
     buildSpendingLedger(worldInput({ transactions: [...WORLD_TRANSACTIONS, ...rows] }));

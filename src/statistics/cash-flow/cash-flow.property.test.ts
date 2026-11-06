@@ -204,6 +204,7 @@ const donutOf = (ledger: SpendingLedger, range: { from: number; to: number }) =>
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
     excludedTransactionIds: ledger.excludedTransactionIds,
+    scheme: 'dark',
   });
 
 // USDT is 8 decimals and its rate is UAH 40; UAH has 2.

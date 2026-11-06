@@ -10,6 +10,10 @@ import {
 } from '@kiko/test-support/navigation-props';
 import { calendarMonthOf } from '@kiko/dates';
 import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import {
   answerFilterData,
   pressFilterOption,
   transactionRowOf,
@@ -22,6 +26,7 @@ import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
+import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { act, fireEvent, render, renderHook, within } from '@testing-library/react-native';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
@@ -492,6 +497,25 @@ describe('TablesScreen', () => {
       expect(getByTestId('tables-category-filter-option-groceries')).toBeTruthy();
       expect(getByTestId('tables-category-filter-option-transport')).toBeTruthy();
       await held.unmount();
+    });
+
+    it('tints a category option through the light map in the light scheme', async () => {
+      registerLightThemeFirst();
+
+      try {
+        const { getByTestId } = await renderTables();
+
+        await fireEvent.press(getByTestId('tables-category-filter'));
+
+        const tint = getByTestId('tables-category-filter-option-groceries').queryAll(
+          (node) => node.props.name === 'cart',
+        )[0]?.props.tintColor;
+
+        expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
+        expect(tint).not.toBe(categoryColor('groceries'));
+      } finally {
+        restoreThemeOrder();
+      }
     });
   });
 

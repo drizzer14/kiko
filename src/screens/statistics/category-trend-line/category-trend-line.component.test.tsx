@@ -1,6 +1,12 @@
+import { DAY_MS } from '@kiko/dates';
 import { render, within } from '@testing-library/react-native';
+import { categoryDisplayColor } from '@kiko/design-system/entity-tint';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
+import { categoryColorsLight, entityColorsDark } from '@kiko/design-system/palette';
 
-import type { CategoryTrendSeries } from '@kiko/statistics/category-trend';
+import { categoryColor } from '@kiko/statistics/category-breakdown';
+import { type CategoryTrendSeries, buildCategoryTrend } from '@kiko/statistics/category-trend';
 import '@kiko/design-system/unistyles';
 import CategoryTrendLine from './index';
 
@@ -103,6 +109,59 @@ describe('CategoryTrendLine', () => {
     );
 
     expect(transport).toEqual(grocery);
+  });
+
+  it('a light trend strokes each line from the category set and its legend swatch matches the stroke', async () => {
+    const categoryDisplay = buildCategoryDisplayMap([
+      { key: 'groceries', title: 'Groceries', icon: 'cart', color: entityColorsDark.blue },
+      { key: 'transport', title: 'Transport', icon: 'car', color: entityColorsDark.khaki },
+      { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
+    ]);
+    const spend = (category: string, amountMinorUnits: number) => ({
+      id: category,
+      category,
+      amountMinorUnits,
+      mcc: null,
+      counterIban: null,
+      description: '',
+      exchangeCounterpartHoldingId: null,
+      untrackedCounterpart: null,
+      changeGroupId: null,
+      currency: 'UAH' as const,
+      time: JAN + DAY_MS / 2,
+    });
+    const lightSeries = buildCategoryTrend({
+      transactions: [
+        spend('groceries', -30_00),
+        spend('transport', -20_00),
+        spend('other', -10_00),
+      ],
+      categoryDisplay,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      range: { from: JAN, to: JAN + 2 * DAY_MS },
+      bucketDays: 1,
+      scheme: 'light',
+    });
+    const { getByTestId } = await render(
+      <CategoryTrendLine series={lightSeries} baseCurrency="UAH" />,
+    );
+    const strokeOf = (key: string) => getByTestId(`category-trend-line-line-${key}`).props.stroke;
+
+    expect(strokeOf('groceries')).toBe(categoryColorsLight.blue);
+    expect(strokeOf('transport')).toBe(categoryColorsLight.khaki);
+    expect(strokeOf('other')).toBe(categoryDisplayColor(categoryColor('other'), 'light'));
+
+    for (const entry of lightSeries) {
+      const swatch = getByTestId(`category-trend-line-legend-${entry.key}`)
+        .children[0] as unknown as RenderedElement;
+      const swatchColor = styleLayers(swatch.props.style)
+        .map((layer) => layer.backgroundColor)
+        .find((value): value is string => typeof value === 'string');
+
+      expect(swatchColor).toBe(strokeOf(entry.key));
+    }
   });
 
   it('renders a legend entry per series with the category title', async () => {

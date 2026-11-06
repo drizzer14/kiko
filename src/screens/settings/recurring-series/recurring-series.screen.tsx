@@ -1,6 +1,7 @@
 import { match } from 'ts-pattern';
 import { useLiveQuery } from '@kiko/db';
 import { formatDate } from '@kiko/dates';
+import type { TFunction } from 'i18next';
 import {
   buildCategoryDisplayMap,
   DEFAULT_CATEGORY_KEY,
@@ -28,6 +29,7 @@ import LargeTitleHeading, {
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import { paidSoFarOf } from '@kiko/recurring/recurring-groups';
 import { type FC, useCallback, useMemo, useState } from 'react';
+import { recurrenceLine } from '@kiko/recurring/recurrence-text';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -37,14 +39,15 @@ import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import { FlatList, type FlatListProps, Pressable } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import SummaryTable from '@kiko/design-system/components/summary-table';
 import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
 import { useFloatingFooterEnd } from '@kiko/design-system/floating-footer';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { useIsScreenVisible, useOpenInPane } from '@kiko/navigation/pane-stack';
-import { lastChargeLine, recurrenceLine } from '@kiko/recurring/recurrence-text';
 
 import { styles } from './recurring-series.styles';
 
@@ -91,6 +94,15 @@ const seriesOfRoute = (
   );
 };
 
+// A stopped series says why it is shown as one: the quiet holding's own line, or the plain value.
+const statusTextOf = (series: RecurringSeries, t: TFunction): string =>
+  series.quiet === null
+    ? t('recurringCharges.summary.stopped')
+    : t('recurringCharges.holdingQuietSince', {
+        holding: series.quiet.holdingName,
+        date: formatDate(series.quiet.since),
+      });
+
 type ChargeRow = Awaited<ReturnType<typeof transactionsRepo.listWithContextByIdsQuery>>[number];
 
 type ChargeListProps = Omit<FlatListProps<ChargeRow>, 'contentContainerStyle'> & {
@@ -113,6 +125,7 @@ const ChargeList: FC<ChargeListProps> = ({ contentContainerStyle, ...listProps }
 // shows the loading state in place of its rows, never the neutral text.
 const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   const { series: detectedSeries, markedSeries, isLoading } = useRecurringSeries();
   // The marks a Remove mark took away leave the hook's marked series with the settings read, ahead
   // of `goBack`; the series it removed stays on screen until then. Only this screen's own write
@@ -269,6 +282,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
                 categoryIconColor={resolveCategoryColor(
                   category.color,
                   resolveCategoryKey(row.category, categoryByKey, defaultCategoryKey),
+                  scheme,
                 )}
                 categoryAccessibilityLabel={category.title}
                 money={Money.of(row.currency, row.amountMinorUnits)}
@@ -293,29 +307,56 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
             <LargeTitleHeading />
 
             {series !== undefined && (
-              <Box gap={1} style={styles.header} testID="recurring-series-header">
-                <Text variant="body">{recurrenceLine(series.period, series.recurrence, t)}</Text>
-
-                <Text variant="caption" tone="textSecondary">
-                  {lastChargeLine(series, t)}
-                </Text>
-
-                <Text variant="caption" tone="textSecondary">
-                  {t('recurringCharges.chargeCount', { count: series.chargeIds.length })}
-                </Text>
-
-                {/* Only once the rows have landed: the sum of a half-read list would be wrong. */}
-                {!rowsLoading && (
-                  <Box direction="row" style={styles.paidRow}>
-                    <Box style={styles.paidLabel}>
-                      <Text variant="body">{t('recurringCharges.paidSoFar')}</Text>
-                    </Box>
-
-                    <Box style={styles.paidAmount}>
-                      <MoneyText money={paidSoFarOf(series, charges)} />
-                    </Box>
-                  </Box>
-                )}
+              <Box style={styles.header} testID="recurring-series-header">
+                <SummaryTable
+                  rows={[
+                    {
+                      key: 'repeats',
+                      label: t('recurringCharges.summary.repeats'),
+                      value: (
+                        <Text variant="body">
+                          {recurrenceLine(series.period, series.recurrence, t)}
+                        </Text>
+                      ),
+                      testID: 'recurring-series-summary-repeats',
+                      wraps: true,
+                    },
+                    {
+                      key: 'lastCharge',
+                      label: t('recurringCharges.summary.lastCharge'),
+                      value: <Text variant="body">{formatDate(series.lastChargeTime)}</Text>,
+                      testID: 'recurring-series-summary-last-charge',
+                    },
+                    ...(series.isStopped
+                      ? [
+                          {
+                            key: 'status',
+                            label: t('recurringCharges.summary.status'),
+                            value: <Text variant="body">{statusTextOf(series, t)}</Text>,
+                            testID: 'recurring-series-summary-status',
+                            wraps: true,
+                          } as const,
+                        ]
+                      : []),
+                    {
+                      key: 'chargeCount',
+                      label: t('recurringCharges.summary.chargeCount'),
+                      value: <Text variant="body">{series.chargeIds.length}</Text>,
+                      testID: 'recurring-series-summary-charge-count',
+                    },
+                    // Only once the rows have landed: the sum of a half-read list would be wrong.
+                    ...(rowsLoading
+                      ? []
+                      : [
+                          {
+                            key: 'paid',
+                            label: t('recurringCharges.paidSoFar'),
+                            value: <MoneyText money={paidSoFarOf(series, charges)} />,
+                            testID: 'recurring-series-summary-paid',
+                          },
+                        ]),
+                  ]}
+                />
               </Box>
             )}
           </>

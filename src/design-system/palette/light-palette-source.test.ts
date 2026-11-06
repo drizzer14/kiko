@@ -19,6 +19,10 @@ const palette = JSON.parse(
   categorySwatches: SwatchFile;
   chartSeries: { keys: string[]; dark: string[]; light: string[] };
   iconTile: { glyph: { onLightTile: { dark: string; light: string } } };
+  chartParameters: {
+    netWorthAreaOpacity: { dark: number; light: number };
+    netWorthNegativeAreaOpacity: { dark: number; light: number };
+  };
 };
 
 // The themes are `as const` literals; the pins index them by names read from the file.
@@ -67,6 +71,23 @@ describe('the approved light palette file', () => {
   it('pins the glyph on a light tile to the file', () => {
     expect(darkTheme.colors.glyphOnLightTile).toBe(palette.iconTile.glyph.onLightTile.dark);
     expect(lightTheme.colors.glyphOnLightTile).toBe(palette.iconTile.glyph.onLightTile.light);
+  });
+
+  it('pins the net-worth area opacities of each theme to the file', () => {
+    const { netWorthAreaOpacity, netWorthNegativeAreaOpacity } = palette.chartParameters;
+
+    expect(darkTheme.chartFill).toEqual({
+      areaOpacity: netWorthAreaOpacity.dark,
+      negativeAreaOpacity: netWorthNegativeAreaOpacity.dark,
+    });
+    expect(lightTheme.chartFill).toEqual({
+      areaOpacity: netWorthAreaOpacity.light,
+      negativeAreaOpacity: netWorthNegativeAreaOpacity.light,
+    });
+  });
+
+  it('dark area opacities stay 0.3 and 0.5', () => {
+    expect(darkTheme.chartFill).toEqual({ areaOpacity: 0.3, negativeAreaOpacity: 0.5 });
   });
 
   it('lightTheme has exactly the keys of darkTheme, at every depth', () => {

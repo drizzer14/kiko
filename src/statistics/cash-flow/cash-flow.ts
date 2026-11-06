@@ -26,6 +26,10 @@ type CashFlow = {
   savingsRate: { cells: (number | null)[]; total: number | null; average: number | null };
 };
 
+// Only the month's summed amounts are read from the table, never a slice color, so the scheme the
+// breakdown resolves colors in cannot show in the cash flow.
+const SPENDING_SCHEME = 'dark';
+
 /** Net over income: null at zero income, so a rate is never zero-for-nothing or infinity. */
 const rateOf = (net: number | null, income: number | null): number | null =>
   net === null || income === null || income === 0 ? null : net / income;
@@ -110,6 +114,7 @@ export const buildCashFlow = (input: CashFlowInput): CashFlow => {
     rateTable,
     baseCurrency,
     defaultCategoryKey,
+    scheme: SPENDING_SCHEME,
   });
   const incomeCells = incomeCellsOf(input);
   const incomeTotal = sumOf(incomeCells);

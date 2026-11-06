@@ -510,6 +510,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const clock = useTimeClock();
+  const scheme = useActiveColorScheme();
   const {
     currency,
     showTime,
@@ -635,7 +636,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                   name={category.icon}
                   size={theme.iconSizes.body}
                   tone="textSecondary"
-                  color={resolveCategoryColor(category.color, categoryKey)}
+                  color={resolveCategoryColor(category.color, categoryKey, scheme)}
                   accessibilityLabel={category.title}
                 />
               }

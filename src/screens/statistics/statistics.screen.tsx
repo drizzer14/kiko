@@ -350,6 +350,7 @@ const StatisticsScreen: FC = () => {
         baseCurrency,
         defaultCategoryKey,
         excludedTransactionIds,
+        scheme,
       }),
     [
       rangeFilteredBreakdownTransactions,
@@ -358,6 +359,7 @@ const StatisticsScreen: FC = () => {
       baseCurrency,
       defaultCategoryKey,
       excludedTransactionIds,
+      scheme,
     ],
   );
 
@@ -388,8 +390,9 @@ const StatisticsScreen: FC = () => {
           ...selectedCategories,
           ...(appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : []),
         ],
+        scheme,
       }),
-    [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter],
+    [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter, scheme],
   );
 
   const visibleSelectedCategories = useMemo(
@@ -412,6 +415,7 @@ const StatisticsScreen: FC = () => {
         defaultCategoryKey,
         excludedCategories: excludedCategoryKeys,
         excludedTransactionIds,
+        scheme,
       }),
     [
       rangeFilteredBreakdownTransactions,
@@ -421,6 +425,7 @@ const StatisticsScreen: FC = () => {
       defaultCategoryKey,
       excludedCategoryKeys,
       excludedTransactionIds,
+      scheme,
     ],
   );
 
@@ -492,6 +497,7 @@ const StatisticsScreen: FC = () => {
         bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
         excludedCategories: excludedTrendCategoryKeys,
         excludedTransactionIds,
+        scheme,
       }),
     [
       trendTransactions,
@@ -503,6 +509,7 @@ const StatisticsScreen: FC = () => {
       rangeTo,
       excludedTrendCategoryKeys,
       excludedTransactionIds,
+      scheme,
     ],
   );
 

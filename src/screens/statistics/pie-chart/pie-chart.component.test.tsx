@@ -1,9 +1,17 @@
 import { StyleSheet } from 'react-native';
 import { Money } from '@kiko/currency/money';
+import {
+  type BreakdownTransaction,
+  buildCategoryBreakdown,
+  categoryColor,
+} from '@kiko/statistics/category-breakdown';
 import { darkTheme } from '@kiko/design-system/theme';
 import type { Currency } from '@kiko/currency/currency';
+import { categoryDisplayColor } from '@kiko/design-system/entity-tint';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
+import { categoryColorsLight, entityColorsDark } from '@kiko/design-system/palette';
 
 import type { AccountSlice } from '@kiko/statistics/account-contribution';
 import '@kiko/design-system/unistyles';
@@ -29,6 +37,19 @@ const slices: AccountSlice[] = [
 const quarterSlice: AccountSlice[] = [
   { accountId: 'q1', name: 'Quarter', amount: 100_00, share: 0.25, color: '#FF375F' },
 ];
+
+const categorySpend = (category: string, amountMinorUnits: number): BreakdownTransaction => ({
+  id: category,
+  category,
+  amountMinorUnits,
+  mcc: null,
+  counterIban: null,
+  description: '',
+  exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
+  changeGroupId: null,
+  currency: 'UAH',
+});
 
 describe('PieChart', () => {
   it('renders one arc path per slice', async () => {
@@ -136,6 +157,49 @@ describe('PieChart', () => {
       .map((layer) => layer.backgroundColor)
       .find((value): value is string => typeof value === 'string');
     expect(swatchColor).toBe('#FF375F');
+  });
+
+  it('a light pie paints each wedge from the category set and its legend swatch with the wedge hex', async () => {
+    const categoryDisplay = buildCategoryDisplayMap([
+      { key: 'groceries', title: 'Groceries', icon: 'cart', color: entityColorsDark.blue },
+      { key: 'transport', title: 'Transport', icon: 'car', color: entityColorsDark.khaki },
+      { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
+    ]);
+    const lightSlices: AccountSlice[] = buildCategoryBreakdown({
+      transactions: [
+        categorySpend('groceries', -30_00),
+        categorySpend('transport', -20_00),
+        categorySpend('other', -10_00),
+      ],
+      categoryDisplay,
+      rateTable: {},
+      baseCurrency: 'UAH',
+      defaultCategoryKey: 'other',
+      scheme: 'light',
+    }).map((slice) => ({
+      accountId: slice.key,
+      name: slice.title,
+      amount: slice.amount,
+      share: slice.share,
+      color: slice.color,
+    }));
+    const { getByTestId } = await render(<PieChart slices={lightSlices} baseCurrency="UAH" />);
+
+    expect(getByTestId('pie-chart-arc-groceries').props.fill).toBe(categoryColorsLight.blue);
+    expect(getByTestId('pie-chart-arc-transport').props.fill).toBe(categoryColorsLight.khaki);
+    expect(getByTestId('pie-chart-arc-other').props.fill).toBe(
+      categoryDisplayColor(categoryColor('other'), 'light'),
+    );
+
+    for (const slice of lightSlices) {
+      const swatchColor = styleLayers(
+        getByTestId(`pie-chart-swatch-${slice.accountId}`).props.style,
+      )
+        .map((layer) => layer.backgroundColor)
+        .find((value): value is string => typeof value === 'string');
+
+      expect(swatchColor).toBe(getByTestId(`pie-chart-arc-${slice.accountId}`).props.fill);
+    }
   });
 
   it('lays the legend out as aligned columns: a name, a fixed-width value, and a percent', async () => {

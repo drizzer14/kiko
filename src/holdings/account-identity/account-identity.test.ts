@@ -1,5 +1,6 @@
 import type { AccountRow } from '@kiko/db';
-import { type SwatchName, entityColorsDark, entityColorsLight } from '@kiko/design-system/palette';
+import { lightTwinOfDark } from '@kiko/test-support/light-twin-of-dark';
+import { entityColorsDark, entityColorsLight } from '@kiko/design-system/palette';
 
 import { accountKindSymbol } from '../entity-symbols';
 import { defaultAccountColor } from '../entity-colors';
@@ -9,13 +10,6 @@ import { accountIdentity } from '.';
 type AccountKind = AccountRow['kind'];
 
 const accountKinds = Object.keys(accountKindSymbol) as AccountKind[];
-
-const lightTwinOfDark: Record<string, string> = Object.fromEntries(
-  (Object.keys(entityColorsDark) as SwatchName[]).map((name) => [
-    entityColorsDark[name],
-    entityColorsLight[name],
-  ]),
-);
 
 describe('accountIdentity', () => {
   it('keeps a stored icon', () => {

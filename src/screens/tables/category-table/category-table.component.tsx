@@ -23,6 +23,10 @@ import { monthTitle } from '../month-column-label';
 import { styles } from './category-table.styles';
 import type { CategoryTableProps } from './category-table.props';
 
+// The table keeps a row's key, title and amounts, never a slice color, so the scheme the breakdown
+// resolves colors in cannot show here; the category menu's own slices take the active one.
+const TABLE_SCHEME = 'dark';
+
 type Amounts = {
   key: string;
   label: string;
@@ -75,6 +79,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
         baseCurrency,
         defaultCategoryKey,
         excludedCategories,
+        scheme: TABLE_SCHEME,
       }),
     [
       ledger,

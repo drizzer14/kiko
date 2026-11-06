@@ -6,6 +6,7 @@ import {
 import { Money, toMajor } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { convert, type RateTable } from '@kiko/rates/conversion';
 
 import {
@@ -219,6 +220,7 @@ export const buildCategoryTrend = (input: {
   bucketDays: number;
   excludedCategories?: ReadonlySet<string>;
   excludedTransactionIds?: ReadonlySet<string>;
+  scheme: ColorScheme;
 }): CategoryTrendSeries[] => {
   const {
     transactions,
@@ -228,6 +230,7 @@ export const buildCategoryTrend = (input: {
     defaultCategoryKey,
     range,
     bucketDays,
+    scheme,
   } = input;
   const excluded = input.excludedCategories ?? new Set<string>();
   const excludedIds = input.excludedTransactionIds ?? new Set<string>();
@@ -265,7 +268,7 @@ export const buildCategoryTrend = (input: {
       return {
         key,
         title: display.title,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
         total: entry.total,
         points,
       };

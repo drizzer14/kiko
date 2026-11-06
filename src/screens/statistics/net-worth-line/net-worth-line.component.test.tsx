@@ -4,7 +4,11 @@ import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, render as renderBare, within } from '@testing-library/react-native';
 
-import { darkTheme } from '@kiko/design-system/theme';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import '@kiko/design-system/unistyles';
 import NetWorthLine from './index';
 import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
@@ -690,6 +694,39 @@ describe('NetWorthLine', () => {
     expect(negRef.props.stopOpacity).toBe(0);
   });
 
+  describe('in the light scheme', () => {
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('reads the area opacities from the theme and keeps the stroke sign-colored', async () => {
+      registerLightThemeFirst();
+      const { getByTestId, getAllByTestId } = await render(
+        <NetWorthLine
+          points={crossingPoints}
+          startReference={200}
+          baseCurrency="USD"
+          height={200}
+        />,
+      );
+
+      const positiveLine = getByTestId('net-worth-line-gradient-positive-stop-line');
+      const negativeLine = getByTestId('net-worth-line-gradient-negative-stop-line');
+      expect(positiveLine.props.stopOpacity).toBe(lightTheme.chartFill.areaOpacity);
+      expect(negativeLine.props.stopOpacity).toBe(lightTheme.chartFill.negativeAreaOpacity);
+      expect(negativeLine.props.stopOpacity).not.toBe(darkTheme.chartFill.negativeAreaOpacity);
+      expect(positiveLine.props.stopColor).toBe(lightTheme.colors.positive);
+      expect(negativeLine.props.stopColor).toBe(lightTheme.colors.negative);
+
+      const segments = getAllByTestId(/^net-worth-line-polyline-/);
+      expect(segments.map((segment) => segment.props.stroke)).toEqual([
+        lightTheme.colors.positive,
+        lightTheme.colors.negative,
+        lightTheme.colors.positive,
+      ]);
+    });
+  });
+
   it('anchors each gradient to the ACTUAL filled band, not the whole plot half', async () => {
     const height = 200;
     const { getByTestId, getAllByTestId } = await render(
@@ -758,7 +795,7 @@ describe('NetWorthLine', () => {
     // The opaque stop is pinned at redBottomY (offset 1). The red/negative
     // stop is boosted to 0.5 (not the shared 0.3 green/positive uses) so the
     // fill still reads clearly composited over OLED true-black; see
-    // NEGATIVE_AREA_OPACITY in net-worth-line.component.tsx.
+    // `chartFillDark.negativeAreaOpacity` in palette.ts.
     const negLine = getByTestId('net-worth-line-gradient-negative-stop-line');
     expect(negLine.props.offset).toBe('1');
     expect(negLine.props.stopOpacity).toBe(0.5);

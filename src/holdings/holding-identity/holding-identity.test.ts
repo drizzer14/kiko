@@ -1,5 +1,6 @@
 import type { HoldingRow } from '@kiko/db';
-import { type SwatchName, entityColorsDark, entityColorsLight } from '@kiko/design-system/palette';
+import { lightTwinOfDark } from '@kiko/test-support/light-twin-of-dark';
+import { entityColorsDark, entityColorsLight } from '@kiko/design-system/palette';
 
 import {
   loanKindSymbol,
@@ -21,13 +22,6 @@ const holdingOf = (overrides: Partial<IdentityInput> = {}): IdentityInput => ({
   metadata: null,
   ...overrides,
 });
-
-const lightTwinOfDark: Record<string, string> = Object.fromEntries(
-  (Object.keys(entityColorsDark) as SwatchName[]).map((name) => [
-    entityColorsDark[name],
-    entityColorsLight[name],
-  ]),
-);
 
 describe('holdingIdentity', () => {
   it('keeps a stored icon', () => {

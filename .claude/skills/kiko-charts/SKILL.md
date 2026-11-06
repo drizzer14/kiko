@@ -169,9 +169,11 @@ a translucent color over the OLED true-black background
 (`darkTheme.colors.background`, `#000000`) reads faint at an alpha
 that would read fine over a lighter surface, so the negative band
 needs more opacity to stay visibly legible against true black. Read
-the `AREA_OPACITY`/`NEGATIVE_AREA_OPACITY` constants in
-`net-worth-line.component.tsx` for the current values rather than
-restating them here.
+`theme.chartFill` (`areaOpacity`, `negativeAreaOpacity`; the sets
+are `chartFillDark` and `chartFillLight` in `palette.ts`, the light
+one from the approved palette file) for the current values rather
+than restating them here. `net-worth-line.component.tsx` reads them
+from the active theme.
 
 **Net worth can go negative** (see kiko-domain "Net worth"): a debt
 outweighing assets means the line can cross 0 — this
@@ -339,9 +341,9 @@ account-contribution pie passes nothing, so its legend is uncropped.
 ## The account pie excludes debts
 
 `PieChart` itself has no debt concept — the exclusion lives entirely
-in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`)
-filters to `slice.amount > 0` before this component ever sees the
-slice list, so a debt account's net worth (negative, since a `loan`
+in its caller. `buildAccountContribution` (`src/statistics/account-contribution/`; a required
+`scheme` makes slice colors display colors) filters to `slice.amount > 0` before
+this component ever sees the slice list, so a debt account's net worth (negative, since a `loan`
 holding's own value is negative — see `kiko-domain` "Net worth")
 never reaches the ring: no negative-slice case exists inside
 `PieChart`/`allocatePercents` to handle. The SAME file's
@@ -362,3 +364,13 @@ pipeline (`defaultAccountColor`/`defaultHoldingColor`,
 same pipeline rather than inventing its own color set, so a swatch in a
 chart legend always matches that same entity's color everywhere else in
 the app (its card, its icon tint).
+
+Every fill is the DISPLAY hex of the active scheme, never the stored one:
+`buildAccountContribution` paints a slice through `entityDisplayColor`,
+`buildCategoryBreakdown` and `buildCategoryTrend` through
+`resolveCategoryColor` (the category set), each taking a required
+`scheme` from `useActiveColorScheme()`, and `bar-chart` maps
+`defaultHoldingColor[type]` through `entityDisplayColor`. A pie wedge,
+its legend swatch and a trend stroke read one `slice.color` or
+`series.color`, so they cannot differ. The net-worth stroke stays
+sign-colored.

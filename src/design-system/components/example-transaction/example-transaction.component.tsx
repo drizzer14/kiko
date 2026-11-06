@@ -15,6 +15,7 @@ import { categoriesRepo } from '@kiko/categories/repo';
 import { categoryForMcc } from '@kiko/monobank/mcc-category';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 
 import Box from '../box';
 import Text from '../text';
@@ -48,6 +49,7 @@ import type { ExampleTransactionProps } from './example-transaction.props';
  */
 const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingName, testID }) => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
     categoriesRepo.allQuery(),
     ['categories'],
@@ -95,7 +97,7 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingN
           <TransactionCard
             title={title}
             categoryIcon={category.icon}
-            categoryIconColor={resolveCategoryColor(category.color, categoryKey)}
+            categoryIconColor={resolveCategoryColor(category.color, categoryKey, scheme)}
             categoryAccessibilityLabel={category.title}
             money={Money.of(transaction.currency, transaction.amountMinorUnits)}
             footerMeta={category.title}

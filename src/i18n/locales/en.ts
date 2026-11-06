@@ -1802,16 +1802,13 @@ export const en = {
       'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
   },
   recurringCharges: {
-    chargeCount_one: '{{count}} charge',
-    chargeCount_few: '{{count}} charges',
-    chargeCount_many: '{{count}} charges',
-    chargeCount_other: '{{count}} charges',
     emptyMessage:
       'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring.',
     emptyTitle: 'No recurring charges yet',
     hiddenHeading: 'Hidden',
     holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
+    lastChargesTotal: 'Sum of last charges',
     listChangedMessage: 'Go back to see your recurring charges as they are now.',
     listChangedTitle: 'This list has changed',
     marked: {
@@ -1833,6 +1830,13 @@ export const en = {
     paidSoFar: 'All paid so far',
     removeMark: 'Remove mark',
     showAgain: 'Show again',
+    summary: {
+      chargeCount: 'Number of charges',
+      lastCharge: 'Last charge',
+      repeats: 'Repeats',
+      status: 'Status',
+      stopped: 'No recent charge',
+    },
     title: 'Recurring Charges',
     weekly: 'Weekly',
     weeklyOn: {
