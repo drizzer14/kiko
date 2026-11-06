@@ -341,7 +341,14 @@ describe('isReminderOfferDismissed', () => {
 
 const hide = (key: string, name: string) => settingsRepo.hideRecurringMerchant(key, name);
 
-const showAgain = (key: string) => settingsRepo.showRecurringMerchantAgain(key);
+type HideWithChain = (
+  key: string,
+  name: string,
+  chain: readonly RecurringMark[],
+) => ReturnType<typeof settingsRepo.hideRecurringMerchant>;
+
+const hideWithChain: HideWithChain = (key, name, chain) =>
+  (settingsRepo.hideRecurringMerchant as HideWithChain)(key, name, chain);
 
 const COLUMN = 'recurring_merchant_choices';
 
@@ -463,39 +470,10 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
     expect(storedEntries()).toEqual(new Map([['atb', { name: 'Atb Market', hidden: true }]]));
   });
 
-  it('removes one entry on show again and keeps the others', async () => {
-    await hide('atb', 'ATB');
-    await hide('silpo', 'Silpo');
-
-    await showAgain('atb');
-
-    expect(await readChoices()).toEqual(new Map([['silpo', { name: 'Silpo', hidden: true }]]));
-  });
-
-  it('writes nothing when show again names a key that is not stored', async () => {
-    await hide('atb', 'ATB');
-    writeCounts.count = 0;
-
-    await showAgain('unknown');
-
-    expect(writeCounts.count).toBe(0);
-    expect(await readChoices()).toEqual(new Map([['atb', { name: 'ATB', hidden: true }]]));
-  });
-
-  it('writes when show again names a stored key', async () => {
-    await hide('atb', 'ATB');
-    writeCounts.count = 0;
-
-    await showAgain('atb');
-
-    expect(writeCounts.count).toBeGreaterThan(0);
-  });
-
-  it('touches no transactions row on a hide or a show again', async () => {
+  it('touches no transactions row on a hide', async () => {
     const before = transactionsFingerprint();
 
     await hide('atb', 'ATB');
-    await showAgain('atb');
     await hide('silpo', 'Silpo');
 
     expect(before.count).toBe(2);
@@ -781,48 +759,86 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
       });
     });
 
-    describe('showRecurringMerchantAgain', () => {
-      it('clears the hide and keeps the marks of an entry holding both', async () => {
-        storeEntries({ apple: { name: 'Apple', hidden: true, marks: [APPLE_99] } });
-
-        await showAgain('apple');
-
-        expect(storedEntries()).toEqual(new Map([['apple', { name: 'Apple', marks: [APPLE_99] }]]));
-      });
-
-      it('leaves no entry for a hide-only entry', async () => {
-        await hide('apple', 'Apple');
-
-        await showAgain('apple');
-
-        expect(storedEntries()).toEqual(new Map());
-      });
-
-      it('writes nothing on a marks-only entry', async () => {
-        storeEntries({ apple: { name: 'Apple', marks: [APPLE_99] } });
-        const before = storedText();
+    describe('hideRecurringMerchant with the chain of a marked series', () => {
+      it('hides the key and drops the marks of that chain alone, keeping the other marks of the key, in one write', async () => {
+        await mark('apple', 'Apple', APPLE_99);
+        await mark('apple', 'Apple', APPLE_399);
         writeCounts.count = 0;
 
-        await showAgain('apple');
+        await hideWithChain('apple', 'Apple', [APPLE_99]);
 
-        expect(writeCounts.count).toBe(0);
-        expect(storedText()).toBe(before);
+        expect(writeCounts.count).toBe(1);
+        expect(storedEntries()).toEqual(
+          new Map([['apple', { name: 'Apple', hidden: true, marks: [APPLE_399] }]]),
+        );
       });
 
-      it('leaves no entry after hide, mark, remove and show again', async () => {
-        await hide('apple', 'Apple');
+      it('leaves a hide-only entry when the chain holds every mark of the key', async () => {
         await mark('apple', 'Apple', APPLE_99);
-        await unmark('apple', [APPLE_99]);
+        await mark('apple', 'Apple', APPLE_399);
+
+        await hideWithChain('apple', 'Apple', [APPLE_99, APPLE_399]);
 
         expect(storedEntries().get('apple')).toStrictEqual({ name: 'Apple', hidden: true });
+      });
 
-        await showAgain('apple');
+      it('drops a mark of the chain in its own currency only', async () => {
+        const apple99Dollars = markOf(9_900, 'monthly', 'USD');
 
-        expect(storedEntries()).toEqual(new Map());
+        await mark('apple', 'Apple', APPLE_99);
+        await mark('apple', 'Apple', apple99Dollars);
+
+        await hideWithChain('apple', 'Apple', [APPLE_99]);
+
+        expect(storedEntries().get('apple')).toEqual({
+          name: 'Apple',
+          hidden: true,
+          marks: [apple99Dollars],
+        });
+      });
+
+      it('hides a key that holds no mark of the chain, and takes the last name', async () => {
+        await mark('apple', 'Apple', APPLE_399);
+
+        await hideWithChain('apple', 'APPLE', [APPLE_99]);
+
+        expect(storedEntries().get('apple')).toEqual({
+          name: 'APPLE',
+          hidden: true,
+          marks: [APPLE_399],
+        });
+      });
+
+      it('hides an absent key with an empty chain, as a hide with no chain does', async () => {
+        await hideWithChain('apple', 'Apple', []);
+
+        expect(storedEntries()).toEqual(new Map([['apple', { name: 'Apple', hidden: true }]]));
+      });
+
+      it('keeps every mark of a key hidden with an empty chain', async () => {
+        await mark('apple', 'Apple', APPLE_99);
+        await mark('apple', 'Apple', APPLE_399);
+
+        await hideWithChain('apple', 'Apple', []);
+
+        expect(storedEntries().get('apple')).toEqual({
+          name: 'Apple',
+          hidden: true,
+          marks: [APPLE_99, APPLE_399],
+        });
+      });
+
+      it('changes no other key', async () => {
+        await mark('apple', 'Apple', APPLE_99);
+        await mark('netflix', 'Netflix', APPLE_99);
+
+        await hideWithChain('apple', 'Apple', [APPLE_99]);
+
+        expect(storedEntries().get('netflix')).toEqual({ name: 'Netflix', marks: [APPLE_99] });
       });
     });
 
-    it('changes no transactions row on a mark, a period, a removal, a hide or a show', async () => {
+    it('changes no transactions row on a mark, a period, a removal or a hide', async () => {
       const before = transactionsFingerprint();
 
       await mark('apple', 'Apple', APPLE_99);
@@ -830,7 +846,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
       await setPeriod('apple', [APPLE_99], 'yearly');
       await hide('apple', 'Apple');
       await unmark('apple', [APPLE_399]);
-      await showAgain('apple');
+      await hideWithChain('apple', 'Apple', [markOf(9_900, 'yearly')]);
       await unmark('apple', [markOf(9_900, 'yearly')]);
 
       expect(before.count).toBe(2);
@@ -865,7 +881,6 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
 
       await unmark(CONSTRUCTOR_KEY, [markOf(25_000)]);
       await setPeriod(CONSTRUCTOR_KEY, [markOf(25_000)], 'yearly');
-      await showAgain(CONSTRUCTOR_KEY);
 
       expect(writeCounts.count).toBe(0);
       expect(await markedSeriesUnder('constructor')).toEqual([]);

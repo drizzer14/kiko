@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -6,8 +5,9 @@ import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { formatMoney } from '@kiko/currency/format';
+import type { RecurringMerchantChoice } from '@kiko/settings';
 import type { RecurringSeries } from '@kiko/recurring/detection';
-import { settingsRepo, type RecurringMerchantChoice } from '@kiko/settings';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
@@ -47,6 +47,7 @@ const renderScreen = async (result: Omit<typeof mockResult, 'choices'> & { choic
       navigation={asNavigationProp<ScreenProps['navigation']>(navigationSpy())}
       route={asRouteProp<ScreenProps['route']>('RecurringCharges')}
     />,
+    { wrapper: GestureRootWrapper },
   );
 };
 
@@ -379,10 +380,6 @@ describe('RecurringChargesScreen — a row', () => {
 });
 
 describe('RecurringChargesScreen — hidden merchants', () => {
-  const HIDDEN_HEADING = 'recurring-charges-heading-hidden';
-  const hiddenRowTestId = (key: string): string => `recurring-charges-hidden-${key}`;
-  const showAgainTestId = (key: string): string => `recurring-charges-show-again-${key}`;
-
   const hiddenChoice = (name: string): RecurringMerchantChoice => ({ name, hidden: true });
 
   const NETFLIX = seriesWith({});
@@ -393,15 +390,7 @@ describe('RecurringChargesScreen — hidden merchants', () => {
       (node) => node.props.testID,
     );
 
-  let showSpy: jest.SpyInstance;
-
-  beforeEach(() => {
-    showSpy = jest.spyOn(settingsRepo, 'showRecurringMerchantAgain').mockResolvedValue(undefined);
-  });
-
-  afterEach(() => {
-    showSpy.mockRestore();
-  });
+  const REMOVED_PARTS = /^recurring-charges-(heading-hidden|hidden-|show-again-)/;
 
   it('leaves a hidden merchant out of the list and keeps the others', async () => {
     const { getByTestId, queryByTestId } = await renderScreen({
@@ -415,14 +404,14 @@ describe('RecurringChargesScreen — hidden merchants', () => {
   });
 
   it('lists the same merchant when nothing is hidden', async () => {
-    const { getByTestId, queryByTestId } = await renderScreen({
+    const { getByTestId, queryAllByTestId } = await renderScreen({
       series: [NETFLIX, SPOTIFY],
       isLoading: false,
     });
 
     expect(getByTestId(rowTestId(NETFLIX))).toBeTruthy();
     expect(getByTestId(rowTestId(SPOTIFY))).toBeTruthy();
-    expect(queryByTestId(HIDDEN_HEADING)).toBeNull();
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
   });
 
   it('leaves out every series under a hidden key', async () => {
@@ -449,8 +438,8 @@ describe('RecurringChargesScreen — hidden merchants', () => {
     expect(getByTestId(rowTestId(SPOTIFY))).toBeTruthy();
   });
 
-  it('names each hidden merchant under the heading, in key order, whatever the stored order', async () => {
-    const { getAllByTestId, getByTestId } = await renderScreen({
+  it('lists no heading, no line and no button for any hidden key, however many are hidden', async () => {
+    const { getAllByTestId, queryAllByTestId } = await renderScreen({
       series: [SPOTIFY],
       isLoading: false,
       choices: new Map([
@@ -460,32 +449,53 @@ describe('RecurringChargesScreen — hidden merchants', () => {
       ]),
     });
 
-    expect(shownRows(getAllByTestId)).toEqual([
-      rowTestId(SPOTIFY),
-      HIDDEN_HEADING,
-      hiddenRowTestId('atb'),
-      hiddenRowTestId('fora'),
-      hiddenRowTestId('netflix'),
-    ]);
-    expect(getByTestId(HIDDEN_HEADING)).toHaveTextContent('Hidden');
-    expect(getByTestId(hiddenRowTestId('atb'))).toHaveTextContent('ATB');
-    expect(getByTestId(hiddenRowTestId('fora'))).toHaveTextContent('Fora');
-    expect(getByTestId(hiddenRowTestId('netflix'))).toHaveTextContent('Netflix');
+    expect(shownRows(getAllByTestId)).toEqual([rowTestId(SPOTIFY)]);
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
   });
 
-  it('names a hidden merchant that has no rows now', async () => {
-    const { getByTestId } = await renderScreen({
+  describe.each([
+    ['en', 'Hidden', 'Show again'],
+    ['uk', 'Приховані', 'Показати знову'],
+  ])('in %s', (language, heading, button) => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('shows no "Hidden" text and no "Show again" text for a hidden key', async () => {
+      const { getByTestId, queryByText } = await renderScreen({
+        series: [SPOTIFY],
+        isLoading: false,
+        choices: new Map([['netflix', hiddenChoice('Netflix')]]),
+      });
+
+      expect(getByTestId(rowTestId(SPOTIFY))).toBeTruthy();
+      expect(queryByText(heading)).toBeNull();
+      expect(queryByText(button)).toBeNull();
+      expect(queryByText('Netflix')).toBeNull();
+    });
+  });
+
+  it('lists nothing for a hidden merchant that has no rows now', async () => {
+    const { getAllByTestId, queryAllByTestId, queryByText } = await renderScreen({
       series: [NETFLIX],
       isLoading: false,
       choices: new Map([['ghost', hiddenChoice('Ghost')]]),
     });
 
-    expect(getByTestId(rowTestId(NETFLIX))).toBeTruthy();
-    expect(getByTestId(HIDDEN_HEADING)).toBeTruthy();
-    expect(getByTestId(hiddenRowTestId('ghost'))).toHaveTextContent('Ghost');
+    expect(shownRows(getAllByTestId)).toEqual([rowTestId(NETFLIX)]);
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
+    expect(queryByText('Ghost')).toBeNull();
   });
 
-  it('puts the hidden section after the active and the stopped ones', async () => {
+  it('lists the active and the stopped ones and nothing after them for a hidden key', async () => {
     const stopped = seriesWith({
       id: 'gym-1',
       merchantKey: 'gym',
@@ -499,124 +509,41 @@ describe('RecurringChargesScreen — hidden merchants', () => {
       choices: new Map([['atb', hiddenChoice('ATB')]]),
     });
 
-    expect(shownRows(getAllByTestId)).toEqual([
-      rowTestId(NETFLIX),
-      rowTestId(stopped),
-      HIDDEN_HEADING,
-      hiddenRowTestId('atb'),
-    ]);
+    expect(shownRows(getAllByTestId)).toEqual([rowTestId(NETFLIX), rowTestId(stopped)]);
+  });
+
+  it('keeps a hidden key out whatever its series are: active, stopped or quiet', async () => {
+    const stopped = seriesWith({
+      id: 'netflix-2',
+      isStopped: true,
+      lastChargeTime: FIRST_OF_MAY,
+    });
+    const quiet = seriesWith({
+      id: 'netflix-3',
+      isStopped: true,
+      lastChargeTime: FIRST_OF_MAY,
+      quiet: { since: TENTH_OF_JUNE, holdingName: 'Wallet' },
+    });
+    const { getAllByTestId, queryByTestId } = await renderScreen({
+      series: [NETFLIX, stopped, quiet, SPOTIFY],
+      isLoading: false,
+      choices: new Map([['netflix', hiddenChoice('Netflix')]]),
+    });
+
+    expect(shownRows(getAllByTestId)).toEqual([rowTestId(SPOTIFY)]);
+    expect(queryByTestId(rowTestId(stopped))).toBeNull();
+    expect(queryByTestId(rowTestId(quiet))).toBeNull();
   });
 
   it('shows no hidden section while the reads are still queued', async () => {
-    const { getByTestId, queryByTestId } = await renderScreen({
+    const { getByTestId, queryAllByTestId } = await renderScreen({
       series: [],
       isLoading: true,
       choices: new Map([['atb', hiddenChoice('ATB')]]),
     });
 
     expect(getByTestId('recurring-charges-loading')).toBeTruthy();
-    expect(queryByTestId(HIDDEN_HEADING)).toBeNull();
-    expect(queryByTestId(hiddenRowTestId('atb'))).toBeNull();
-  });
-
-  it('calls "Show again" with the key of the row tapped, and no other', async () => {
-    const { getByTestId } = await renderScreen({
-      series: [],
-      isLoading: false,
-      choices: new Map([
-        ['atb', hiddenChoice('ATB')],
-        ['fora', hiddenChoice('Fora')],
-      ]),
-    });
-
-    expect(showSpy).not.toHaveBeenCalled();
-
-    await fireEvent.press(getByTestId(showAgainTestId('fora')));
-
-    expect(showSpy).toHaveBeenCalledTimes(1);
-    expect(showSpy).toHaveBeenCalledWith('fora');
-  });
-
-  describe('when "Show again" is tapped', () => {
-    const renderWithHiddenAtb = () =>
-      renderScreen({
-        series: [],
-        isLoading: false,
-        choices: new Map([['atb', hiddenChoice('ATB')]]),
-      });
-
-    let alertSpy: jest.SpyInstance;
-
-    beforeEach(() => {
-      alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    });
-
-    afterEach(() => {
-      alertSpy.mockRestore();
-    });
-
-    it('shows the save alert and keeps the hidden row when the write is rejected', async () => {
-      showSpy.mockRejectedValueOnce(new Error('disk full'));
-      const { getByTestId } = await renderWithHiddenAtb();
-
-      await fireEvent.press(getByTestId(showAgainTestId('atb')));
-
-      expect(alertSpy).toHaveBeenCalledTimes(1);
-      expect(alertSpy).toHaveBeenCalledWith(
-        i18n.t('forms.fields.saveErrorTitle'),
-        i18n.t('forms.fields.saveErrorMessage'),
-      );
-      expect(getByTestId(hiddenRowTestId('atb'))).toHaveTextContent('ATB');
-    });
-
-    it('shows no alert when the write is accepted', async () => {
-      const { getByTestId } = await renderWithHiddenAtb();
-
-      await fireEvent.press(getByTestId(showAgainTestId('atb')));
-
-      expect(showSpy).toHaveBeenCalledWith('atb');
-      expect(alertSpy).not.toHaveBeenCalled();
-    });
-  });
-
-  it('states the heading and the button literally in English', async () => {
-    const { getByTestId } = await renderScreen({
-      series: [],
-      isLoading: false,
-      choices: new Map([['atb', hiddenChoice('ATB')]]),
-    });
-
-    expect(getByTestId(HIDDEN_HEADING)).toHaveTextContent('Hidden');
-    expect(getByTestId(showAgainTestId('atb'))).toHaveTextContent('Show again');
-    expect(i18n.t('recurringCharges.hiddenHeading')).toBe('Hidden');
-    expect(i18n.t('recurringCharges.showAgain')).toBe('Show again');
-  });
-
-  describe('in Ukrainian', () => {
-    beforeEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-    });
-
-    afterEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
-    });
-
-    it('states the heading and the button literally', async () => {
-      const { getByTestId } = await renderScreen({
-        series: [],
-        isLoading: false,
-        choices: new Map([['atb', hiddenChoice('ATB')]]),
-      });
-
-      expect(getByTestId(HIDDEN_HEADING)).toHaveTextContent('Приховані');
-      expect(getByTestId(showAgainTestId('atb'))).toHaveTextContent('Показати знову');
-      expect(i18n.t('recurringCharges.hiddenHeading')).toBe('Приховані');
-      expect(i18n.t('recurringCharges.showAgain')).toBe('Показати знову');
-    });
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
   });
 
   describe('a merchant named like an object property', () => {
@@ -646,26 +573,24 @@ describe('RecurringChargesScreen — hidden merchants', () => {
 
       expect(queryByTestId(rowTestId(CONSTRUCTOR))).toBeNull();
       expect(getByTestId(rowTestId(NETFLIX))).toBeTruthy();
-      expect(getByTestId(hiddenRowTestId('constructor'))).toBeTruthy();
     });
   });
 
   it('lists a series whose stored entry does not say hidden', async () => {
     // An entry with no `hidden` flag is not a hide, so the list tests the flag and not the key.
     const withoutFlag = { name: 'Netflix' } as unknown as RecurringMerchantChoice;
-    const { getByTestId, queryByTestId } = await renderScreen({
+    const { getByTestId } = await renderScreen({
       series: [NETFLIX],
       isLoading: false,
       choices: new Map([['netflix', withoutFlag]]),
     });
 
     expect(getByTestId(rowTestId(NETFLIX))).toBeTruthy();
-    expect(queryByTestId(HIDDEN_HEADING)).toBeNull();
   });
 
   describe('with only hidden merchants', () => {
-    it('shows the empty state and the section together, after a series was filtered out', async () => {
-      const { getByTestId, queryByTestId } = await renderScreen({
+    it('shows the empty state and nothing after it, after a series was filtered out', async () => {
+      const { getByTestId, queryAllByTestId, queryByTestId, queryByText } = await renderScreen({
         series: [NETFLIX],
         isLoading: false,
         choices: new Map([['netflix', hiddenChoice('Netflix')]]),
@@ -675,31 +600,32 @@ describe('RecurringChargesScreen — hidden merchants', () => {
         i18n.t('recurringCharges.emptyTitle'),
         { exact: false },
       );
-      expect(getByTestId(HIDDEN_HEADING)).toBeTruthy();
-      expect(getByTestId(hiddenRowTestId('netflix'))).toHaveTextContent('Netflix');
+      expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
+      expect(queryByText('Netflix')).toBeNull();
       expect(queryByTestId(rowTestId(NETFLIX))).toBeNull();
     });
 
-    it('shows both for a hidden merchant with no rows', async () => {
-      const { getByTestId } = await renderScreen({
+    it('shows the empty state and nothing after it for a hidden merchant with no rows', async () => {
+      const { getByTestId, queryAllByTestId, queryByText } = await renderScreen({
         series: [],
         isLoading: false,
         choices: new Map([['ghost', hiddenChoice('Ghost')]]),
       });
 
       expect(getByTestId('recurring-charges-empty')).toBeTruthy();
-      expect(getByTestId(hiddenRowTestId('ghost'))).toBeTruthy();
+      expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
+      expect(queryByText('Ghost')).toBeNull();
     });
 
-    it('shows no empty state once a visible series stands beside the section', async () => {
-      const { queryByTestId, getByTestId } = await renderScreen({
+    it('shows no empty state once a visible series stands beside a hidden key', async () => {
+      const { queryByTestId, getByTestId, queryAllByTestId } = await renderScreen({
         series: [NETFLIX, SPOTIFY],
         isLoading: false,
         choices: new Map([['netflix', hiddenChoice('Netflix')]]),
       });
 
       expect(getByTestId(rowTestId(SPOTIFY))).toBeTruthy();
-      expect(getByTestId(HIDDEN_HEADING)).toBeTruthy();
+      expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
       expect(queryByTestId('recurring-charges-empty')).toBeNull();
     });
   });

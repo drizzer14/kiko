@@ -282,6 +282,82 @@ describe('CardContextMenu', () => {
     expect(queryByText('This stays at the bank figure.')).toBeNull();
   });
 
+  describe('the deleteLabel', () => {
+    const LABEL = { deleteLabel: 'Not a recurring charge' };
+
+    it('labels the confirm button of a delete-only card with it, and still routes it to onDelete', async () => {
+      const onDelete = jest.fn();
+      const { getByTestId, queryByText } = await render(
+        <CardContextMenu name="Netflix" deletable onDelete={onDelete} {...LABEL}>
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toHaveTextContent('Not a recurring charge', {
+        exact: true,
+      });
+      expect(queryByText('Delete')).toBeNull();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(onDelete).toHaveBeenCalledTimes(1);
+    });
+
+    it('labels the Delete item of the action list and the confirm button it hands off to', async () => {
+      const onDelete = jest.fn();
+      const { getByTestId, queryByText } = await render(
+        <CardContextMenu
+          name="Netflix"
+          deletable
+          onDelete={onDelete}
+          onDuplicate={jest.fn()}
+          {...LABEL}
+        >
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getByTestId(DELETE_ACTION_TEST_ID)).toHaveTextContent('Not a recurring charge', {
+        exact: true,
+      });
+      expect(queryByText('Delete')).toBeNull();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toHaveTextContent('Not a recurring charge', {
+        exact: true,
+      });
+      expect(queryByText('Delete')).toBeNull();
+    });
+
+    it('reads Delete on the confirm button and the action list item when it is omitted', async () => {
+      const { getByTestId } = await render(
+        <CardContextMenu name="Netflix" deletable onDelete={jest.fn()} onDuplicate={jest.fn()}>
+          <Text>card</Text>
+        </CardContextMenu>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      await holdCard();
+
+      expect(getByTestId(DELETE_ACTION_TEST_ID)).toHaveTextContent('Delete', { exact: true });
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(DELETE_ACTION_TEST_ID));
+      });
+
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toHaveTextContent('Delete', { exact: true });
+    });
+  });
+
   it('leaves a plain tap to the child card and never opens the confirm', async () => {
     const onPress = jest.fn();
     const { getByText, queryByText } = await render(

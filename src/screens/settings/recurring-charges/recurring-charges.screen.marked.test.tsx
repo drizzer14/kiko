@@ -7,6 +7,7 @@ import { Money } from '@kiko/currency/money';
 import { settingsRepo } from '@kiko/settings';
 import { formatMoney } from '@kiko/currency/format';
 import { chargesAt } from '@kiko/test-support/marked-series-worlds';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ledgerOf, monthly, chargeOf, at } from '@kiko/test-support/recurring-ledger';
 import { hookStateOf, type MarkedNames } from '@kiko/test-support/marked-series-hook-result';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -45,11 +46,13 @@ const renderScreen = async (state: HookState) => {
       navigation={asNavigationProp<ScreenProps['navigation']>(navigationSpy())}
       route={asRouteProp<ScreenProps['route']>('RecurringCharges')}
     />,
+    { wrapper: GestureRootWrapper },
   );
 };
 
 const ROW = /^recurring-series-row-/;
 const EMPTY = 'recurring-charges-empty';
+const REMOVED_PARTS = /^recurring-charges-(heading-hidden|hidden-|show-again-)/;
 
 const markedEmptyHeading = (): string => i18n.t('recurringCharges.markedEmptyHeading');
 const markedEmptyMessage = (): string => i18n.t('recurringCharges.markedEmptyMessage');
@@ -249,19 +252,22 @@ describe('RecurringChargesScreen — Marked, No Charges', () => {
     expect(queryByTestId(EMPTY)).toBeNull();
   });
 
-  it('puts the section after the series and before the hidden one', async () => {
-    // One series, so the ten rows the list draws first reach the hidden section.
+  it('puts the section after the series, with nothing for a hidden key after it', async () => {
+    // One series, so the ten rows the list draws first reach the section.
     const state = hookStateOf(
       ledgerOf(monthly(6, 3, 250, { prefix: 'netflix' })),
       [['Ghost', ['yearly', 50]]],
       new Map([['zeta', { name: 'Zeta', hidden: true as const }]]),
     );
-    const { getAllByText } = await renderScreen(state);
-    const headings = [markedEmptyHeading(), i18n.t('recurringCharges.hiddenHeading')];
+    const { getAllByTestId, getByText, queryAllByTestId, queryByText } = await renderScreen(state);
 
-    expect(
-      getAllByText(new RegExp(`^(${headings.join('|')})$`)).map((node) => node.props.children),
-    ).toEqual(headings);
+    expect(shownOrder(getAllByTestId)).toEqual([
+      rowTestId(idOf(state, 'Netflix')),
+      'recurring-charges-heading-marked-empty',
+    ]);
+    expect(getByText(markedEmptyHeading())).toBeTruthy();
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
+    expect(queryByText('Zeta')).toBeNull();
   });
 });
 
@@ -272,7 +278,7 @@ describe('RecurringChargesScreen — a hide beside marks', () => {
   ]);
   const HIDDEN_APPLE = new Map([['apple', { name: 'Apple', hidden: true as const }]]);
 
-  it('leaves the marked series listed and hides the detected one under the same key', async () => {
+  it('leaves the marked series listed and hides the detected one under the same key, with no line for the key', async () => {
     const shown = hookStateOf(APPLE, [['Apple', ['monthly', 99]]], HIDDEN_APPLE);
     const { getByTestId, queryByTestId, queryAllByTestId } = await renderScreen(shown);
     const [marked] = shown.markedSeries;
@@ -282,26 +288,26 @@ describe('RecurringChargesScreen — a hide beside marks', () => {
     expect(getByTestId(rowTestId(marked.id))).toBeTruthy();
     expect(queryByTestId(rowTestId(detected.id))).toBeNull();
     expect(queryAllByTestId(ROW)).toHaveLength(1);
-    expect(getByTestId('recurring-charges-hidden-apple')).toHaveTextContent('Apple');
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
   });
 
   it('lists both when the hide is gone, which the hidden state is the twin of', async () => {
     const shown = hookStateOf(APPLE, [['Apple', ['monthly', 99]]]);
-    const { queryAllByTestId, queryByTestId } = await renderScreen(shown);
+    const { queryAllByTestId } = await renderScreen(shown);
 
     expect(queryAllByTestId(ROW)).toHaveLength(2);
-    expect(queryByTestId('recurring-charges-hidden-apple')).toBeNull();
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
   });
 
-  it('lists the chains without a charge of a hidden key', async () => {
+  it('lists the chains without a charge of a hidden key, with no line for the key', async () => {
     const state = hookStateOf(
       ledgerOf([]),
       [['Ghost', ['yearly', 50]]],
       new Map([['ghost', { name: 'Ghost', hidden: true as const }]]),
     );
-    const { getAllByText, getByTestId } = await renderScreen(state);
+    const { getAllByText, queryAllByTestId } = await renderScreen(state);
 
     expect(getAllByText(markedEmptyMessage())).toHaveLength(1);
-    expect(getByTestId('recurring-charges-hidden-ghost')).toBeTruthy();
+    expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
   });
 });
