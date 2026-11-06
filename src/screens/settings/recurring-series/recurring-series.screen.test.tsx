@@ -192,12 +192,9 @@ const setLanguage = (language: 'en' | 'uk') =>
 const idsOfCount = (count: number): string[] =>
   Array.from({ length: count }, (_, index) => `netflix-${count - index}`);
 
-const COUNT_CASES = [
-  { count: 1, english: '1 charge', ukrainian: '1 списання' },
-  { count: 2, english: '2 charges', ukrainian: '2 списання' },
-  { count: 5, english: '5 charges', ukrainian: '5 списань' },
-  { count: 21, english: '21 charges', ukrainian: '21 списання' },
-];
+const COUNT_CASES = [1, 2, 5, 21];
+
+const CHARGE_COUNT = 'recurring-series-summary-charge-count';
 
 const headerWithCount = async (count: number) => {
   const series = seriesWith({ chargeIds: idsOfCount(count) });
@@ -225,31 +222,37 @@ describe('RecurringSeriesScreen — header', () => {
       paramsOf(series),
     );
 
-    expect(getByTestId(HEADER)).toHaveTextContent('Monthly, on day 15', { exact: false });
-    expect(getByTestId(HEADER)).toHaveTextContent(
-      `Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`,
-      { exact: false },
+    expect(getByTestId('recurring-series-summary-repeats')).toHaveTextContent(
+      'Monthly, on day 15',
+      { exact: true },
     );
-    expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+    expect(getByTestId('recurring-series-summary-last-charge')).toHaveTextContent(
+      formatDate(FIFTEENTH_OF_OCTOBER),
+      { exact: true },
+    );
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
   });
 
-  it('shows the no-charge-since line of a stopped series', async () => {
+  it('shows the status and the last charge date of a stopped series', async () => {
     const series = seriesWith({ isStopped: true, lastChargeTime: FIRST_OF_MAY });
     const { getByTestId } = await renderScreen(
       { series: [series], isLoading: false },
       paramsOf(series),
     );
 
-    expect(getByTestId(HEADER)).toHaveTextContent(`No charge since ${formatDate(FIRST_OF_MAY)}`, {
-      exact: false,
+    expect(getByTestId('recurring-series-summary-status')).toHaveTextContent('No recent charge', {
+      exact: true,
     });
+    expect(getByTestId('recurring-series-summary-last-charge')).toHaveTextContent(
+      formatDate(FIRST_OF_MAY),
+      { exact: true },
+    );
   });
 
-  it.each(COUNT_CASES)('reads $count charges as "$english"', async ({ count, english }) => {
+  it.each(COUNT_CASES)('reads %s charges as the bare number', async (count) => {
     const { getByTestId } = await headerWithCount(count);
 
-    expect(i18n.t('recurringCharges.chargeCount', { count })).toBe(english);
-    expect(getByTestId(HEADER)).toHaveTextContent(english, { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent(String(count), { exact: true });
   });
 });
 
@@ -258,11 +261,10 @@ describe('RecurringSeriesScreen — header in Ukrainian', () => {
     await setLanguage('uk');
   });
 
-  it.each(COUNT_CASES)('reads $count charges as "$ukrainian"', async ({ count, ukrainian }) => {
+  it.each(COUNT_CASES)('reads %s charges as the bare number', async (count) => {
     const { getByTestId } = await headerWithCount(count);
 
-    expect(i18n.t('recurringCharges.chargeCount', { count })).toBe(ukrainian);
-    expect(getByTestId(HEADER)).toHaveTextContent(ukrainian, { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent(String(count), { exact: true });
   });
 
   it('states the neutral list text literally', () => {
@@ -348,7 +350,7 @@ describe('RecurringSeriesScreen — charges', () => {
       chargeTestId('netflix-3'),
       chargeTestId('netflix-1'),
     ]);
-    expect(screen.getByTestId(HEADER)).toHaveTextContent('2 charges', { exact: false });
+    expect(screen.getByTestId(CHARGE_COUNT)).toHaveTextContent('2', { exact: true });
   });
 });
 
@@ -426,7 +428,7 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
       MOVED_LEDGER,
     );
 
-    expect(getByTestId(HEADER)).toHaveTextContent('2 charges', { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('2', { exact: true });
     expect(shownChargeIds(getAllByTestId)).toEqual([
       chargeTestId('netflix-3'),
       chargeTestId('netflix-2'),
@@ -549,7 +551,7 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
         chargeTestId('netflix-3'),
         chargeTestId('netflix-2'),
       ]);
-      expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+      expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
       expect(queryByTestId(chargeTestId('spotify-2'))).toBeNull();
       expect(queryByTestId(chargeTestId('netflix-1'))).toBeNull();
       expect(queryByTestId(EMPTY)).toBeNull();
@@ -584,7 +586,7 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
         chargeTestId('netflix-3'),
         chargeTestId('netflix-1'),
       ]);
-      expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+      expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
     });
   });
 
@@ -793,7 +795,7 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     };
     await rerender(hideScreen(navigation));
 
-    expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
     expect(shownChargeIds(getAllByTestId)).toHaveLength(3);
     expect(queryByTestId(EMPTY)).toBeNull();
     expect(navigation.goBack).not.toHaveBeenCalled();

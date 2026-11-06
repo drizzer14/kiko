@@ -145,6 +145,8 @@ const ledgerOf = (currency: 'UAH' | 'USD'): ContextRow[] => [
 
 const PAID = 10000 + 20050 + 30025;
 
+const PAID_VALUE = 'recurring-series-summary-paid';
+
 const MARKED = seriesWith({
   recurrence: { kind: 'marked' },
   marks: [{ currency: 'UAH', amountMinorUnits: 25000, period: 'monthly' }],
@@ -234,23 +236,26 @@ describe('RecurringSeriesScreen — all paid so far', () => {
     const header = within(getByTestId('recurring-series-header'));
 
     expect(header.getByText('All paid so far')).toBeTruthy();
-    expect(header.getByText(formatMoney(Money.of('UAH', PAID)))).toBeTruthy();
+    expect(header.getByTestId(PAID_VALUE)).toHaveTextContent(formatMoney(Money.of('UAH', PAID)), {
+      exact: true,
+    });
   });
 
   it('sums a series in its own currency, whatever the base currency is', async () => {
     const { getByTestId } = await renderDetected(seriesWith({ currency: 'USD' }), ledgerOf('USD'));
 
     expect(
-      within(getByTestId('recurring-series-header')).getByText(formatMoney(Money.of('USD', PAID))),
-    ).toBeTruthy();
+      within(getByTestId('recurring-series-header')).getByTestId(PAID_VALUE),
+    ).toHaveTextContent(formatMoney(Money.of('USD', PAID)), { exact: true });
   });
 
   it('waits for the rows read, then shows the sum', async () => {
     mockRowsLoading = true;
 
-    const { getByTestId, queryByText, rerender } = await renderDetected();
+    const { getByTestId, queryByTestId, queryByText, rerender } = await renderDetected();
 
     expect(queryByText('All paid so far')).toBeNull();
+    expect(queryByTestId(PAID_VALUE)).toBeNull();
 
     mockRowsLoading = false;
     await rerender(screenElement(DETECTED_ROUTE));
@@ -258,7 +263,9 @@ describe('RecurringSeriesScreen — all paid so far', () => {
     expect(
       within(getByTestId('recurring-series-header')).getByText('All paid so far'),
     ).toBeTruthy();
-    expect(queryByText(formatMoney(Money.of('UAH', PAID)))).toBeTruthy();
+    expect(getByTestId(PAID_VALUE)).toHaveTextContent(formatMoney(Money.of('UAH', PAID)), {
+      exact: true,
+    });
   });
 
   it('reads no rates for it', async () => {

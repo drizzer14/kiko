@@ -200,9 +200,10 @@ const expectMarkedSeries = async (
     expect(within(header).getByText(line)).toBeTruthy();
   }
 
-  expect(
-    within(header).getByText(i18next.t('recurringCharges.chargeCount', { count })),
-  ).toBeTruthy();
+  expect(within(header).getByTestId('recurring-series-summary-charge-count')).toHaveTextContent(
+    String(count),
+    { exact: true },
+  );
 };
 
 const expectDetectedSeries = async (view: View): Promise<void> => {
