@@ -88,6 +88,8 @@ const Screen: FC<ScreenProps> = ({
   floatingFooter = false,
   bleedBottom = false,
   bleedTop = false,
+  belowHeader,
+  uncapped,
   scrollableRef,
   onContentSizeChange,
   automaticallyAdjustKeyboardInsets = true,
@@ -158,13 +160,13 @@ const Screen: FC<ScreenProps> = ({
   );
   // A floating TOP bar covers the top edge the same way, so a headerless plain screen starts
   // below its pill. Only the plain branch uses it: the scroll and `bleedTop` branches sit under a
-  // native header that already clears the bar.
-  const topClearance = useTopClearance();
+  // native header that already clears the bar, and so does a plain screen told it is `belowHeader`.
+  const topClearance = useTopClearance(belowHeader);
   // The sides of the content, the footer and the scroll content are padded by this one margin.
   const contentMargin = useContentMargin();
-  const contentCap = useContentCap();
+  const contentCap = useContentCap(uncapped);
   const scrollIndicatorProps = useScrollIndicatorProps();
-  const { plainEdges, largeTitleEdges } = usePaneScreen();
+  const { plainEdges, largeTitleEdges } = usePaneScreen(belowHeader);
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a
@@ -303,9 +305,10 @@ const Screen: FC<ScreenProps> = ({
   // are siblings in the same flex column, `content` taking `flex: 1` — so a
   // short page's footer still lands pinned to the screen's true bottom edge,
   // exactly like the scroll branch's footer, rather than floating directly
-  // beneath a short page's content. `bleedTop` returns above, so this branch is
-  // always a headerless screen: it keeps the all-edges reservation, or in a
-  // pane only the edges the pane touches. With no scroll view of its own, it
+  // beneath a short page's content. `bleedTop` returns above, so this branch is a headerless
+  // screen unless it is `belowHeader`: it keeps the all-edges reservation, or in a pane only the
+  // edges the pane touches, and under a shown header it drops the top one (`usePaneScreen`), since
+  // the header owns that inset. With no scroll view of its own, it
   // takes the pane cap on its root. A `bleedBottom` child is itself the
   // scrollable surface, so a cap on the root would narrow its scroll indicator
   // too: it caps its own content (`useContentCap()`), and only the footer is

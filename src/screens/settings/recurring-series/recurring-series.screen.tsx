@@ -92,15 +92,17 @@ const seriesOfRoute = (
   );
 };
 
-type ChargeListProps<Row> = Omit<FlatListProps<Row>, 'contentContainerStyle'> & {
+type ChargeRow = Awaited<ReturnType<typeof transactionsRepo.listWithContextByIdsQuery>>[number];
+
+type ChargeListProps = Omit<FlatListProps<ChargeRow>, 'contentContainerStyle'> & {
   contentContainerStyle: (
     floatingFooterEnd: number | undefined,
-  ) => FlatListProps<Row>['contentContainerStyle'];
+  ) => FlatListProps<ChargeRow>['contentContainerStyle'];
 };
 
 // The charges' FlatList, a descendant of `Screen` only so it can read the floating footer's end
 // padding, which the screen component itself, being `Screen`'s parent, cannot.
-const ChargeList = <Row,>({ contentContainerStyle, ...listProps }: ChargeListProps<Row>) => {
+const ChargeList: FC<ChargeListProps> = ({ contentContainerStyle, ...listProps }) => {
   const floatingFooterEnd = useFloatingFooterEnd();
 
   return (

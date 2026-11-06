@@ -376,9 +376,12 @@ const settleTo = async (mode: LayoutMode): Promise<void> => {
 };
 
 // The routes each pane was last given, by name: the slice that holds the root is the list pane's,
-// the other one is the detail pane's. Read it while the window shows two panes.
+// the other pane's is the detail pane's. The layer over both panes is no pane, so its slice, which
+// starts at a placeholder root, is left out. Read it while the window shows two panes.
 const renderedPanes = (rootKey: string) => {
-  const slices = [...mockCapturedViews].reverse();
+  const slices = [...mockCapturedViews]
+    .filter(({ state }) => state.routes[0]?.key !== 'pane-layer-root')
+    .reverse();
   const namesOf = (slice: CapturedViewProps | undefined) =>
     slice?.state.routes.map((route) => route.name);
   const holdsRoot = ({ state }: CapturedViewProps) =>

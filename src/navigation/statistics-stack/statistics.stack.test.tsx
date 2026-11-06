@@ -110,6 +110,15 @@ describe('StatisticsStack', () => {
     expect(statistics?.props.options).toEqual({ title: 'statistics.title' });
   });
 
+  // User ruling (small title): the table sits below an opaque bar, never under a large title.
+  it('registers the Tables route with the translated tables.title as a small title', () => {
+    expect(screenNames()).toContain('Tables');
+    expect(screenOf('Tables')?.props.options).toEqual({
+      title: 'tables.title',
+      headerLargeTitle: false,
+    });
+  });
+
   it('titles the Transaction form with the translated add title', () => {
     expect(screenOf('TransactionForm')?.props.options).toEqual({
       title: 'forms.transaction.addTitle',
@@ -158,12 +167,13 @@ describe('StatisticsStack', () => {
     },
   );
 
-  it('roots Statistics in the primary pane and defaults the companion to Home', () => {
+  it('roots Statistics in the primary pane, defaults the companion to Home and gives Tables the whole window', () => {
     const navigator = StatisticsStack({}) as ReactElement<{ paneConfig: object }>;
 
     expect(navigator.props.paneConfig).toEqual({
       rootPane: 'primary',
       companionDefault: { name: 'Home', isDefault: true },
+      wholeWindowRoutes: ['Tables'],
     });
   });
 

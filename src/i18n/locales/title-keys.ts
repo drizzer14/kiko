@@ -175,5 +175,7 @@ export const TITLE_KEYS = new Set([
   'statistics.spendingTrendByCategory',
   'statistics.title',
   'statistics.trendFilter.title',
+  'tables.period.sheetTitle',
+  'tables.title',
   'transactionTemplates.title',
 ]);

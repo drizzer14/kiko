@@ -16,7 +16,8 @@ export type DetailPaneRoute = {
 type PaneVisibility = {
   isTabFocused: boolean;
   // The route on top of each pane. Both are on screen at once, though only one is the focused
-  // route of the stack.
+  // route of the stack; except while the layer over both panes holds a page, when it is that
+  // page alone.
   visibleKeys: ReadonlySet<string>;
   // Null while the detail pane has neither a route nor a default.
   detailRoute: DetailPaneRoute | null;
@@ -27,8 +28,9 @@ export const PaneVisibilityContext = createContext<PaneVisibility | null>(null);
 
 /**
  * Whether the calling screen is on screen right now. In two panes that is the route on top of
- * either pane while the tab is focused; the stack's focused route would hide the other pane's
- * screen from a data refresh. In one pane it is `useIsFocused`.
+ * either pane while the tab is focused (the top route of the layer over both panes, alone, while
+ * it holds a page); the stack's focused route would hide the other pane's screen from a data
+ * refresh. In one pane it is `useIsFocused`.
  */
 export const useIsScreenVisible = (): boolean => {
   const { key } = useRoute();

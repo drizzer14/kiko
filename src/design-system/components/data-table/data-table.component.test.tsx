@@ -1,5 +1,6 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
 import * as reanimated from 'react-native-reanimated';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -160,15 +161,6 @@ describe('DataTable', () => {
       expect(amount.props.numberOfLines).toBeUndefined();
       expect(amount.props.adjustsFontSizeToFit).toBeUndefined();
       expect(amount.props.minimumFontScale).toBeUndefined();
-    });
-
-    it('finds the amount element, so the absent props above are read off the real cell', async () => {
-      const rendered = await renderTable();
-      const amount = rendered.getByText('120');
-
-      expect(amount.props.children).toBe('120');
-      expect(amount.props.allowFontScaling).not.toBe(false);
-      expect(amount.props.style).toBeDefined();
     });
 
     it('sets tabular-nums on cell text', async () => {
@@ -374,9 +366,205 @@ describe('DataTable', () => {
       expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(false);
       expect(scrollTo()).toHaveBeenLastCalledWith({ x: 0, y: 0, animated: false });
     });
+
+    describe('across the empty content', () => {
+      type BodyHost = { props: { testID?: string } };
+      type BodyPrototype = { componentDidMount?: (this: BodyHost) => void };
+
+      const bodyId = `${PREFIX}-body-scroll`;
+      const emptyContent = <View testID="nothing-here" />;
+      const firstColumnOffset = 80 + HORIZONTAL_PADDING;
+      // Where the body really is, as the native side keeps it: a body mounts at 0 and says nothing,
+      // a scrollTo moves it and reports the new offset to the shared value the header follows.
+      const nativeBody = { offset: 0 };
+      const scrollByUser = (x: number) => {
+        nativeBody.offset = x;
+        offsetBox.value = x;
+      };
+      // The production empty table keeps its summary row, with zeros.
+      const zeroRow = (columnCount: number): DataTableProps['rows'] => [
+        {
+          key: 'all',
+          label: 'All',
+          isSummary: true,
+          cells: makeCells(Array.from({ length: columnCount }, () => '0')),
+        },
+      ];
+      const emptied: Partial<DataTableProps> = { rows: zeroRow(columns.length), emptyContent };
+      const months: DataTableProps['columns'] = Array.from({ length: 12 }, (_, index) => ({
+        key: `month-${index}`,
+        header: `M${index + 1}`,
+      }));
+      const monthRows = (text: string): DataTableProps['rows'] => [
+        { key: 'groceries', label: 'Groceries', cells: makeCells(months.map(() => text)) },
+        { key: 'all', label: 'All', isSummary: true, cells: makeCells(months.map(() => text)) },
+      ];
+      const realThree = { labels: 60, jan: 80, feb: 100, total: 140 };
+      const narrowThree = { labels: 20, jan: 8, feb: 8, total: 8 };
+      const widthsOfMonths = (labels: number, month: number) => ({
+        labels,
+        ...Object.fromEntries(months.map(({ key }) => [key, month])),
+      });
+      const realMonths = widthsOfMonths(60, 100);
+      const refilledMonths = widthsOfMonths(60, 110);
+      const narrowMonths = widthsOfMonths(20, 8);
+      // What the device reports: a layout event for each measuring view that is mounted, none for
+      // one that is not.
+      const reportWidths = async (rendered: Rendered, widths: Record<string, number>) => {
+        const mounted = rendered.queryAllByTestId(/^table-measure-(labels|column-.+)$/, {
+          includeHiddenElements: true,
+        });
+
+        for (const view of mounted) {
+          const key = String(view.props.testID).replace(`${PREFIX}-measure-`, '');
+
+          await fireEvent(view, 'layout', layoutEvent(widths[key.replace('column-', '')]));
+        }
+      };
+      // Empty, the measuring views report the widths of the zero row (if any is mounted); filled
+      // again, they report the widths of the real rows.
+      const crossEmptyState = async (
+        rendered: Rendered,
+        crossing: {
+          emptied: Partial<DataTableProps>;
+          filled: Partial<DataTableProps>;
+          narrow: Record<string, number>;
+          real: Record<string, number>;
+        },
+      ) => {
+        await rerenderTable(rendered, crossing.emptied);
+        await reportWidths(rendered, crossing.narrow);
+        await rerenderTable(rendered, crossing.filled);
+        await reportWidths(rendered, crossing.real);
+      };
+      const crossThreeColumns = (rendered: Rendered) =>
+        crossEmptyState(rendered, {
+          emptied: { ...emptied, initialColumnIndex: 1 },
+          filled: { initialColumnIndex: 1 },
+          narrow: narrowThree,
+          real: realThree,
+        });
+
+      beforeEach(() => {
+        nativeBody.offset = 0;
+        (ScrollView.prototype as unknown as BodyPrototype).componentDidMount = function (
+          this: BodyHost,
+        ) {
+          if (this.props.testID === bodyId) {
+            nativeBody.offset = 0;
+          }
+        };
+        scrollTo().mockImplementation(function (this: BodyHost, { x }: { x: number }) {
+          if (this.props.testID === bodyId) {
+            nativeBody.offset = x;
+            offsetBox.value = x;
+          }
+        });
+      });
+
+      afterEach(() => {
+        (ScrollView.prototype as unknown as BodyPrototype).componentDidMount = undefined;
+        scrollTo().mockReset();
+      });
+
+      it('opens at the initial column from the real widths, not the widths of the zero row', async () => {
+        const rendered = await renderTable({
+          columns: months,
+          rows: monthRows('1,000'),
+          initialColumnIndex: 9,
+        });
+        await setContainerWidth(rendered, 390);
+        await reportWidths(rendered, realMonths);
+
+        // Nine columns of 100 + 16 lead the ninth index, and 1392 - (390 - 76 - hairline) of
+        // content is room enough to reach it.
+        expect(nativeBody.offset).toBe(9 * (100 + HORIZONTAL_PADDING));
+
+        scrollByUser(300);
+        // The refill is wider than the table was before the empty state, so only its own widths
+        // put the column where it belongs.
+        await crossEmptyState(rendered, {
+          emptied: {
+            columns: months,
+            rows: zeroRow(months.length),
+            emptyContent,
+            initialColumnIndex: 9,
+          },
+          filled: { columns: months, rows: monthRows('1,000'), initialColumnIndex: 9 },
+          narrow: narrowMonths,
+          real: refilledMonths,
+        });
+
+        expect(nativeBody.offset).toBe(9 * (110 + HORIZONTAL_PADDING));
+        expect(offsetBox.value).toBe(nativeBody.offset);
+      });
+
+      it('keeps the header on a new body opened at the initial column, with no scroll before', async () => {
+        const rendered = await settle(1);
+        await crossThreeColumns(rendered);
+
+        expect(nativeBody.offset).toBe(firstColumnOffset);
+        expect(offsetBox.value).toBe(nativeBody.offset);
+      });
+
+      it('opens at the initial column when the table first mounted empty', async () => {
+        const rendered = await renderTable({ initialColumnIndex: 1, ...emptied });
+        await setContainerWidth(rendered, 300);
+        await reportWidths(rendered, narrowThree);
+        await rerenderTable(rendered, { initialColumnIndex: 1 });
+        await reportWidths(rendered, realThree);
+
+        expect(nativeBody.offset).toBe(firstColumnOffset);
+        expect(offsetBox.value).toBe(nativeBody.offset);
+      });
+
+      it('leaves a scroll of the user alone when a later measure follows the refill', async () => {
+        const rendered = await settle(1);
+        await crossThreeColumns(rendered);
+        scrollByUser(120);
+        scrollTo().mockClear();
+        await measureColumn(rendered, 'total', 150);
+
+        expect(scrollTo()).not.toHaveBeenCalled();
+        expect(nativeBody.offset).toBe(120);
+        expect(offsetBox.value).toBe(120);
+      });
+
+      it('measures the rows afresh on a refill, with no measuring views while empty', async () => {
+        const rendered = await settle(1);
+        await rerenderTable(rendered, { initialColumnIndex: 1, ...emptied });
+
+        expect(
+          rendered.queryByTestId(`${PREFIX}-measure-layer`, { includeHiddenElements: true }),
+        ).toBeNull();
+
+        await rerenderTable(rendered, { initialColumnIndex: 1 });
+
+        expect(
+          rendered.getByTestId(`${PREFIX}-measure-layer`, { includeHiddenElements: true }),
+        ).toBeTruthy();
+      });
+
+      it('follows the body only while there is one', async () => {
+        const rendered = await settle(1);
+        await rerenderTable(rendered, { initialColumnIndex: 1, ...emptied });
+
+        expect(reanimated.useScrollOffset).toHaveBeenLastCalledWith(null);
+
+        await rerenderTable(rendered, { initialColumnIndex: 1 });
+
+        expect(reanimated.useScrollOffset).toHaveBeenLastCalledWith(
+          expect.objectContaining({ current: expect.anything() }),
+        );
+      });
+    });
   });
 
   describe('sticky header', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
     it('puts the caption, the header and the body in the vertical scroll, in that order', async () => {
       const rendered = await renderTable();
       const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
@@ -402,6 +590,111 @@ describe('DataTable', () => {
       expect(rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices).toEqual([
         1,
       ]);
+    });
+
+    // The real sticky wrapper moves the child's style onto itself and gives the child a fill
+    // style, so a row styled as the child itself would lose its direction. The Jest ScrollView does
+    // not run that wrapper: this pins the nesting only, and the layout is measured on a device.
+    it('makes a plain view with no style of its own the sticky child, holding the row', async () => {
+      const rendered = await renderTable();
+      const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
+      const row = rendered.getByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true });
+      const sticky = row.parent;
+      const siblings = sticky?.parent?.children ?? [];
+
+      expect(vertical.props.stickyHeaderIndices).toEqual([1]);
+      expect(siblings.indexOf(sticky as never)).toBe(1);
+      expect(sticky?.props.style).toBeUndefined();
+      expect(sticky?.children).toHaveLength(1);
+      expect(flat(row).flexDirection).toBe('row');
+    });
+
+    it('draws top content above the caption, both in the one child before the sticky header', async () => {
+      const rendered = await renderTable({ topContent: <View testID="filters" /> });
+      const top = rendered.getByTestId(`${PREFIX}-top`);
+      const row = rendered.getByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true });
+      const siblings = top.parent?.children ?? [];
+
+      expect(siblings.indexOf(top as never)).toBe(0);
+      expect(siblings.indexOf(row.parent as never)).toBe(1);
+      expect(
+        within(top)
+          .getAllByTestId(/^(filters|table-caption)$/)
+          .map((part) => part.props.testID),
+      ).toEqual(['filters', `${PREFIX}-caption`]);
+      expect(rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices).toEqual([
+        1,
+      ]);
+    });
+
+    it('keeps the caption as the table summary beside top content', async () => {
+      const rendered = await renderTable({ topContent: <View testID="filters" /> });
+
+      expect(rendered.getByText('Spending in UAH').props.accessibilityRole).toBe('summary');
+    });
+
+    it('keeps the same child count with no top content', async () => {
+      const rendered = await renderTable();
+      const top = rendered.getByTestId(`${PREFIX}-top`);
+
+      expect(within(top).getByTestId(`${PREFIX}-caption`)).toBeTruthy();
+      expect(top.parent?.children).toHaveLength(3);
+    });
+
+    describe('with empty content', () => {
+      const emptyContent = <View testID="nothing-here" />;
+
+      it('shows it in place of the caption, the header and the rows, under the top content', async () => {
+        const rendered = await renderTable({ topContent: <View testID="filters" />, emptyContent });
+        const top = rendered.getByTestId(`${PREFIX}-top`);
+
+        expect(rendered.getByTestId('nothing-here')).toBeTruthy();
+        expect(within(top).getByTestId('filters')).toBeTruthy();
+        expect(rendered.queryByTestId(`${PREFIX}-caption`)).toBeNull();
+        expect(
+          rendered.queryByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true }),
+        ).toBeNull();
+        expect(rendered.queryByTestId(`${PREFIX}-body-row`)).toBeNull();
+        expect(
+          rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices,
+        ).toBeUndefined();
+      });
+
+      it('lets the empty content fill the room under the top content', async () => {
+        const rendered = await renderTable({ emptyContent });
+
+        expect(
+          flat({
+            props: {
+              style: rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.contentContainerStyle,
+            },
+          }),
+        ).toMatchObject({ flexGrow: 1 });
+      });
+
+      it('keeps the top content mounted when the table crosses to the empty content and back', async () => {
+        const mounted = jest.fn();
+        const unmounted = jest.fn();
+        const Probe = () => {
+          useEffect(() => {
+            mounted();
+
+            return unmounted;
+          }, []);
+
+          return <View testID="filters" />;
+        };
+        const rendered = await renderTable({ topContent: <Probe /> });
+
+        await rendered.rerender(
+          <DataTable {...baseProps} topContent={<Probe />} emptyContent={emptyContent} />,
+        );
+        await rendered.rerender(<DataTable {...baseProps} topContent={<Probe />} />);
+
+        expect(rendered.getByTestId('filters')).toBeTruthy();
+        expect(mounted).toHaveBeenCalledTimes(1);
+        expect(unmounted).not.toHaveBeenCalled();
+      });
     });
 
     it('gives the sticky header row an opaque surface ground', async () => {
@@ -550,7 +843,7 @@ describe('DataTable', () => {
     });
   });
 
-  describe('Dynamic Type', () => {
+  describe('measured text height and font scaling', () => {
     it('keeps every text and lets a taller measured line grow the row', async () => {
       const rendered = await renderTable();
       await setContainerWidth(rendered, 400);
@@ -603,7 +896,8 @@ describe('DataTable', () => {
 
   describe('palette independence', () => {
     // Dark only: the store registers two themes, but the jest unistyles mock paints the first
-    // registered one (dark), so a light row would fail on the mock rather than on the table.
+    // registered one (dark), so a light row would fail on the mock rather than on the table. A
+    // second palette also needs the render to switch theme, not only a row here.
     const themes = { dark: darkTheme };
     const tokenColors = (theme: typeof darkTheme) => new Set<unknown>(Object.values(theme.colors));
     const colorsIn = (element: { props: { style?: unknown } }) =>

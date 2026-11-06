@@ -23,7 +23,7 @@ import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import type { ScrollViewInstance } from 'react-native';
 import { useIsLargeWindow } from '@kiko/display-regions';
-import type { TabParamList } from '@kiko/navigation/types';
+import Button from '@kiko/design-system/components/button';
 import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { type FC, useEffect, useMemo, useState } from 'react';
@@ -48,6 +48,7 @@ import Screen, { usePaneContentWidth } from '@kiko/design-system/components/scre
 import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
 import { spendingRowsIn, useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
+import type { StatisticsStackParamList, TabParamList } from '@kiko/navigation/types';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildCategoryMeasures, buildCategoryTrend } from '@kiko/statistics/category-trend';
@@ -140,8 +141,9 @@ const StatisticsScreen: FC = () => {
   const sharedCardStyle = isRowShared ? styles.sharedRowFill : undefined;
   const sharedChartStyle = isRowShared ? styles.chartBody : undefined;
   // This screen sits in its own tab's stack; the stack hands a navigate it
-  // cannot answer (a jump to the Accounts tab) up to the tab navigator.
-  const navigation = useNavigation<NavigationProp<TabParamList>>();
+  // cannot answer (a jump to the Accounts tab) up to the tab navigator. The Tables screen sits in
+  // the stack this screen is in, whichever tab's stack that is.
+  const navigation = useNavigation<NavigationProp<TabParamList & StatisticsStackParamList>>();
 
   // Re-tapping the Statistics tab while already on it returns this scrolling
   // page to the top (the standard iOS active-tab re-tap), driven off the native
@@ -715,28 +717,42 @@ const StatisticsScreen: FC = () => {
   return (
     <Screen scroll scrollableRef={scrollRef}>
       <Box gap={4} testID="statistics-blocks">
-        <Box direction="row" gap={3} style={styles.filterBar}>
-          <FilterMenu
-            key={sheetGeneration}
-            label={t('statistics.filterAccounts')}
-            sheetTitle={t('statistics.filterAccountsSheetTitle')}
-            testID="statistics-account-filter"
-            options={accountOptions}
-            selected={filtered.visibleSelectedAccounts}
-            onToggle={toggleAccount}
-            triggerIcon="tray"
-          />
+        {/* One untagged box holds the Tables button and the filter bar, so the grid's children
+            below keep their place in `statistics-blocks`. */}
+        <Box gap={3}>
+          <Button
+            variant="secondaryTonal"
+            size="compact"
+            icon="tablecells"
+            onPress={() => navigation.navigate('Tables')}
+            testID="statistics-open-tables"
+          >
+            {t('statistics.openTables')}
+          </Button>
 
-          {/* A sibling of the account filter, whose key is the bare generation. */}
-          <DateRangeField
-            key={`date-range-${sheetGeneration}`}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            minDate={new Date(spanStart)}
-            maxDate={new Date(now)}
-            onApply={applyDateRange}
-            onClear={clearDateRange}
-          />
+          <Box direction="row" gap={3} style={styles.filterBar}>
+            <FilterMenu
+              key={sheetGeneration}
+              label={t('statistics.filterAccounts')}
+              sheetTitle={t('statistics.filterAccountsSheetTitle')}
+              testID="statistics-account-filter"
+              options={accountOptions}
+              selected={filtered.visibleSelectedAccounts}
+              onToggle={toggleAccount}
+              triggerIcon="tray"
+            />
+
+            {/* A sibling of the account filter, whose key is the bare generation. */}
+            <DateRangeField
+              key={`date-range-${sheetGeneration}`}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              minDate={new Date(spanStart)}
+              maxDate={new Date(now)}
+              onApply={applyDateRange}
+              onClear={clearDateRange}
+            />
+          </Box>
         </Box>
 
         <StatisticsGrid

@@ -1,3 +1,5 @@
+import { createElement, Fragment } from 'react';
+import { render, screen } from '@testing-library/react-native';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 import type { PaneConfig } from '../pane-assignment';
@@ -5,7 +7,7 @@ import type { PaneStackRoute, PaneStackState } from '../pane-router';
 
 import type { StandInOptions } from './stand-in-options';
 import type { NativeStackViewProps } from './pane-stack-view.props';
-import { paneSlice, type StandIns, withoutDefaultRoutes } from './pane-slice';
+import { layerSlice, paneSlice, type StandIns, withoutDefaultRoutes } from './pane-slice';
 
 const route = (key: string, name = key, extra: Partial<PaneStackRoute> = {}): PaneStackRoute => ({
   key,
@@ -167,6 +169,134 @@ describe('paneSlice', () => {
       expect(setOptions).toHaveBeenCalledTimes(1);
       expect(setOptions).toHaveBeenCalledWith('pane-default:companion', { headerTitle: '' });
     });
+  });
+});
+
+// The layer holds Tables over a placeholder root that renders nothing. Every row here pins a prop
+// the layer's stack is given, never what the native stack does with it.
+describe('layerSlice', () => {
+  const WHOLE_HOME: PaneConfig = { ...HOME, wholeWindowRoutes: ['Tables'] };
+
+  const layerDescriptors = {
+    home: { id: 'home-descriptor' },
+    tables: {
+      id: 'tables-descriptor',
+      options: { title: 'Tables', headerLargeTitle: false },
+    },
+    form: { id: 'form-descriptor', options: { title: 'Form' } },
+  } as never as NativeStackViewProps['descriptors'];
+
+  const sliceOf = (routes: PaneStackRoute[], config: PaneConfig = WHOLE_HOME) =>
+    layerSlice(stackState(routes), config, layerDescriptors, describeRoute);
+
+  const atRest = () => sliceOf([route('home', 'Home')]);
+  const onTables = () => sliceOf([route('home', 'Home'), route('tables', 'Tables')]);
+
+  const rootOf = (slice: ReturnType<typeof layerSlice>): NativeStackDescriptor =>
+    (slice?.descriptors ?? layerDescriptors)['pane-layer-root'];
+
+  beforeEach(() => {
+    describeStandIn.mockClear();
+  });
+
+  it('is none for a config that lists no whole-window route', () => {
+    expect(sliceOf([route('home', 'Home'), route('tables', 'Tables')], HOME)).toBeNull();
+  });
+
+  it('holds only the placeholder root, named as the first route, when nothing is in the layer', () => {
+    const slice = atRest();
+
+    expect(slice?.state.routes).toEqual([{ key: 'pane-layer-root', name: 'Home' }]);
+    expect(slice?.state.index).toBe(0);
+    expect(slice?.state.key).toBe('stack-key');
+    expect(slice?.state.preloadedRoutes).toEqual([]);
+  });
+
+  it('puts the layer routes after the root, the last one focused', () => {
+    const slice = sliceOf([
+      route('home', 'Home'),
+      route('statistics', 'Statistics'),
+      route('tables', 'Tables'),
+      route('form', 'Form'),
+    ]);
+
+    expect(slice?.state.routes.map((entry) => entry.key)).toEqual([
+      'pane-layer-root',
+      'tables',
+      'form',
+    ]);
+    expect(slice?.state.index).toBe(2);
+  });
+
+  it('describes the root as a placeholder, and draws nothing for it', async () => {
+    const slice = onTables();
+
+    expect(describeStandIn).toHaveBeenCalledWith(slice?.state.routes[0], true);
+
+    await render(createElement(Fragment, null, rootOf(slice).render()));
+
+    expect(screen.toJSON()).toBeNull();
+  });
+
+  // The whole options object is compared: the root takes nothing from the route it is named after,
+  // whose own options (a large title, for one) would show in a bar that is meant to be empty.
+  // Root and Tables share one navigation bar. A root with no header hides that bar when a swipe
+  // back starts, so while Tables is in the layer the root keeps a header of its own, clear and
+  // empty; at rest the layer shows no header at all.
+  it('gives the root a title-less page on a clear ground and no header while it holds only the root', () => {
+    expect(rootOf(atRest()).options).toEqual({
+      title: '',
+      contentStyle: { backgroundColor: 'transparent' },
+      headerShown: false,
+    });
+  });
+
+  it('gives the root a title-less page on a clear ground and a shown, clear, empty header with Tables in it', () => {
+    expect(rootOf(onTables()).options).toEqual({
+      title: '',
+      contentStyle: { backgroundColor: 'transparent' },
+      headerShown: true,
+      headerTransparent: true,
+      headerTitle: '',
+      headerShadowVisible: false,
+    });
+  });
+
+  it('shows the root header for a layer of two as well', () => {
+    const { options } = rootOf(
+      sliceOf([route('home', 'Home'), route('tables', 'Tables'), route('form', 'Form')]),
+    );
+
+    expect(options.headerShown).toBe(true);
+  });
+
+  it('overlays a listed route in the layer with a bare chevron Back and no back menu', () => {
+    const slice = onTables();
+
+    expect(slice?.descriptors.tables).toEqual({
+      id: 'tables-descriptor',
+      options: {
+        title: 'Tables',
+        headerLargeTitle: false,
+        headerBackButtonDisplayMode: 'minimal',
+        headerBackButtonMenuEnabled: false,
+      },
+    });
+  });
+
+  it('leaves the descriptor of a route over Tables, and every other, as they are', () => {
+    const slice = sliceOf([
+      route('home', 'Home'),
+      route('tables', 'Tables'),
+      route('form', 'Form'),
+    ]);
+
+    expect(slice?.descriptors.form).toBe(layerDescriptors.form);
+    expect(slice?.descriptors.home).toBe(layerDescriptors.home);
+  });
+
+  it('puts no overlay on a descriptor when Tables is not in the layer', () => {
+    expect(atRest()?.descriptors.tables).toBe(layerDescriptors.tables);
   });
 });
 
