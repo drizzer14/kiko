@@ -1087,8 +1087,7 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   a mark clears only that mark. 'Not a recurring charge' (the series-row hold or the series
   footer, one `ConfirmSheet`) calls `settingsRepo.hideRecurringMerchant(key, name, chain = [])`,
   which sets the hide and drops that chain's marks in one write. There is no way to show the key
-  again (`showRecurringMerchantAgain` is removed): a new charge of the key stays out, and only a
-  mark brings it back.
+  again: a new charge of the key stays out, and only a mark brings it back.
 - The transaction form's mark field shows 'Detected: <period>' (keys
   `forms.transaction.detectedRecurring.*`) for a row of a shown detected series. The one shared
   pure module is `src/recurring/row-recurrence/` (`rowDetectionOf`, memoized on the ledger fire;
