@@ -12,8 +12,8 @@ import { syncBinanceConvertHistory } from './binance.convert-history';
 import { syncBinanceTransferHistory } from './binance.transfer-history';
 import { syncBinanceFiatOrderHistory, syncBinanceFiatPaymentHistory } from './binance.fiat-history';
 
-jest.mock('@kiko/crypto-sync/exchange/walk', () => ({
-  ...jest.requireActual('@kiko/crypto-sync/exchange/walk'),
+jest.mock('@kiko/crypto-sync/exchange/walk/walk', () => ({
+  ...jest.requireActual('@kiko/crypto-sync/exchange/walk/walk'),
   runWalkPlan: jest.fn(async () => ({ imported: 0, complete: true })),
 }));
 

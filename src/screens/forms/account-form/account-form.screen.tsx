@@ -1006,6 +1006,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
             {!isEdit && bankId === 'monobank' && (
               <MonobankConnectField
+                accountId={pendingAccountId}
                 onConnect={connectMonobank}
                 reminder={reminderFor('monobank')}
               />

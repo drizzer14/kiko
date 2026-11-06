@@ -7,6 +7,7 @@ import {
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
+  fundingMatchRows,
   holdings,
   pricePoints,
   reminders,
@@ -62,4 +63,12 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .select()
     .from(transactionTemplates)
     .orderBy(asc(transactionTemplates.id)),
+  fundingMatchRows: await database
+    .select()
+    .from(fundingMatchRows)
+    .orderBy(
+      asc(fundingMatchRows.accountId),
+      asc(fundingMatchRows.side),
+      asc(fundingMatchRows.recordKey),
+    ),
 });

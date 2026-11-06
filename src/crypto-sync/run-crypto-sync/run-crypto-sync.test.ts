@@ -66,7 +66,7 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
 import { BINANCE_REQUEST_INTERVAL_MS, binanceProvider, defaultBinanceDeps } from '../binance';
 
-import { type CryptoSyncRequest, runCryptoSync } from './run-crypto-sync';
+import { type CryptoSyncRequest, isBinanceSyncRunning, runCryptoSync } from './run-crypto-sync';
 
 const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 
@@ -700,6 +700,72 @@ describe('runCryptoSync', () => {
 
       expect(mockRunBalanceSync).toHaveBeenCalledTimes(2);
       expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('isBinanceSyncRunning', () => {
+    const heldBalanceRead = (): {
+      resolve: () => void;
+      reject: (error: Error) => void;
+    } => {
+      const held = { resolve: () => {}, reject: (_error: Error) => {} };
+      mockRunBalanceSync.mockReturnValueOnce(
+        new Promise((resolve, reject) => {
+          held.resolve = () => resolve({ syncedHoldings: 1 });
+          held.reject = reject;
+        }),
+      );
+
+      return held;
+    };
+
+    it('is false before any run of that account', () => {
+      expect(isBinanceSyncRunning('acc-running-none')).toBe(false);
+    });
+
+    it('is true while that account run is in flight, and false for another account', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-running-1' });
+
+      expect(isBinanceSyncRunning('acc-running-1')).toBe(true);
+      expect(isBinanceSyncRunning('acc-running-other')).toBe(false);
+
+      held.resolve();
+      await run;
+    });
+
+    it('is false once the run resolves', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-running-2' });
+
+      held.resolve();
+      await run;
+
+      expect(isBinanceSyncRunning('acc-running-2')).toBe(false);
+    });
+
+    it('is false once the run rejects', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-running-3' });
+
+      expect(isBinanceSyncRunning('acc-running-3')).toBe(true);
+      held.reject(new Error('balance read failed'));
+
+      await expect(run).rejects.toThrow('balance read failed');
+      expect(isBinanceSyncRunning('acc-running-3')).toBe(false);
+    });
+
+    // A wallet run still joins by account id in `runBalanceSync` (`crypto-sync/sync/sync.ts`)
+    // across providers; this pins only that it does not count for `isBinanceSyncRunning`. That
+    // gap is a known residual, not a behavior to keep.
+    it('does not count a wallet run of that account id as a Binance sync', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'btc_wallet', targetAccountId: 'acc-running-4' });
+
+      expect(isBinanceSyncRunning('acc-running-4')).toBe(false);
+
+      held.resolve();
+      await run;
     });
   });
 });

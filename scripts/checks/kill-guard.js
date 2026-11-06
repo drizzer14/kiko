@@ -173,7 +173,7 @@ const MAIN_FAST_FORWARD_REASON_LINES = [
     'checkout.',
   `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
     'on, and its hooks run for every session; a raw fast-forward skips that check.',
-  'HOW TO FIX:     queue `bash scripts/job-queue.sh verify <worktree at the sha> <label>`, wait for ' +
+  'HOW TO FIX:     queue `bash scripts/job-queue.sh verify <worktree> <label> --sha <sha>`, wait for ' +
     'exit 0, then run `bash scripts/ff-main.sh <sha>`. To recover a stuck operation on main, ' +
     '--abort, --quit, --skip, and --continue stay allowed.',
   'DO NOT:         reach the main checkout through a script file, an alias, or a variable, edit ' +
@@ -191,7 +191,7 @@ const MAIN_MOVE_REASON_LINES = [
     'on, and its hooks run for every session; every worktree shares the ref, so a move from ' +
     'any of them reaches the main checkout.',
   'HOW TO FIX:     commit in a separate detached worktree, queue `bash scripts/job-queue.sh ' +
-    'verify <worktree at the sha> <label>`, wait for exit 0, then run `bash scripts/ff-main.sh ' +
+    'verify <worktree> <label> --sha <sha>`, wait for exit 0, then run `bash scripts/ff-main.sh ' +
     '<sha>`. When the detail says the command runs in a folder it does not name, write the ' +
     'folder as literal text in the command, not as a variable such as $PWD. Moving main back, ' +
     'or any other move of it, needs the user. A reset without a ' +
@@ -310,7 +310,7 @@ const HEAVY_JOB_REASON_LINES = [
     'shares, and two at once make Semgrep and jest time out; scripts/job-queue.sh runs them one at ' +
     'a time, shortest class first, and not on battery.',
   'HOW TO FIX:     queue it with `bash scripts/job-queue.sh verify|check-all|security <worktree> ' +
-    '<label>` (a mutation gate: `bash scripts/job-queue.sh gate <worktree> <label> <mutation-base> ' +
+    '<label>` (a verify also takes --sha <commit> and --scoped; a mutation gate: `bash scripts/job-queue.sh gate <worktree> <label> <mutation-base> ' +
     '<expected-head>`), run with run_in_background, and wait on its exit code; a role agent asks ' +
     'the coordinator to queue it. A narrower check stays allowed: `bash scripts/checks/security.sh ' +
     '<file>`, Semgrep on a subfolder or file, `make mutable`, `make -n verify` (a dry run), and ' +

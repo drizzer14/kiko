@@ -1,5 +1,6 @@
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
+import { ibanKeyOf } from '@kiko/transactions/iban';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type {
@@ -57,11 +58,22 @@ const byPriority = (first: RankedCandidate, second: RankedCandidate): number =>
 // Texts are normalized once here so evaluating a row never normalizes a rule again.
 const withNormalizedText = (matcher: CategoryRuleMatcher): CategoryRuleMatcher =>
   match(matcher)
-    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, (named) => ({
+    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, { type: 'nameContains' }, (named) => ({
       ...named,
       text: normalizeTransactionName(named.text),
     }))
-    .with({ type: 'amount' }, { type: 'direction' }, { type: 'time' }, (other) => other)
+    .with({ type: 'counterIban' }, (counterIban) => ({
+      ...counterIban,
+      iban: ibanKeyOf(counterIban.iban),
+    }))
+    .with(
+      { type: 'amount' },
+      { type: 'direction' },
+      { type: 'time' },
+      { type: 'mcc' },
+      { type: 'account' },
+      (other) => other,
+    )
     .exhaustive();
 
 const isNameIs = (
@@ -171,6 +183,7 @@ const MATCHER_MATCHES: {
 } = {
   nameIs: ({ text }, subject) => subject.normalizedName === text,
   nameStartsWith: ({ text }, subject) => subject.normalizedName.startsWith(text),
+  nameContains: ({ text }, subject) => subject.normalizedName.includes(text),
   amount: ({ operator, minorUnits, currency }, subject) =>
     subject.currency === currency &&
     subject.absoluteMinorUnits !== null &&
@@ -178,6 +191,11 @@ const MATCHER_MATCHES: {
   direction: ({ direction }, subject) => subject.direction === direction,
   time: ({ operator, minuteOfDay }, subject) =>
     subject.minuteOfDay !== null && TIME_HOLDS[operator](subject.minuteOfDay, minuteOfDay),
+  // A null code never equals a number, so a row with no code matches no code rule.
+  mcc: ({ code }, subject) => subject.mcc === code,
+  // A null id or IBAN never equals a text, so a row with no holding or no IBAN matches neither.
+  account: ({ accountId }, subject) => subject.accountId === accountId,
+  counterIban: ({ iban }, subject) => subject.counterIban === iban,
 };
 
 const matcherMatches = (matcher: CategoryRuleMatcher, subject: RuleSubject): boolean =>

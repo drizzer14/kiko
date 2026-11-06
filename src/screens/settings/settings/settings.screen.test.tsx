@@ -382,7 +382,7 @@ describe('SettingsScreen', () => {
     expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
-  it('groups Categories, Reminders and Transaction templates into one card, in that order', async () => {
+  it('groups Categories, Reminders, Transaction templates and Recurring charges into one card, in that order', async () => {
     const { getByTestId, getAllByTestId } = await renderScreen();
 
     const card = getByTestId('settings-card-categories-reminders-templates');
@@ -390,12 +390,13 @@ describe('SettingsScreen', () => {
     expect(within(card).getByText('Categories')).toBeTruthy();
     expect(within(card).getByText('Reminders')).toBeTruthy();
     expect(within(card).getByText('Transaction templates')).toBeTruthy();
+    expect(within(card).getByText('Recurring charges')).toBeTruthy();
     expect(
       card.queryAll((node) => node.props.name === genericEntitySymbol.template).length,
     ).toBeGreaterThan(0);
 
     const order = getAllByTestId(
-      /^settings-(row-(categories|reminders|transaction-templates)|divider-(categories-reminders|reminders-templates))$/,
+      /^settings-(row-(categories|reminders|transaction-templates|recurring-charges)|divider-(categories-reminders|reminders-templates|templates-recurring-charges))$/,
     ).map((node) => node.props.testID as string);
     expect(order).toEqual([
       'settings-row-categories',
@@ -403,7 +404,22 @@ describe('SettingsScreen', () => {
       'settings-row-reminders',
       'settings-divider-reminders-templates',
       'settings-row-transaction-templates',
+      'settings-divider-templates-recurring-charges',
+      'settings-row-recurring-charges',
     ]);
+  });
+
+  it('shows the Recurring charges row inside the group card with no data, and opens its list', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const card = getByTestId('settings-card-categories-reminders-templates');
+
+    expect(within(card).getByTestId('settings-row-recurring-charges')).toBeTruthy();
+
+    await fireEvent.press(within(card).getByTestId('settings-row-recurring-charges'));
+
+    expect(mockOpenInPane).toHaveBeenCalledTimes(1);
+    expect(mockOpenInPane).toHaveBeenCalledWith('RecurringCharges');
   });
 
   it('styles the Categories-Reminders-Templates card like the Import/Export card', async () => {
@@ -417,6 +433,7 @@ describe('SettingsScreen', () => {
       'settings-row-categories',
       'settings-row-reminders',
       'settings-row-transaction-templates',
+      'settings-row-recurring-charges',
     ]) {
       expect(StyleSheet.flatten(getByTestId(rowId).props.style).paddingVertical).toBe(
         darkTheme.spacing(3),
@@ -426,6 +443,7 @@ describe('SettingsScreen', () => {
     for (const dividerId of [
       'settings-divider-categories-reminders',
       'settings-divider-reminders-templates',
+      'settings-divider-templates-recurring-charges',
     ]) {
       const dividerStyle = StyleSheet.flatten(getByTestId(dividerId).props.style);
 
@@ -651,6 +669,7 @@ describe('SettingsScreen — the selected row', () => {
     ['ExportData', 'settings-card-data-transfer', 'settings-row-export-data', false],
     ['TransactionTemplates', GROUP_CARD, 'settings-row-transaction-templates', false],
     ['Categories', GROUP_CARD, 'settings-row-categories', false],
+    ['RecurringCharges', GROUP_CARD, 'settings-row-recurring-charges', false],
     ['Help', 'settings-card-help', 'settings-row-help', true],
   ] as const;
 

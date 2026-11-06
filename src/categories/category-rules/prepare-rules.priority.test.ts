@@ -13,6 +13,9 @@ const silpoSubject = (description = 'Silpo') =>
     amountMinorUnits: -10000,
     time: new Date(2026, 5, 1, 12, 0).getTime(),
     currency: 'UAH',
+    mcc: null,
+    counterIban: null,
+    accountId: null,
   });
 
 const winnerIdOf = (rows: readonly StoredCategoryRule[], description = 'Silpo') =>
@@ -188,6 +191,103 @@ describe('rule priority', () => {
   it('returns nothing when no rule matches', () => {
     expect(winnerIdOf([ruleRow({ matchers: [nameIs('atb')] })])).toBeUndefined();
     expect(winnerIdOf([])).toBeUndefined();
+  });
+});
+
+describe('rule priority of the new conditions', () => {
+  const nameContains = (text: string): CategoryRuleMatcher => ({ type: 'nameContains', text });
+  const mccRule = (code: number): CategoryRuleMatcher => ({ type: 'mcc', code });
+
+  const codedWinnerIdOf = (rows: readonly StoredCategoryRule[]) => {
+    const row = {
+      description: 'Silpo',
+      amountMinorUnits: -10000,
+      time: new Date(2026, 5, 1, 12, 0).getTime(),
+      currency: 'UAH' as const,
+      mcc: 5411,
+      counterIban: null,
+      accountId: null,
+    };
+
+    return winningRule(prepareRules(rows), subjectOfStoredRow(row))?.id;
+  };
+
+  it('a new condition counts one and two conditions beat one', () => {
+    const rows = [
+      ruleRow({ id: 'code', category: 'food', matchers: [mccRule(5411)], updatedAt: 900 }),
+      ruleRow({ id: 'name', category: 'shops', matchers: [nameStartsWith('sil')], updatedAt: 100 }),
+      ruleRow({
+        id: 'both',
+        category: 'dining',
+        matchers: [nameContains('silpo'), mccRule(5411)],
+        updatedAt: 50,
+      }),
+    ];
+
+    expect(codedWinnerIdOf(rows)).toBe('both');
+    expect(codedWinnerIdOf(rows.slice(0, 2))).toBe('code');
+    expect(codedWinnerIdOf([...rows].reverse())).toBe('both');
+  });
+
+  it('a matcher written twice counts once', () => {
+    const rows = [
+      ruleRow({ id: 'repeated', matchers: [mccRule(5411), mccRule(5411)], updatedAt: 100 }),
+      ruleRow({ id: 'single', matchers: [nameContains('silpo')], updatedAt: 200 }),
+    ];
+
+    expect(codedWinnerIdOf(rows)).toBe('single');
+    expect(codedWinnerIdOf([...rows].reverse())).toBe('single');
+  });
+});
+
+describe('rule priority of the account and counterIban conditions', () => {
+  const accountRule = (accountId: string): CategoryRuleMatcher => ({ type: 'account', accountId });
+  const ibanRule = (iban: string): CategoryRuleMatcher => ({ type: 'counterIban', iban });
+
+  const IBAN = 'UA733220010000026201112223334';
+
+  const winnerIdOfTransfer = (rows: readonly StoredCategoryRule[]) => {
+    const row = {
+      description: 'Silpo',
+      amountMinorUnits: -10000,
+      time: new Date(2026, 5, 1, 12, 0).getTime(),
+      currency: 'UAH' as const,
+      mcc: null,
+      accountId: 'account-1',
+      counterIban: IBAN,
+    };
+
+    return winningRule(prepareRules(rows), subjectOfStoredRow(row))?.id;
+  };
+
+  it('each new condition counts one', () => {
+    const rows = [
+      ruleRow({ id: 'account', matchers: [accountRule('account-1')], updatedAt: 100 }),
+      ruleRow({ id: 'iban', matchers: [ibanRule(IBAN)], updatedAt: 200 }),
+      ruleRow({
+        id: 'both',
+        matchers: [accountRule('account-1'), ibanRule(IBAN)],
+        updatedAt: 50,
+      }),
+    ];
+
+    expect(winnerIdOfTransfer(rows)).toBe('both');
+    expect(winnerIdOfTransfer(rows.slice(0, 2))).toBe('iban');
+    expect(winnerIdOfTransfer([...rows.slice(0, 2)].reverse())).toBe('iban');
+  });
+
+  it('one IBAN written in two spellings counts once', () => {
+    const rows = [
+      ruleRow({
+        id: 'repeated',
+        matchers: [ibanRule(IBAN), ibanRule('ua73 3220 0100 0002 6201 1122 2333 4')],
+        updatedAt: 100,
+      }),
+      ruleRow({ id: 'single', matchers: [nameStartsWith('sil')], updatedAt: 200 }),
+    ];
+
+    expect(winnerIdOfTransfer(rows)).toBe('single');
+    expect(winnerIdOfTransfer([...rows].reverse())).toBe('single');
   });
 });
 

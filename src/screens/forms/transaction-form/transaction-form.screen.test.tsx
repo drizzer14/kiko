@@ -10,6 +10,7 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import { settingsRepo } from '@kiko/settings';
 import {
   expectNavBarSaveOnly,
   headerItems,
@@ -91,6 +92,7 @@ const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
 const mockApplyNameRule = jest.fn();
+const mockPreviewNameRule = jest.fn();
 const mockSetCategory = jest.fn();
 const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
@@ -130,6 +132,7 @@ jest.mock('@kiko/transactions/repo', () => ({
       __kind: 'latestManualHolding',
       toSQL: () => ({ sql: '', params: [] }),
     }),
+    recurringLedgerQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
@@ -150,6 +153,7 @@ jest.mock('@kiko/categories/repo', () => ({
 jest.mock('@kiko/categories/category-rules-repo', () => ({
   categoryRulesRepo: {
     applyNameRule: (...args: unknown[]) => mockApplyNameRule(...args),
+    previewNameRule: (...args: unknown[]) => mockPreviewNameRule(...args),
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -200,6 +204,7 @@ type Transaction = {
   loanLinkSource?: 'auto' | 'manual' | null;
   exchangeCounterpartHoldingId?: string | null;
   untrackedCounterpart?: string | null;
+  exchangePairId?: string | null;
   changeGroupId?: string | null;
   setsBalance?: boolean;
 };
@@ -4764,13 +4769,62 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
     jest.clearAllMocks();
   });
 
-  it('reads no settings row, so the form needs nothing but its own reads', async () => {
-    setLiveData(HOLDINGS, ROW);
-    await renderEdit('txn-1');
+  // The mark field's one settings read is the choices column, gated on the row it offers on. The
+  // form never reads the whole row.
+  describe("the form's one settings read", () => {
+    type LiveQueryCall = [{ toSQL: () => { sql: string } }, string[], boolean | undefined];
 
-    const subscribedTables = mockUseLiveQuery.mock.calls.map(([, tables]) => tables[0]);
+    const BANK: Account = { id: 'bank', name: 'Bank', kind: 'bank', archivedAt: null };
+    const CARD: Holding = {
+      id: 'h1',
+      currency: 'UAH',
+      balanceMinorUnits: 5000,
+      type: 'card',
+      name: 'Card',
+      accountId: 'bank',
+    };
+    const OFFERED_DEBIT: Transaction = {
+      ...ROW,
+      changeGroupId: null,
+      loanHoldingId: null,
+      untrackedCounterpart: null,
+      exchangePairId: null,
+      setsBalance: false,
+    };
+    const CREDIT: Transaction = { ...OFFERED_DEBIT, amountMinorUnits: 1234 };
 
-    expect(subscribedTables).not.toContain('settings');
+    const CHOICES_COLUMN_SQL = settingsRepo.recurringMerchantChoicesQuery().toSQL().sql;
+    const WHOLE_ROW_SQL = settingsRepo.getQuery().toSQL().sql;
+
+    const liveQueryCalls = (): LiveQueryCall[] => mockUseLiveQuery.mock.calls as LiveQueryCall[];
+    const settingsReads = (): LiveQueryCall[] =>
+      liveQueryCalls().filter(([, tables]) => tables[0] === 'settings');
+
+    it('never reads the whole settings row', async () => {
+      setLiveData([CARD], OFFERED_DEBIT, CATEGORIES, [BANK]);
+      await renderEdit('txn-1');
+
+      expect(settingsReads().length).toBeGreaterThan(0);
+      expect(liveQueryCalls().map(([query]) => query.toSQL().sql)).not.toContain(WHOLE_ROW_SQL);
+    });
+
+    it('subscribes on settings only to the choices column, enabled on an offered row', async () => {
+      setLiveData([CARD], OFFERED_DEBIT, CATEGORIES, [BANK]);
+      await renderEdit('txn-1');
+
+      // One call per render, so the set of what was read stands for all of them.
+      expect([...new Set(settingsReads().map(([query]) => query.toSQL().sql))]).toEqual([
+        CHOICES_COLUMN_SQL,
+      ]);
+      expect([...new Set(settingsReads().map(([, , enabled]) => enabled))]).toEqual([true]);
+    });
+
+    it('runs no enabled settings read for a twin that is not offered, a credit', async () => {
+      setLiveData([CARD], CREDIT, CATEGORIES, [BANK]);
+      await renderEdit('txn-1');
+
+      expect([...new Set(settingsReads().map(([, , enabled]) => enabled))]).toEqual([false]);
+    });
   });
 
   it('shows the save-error alert and stays on the form when the sheet "Apply" write fails', async () => {
@@ -4792,6 +4846,77 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
     });
     expect(navigation.goBack).not.toHaveBeenCalled();
     alertSpy.mockRestore();
+  });
+
+  describe('for a name that ends in a store number', () => {
+    const PREFIX_BUTTON = i18n.t('forms.transaction.applyToAllStartingWith', { prefix: 'ATB' });
+    const MOVE = i18n.t('categoryRulePreview.confirm');
+    const BACK = i18n.t('categoryRulePreview.back');
+    const APPLY_TO_ALL_TITLE = i18n.t('forms.transaction.applyCategoryToAll');
+
+    const openPrefixConfirm = async (preview: { count: number; names: string[] }) => {
+      mockPreviewNameRule.mockResolvedValue(preview);
+      mockApplyNameRule.mockResolvedValue(preview.count);
+      setLiveData(HOLDINGS, { ...ROW, description: 'ATB 0212' });
+
+      const utils = await renderEdit('txn-1');
+      await pickCategory(utils, 'Dining');
+      await pressSave(navigation.setOptions);
+      await fireEvent.press(utils.getByText(PREFIX_BUTTON));
+      await waitFor(() => expect(utils.getByText(BACK)).toBeTruthy());
+
+      return utils;
+    };
+
+    it('previews the rule with the edited row, and writes nothing before Move', async () => {
+      const utils = await openPrefixConfirm({ count: 3, names: ['ATB 0212', 'ATB 0340'] });
+
+      expect(mockPreviewNameRule).toHaveBeenCalledWith({
+        text: 'ATB',
+        kind: 'nameStartsWith',
+        category: 'dining',
+        sourceTransactionId: 'txn-1',
+      });
+      expect(utils.getByText(/3 transactions move to .Dining./)).toBeTruthy();
+      expect(utils.queryByText(APPLY_TO_ALL_TITLE)).toBeNull();
+      expect(mockApplyNameRule).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('writes the prefix rule when Move is pressed, and Back writes nothing', async () => {
+      const utils = await openPrefixConfirm({ count: 3, names: ['ATB 0212', 'ATB 0340'] });
+
+      await fireEvent.press(utils.getByText(BACK));
+
+      expect(mockApplyNameRule).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(utils.getByText(APPLY_TO_ALL_TITLE)).toBeTruthy();
+      expect(utils.queryByText(MOVE)).toBeNull();
+
+      await fireEvent.press(utils.getByText(PREFIX_BUTTON));
+      await waitFor(() => expect(utils.getByText(MOVE)).toBeTruthy());
+      await fireEvent.press(utils.getByText(MOVE));
+
+      await waitFor(() =>
+        expect(mockApplyNameRule).toHaveBeenCalledWith({
+          name: 'ATB',
+          kind: 'nameStartsWith',
+          category: 'dining',
+          sourceTransactionId: 'txn-1',
+        }),
+      );
+      expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+
+    it('titles the step Add Rule when no existing transaction moves', async () => {
+      const utils = await openPrefixConfirm({ count: 0, names: [] });
+
+      expect(utils.getByText(i18n.t('categoryRulePreview.addTitle'))).toBeTruthy();
+      expect(utils.getByText(i18n.t('categoryRulePreview.add'))).toBeTruthy();
+      expect(utils.queryByText(i18n.t('categoryRulePreview.confirmTitle'))).toBeNull();
+      expect(utils.queryByText(MOVE)).toBeNull();
+    });
   });
 });
 

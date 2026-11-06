@@ -140,7 +140,10 @@ project-level pointer to this section.
   committing, and keep only inserted lines.
 - A pure rule several features need lives in a folder whose own barrel
   exports it (`src/holdings/account-currency`), never a sub-barrel of a
-  plain feature: the import is denied as alias-skips-barrel.
+  plain feature: the import is denied as alias-skips-barrel. The settings barrel is read
+  widely, so a module that `@kiko/settings` loads by value never reaches
+  `@kiko/recurring/detection`; a list both need goes in a leaf such as
+  `src/recurring/recurring-periods`.
 - Bundle migrations into the app and apply them on launch through
   `src/db/run-migrations.ts` — NOT drizzle's own
   `drizzle-orm/op-sqlite/migrator` + `useMigrations`, which misreads
@@ -400,7 +403,7 @@ ONE worker thread" below) until it commits. A where-less
 `select().from(<table>)` inside it reads the whole table and then filters in
 JS while every other read and write waits. Filter in SQL (`.where(...)`),
 read only the column you need (`selectDistinct`, as
-`rowIdsForNamedRule` in
+`rowsForNamedRule` in
 `src/categories/category-rules-repo/category-rules.repo.ts` does for descriptions), or bound it with
 `.limit(...)`. The one-row `settings` table is exempt. Mechanized as
 `kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
@@ -815,12 +818,13 @@ legs by their markers (`exchange-exclusion.ts`), never by category.
 A name matcher reads `ruleDescriptionOf` (`src/transactions/row-description/rule-description.ts`):
 the stored description, or for a blank one the label the row shows in the current language. Every
 apply path reads it so: the insert (`withCategoryRules`, which evaluates legs by their label), the
-rewrite and its count (`rowIdsRewrittenBy`), `giveSourceRowCategory`, and the form's
-`resolveRuleDescription`. A named rule's rewrite pages the blank rows by id-keyset
+rewrite and its count (`rowIdsRewrittenBy`), `planSourceRow` (the source row, shared by
+`giveSourceRowCategory` and the preview), and the form's `resolveRuleDescription`.
+A named rule's rewrite pages the blank rows by id-keyset
 (`rewriteBlankPageQuery`); a leg is rewritten like any row, and only the guard fields keep a
 row out. A leg is judged by its real label: `readHoldingLabels` (`category-rules.repo.ts`;
 every holding name and currency, read once per count or rewrite) feeds `withVisibleDescription`,
-and `giveSourceRowCategory` reuses it.
+and `planSourceRow` reuses it.
 A sync input that adopts its import twin is judged as the adopted row (`adoptedRowOf` in
 `src/transactions/repo/transactions.repo.ts`): with the twin's own exchange markers and operation
 when it keeps them (`keepsExchangeMarkers`), so a kept leg reads by its exchange label; the twin's
@@ -854,6 +858,10 @@ category the rules pre-selected saves flag 0 with no sheet; an edit is
 unchanged. Otherwise Apply rewrites every same-name row to a category the user
 never chose (`resolveCategoryOverrideRequest` in
 `src/screens/forms/transaction-form/category-rule/category-rule.ts`).
+When the name ends in a store number, the sheet also offers "All starting with X"
+(`merchantNameOf(...).prefix`): it first shows a confirm step with `previewNameRule`'s count (0
+reads title `Add Rule`, button `Add`), and only its "Move" or "Add" button writes the
+`nameStartsWith` rule through `applyNameRule({ kind })`.
 
 ## App-open and refresh work is gated on data presence
 
@@ -1237,6 +1245,16 @@ See `kiko-domain`'s "Spending-exclusion pipeline" section for the
 module pointers (the section lists them) — read it there rather than a
 duplicated list here.
 
+The recurring-charge detection reads the whole ledger live through
+`transactionsRepo.recurringLedgerQuery` in `useRecurringSeries`
+(`src/recurring/use-recurring-series/`). Its memo is gated on `useDataReady` over all three
+reads (rows, holdings, accounts), so it never detects over a half-loaded set: the
+`useDataReady` rule in the `useLiveQuery` consumer rule section of this file applies.
+`src/recurring/use-recurring-groups/use-recurring-groups.ts` makes four reads
+(`listWithContextByIdsQuery(ids)`, `categoriesRepo.allQuery()`, `ratesRepo.allQuery()`,
+`settingsRepo.getQuery()`), each a `useLiveQuery` with `paused: !isVisible`, gated by
+`useDataReady`; none is a whole-ledger read or detection.
+
 For the crypto re-sync request (`resyncRequest`) and the Binance exchange sync (balance reads,
 history walks, walk marks) see `kiko-exchange-sync`.
 
@@ -1396,9 +1414,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   deletes are unknowable, so there is no data step and no derived mirror. Its
   foreign key to `holdings` is NO ACTION, so the order carries it: a holding
   or account delete removes the keys first (`removeHoldingDatabaseTransaction`,
-  `accountsRepo.remove`); a table with no FK (`transaction_templates`) has no
-  delete-order constraint. A write that moves a holding's balance anchor (a
-  closing balance that applies, a hand-set balance, the bank figure of a sync)
+  `accountsRepo.remove`); `funding_match_rows` (`account_id`, NO ACTION) is
+  deleted child-first the same way, in `accountsRepo.remove`
+  (`src/accounts/accounts.repo.ts`) and in `disconnectExchange`; a table with no FK
+  (`transaction_templates`) has no delete-order constraint. A write that moves a holding's
+  balance anchor (a closing balance that applies, a hand-set balance, the bank figure of a sync)
   clears all its keys in the same write
   (`clearDeletedImportKeysDatabaseTransaction`): the sync clears but never
   reads them, so it never revives a row. A restore (`restoreDataSnapshot`) deletes the
@@ -1415,7 +1435,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   migration leaves as REAL (exponent, >= 1e21) alone, bounds an import-key
   amount token to int64, and returns the same object and byte-identical
   matchers text when nothing is rescaled; pinned by
-  `src/data-transfer/snapshot/with-usdt-rescaled.test.ts`.
+  `src/data-transfer/snapshot/with-usdt-rescaled.test.ts`. The rescale reads no settings
+  column, so a future scale change of a currency must also rewrite the marks in the recurring
+  merchant choices map (`src/settings/recurring-merchant-choices.ts`), which store minor units.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
@@ -1596,6 +1618,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `VERSION_DECISIONS` comment and bump `migrationCount` in
   `src/data-transfer/crypto/envelope.test.ts`; the scoped jest run must include
   `e2e/screenshot` and `src/data-transfer/crypto`.
+  Exemption: a table behind an optional `.kiko` key that holds no demo rows
+  needs no regeneration, because a regeneration changes only dates
+  (`funding_match_rows`, 0066, O70).
   Migration 0061 (`exchange_state`) has a restore mirror,
   `withWalkStateMoved` (`snapshot/with-walk-state-moved.ts`, keys in
   `legacy-walk-keys.ts`), called in `restore-snapshot.ts`: a stored string
@@ -1771,8 +1796,10 @@ are built with `createPaneStackNavigator`.
   account form does not show the "Connected as <client name>" status of a Connect made before the
   fold: the status is local state in `MonobankConnectField`
   (`src/design-system/components/monobank-connect-field/`), the name comes from the token's
-  `fetchClientInfo`, and no name is stored. A re-tap of Connect re-syncs the same account (known
-  limit, user-accepted 2026-10-10, no fix planned). Proof on two panes:
+  `fetchClientInfo`, and no name is stored. The field takes
+  `accountId` to check for a running sync, and storage stays in the screen closure. A re-tap of
+  Connect re-syncs the same account (known limit, user-accepted 2026-10-10, no fix planned).
+  Proof on two panes:
   `accounts.stack.draft.navigator.test.tsx`.
 - **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
   tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab

@@ -49,7 +49,7 @@ import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.clie
 import { jitterMs, movingClockOf, suspendableRun } from './binance.depth-test-fixtures';
 
 const FLOOR = NOW - 179 * DAY_MS;
-const STOP_TAG = '[binance sync] history window stopped';
+const STOP_TAG = '[exchange sync] history window stopped';
 const CAP = LANE_CALL_CAPS.transfer;
 const TYPE_COUNT = UNIVERSAL_TRANSFER_TYPES.length;
 

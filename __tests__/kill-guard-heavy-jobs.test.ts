@@ -132,6 +132,7 @@ const ALLOWED_AROUND_HEAVY_JOBS: string[] = [
   "grep -rn 'make verify' docs/",
   "grep -rn 'check:deep' package.json",
   `bash scripts/job-queue.sh verify ${WORKTREE} label`,
+  `bash scripts/job-queue.sh verify ${WORKTREE} label --sha abc1234 --scoped`,
   `bash scripts/job-queue.sh gate ${WORKTREE} label base head`,
   `bash scripts/job-queue.sh check-all ${WORKTREE} label`,
   `bash scripts/job-queue.sh security ${WORKTREE} label`,
@@ -223,6 +224,14 @@ describe('scripts/checks/kill-guard.sh heavy-job deny (hook entry)', () => {
       ),
     ).toEqual([]);
     expect(reason).toContain('scripts/job-queue.sh');
+  });
+
+  it('names the --sha and --scoped options of a queued verify', () => {
+    const result = run('make verify');
+    const reason: string = JSON.parse(result.stdout.trim()).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(reason).toContain('a verify also takes --sha <commit> and --scoped');
   });
 
   it('allows a queued verify', () => {

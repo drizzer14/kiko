@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 
@@ -16,7 +18,8 @@ type UseCategoryOverrideParams = {
 // The category-override confirmation's state and writes: the pending request
 // (non-null while the themed confirm sheet is up, carrying the affected name,
 // the picked category key and the row the save wrote; null when no confirmation
-// is in flight) and the sheet's three actions.
+// is in flight) and the sheet's actions: Apply, Just for this one, and the prefix offer's preview
+// and confirm.
 export const useCategoryOverride = ({
   navigation,
   editingId,
@@ -25,13 +28,16 @@ export const useCategoryOverride = ({
   showSaveErrorAlert,
 }: UseCategoryOverrideParams) => {
   const [pendingOverride, setPendingOverride] = useState<CategoryOverrideRequest | null>(null);
+  const [prefixPreview, setPrefixPreview] = useState<{ count: number; names: string[] } | null>(
+    null,
+  );
 
   // A category change offers to become a name rule for every same-name
   // transaction (and for future imports), so surface the blast radius in a
   // themed confirm modal before writing the rule. Every path returns to the
-  // list (the manual write, if any, has already been done); only "Apply" also
-  // writes the name rule, and it hands the rule the row the save wrote so that
-  // row follows the rule rather than staying a hand pick.
+  // list (the manual write, if any, has already been done); only "Apply" and
+  // the prefix confirm also write a name rule, and each hands the rule the row
+  // the save wrote so that row follows the rule rather than staying a hand pick.
   const applyOverride = async (): Promise<void> => {
     if (pendingOverride === null) {
       return;
@@ -90,9 +96,68 @@ export const useCategoryOverride = ({
   const { onPress: onApplyOverrideOne, isSubmitting: isApplyingOverrideOne } =
     useSubmitOnce(applyOverrideOne);
 
-  // Either sheet write in flight: the sheet stays up (a scrim/back dismiss or
-  // Cancel closes nothing) until the write is done and its own `goBack` runs.
-  const isOverrideWriting = [isApplyingOverride, isApplyingOverrideOne].includes(true);
+  // The name's text before a store number: the "starts with" offer. It only previews (reads); the
+  // rule is written by the confirm alone.
+  const prefixOffer =
+    foldMap(maybe(pendingOverride), (override) => merchantNameOf(override.name).prefix) ?? null;
+
+  const offerPrefix = async (): Promise<void> => {
+    if (pendingOverride === null || prefixOffer === null) {
+      return;
+    }
+
+    try {
+      setPrefixPreview(
+        await categoryRulesRepo.previewNameRule({
+          text: prefixOffer,
+          kind: 'nameStartsWith',
+          category: pendingOverride.category,
+          sourceTransactionId: pendingOverride.sourceTransactionId,
+        }),
+      );
+    } catch {
+      showSaveErrorAlert();
+    }
+  };
+
+  const { onPress: onOfferPrefix, isSubmitting: isOfferingPrefix } = useSubmitOnce(offerPrefix);
+
+  const applyPrefix = async (): Promise<void> => {
+    if (pendingOverride === null || prefixOffer === null) {
+      return;
+    }
+
+    try {
+      await categoryRulesRepo.applyNameRule({
+        name: prefixOffer,
+        kind: 'nameStartsWith',
+        category: pendingOverride.category,
+        sourceTransactionId: pendingOverride.sourceTransactionId,
+      });
+      navigation.goBack();
+    } catch {
+      showSaveErrorAlert();
+    }
+  };
+
+  const { onPress: onApplyPrefix, isSubmitting: isApplyingPrefix } = useSubmitOnce(applyPrefix);
+
+  // Any sheet read or write in flight: the sheet stays up (a scrim/back dismiss or
+  // Cancel closes nothing) until it is done and a write's own `goBack` runs.
+  const isOverrideWriting = [
+    isApplyingOverride,
+    isApplyingOverrideOne,
+    isOfferingPrefix,
+    isApplyingPrefix,
+  ].includes(true);
+
+  const onBackFromPrefix = (): void => {
+    if (isOverrideWriting) {
+      return;
+    }
+
+    setPrefixPreview(null);
+  };
 
   const cancelOverride = (): void => {
     if (isOverrideWriting) {
@@ -124,5 +189,12 @@ export const useCategoryOverride = ({
     cancelOverride,
     pendingCategory,
     overrideMessage,
+    prefixOffer,
+    prefixPreview,
+    onOfferPrefix,
+    isOfferingPrefix,
+    onBackFromPrefix,
+    onApplyPrefix,
+    isApplyingPrefix,
   };
 };

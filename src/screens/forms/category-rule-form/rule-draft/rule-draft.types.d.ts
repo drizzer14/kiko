@@ -18,12 +18,21 @@ export type MatcherDraft = {
   direction: RuleDirection;
   timeOperator: TimeOperator;
   minuteOfDay: number;
+  // The merchant code as typed: four digits, leading zeros kept.
+  mccText: string;
+  // The picked account, null until one is picked or when the stored one is in no row.
+  accountId: string | null;
+  // The IBAN as typed; it is stored without spaces, in capitals.
+  ibanText: string;
 };
 
 // The inline error a refused row shows, as the `ruleForm` key it reads. The decimals error carries
 // the digits the currency allows, so the message and the check read one scale.
 export type MatcherDraftError =
   | 'errorName'
+  | 'errorMcc'
+  | 'errorAccount'
+  | 'errorIban'
   | 'errorAmountNegative'
   | 'errorAmountTooLarge'
   | 'errorAmountWholeOnly'

@@ -1,10 +1,15 @@
 import { match } from 'ts-pattern';
+import {
+  type CategoryRuleMatcher,
+  MCC_DIGITS,
+  MINUTES_PER_HOUR,
+} from '@kiko/categories/category-rules';
 import { parseAmount } from '@kiko/currency/parse';
 import { Money, toMajor } from '@kiko/currency/money';
+import { IBAN_PATTERN, ibanKeyOf } from '@kiko/transactions/iban';
 import { type Currency, currencyScale } from '@kiko/currency/currency';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
-import { type CategoryRuleMatcher, MINUTES_PER_HOUR } from '@kiko/categories/category-rules';
 
 import type { DraftConversion, MatcherDraft, MatcherDraftError } from './rule-draft.types';
 
@@ -23,15 +28,27 @@ export const emptyMatcherDraft = (baseCurrency: Currency): MatcherDraft => ({
   direction: 'expense',
   timeOperator: 'before',
   minuteOfDay: DEFAULT_MINUTE_OF_DAY,
+  mccText: '',
+  accountId: null,
+  ibanText: '',
 });
 
-const draftOf = (matcher: CategoryRuleMatcher, blank: MatcherDraft): MatcherDraft =>
+const draftOf = (
+  matcher: CategoryRuleMatcher,
+  blank: MatcherDraft,
+  liveAccountIds: ReadonlySet<string>,
+): MatcherDraft =>
   match<CategoryRuleMatcher, MatcherDraft>(matcher)
-    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, ({ type, text }) => ({
-      ...blank,
-      type,
-      text,
-    }))
+    .with(
+      { type: 'nameIs' },
+      { type: 'nameStartsWith' },
+      { type: 'nameContains' },
+      ({ type, text }) => ({
+        ...blank,
+        type,
+        text,
+      }),
+    )
     .with({ type: 'amount' }, ({ operator, minorUnits, currency }) => ({
       ...blank,
       type: 'amount',
@@ -46,18 +63,79 @@ const draftOf = (matcher: CategoryRuleMatcher, blank: MatcherDraft): MatcherDraf
       timeOperator: operator,
       minuteOfDay,
     }))
+    .with({ type: 'mcc' }, ({ code }) => ({
+      ...blank,
+      type: 'mcc',
+      mccText: String(code).padStart(MCC_DIGITS, '0'),
+    }))
+    // An account no row holds any more seeds as none, so Save asks for a pick instead of storing
+    // an id that can never match.
+    .with({ type: 'account' }, ({ accountId }) => ({
+      ...blank,
+      type: 'account',
+      accountId: liveAccountIds.has(accountId) ? accountId : null,
+    }))
+    .with({ type: 'counterIban' }, ({ iban }) => ({
+      ...blank,
+      type: 'counterIban',
+      ibanText: iban,
+    }))
     .exhaustive();
 
-/** The rows an edit starts from, one per stored matcher, in their stored order. */
+/**
+ * The rows an edit starts from, one per stored matcher, in their stored order. `liveAccountIds`
+ * are the accounts that exist now: a stored account outside them seeds as none.
+ */
 export const toMatcherDrafts = (
   matchers: readonly CategoryRuleMatcher[],
   baseCurrency: Currency,
-): MatcherDraft[] => matchers.map((matcher) => draftOf(matcher, emptyMatcherDraft(baseCurrency)));
+  liveAccountIds: ReadonlySet<string>,
+): MatcherDraft[] =>
+  matchers.map((matcher) => draftOf(matcher, emptyMatcherDraft(baseCurrency), liveAccountIds));
 
-const nameOutcome = (type: 'nameIs' | 'nameStartsWith', text: string): DraftOutcome =>
+/**
+ * The rows with a picked account that no row holds any more cleared, for Save: the field already
+ * shows its placeholder for such an id, so Save asks for a pick instead of storing an id that can
+ * never match.
+ */
+export const clearStaleAccounts = (
+  drafts: readonly MatcherDraft[],
+  liveAccountIds: ReadonlySet<string>,
+): MatcherDraft[] =>
+  drafts.map((draft) =>
+    draft.accountId === null || liveAccountIds.has(draft.accountId)
+      ? draft
+      : { ...draft, accountId: null },
+  );
+
+const nameOutcome = (
+  type: 'nameIs' | 'nameStartsWith' | 'nameContains',
+  text: string,
+): DraftOutcome =>
   normalizeTransactionName(text) === ''
     ? { error: 'errorName' }
     : { matcher: { type, text: text.trim() } };
+
+const MCC_PATTERN = new RegExp(`^\\d{${MCC_DIGITS}}$`);
+
+// Exactly four digits: the field keeps only digits, so a shorter text is an unfinished code.
+const mccOutcome = ({ mccText }: MatcherDraft): DraftOutcome =>
+  MCC_PATTERN.test(mccText)
+    ? { matcher: { type: 'mcc', code: Number(mccText) } }
+    : { error: 'errorMcc' };
+
+const accountOutcome = ({ accountId }: MatcherDraft): DraftOutcome =>
+  accountId === null ? { error: 'errorAccount' } : { matcher: { type: 'account', accountId } };
+
+// The format only, as the parser reads it: the stored text is the key form, so a spaced
+// lower-case entry saves like any other.
+const ibanOutcome = ({ ibanText }: MatcherDraft): DraftOutcome => {
+  const iban = ibanKeyOf(ibanText);
+
+  return IBAN_PATTERN.test(iban)
+    ? { matcher: { type: 'counterIban', iban } }
+    : { error: 'errorIban' };
+};
 
 // A currency of no decimals gets its own message: "up to 0 decimal places" reads wrong.
 const decimalsError = (digits: number): MatcherDraftError =>
@@ -102,12 +180,15 @@ const amountOutcome = ({ amountText, amountOperator, currency }: MatcherDraft): 
 
 const outcomeOf = (draft: MatcherDraft): DraftOutcome =>
   match<MatcherDraft['type'], DraftOutcome>(draft.type)
-    .with('nameIs', 'nameStartsWith', (type) => nameOutcome(type, draft.text))
+    .with('nameIs', 'nameStartsWith', 'nameContains', (type) => nameOutcome(type, draft.text))
     .with('amount', () => amountOutcome(draft))
     .with('direction', () => ({ matcher: { type: 'direction', direction: draft.direction } }))
     .with('time', () => ({
       matcher: { type: 'time', operator: draft.timeOperator, minuteOfDay: draft.minuteOfDay },
     }))
+    .with('mcc', () => mccOutcome(draft))
+    .with('account', () => accountOutcome(draft))
+    .with('counterIban', () => ibanOutcome(draft))
     .exhaustive();
 
 /**

@@ -15,6 +15,7 @@ export type HelpTopicId =
   | 'manageCategories'
   | 'categoryRules'
   | 'viewStatistics'
+  | 'viewRecurringCharges'
   | 'backupData'
   | 'restoreData'
   | 'systemSettings';
@@ -38,6 +39,7 @@ export type HelpAction =
   | 'openTemplates'
   | 'openReminders'
   | 'openStatistics'
+  | 'openRecurringCharges'
   | 'openExportData'
   | 'openImportData'
   | 'openSystem';
@@ -222,6 +224,7 @@ const topicsById = {
       'help.topics.categoryRules.steps.3',
       'help.topics.categoryRules.steps.4',
       'help.topics.categoryRules.steps.5',
+      'help.topics.categoryRules.steps.6',
     ],
     action: 'openCategories',
   },
@@ -240,6 +243,19 @@ const topicsById = {
       'help.topics.viewStatistics.steps.8',
     ],
     action: 'openStatistics',
+  },
+  viewRecurringCharges: {
+    id: 'viewRecurringCharges',
+    titleKey: 'help.topics.viewRecurringCharges.title',
+    rowLabelKey: 'help.topics.viewRecurringCharges.rowLabel',
+    stepKeys: [
+      'help.topics.viewRecurringCharges.steps.1',
+      'help.topics.viewRecurringCharges.steps.2',
+      'help.topics.viewRecurringCharges.steps.3',
+      'help.topics.viewRecurringCharges.steps.4',
+      'help.topics.viewRecurringCharges.steps.5',
+    ],
+    action: 'openRecurringCharges',
   },
   backupData: {
     id: 'backupData',
@@ -315,7 +331,7 @@ const groupsById = {
   settings: {
     id: 'settings',
     titleKey: 'help.groups.settings.title',
-    topicIds: ['backupData', 'restoreData', 'systemSettings'],
+    topicIds: ['viewRecurringCharges', 'backupData', 'restoreData', 'systemSettings'],
   },
 } satisfies Record<HelpGroupId, HelpGroupEntry>;
 

@@ -41,6 +41,7 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
+import { ruleMoveMessage } from '@kiko/categories/rule-preview-text';
 import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { useDataReady, useLiveQuery, type HoldingRow } from '@kiko/db';
 import type { TemplateDraft } from '@kiko/transaction-templates/draft';
@@ -89,6 +90,11 @@ import EntryTabs, {
   resolveSelectedTemplate,
 } from './entry-tabs';
 import {
+  offersCategoryNameRule,
+  resolveCategoryOverrideRequest,
+  resolvePrefixConfirm,
+} from './category-rule';
+import {
   buildExchangeOptions,
   buildLoanOptions,
   buildPrimaryOptions,
@@ -115,11 +121,11 @@ import CategoryOverrideSheet from './category-override-sheet';
 import { useCategoryOverride } from './use-category-override';
 import { applySeedFields, resolveHydration } from './hydration';
 import { alongsideInsert, writeTemplate } from './template-save';
+import RecurringMarkField, { markableRowOf } from './recurring-mark-field';
 import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
 import { DEFAULT_MODE, MODE_ICONS, resolveModeOptions } from './mode-options';
 import { readRouteEntry, resolveHoldingField, revealsHoldingField } from './route-entry';
-import { offersCategoryNameRule, resolveCategoryOverrideRequest } from './category-rule';
 
 // This screen is registered in the Home, Accounts, Settings, and Statistics stacks (Home lists
 // every transaction; Accounts reaches it from a holding; Settings reaches it from the templates
@@ -565,6 +571,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     time,
     mode,
     currency: holding?.currency ?? null,
+    accountId: holding?.accountId,
     ruleDescription: (typed) =>
       resolveRuleDescription({ description: typed, holding, existing, holdings, mode, t }),
     initial: { category: opening.selectedCategory, isPicked: opening.userPickedCategory },
@@ -1001,6 +1008,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     cancelOverride,
     pendingCategory,
     overrideMessage,
+    prefixOffer,
+    prefixPreview,
+    onOfferPrefix,
+    isOfferingPrefix,
+    onBackFromPrefix,
+    onApplyPrefix,
+    isApplyingPrefix,
   } = useCategoryOverride({
     navigation,
     editingId,
@@ -1008,6 +1022,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     buildApplyCategoryMessage,
     showSaveErrorAlert,
   });
+
+  const prefixConfirm = resolvePrefixConfirm(
+    prefixPreview,
+    pendingCategory,
+    (preview, categoryTitle) => ruleMoveMessage(preview, categoryTitle, t),
+    { onConfirm: onApplyPrefix, onBack: onBackFromPrefix, isApplying: isApplyingPrefix },
+  );
 
   // Append an empty return row; `nextReturnId` keeps its React key stable.
   const addReturn = (): void => {
@@ -1580,6 +1601,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               exchangeFundingCaptionKey={exchangeFundingCaptionKey}
             />
 
+            {foldMap(
+              maybe(markableRowOf(existing, converting, exchangeFundingCaptionKey)),
+              (row) => (
+                <RecurringMarkField existing={row} holdings={holdings} accounts={accounts} />
+              ),
+            )}
+
             {/* After description AND category — the top of the form (above
               holding/type/amount) reads wrong for a supplementary,
               often-empty field. */}
@@ -1612,6 +1640,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         onApplyOne={onApplyOverrideOne}
         isApplyingOne={isApplyingOverrideOne}
         isWriting={isOverrideWriting}
+        prefix={prefixOffer}
+        onOfferPrefix={onOfferPrefix}
+        isOfferingPrefix={isOfferingPrefix}
+        prefixConfirm={prefixConfirm}
       />
     </>
   );

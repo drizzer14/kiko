@@ -7,6 +7,7 @@ import type {
   CurrencyRateHistoryRow,
   CurrencyRateRow,
   DeletedImportKeyRow,
+  FundingMatchRow,
   HoldingRow,
   PricePointRow,
   ReminderRow,
@@ -39,4 +40,5 @@ export type DataSnapshot = {
   // restore reads it defensively (`restoreDataSnapshot`) without a version bump.
   deletedImportKeys?: DeletedImportKeyRow[];
   transactionTemplates?: TransactionTemplateRow[];
+  fundingMatchRows?: FundingMatchRow[];
 };

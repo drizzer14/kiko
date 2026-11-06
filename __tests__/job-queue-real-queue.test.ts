@@ -23,6 +23,8 @@ import { writeFile, writeExecutable } from './test-support/mutation-repository';
 // must never reach it. Every row here points HOME at a temporary folder and leaves KIKO_QUEUE_DIR
 // unset, so the default queue resolves inside that folder and no row can touch the real one.
 const SCRIPT = join(__dirname, '../scripts/job-queue.sh');
+const PREPARE_SCRIPT = join(__dirname, '../scripts/verify-checkout.sh');
+const LIBRARY = join(__dirname, '../scripts/checks/_lib.sh');
 
 jest.setTimeout(120_000);
 
@@ -122,6 +124,26 @@ describe('scripts/job-queue.sh on the real queue: a foreign repository', () => {
       expect(existsSync(fixture.queue)).toBe(false);
     },
   );
+
+  it('refuses a verify --sha of a scratch repository with exit 3', () => {
+    const fixture = createFixture();
+    const scratch = createRepository(fixture, 'scratch');
+
+    const result = runQueue(
+      fixture,
+      SCRIPT,
+      'verify',
+      scratch,
+      'foreign',
+      '--sha',
+      headOf(fixture, scratch),
+    );
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain('KIKO_QUEUE_DIR');
+    expect(doneLines(fixture)).toEqual([]);
+    expect(existsSync(fixture.queue)).toBe(false);
+  });
 
   it('refuses a verify of a folder that is no repository at all', () => {
     const fixture = createFixture();
@@ -243,8 +265,10 @@ describe('scripts/job-queue.sh on the real queue: a worktree of its own reposito
   const createOwnRepository = (fixture: Fixture) => {
     const main = createRepository(fixture, 'own');
     const linked = join(fixture.root, 'own-linked');
-    mkdirSync(join(main, 'scripts'));
+    mkdirSync(join(main, 'scripts/checks'), { recursive: true });
     copyFileSync(SCRIPT, join(main, 'scripts/job-queue.sh'));
+    copyFileSync(PREPARE_SCRIPT, join(main, 'scripts/verify-checkout.sh'));
+    copyFileSync(LIBRARY, join(main, 'scripts/checks/_lib.sh'));
     runGit(main, fixture.environment, 'add', '-A');
     runGit(main, fixture.environment, 'commit', '-qm', 'add the queue script');
     runGit(main, fixture.environment, 'worktree', 'add', '-q', '--detach', linked);
@@ -270,6 +294,25 @@ describe('scripts/job-queue.sh on the real queue: a worktree of its own reposito
 
     expect(result.status).toBe(0);
     expect(doneLines(fixture)).toHaveLength(1);
-    expect(doneLines(fixture)[0]).toMatch(/^verify own 0 \S+ \S+ [0-9a-f]{40}$/);
+    expect(doneLines(fixture)[0]).toMatch(/^verify own 0 \S+ \S+ [0-9a-f]{40} (?:full|partial)$/);
+  });
+
+  it('accepts a verify --sha of a linked worktree', () => {
+    const fixture = createFixture();
+    const places = createOwnRepository(fixture);
+    const sha = headOf(fixture, places.main);
+
+    const result = runQueue(
+      fixture,
+      join(places.main, 'scripts/job-queue.sh'),
+      'verify',
+      places.linked,
+      'own',
+      '--sha',
+      sha,
+    );
+
+    expect(result.status).toBe(0);
+    expect(doneLines(fixture)[0]).toMatch(new RegExp(`^verify own 0 \\S+ \\S+ ${sha} partial$`));
   });
 });
