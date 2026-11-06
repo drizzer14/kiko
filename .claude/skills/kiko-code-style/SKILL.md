@@ -281,7 +281,9 @@ A test or suite title says what the test pins. It carries no task, ruling, revie
 spec clause id, no numbered device-check prefix, and no `(was: ` label (the full set is the
 regexes of `kiko-test-title-no-history` in `rules/semgrep-prewrite.yml`; kiko-linter lists
 them). The id and the old value belong in the commit message. A migration's own test title may
-name its migration number: that number is the subject, not history. Mechanized by that
+name its migration number: that number is the subject, not history. Narrative words ('no
+longer', 'now', 'used to', 'still') are history too; state what the test pins. The rule does not
+match them, so the text is the only guard. Mechanized by that
 Semgrep rule (see kiko-linter's own section for its scope and limits).
 
 ## Split a `useEffect` per logical concern, before it ships
@@ -1218,7 +1220,8 @@ spot, so it stays a review item.
 argument, so a large enough array (a long ledger, a 200k-row statement
 file, a full-history chart series) throws `RangeError: Maximum call
 stack size exceeded`. `Math.max.apply(null, xs)` does the same. Use
-`minOf(xs)`/`maxOf(xs)` from `@kiko/numbers`:
+`minOf(xs)`/`maxOf(xs)` from `@kiko/numbers`. Sum with `sumOf(values)` (same barrel,
+`src/numbers/sum.ts`); a hand-rolled `reduce((sum, value) => sum + value, 0)` is a copy:
 
 ```ts
 // wrong

@@ -1826,6 +1826,11 @@ are built with `createPaneStackNavigator`.
 - **Cost.** Home and Statistics are each mounted in two tabs on a wide window (a root in one, a
   default in the other), so their live queries run twice. Opening Tables does not mount a second
   Statistics: it has no mount reads and the stand-in stays, paused.
+- **Tables code.** `src/screens/tables/` (the screen, `category-table/`, `cash-flow-table/`,
+  `table-cells/` shared cell formatters); the data in
+  `src/statistics/{table-period,category-by-month,cash-flow,tables-view}/`. A view is added by
+  extending `TABLES_VIEWS` (`src/statistics/tables-view/tables-view.ts`); the typed Records fail
+  to compile until mapped.
 
 ## Transaction form: holding change and template seeding
 

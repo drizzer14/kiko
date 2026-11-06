@@ -113,7 +113,7 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   rendered tree in paint order.
 - `mock-statistics-data-layer.ts`, `statistics-filter-data.ts`: the mocked data layer a real
   Statistics screen (or Home) mounts on, and its filter fixtures (`answerFilterData`,
-  `pressFilterOption`, the filter testIDs).
+  `pressFilterOption`, `transactionRowOf` (a transaction row with defaults), the filter testIDs).
 - `reset-statistics-filter-selection.ts`: `resetStatisticsFilterSelection`, an `afterEach` that
   puts the session-long Statistics account and category picks back on "all".
 - `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
@@ -395,8 +395,10 @@ Known limits:
 A test that asserts a text is ABSENT (`queryByText`, `not.toContain`)
 passes for ever once a reword changes the text it hunts. Derive that text
 from the i18n key (`i18n.t(...)`) or an exported constant, never a typed
-fragment. Add a positive twin that finds the same text in the case where
-it must be there, so the matcher is proven to match. After any reword,
+fragment. Exception: a test that pins REMOVED wording has no key to derive from (the key is
+gone). A typed fragment is the only form there. Keep it, and add the positive twin on the
+replacement text (`src/help/help-topics.test.ts`). Add a positive twin that finds the same text
+in the case where it must be there, so the matcher is proven to match. After any reword,
 grep the old fragment across `src/` and the tests.
 
 ## A subset matcher never holds a Set or a Map
