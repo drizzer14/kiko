@@ -540,13 +540,28 @@ const STORE_NUMBER_PURCHASES_MINOR_UNITS = STORE_NUMBER_PURCHASES.reduce(
   0,
 );
 
-// Raised by the two UAH funding debits and by the store-number purchases, so the card keeps its
-// end balance.
+// One merchant the user has filed under dining three times and left in the default category once:
+// the review list can suggest dining for the fourth. The days are uneven and the rows span two
+// weeks, so they cannot read as a monthly series.
+const SUGGESTION_PURCHASES = [
+  { category: 'dining', amountMinorUnits: -8_500, daysAgo: 11 },
+  { category: 'dining', amountMinorUnits: -9_200, daysAgo: 17 },
+  { category: 'dining', amountMinorUnits: -7_800, daysAgo: 22 },
+  { category: 'other', amountMinorUnits: -8_900, daysAgo: 25 },
+];
+const SUGGESTION_PURCHASES_MINOR_UNITS = SUGGESTION_PURCHASES.reduce(
+  (total, purchase) => total - purchase.amountMinorUnits,
+  0,
+);
+
+// Raised by the two UAH funding debits, the store-number purchases and the suggestion purchases,
+// so the card keeps its end balance.
 const CARD_OPENING_MINOR_UNITS =
   2_000_000 +
   P2P_FUNDING_MINOR_UNITS +
   CARD_FUNDING_MINOR_UNITS +
-  STORE_NUMBER_PURCHASES_MINOR_UNITS;
+  STORE_NUMBER_PURCHASES_MINOR_UNITS +
+  SUGGESTION_PURCHASES_MINOR_UNITS;
 // Raised by the fiat funding debit and by the three card purchases below, so Wise keeps its end
 // balance.
 const WISE_PURCHASES_MINOR_UNITS = 4_500 + 3_900 + 2_200;
@@ -629,6 +644,16 @@ const buildStoreNumberTransactions = (calendar: DemoCalendar): SeedTransaction[]
     time: calendar.at(daysAgo),
     category: 'other',
     description: `${STORE_NUMBER_MERCHANT} ${storeNumber}`,
+  }));
+
+// Four rows under one merchant: three filed under dining and one left in the default category.
+// The review list shows that merchant's line with the dining suggestion, 3 of 3.
+const buildSuggestionTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] =>
+  SUGGESTION_PURCHASES.map(({ category, amountMinorUnits, daysAgo }) => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category,
+    description: text.mokkoCoffee,
   }));
 
 // A debit stays in the default category: a matched debit leaves spending, so it is no spend to
@@ -720,6 +745,7 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
     ...buildCarLoanPayments(calendar, text),
     ...buildFoodDeliveryTransactions(calendar, text),
     ...buildStoreNumberTransactions(calendar),
+    ...buildSuggestionTransactions(calendar, text),
     ...buildExchangeFundingDebits(calendar),
   ];
 };
