@@ -25,6 +25,7 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
 import { DELETE_CONFIRM_TEST_ID } from '@kiko/design-system/components/card-context-menu';
+import { paneStackModule as mockPaneStackModule } from '@kiko/test-support/mock-pane-stack';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import RecurringChargesScreen from './recurring-charges.screen';
@@ -94,12 +95,9 @@ jest.mock('@kiko/settings', () => {
 
 const mockOpenInPane = jest.fn();
 
-jest.mock('@kiko/navigation/pane-stack', () => ({
-  ...jest.requireActual('@kiko/navigation/pane-stack'),
-  useOpenInPane: () => mockOpenInPane,
-  useDetailPaneRoute: () => null,
-  useIsScreenVisible: () => true,
-}));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  mockPaneStackModule(() => mockOpenInPane, { useIsScreenVisible: () => true }),
+);
 
 const ROW = /^recurring-series-row-/;
 
