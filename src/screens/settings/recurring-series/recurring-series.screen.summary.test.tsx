@@ -367,6 +367,8 @@ describe('RecurringSeriesScreen — the header against the charge cards', () => 
 
     expect(order.filter((id) => id === DIVIDER)).toHaveLength(1);
     expect(firstCharge).toBeGreaterThan(-1);
+    expect(order.indexOf(VALUE.paid)).toBeGreaterThan(-1);
+    expect(order.indexOf(DIVIDER)).toBeGreaterThan(-1);
     expect(order.indexOf(VALUE.paid)).toBeLessThan(order.indexOf(DIVIDER));
     expect(order.indexOf(DIVIDER)).toBeLessThan(firstCharge);
   });

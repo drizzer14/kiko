@@ -13,7 +13,6 @@ import {
 import type { MarkedChain } from '@kiko/recurring/marked-series';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { paneStackModule as mockPaneStackModule } from '@kiko/test-support/mock-pane-stack';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
@@ -48,7 +47,9 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
 
 const mockOpenInPane = jest.fn();
 
-jest.mock('@kiko/navigation/pane-stack', () => mockPaneStackModule(() => mockOpenInPane));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane),
+);
 
 // The Button variant maps to a themed fill inside a unistyles `variants` block that the Jest mock
 // strips, so "destructive" is proven by recording the props Button receives.

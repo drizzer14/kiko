@@ -9,7 +9,6 @@ import type { MarkedChain } from '@kiko/recurring/marked-series';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { paneStackModule as mockPaneStackModule } from '@kiko/test-support/mock-pane-stack';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import RecurringChargesScreen from './recurring-charges.screen';
@@ -88,7 +87,9 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
 
 const mockOpenInPane = jest.fn();
 
-jest.mock('@kiko/navigation/pane-stack', () => mockPaneStackModule(() => mockOpenInPane));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane),
+);
 
 const OCTOBER = new Date(2026, 9, 15, 9, 30).getTime();
 const SEPTEMBER = new Date(2026, 8, 15, 9, 30).getTime();

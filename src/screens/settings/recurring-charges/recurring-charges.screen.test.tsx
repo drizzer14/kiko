@@ -12,7 +12,6 @@ import { formatMoney } from '@kiko/currency/format';
 import type { RecurringMerchantChoice } from '@kiko/settings';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { paneStackModule as mockPaneStackModule } from '@kiko/test-support/mock-pane-stack';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import RecurringChargesScreen from './recurring-charges.screen';
@@ -37,7 +36,9 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
 
 const mockOpenInPane = jest.fn();
 
-jest.mock('@kiko/navigation/pane-stack', () => mockPaneStackModule(() => mockOpenInPane));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane),
+);
 
 const renderScreen = async (result: Omit<typeof mockResult, 'choices'> & { choices?: Choices }) => {
   mockResult = { choices: new Map(), ...result };

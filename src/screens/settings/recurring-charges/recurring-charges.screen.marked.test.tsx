@@ -15,7 +15,6 @@ import { chargesAt } from '@kiko/test-support/marked-series-worlds';
 import { STACK_FONT_SCALE } from '@kiko/design-system/stack-font-scale';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ledgerOf, monthly, chargeOf, at } from '@kiko/test-support/recurring-ledger';
-import { paneStackModule as mockPaneStackModule } from '@kiko/test-support/mock-pane-stack';
 import { hookStateOf, type MarkedNames } from '@kiko/test-support/marked-series-hook-result';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -38,7 +37,9 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
 
 const mockOpenInPane = jest.fn();
 
-jest.mock('@kiko/navigation/pane-stack', () => mockPaneStackModule(() => mockOpenInPane));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane),
+);
 
 const renderScreen = async (state: HookState) => {
   mockResult = state;

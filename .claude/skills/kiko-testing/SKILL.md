@@ -75,8 +75,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   hidden-merchants UI that the screen suites count none of.
 - `mock-pane-stack.ts`: `paneStackModule`, the real pane-stack module with the open call handed to
   the suite's spy and no detail pane; wire it with `jest.mock('@kiko/navigation/pane-stack', () =>
-  mockPaneStackModule(() => mockOpenInPane))` (a `mock`-prefixed import name, as above; the spy
-  comes through a getter because the factory runs before the suite's `const`).
+  require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane))` (the
+  `require` inside the factory is order-proof; the spy comes through a getter because the factory
+  runs before the suite's `const`).
 - `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
   real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
   `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and
