@@ -734,6 +734,171 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
 
 ---
 
+## 1.4-recurring visual round 2
+
+**Spec:** section 18 (18.1 the reversals with their "was:", 18.2 totals, 18.3 the table, 18.4 hidden rows, 18.5 the footer,
+18.7 texts, 18.8 questions). **Branch:** `1.4-recurring-visual-2`, base 85215396e (visual-1 task 3/3's tip, not yet in
+`next`). **Gate before any code:** the user's answers to Q1 to Q4 and "texts lgtm" for
+`.superpowers/sdd/1.4-recurring/texts-visual-2.md`. The steps below are written on the recommended answers (Q1 A, Q2 A, Q3 A,
+Q4 B); another answer changes the named pins of its task, and the planner rewrites them before the qa step starts. Three
+change sets, stacked: task 1/3 on this plan's commit, task 2/3 on its tip, task 3/3 on task 2/3's tip. Every count is a floor;
+the developer measures. Every code fact names a symbol: re-grep each on the actual base. Scope is the three items only.
+
+**Run-log gaps:** these sets close none and leave all open; none names the recurring screens. Nearest, left open:
+`20261103T2049-kiko-1-4-light-scheme-2/1` and `20261104T1734-kiko-1-4-light-scheme/1` (dark look owed on a device; this
+round's device call can cover the recurring screens in dark).
+
+**Existing suites.** No owed state, column, migration or seed: no 1.2-upgrade world is touched. Not "unchanged": the named
+edits of each step are the only edited expectations, each with a `was:` line in its commit body; any other is reported, not
+made. Each qa pin is shown red on the base before its commit; a pin green on the base is a guard, shown failing by a temporary
+mutant.
+
+**Checks for every step:** the fast tier on write; `npx jest <named files> --maxWorkers=2` with output in a file; `make
+jest-affected BASE=<set base>` where it does not exit 3 (`en.ts`/`uk.ts` make it 3: run the named set and say so). The named
+set of every code step includes `src/navigation/settings-stack`. No agent runs `make verify`, `check:all` or full jest. At the
+end of each set the coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-recurring-visual-2-task-N` and reruns
+until green. Mutation gates are paused by the user; if lifted, one gate per set, `KIKO_MUTATION_BASE` = that set's own base,
+never one run over the round. A catalogue key removal greps the help topics, the pin suites and uk first, every dependent edit
+in the same step (harness-workflow "Removing or renaming a catalogue key").
+
+### 1.4-recurring-visual-2 task 1/3: group totals of last charges (item 1)
+
+**Files (floor 8; mutable floor 2: `recurring-groups.ts`, `recurring-charges.screen.tsx`).**
+- Modify: `src/recurring/recurring-groups/{recurring-groups.ts,recurring-groups.test.ts}`;
+  `src/recurring/use-recurring-groups/use-recurring-groups.test.tsx` (the totals assertion of `group the by-ids rows by the
+  categories read, convert at the rates read, total in the base`); `recurring-charges.screen.tsx` (the total row's label);
+  `recurring-charges.screen.groups.test.tsx`; `src/i18n/locales/{en,uk}.ts`.
+- By measure: `src/test-support/mock-recurring-groups.ts`, `src/screens/settings/recurring-charges/*.test.tsx` that read a
+  total.
+
+- [ ] **step 1/4 (kiko:qa): pins, red on the base.** `recurring-groups.test.ts`: a series of three charges (newest 300, then
+  200, 100, all in `rows`) adds 300 to its group, not 600 (red); the counted amount is `lastChargeAmountMinorUnits` even when
+  the newest row is missing from `rows` (red: today it sums the rows); a USD series converts its last charge once at
+  `buildRateTable(rates)` and the group total is the `Money` sum of its series in the base; a currency `canConvert` rejects is
+  left out and its series still listed (guard); a stopped series' last charge counts (Q2 A; a guard: red on a mutant that
+  filters `isStopped`); the total of all equals the sum of the group totals (guard). Named edits, each with `was:`: `the
+  totals` describe's sums of every row (was: the sum of all charges, spec 17.4), and `makes the total of all the sum of the
+  group totals`, whose per-row rounding world has no meaning with one amount per series (was: a rounding world where per-row
+  conversion differs by one minor unit). `recurring-charges.screen.groups.test.tsx`: the total row reads "Sum of last
+  charges" / «Сума останніх списань» (red; was: "All paid so far"). `use-recurring-groups.test.tsx`: its totals now of last
+  charges (a named edit, `was:`). Commit `test(recurring): group totals of last charges`.
+- [ ] **step 2/4 (kiko:developer): code.** Spec 18.2: the group total adds `Money.of(series.currency,
+  series.lastChargeAmountMinorUnits)` per counted series, one `convert` each, `canConvert` as the guard; `paidSoFarOf` and its
+  helper stay for the series screen (knip: no export left unused). `recurringCharges.lastChargesTotal` into `en.ts` and `uk.ts`
+  together, as approved; the list's total row reads it; `paidSoFar` stays (the series screen). Run `npx jest src/recurring
+  src/screens/settings/recurring-charges src/screens/settings/recurring-series src/navigation/settings-stack src/i18n/locales
+  --maxWorkers=2`. Commit `feat(recurring): group totals of last charges`.
+- [ ] **step 3/4 Review, Drift and Scribe (kiko:reviewer, kiko:retrospect, kiko:scribe).** Top question: can a total add two
+  currencies' minor units, count a series twice, or count a charge other than the last? Drift: kiko-domain's recurring section
+  (the totals rule), kiko-pricing's past-row conversion line if it names the recurring sum. Report the sha or "no drift
+  found"; `make doc-suites` after the last doc commit.
+- [ ] **step 4/4 Device and Ready.** Both languages: group totals and the total of all against a hand sum of the rows'
+  amounts, a UAH and a USD series, a stopped series. READY FOR VERIFY, label `1.4-recurring-visual-2-task-1`.
+
+### 1.4-recurring-visual-2 task 2/3: hidden series in their group, "Show again" on the series screen (item 3)
+
+**Base:** task 1/3's tip. **Files (floor 22; mutable floor 6: `recurring-groups.ts`, `use-recurring-groups.ts`,
+`recurring-charges.screen.tsx`, `recurring-series-row.component.tsx`, `recurring-group-heading.component.tsx`,
+`recurring-series.screen.tsx`).**
+- Modify: `src/recurring/recurring-groups/{recurring-groups.ts,recurring-groups.test.ts}` (a `hidden` input; a group's
+  hidden series after its counted ones; `total` optional);
+  `src/recurring/use-recurring-groups/{use-recurring-groups.ts,use-recurring-groups.test.tsx}` (signature `(shown, hidden)`,
+  the id list from both, the same set as today's `all`); `src/test-support/mock-recurring-groups.ts` (its `satisfies` follows);
+  `recurring-charges.screen.tsx` (remove `hiddenEntriesOf`, `hiddenItemsOf`, `HIDDEN_HEADING_ITEM`, the `hidden` list items,
+  the list's `showAgain`; the empty item when nothing lists); `recurring-series-row/{recurring-series-row.component.tsx,
+  recurring-series-row.props.d.ts,recurring-series-row.component.test.tsx}` (an `isHidden` prop, the tag line, testID
+  `recurring-series-row-hidden-<id>`); `recurring-group-heading/{recurring-group-heading.component.tsx,
+  recurring-group-heading.props.d.ts,recurring-group-heading.component.test.tsx}` (no total when absent);
+  `recurring-series.screen.tsx` (the third footer kind, `choices` from `useRecurringSeries`); `src/i18n/locales/{en,uk,title-keys}.ts`.
+- Modify, the Hidden-section pins (grep `recurring-charges-hidden-`, `recurring-charges-show-again-`,
+  `recurring-charges-heading-hidden`, `heading-hidden`, `hiddenHeading`, `HIDDEN_LINE` on the base; at 85215396e):
+  `recurring-charges.screen.test.tsx` (describe `RecurringChargesScreen — hidden merchants`, and `with only hidden
+  merchants`), `recurring-charges.screen.marked.test.tsx` (the `HIDDEN_APPLE` cases and the `ghost` key, the headings list that
+  reads `hiddenHeading`), `recurring-charges.screen.marked-flows.test.tsx` (`HIDDEN_LINE` and the `HIDDEN_AND_MARKED` flows),
+  `recurring-charges.screen.groups.test.tsx` (the item-order world with `heading-hidden`, and `shows no total in "Marked, No
+  Charges" or "Hidden"`), `recurring-series.screen.test.tsx`, `recurring-series.screen.footer.test.tsx`.
+- By measure: `src/navigation/settings-stack/recurring-series.navigator.test.tsx` (a "Show again" late write beside the hide's
+  `a hide write that lands after the user moved on`), `recurring-series.marks.navigator.test.tsx`;
+  `src/recurring/row-recurrence/row-recurrence.properties.test.ts` (its oracle's wording only, spec 18.4; no assertion moves).
+  `settings.repo.test.ts` does not change (`showRecurringMerchantAgain` is unchanged).
+
+- [ ] **step 1/5 (kiko:qa): pins, red on the base.** Commit `test(settings): hidden series in their group, "Show again" on the
+  series`. Named edits, one `was:` line each (the "was:" column of spec 18.1):
+  - `recurring-groups.test.ts`: a hidden series lands in its category's group after that group's active and stopped series,
+    newest charge first among the hidden (red); it adds nothing to the group total or the total of all (red: today it is not
+    in the input); a group of hidden series only has no `total` (red); with only hidden series no total of all.
+  - `use-recurring-groups.test.tsx`: the id list is unique and sorted over `shown` and `hidden`; moving one series from
+    `shown` to `hidden` (a hide) adds no new by-ids key (the existing pin, re-pointed).
+  - List suites: no `recurring-charges-heading-hidden` and no `recurring-charges-hidden-*` line in any world (was: a Hidden
+    section with one line per key); a hidden key's detected series renders `recurring-series-row-<id>` inside its group, after
+    that group's stopped row, with the "Hidden" / «Приховано» tag (red); a visible series of another key keeps its place; a
+    hidden key with no detected series renders no row (was: `names a hidden merchant that has no rows now`); hidden and
+    marked: the marked series as before plus the hidden detected series beside it, tagged (was: the "Hidden" line); with only
+    hidden series, the groups and no empty state (was: `shows the empty state and the section together`); no "Hidden" heading
+    text in either language; the "Marked, No Charges" section last with its divider; the divider before a group still keyed
+    by the group.
+  - `recurring-group-heading.component.test.tsx`: with no `total`, no amount renders and the title keeps its box.
+  - `recurring-series-row.component.test.tsx`: `isHidden` adds the tag line under the recurrence line, in the name's column;
+    without it no tag.
+  - `recurring-series.screen.footer.test.tsx`: on a hidden detected series the footer holds `recurring-series-show-again`,
+    "Show again" / «Показати знову», `variant="primary"`, regular, full width, and no `recurring-series-hide` (red); a tap
+    calls `showRecurringMerchantAgain` with the key once (a double tap once, `useSubmitOnce`), goes back only after the write
+    and only while focused (Q4 B), and a rejected write alerts and stays; a marked series under a hidden key still shows
+    "Remove mark"; a not-hidden detected series still shows "Not a recurring charge", `secondaryTonal` (guards).
+- [ ] **step 2/5 (kiko:developer): code.** Spec 18.4, 18.5. `recurringGroupsOf` takes `hidden`; `RecurringGroup` gains its
+  hidden series and an optional `total`; `useRecurringGroups(shown, hidden)`; the screen splits the detected series by the
+  hide test of 18.4. The row and heading props; theme tokens only. The series screen's footer by kind with `match`, the
+  "Show again" path as the hide's (`useSubmitOnce`, `alertOnCatch`, `navigation.isFocused()`). Catalogue in the same commit:
+  add `hiddenTag`; remove `recurringCharges.hiddenHeading` from `en.ts`, `uk.ts` and `title-keys.ts`; help step 4 in both
+  languages; grep `hiddenHeading`, `Приховані` and "from \"Hidden\"" in `src`, `docs/superpowers/specs` and the skills on the
+  base first, and edit every hit here. kiko-design-system's footer line (the lone secondary action now has a primary third kind
+  on this screen) in this commit or step 4/5. Run `npx jest src/recurring src/screens/settings/recurring-charges
+  src/screens/settings/recurring-series src/navigation/settings-stack src/help src/screens/settings/help-topic
+  src/i18n/locales --maxWorkers=2`. Commit `feat(settings): hidden series in their group, "Show again" on the series`.
+- [ ] **step 3/5 Review (kiko:reviewer).** Diff from the set's base. Top question: can a hidden series reach a total, or a
+  marked series read as hidden? Second: does a hide or "Show again" now run detection, a whole-ledger read or a new by-ids key
+  (spec 9.5)? Third: is any Hidden-section pin deleted rather than re-pointed, and is every removed key gone from both
+  catalogues, `title-keys.ts` and the help text? No migration.
+- [ ] **step 4/5 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring section (hidden rows, the tag, the
+  totals leave them out, the form unchanged), kiko-design-system (the footer kinds), spec 8.1's text if retrospect asks.
+  Report the sha or "no drift found"; `make doc-suites` after.
+- [ ] **step 5/5 Device and Ready.** Both languages: hide a series, Back, the row in its group with the tag and the totals
+  without it; open it, "Show again" as the primary footer button, Back, the row untagged and counted; a hidden key beside a
+  marked series. READY FOR VERIFY, label `1.4-recurring-visual-2-task-2`.
+
+### 1.4-recurring-visual-2 task 3/3: the series screen's table (item 2)
+
+**Base:** task 2/3's tip. **Files (floor 9; mutable floor 1: `recurring-series.screen.tsx`).**
+- Create: `src/screens/settings/recurring-series/recurring-series.screen.summary.test.tsx`.
+- Modify: `recurring-series.screen.tsx` (the header becomes one `SummaryTable`); `recurring-series.styles.ts` (`paidRow`,
+  `paidLabel`, `paidAmount` go if unused); `src/i18n/locales/{en,uk}.ts`.
+- Modify, the header pins: `recurring-series.screen.test.tsx` (the `chargeCount` cases and the stopped line on `HEADER`),
+  `recurring-series.screen.marked.test.tsx` (`lastChargeText` read with `exact: false` on `HEADER`),
+  `recurring-series.screen.footer.test.tsx` (the "All paid so far" pins inside the header),
+  `src/navigation/settings-stack/recurring-series.marks.navigator.test.tsx` (the `chargeCount` read inside the header).
+
+- [ ] **step 1/4 (kiko:qa): pins, red on the base.** `recurring-series.screen.summary.test.tsx`: inside
+  `recurring-series-header` one `SummaryTable` (its rows in spec 18.3's order); each label in both languages and each value
+  under its testID: the recurrence line, the date, the count as a number, the paid sum; a stopped series shows "Status" with
+  "No recent charge", a quiet one with the `holdingQuietSince` text, an active one no status row; a marked series' "Repeats"
+  reads its "Marked:" line; the paid row is absent until the rows read lands (all red today). Named edits with `was:` (the old
+  text lines): the four suites above re-read their values from the table's testIDs. Commit `test(settings): the series
+  screen's table`.
+- [ ] **step 2/4 (kiko:developer): code.** Spec 18.3. `SummaryTable` with caller-rendered `Text` and `MoneyText` values,
+  `wraps` on the two free-text rows. Catalogue in the same commit: add `recurringCharges.summary.*`; remove
+  `recurringCharges.chargeCount_{one,few,many,other}` from both catalogues after grepping `chargeCount` in `src`, `__tests__`,
+  the help topics and the skills on the base. Run `npx jest src/screens/settings/recurring-series src/navigation/settings-stack
+  src/design-system/components/summary-table src/i18n/locales --maxWorkers=2`. Commit `feat(settings): the series screen's
+  table`.
+- [ ] **step 3/4 Review, Drift and Scribe (kiko:reviewer, kiko:retrospect, kiko:scribe).** Top question: does any header fact
+  of 9.3 drop (the stopped and quiet lines, the count, the paid sum and its wait)? Drift: kiko-design-system's `SummaryTable`
+  callers list (a fourth caller), spec 9.3's header line.
+- [ ] **step 4/4 Device and Ready.** Both languages, iPhone, iPad two panes and the Duo fold: an active, a stopped and a quiet
+  series, a marked one; the largest non-accessibility size and AX1 (a wrapped value keeps its label). READY FOR VERIFY, label
+  `1.4-recurring-visual-2-task-3`.
+
+---
+
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
 
 | Task | Floor |
@@ -745,6 +910,9 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
 | visual-1 task 1/3 | 6 (listed in its Files) |
 | visual-1 task 2/3 | 5 (was 4; `exchange-fields.component.tsx` joins, P3 B; listed in its Files) |
 | visual-1 task 3/3 | 4 (listed in its Files) |
+| visual-2 task 1/3 | 2 (listed in its Files) |
+| visual-2 task 2/3 | 6 (listed in its Files) |
+| visual-2 task 3/3 | 1 (listed in its Files) |
 
 Mutation gates are paused by the user; this table is for a lift.
 
