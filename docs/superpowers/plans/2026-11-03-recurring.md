@@ -1009,7 +1009,8 @@ stepForward }>` whose weekly, monthly and yearly entries are `WEEKLY`'s, `MONTHL
 months `addMonths(time, 3 * n)` / `6 * n` with 3 / 6 times `AVERAGE_MONTH_DAYS`. A signed nearest-step helper (the
 `slotPairOf` candidates n - 1, n, n + 1 around the rounded signed day count, least `dayGapOf`, tie to the lower n) serves both
 the anchor's cost and each charge's slot; `slotPairOf` itself is not edited. Anchor, slot and tie exactly as spec 8.3's table
-(the newest 12 nearest-amount charges at most, so the anchor costs at most 144 steps). In `marked-series.ts` one inner function
+(the newest 12 nearest-amount charges at most, so the anchor costs at most 144 steps). **Superseded 2026-11-07 by step 5/9:**
+no anchor; the floor, the near amount and the five keys of spec 8.3's redesigned table; the signature stays. In `marked-series.ts` one inner function
 builds a currency's chains: fold, `piecesOf`, the piece's charges, then `onePerSlotOf(pieceCharges, piece.period,
 piece.marks' amounts)`, returning the kept charges and the dropped ids. `chainsOfEntry` maps it (kept charges become the
 chain's `charges`, before `seriesOfChain`, so the count, list, totals, stopped read, date line and last charge all follow);
@@ -1033,7 +1034,10 @@ disagreement, never edits to green):
 | `markedChainOfAmount` describe, its six cases | amount-only charges, an amount argument | `Charge` fixtures and a `row`; each result also states `holdsRow` |
 | Marked flow "99 x10, one 119, a detected 399 x10, marked at 99, a yearly pick on the 119 row" | the marked x11, yearly | as walked: if the 119 shares a slot with a 99, the field on it is disabled and no pick is possible (the flow pins that); else the pick and one per yearly slot |
 
-- [ ] **step 1/6 (kiko:qa): red pins.** New rows, in the existing world tables and describes (no new file, no new helper
+**M is 9 since 2026-11-07** (was 6): the reviewer measured three faults of the anchor rule (spec 8.3 `was: anchor`), so steps
+4/9 to 6/9 redo the rule without an anchor; the old steps 4/6 to 6/6 are now 7/9 to 9/9. The brief called the new pins "6b".
+
+- [x] **step 1/9 (kiko:qa): red pins.** Done: 0cc0c7adf. New rows, in the existing world tables and describes (no new file, no new helper
   copy): worlds A, B, C, D from the debugger's scratch (`marked-same-month.scratch.test.ts`, path in the coordinator's brief)
   as matrix rows with `markedSeriesOf`, `paidSoFarOf` (the "All paid so far" figure) and `rowRecurrenceOf` on the extra row;
   the month-end drift world as a guard (green on the base; shown failing by a calendar-month mutant of `onePerSlotOf` once it
@@ -1044,24 +1048,61 @@ disagreement, never edits to green):
   `test(recurring): one charge per period in a marked chain`. **Check:** `npx jest src/recurring/marked-series
   src/recurring/row-recurrence src/recurring/use-row-mark src/screens/forms/transaction-form/recurring-mark-field
   --maxWorkers=2`, output in a file; reds only where named.
-- [ ] **step 2/6 (kiko:developer): the rule.** The interfaces above, in `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
+- [x] **step 2/9 (kiko:developer): the rule.** Done: a430a2b41, 4bd873420 (the anchor rule, superseded by step 5/9). The interfaces above, in `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
   `recurring-mark-field.component.tsx`. No pin edited. Commit `fix(recurring): one charge per period in a marked chain`.
   **Checks:** fast tier on write; `npx jest src/recurring src/screens/forms/transaction-form/recurring-mark-field
   src/screens/settings/recurring-charges src/screens/settings/recurring-series src/navigation/settings-stack --maxWorkers=2`
   (includes `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<set base>` (exit 3: say so, the
   named set stands). **`check:dup`:** keep test growth small (rows in existing tables, one property); read the
   `dup-ceilings.tsv` rows of the touched tests; a ceiling never rises; the Stop hook's medium tier runs it.
-- [ ] **step 3/6 Review (kiko:reviewer).** Diff from the set base. Top questions: is there one slot definition, used by both
+- [x] **step 3/9 Review (kiko:reviewer).** Done: three HIGH and MEDIUM faults (spec 8.3 `was: anchor`), a missing direct
+  test of `onePerSlotOf` and a missing jittered-rhythm property; the form question (#4) is ruled in spec 8.3 "The tapped row".
+  Its brief was: diff from the set base. Top questions: is there one slot definition, used by both
   `chainsOfEntry` and `markedChainOfAmount` (fix-divergent-twins)? Can the anchor sit on an extra (world C) or flip on row
   order? Does any reader of the marked series still see a dropped charge (totals, stopped, last charge, date line, route)? Are
   the test edits only the named ones, each with its `was`?
-- [ ] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's mark rules ("A mark's chain ... The chain's
-  charges are the series"): add one charge per period slot, the rhythm anchor and the dropped charge. Report the sha or "no
-  drift found".
-- [ ] **step 5/6 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-recurring-visual-2-task-6`
+- [ ] **step 4/9 (kiko:qa): pins for the redesigned rule (the brief's "6b").** Base: the branch tip holding the spec commit
+  `docs(recurring): one charge per period without an anchor`. Spec 8.3's redesigned table and its `now` column are the
+  contract; re-grep every symbol. (a) A direct table test of `onePerSlotOf`: new file
+  `src/recurring/detection/detection.one-per-slot.test.ts` (the `detection.performance.test.ts` naming; `detection.test.ts`
+  stays unedited), one `it.each` table over plain `Charge` fixtures with `kept` ids and `dropped` ids per row: worlds A (at 100,
+  98, 102), B, C, D, month-end drift, reviewer 1 and its reverse, reviewer 2 bills (three taps) and FX, the 31st run, weekend
+  shifts, the paused month, weekly, yearly and every 6 months over m(12, 3, 199), 20 Dec and 15 Jan yearly, 7 Aug/7 Sep/7 Oct
+  every 3 months, Apple with purchases, and a near-amount boundary pair (`abs * 20 == stored` near, one minor unit more not).
+  (b) Reviewer worlds 1 to 3 also as `marked-series` matrix rows (count, last charge, `onDay`) in the existing world tables, and
+  world A at 102 with `markedChainOfAmount`'s `holdsRow: false` on the tapped 12 Oct row. (c) Properties in
+  `marked-series.test.ts` with `sweep` and `seededRandom` (no new helper): a jittered rhythm keeps every charge (monthly on a
+  day 1 to 28, each charge moved -6 to +6 days, 24 months, random skipped months, one amount; weekly with -1 to +1 days); the
+  result is deep-equal for any input order; no two kept charges sit half a step or less apart (this replaces step 1/9's "no
+  two kept charges share a slot"). Was values from a base run, never typed. Reds on the anchor rule shown failing for the
+  stated reason; guards green (the drift, bills at 1150). Commit `test(recurring): one charge per period without an anchor`.
+  **Check:** `npx jest src/recurring/detection/detection.one-per-slot src/recurring/marked-series src/recurring/use-row-mark
+  --maxWorkers=2`, output in a file; reds only where named. **`check:dup`:** a new test file over 1000 lines is a dup risk
+  (memory: new-test-file-over-1000-lines-dup-regression): keep it one table.
+- [ ] **step 5/9 (kiko:developer): the rule without an anchor.** `onePerSlotOf` in `detection.ts` per spec 8.3's table: sort by
+  time then id; the floor `daysBetween > slotDays / 2`; the near test in minor units; the five keys as one tuple compared key
+  by key; the DP scanning only predecessors past the floor and within half a step of the best one (spec 8.3 "The
+  computation"); gap cost by `stepForward` and `dayGapOf` with k >= 1. Remove `anchorOf`, `signedSlotPairOf`,
+  `ANCHOR_CANDIDATES` if nothing else reads them (knip). Update the doc comments of `onePerSlotOf` and `markedSeriesOf` (no
+  "slot around one anchor"). Signature, `marked-series.ts`, `use-row-mark.ts` and the form unchanged. No pin edited. Commit
+  `fix(recurring): one charge per period without an anchor`. **Checks:** fast tier on write; `npx jest src/recurring
+  src/screens/forms/transaction-form/recurring-mark-field src/screens/settings/recurring-charges
+  src/screens/settings/recurring-series src/navigation/settings-stack --maxWorkers=2` (includes
+  `detection.performance.test.ts`), output in a file; add one case to the performance suite only if it has none with a dense
+  marked key (the daily shop's 500 rows marked monthly), its bound measured, not typed; `make jest-affected BASE=<step 4/9
+  commit>` (exit 3: say so).
+- [ ] **step 6/9 Re-review (kiko:reviewer).** Diff from step 3/9's tip. Top questions: does every world of spec 8.3's table
+  hold (the reviewer reruns its probe `p1.test.ts` against the new rule); is the DP's predecessor window exact (the
+  "within half a step of the best" argument), or can it miss a tie; does any reader still see a dropped charge; is the
+  tapped row dropped only where spec 8.3 "The tapped row" says?
+- [ ] **step 7/9 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's mark rules ("A mark's chain ... The chain's
+  charges are the series"): the bullet a6a7a55aa added says "at most one charge per period slot"; reword it to the
+  redesigned rule (kept charges more than half a step apart, near amounts first, no anchor). Report the sha or "no drift
+  found".
+- [ ] **step 8/9 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-recurring-visual-2-task-6`
   once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest. Mutation gates are paused by the
   user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own base.
-- [ ] **step 6/6 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-6`. Device (next build):
+- [ ] **step 9/9 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-6`. Device (next build):
   the user's own marked series shows one charge a month; its count, "All paid so far", last charge and date line agree; the
   extra rows read "Not marked" (disabled) in the form; a second same-vendor subscription, if the ledger holds one, shows as
   its own row.
