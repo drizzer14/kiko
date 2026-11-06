@@ -36,4 +36,9 @@ export const styles = StyleSheet.create((theme) => ({
     flex: 1,
     marginRight: theme.spacing(3),
   },
+  // The same block with its button under it, at an accessibility text size.
+  entryStack: {
+    gap: theme.spacing(3),
+    alignItems: 'flex-start',
+  },
 }));

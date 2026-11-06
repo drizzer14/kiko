@@ -1,6 +1,5 @@
 import { match } from 'ts-pattern';
 import { minOf } from '@kiko/numbers';
-import { FlatList } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import Screen, {
@@ -19,6 +18,7 @@ import LargeTitleHeading, {
   useLargeTitleScroll,
 } from '@kiko/design-system/components/large-title-heading';
 import { useOpenInPane } from '@kiko/navigation/pane-stack';
+import { FlatList, useWindowDimensions } from 'react-native';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import Divider from '@kiko/design-system/components/divider';
 import { recurrenceLine } from '@kiko/recurring/recurrence-text';
@@ -30,6 +30,7 @@ import EmptyState from '@kiko/design-system/components/empty-state';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { RecurringGroup } from '@kiko/recurring/recurring-groups';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { STACK_FONT_SCALE } from '@kiko/design-system/stack-font-scale';
 import { useRecurringGroups } from '@kiko/recurring/use-recurring-groups';
 import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
 import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
@@ -142,6 +143,9 @@ const RecurringChargesScreen: FC<RecurringChargesScreenProps> = () => {
   const contentCap = useContentCap();
   const scrollIndicatorProps = useScrollIndicatorProps();
   const openInPane = useOpenInPane();
+  // From the first accessibility size the button goes under the text: beside it, the text would
+  // wrap into a thin column.
+  const isStacked = useWindowDimensions().fontScale >= STACK_FONT_SCALE;
   // The route holds what a later read needs to find the series again, since its id is its earliest
   // charge's and an older import moves that. A marked series also holds its lowest stored amount,
   // which finds its piece again whatever its id or period became.
@@ -237,10 +241,13 @@ const RecurringChargesScreen: FC<RecurringChargesScreenProps> = () => {
             ))
             .with({ kind: 'markedEmpty' }, ({ chain }) => (
               <Card padding={3}>
-                <Box direction="row" style={styles.entryRow}>
+                <Box
+                  direction={isStacked ? 'column' : 'row'}
+                  style={isStacked ? styles.entryStack : styles.entryRow}
+                >
                   <Box
                     gap={1}
-                    style={styles.entryName}
+                    style={isStacked ? undefined : styles.entryName}
                     testID={`recurring-charges-marked-empty-${chainIdOf(chain)}`}
                   >
                     <Text variant="body">{chain.name}</Text>

@@ -27,6 +27,7 @@ import LargeTitleHeading, {
   useLargeTitleScroll,
 } from '@kiko/design-system/components/large-title-heading';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
+import Divider from '@kiko/design-system/components/divider';
 import { paidSoFarOf } from '@kiko/recurring/recurring-groups';
 import { type FC, useCallback, useMemo, useState } from 'react';
 import { recurrenceLine } from '@kiko/recurring/recurrence-text';
@@ -317,7 +318,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
                       key: 'repeats',
                       label: t('recurringCharges.summary.repeats'),
                       value: (
-                        <Text variant="body">
+                        <Text variant="body" style={styles.wrappedValue}>
                           {recurrenceLine(series.period, series.recurrence, t)}
                         </Text>
                       ),
@@ -335,7 +336,11 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
                           {
                             key: 'status',
                             label: t('recurringCharges.summary.status'),
-                            value: <Text variant="body">{statusTextOf(series, t)}</Text>,
+                            value: (
+                              <Text variant="body" style={styles.wrappedValue}>
+                                {statusTextOf(series, t)}
+                              </Text>
+                            ),
                             testID: 'recurring-series-summary-status',
                             wraps: true,
                           } as const,
@@ -360,6 +365,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
                         ]),
                   ]}
                 />
+                <Divider spacing={2} testID="recurring-series-divider" />
               </Box>
             )}
           </>
