@@ -1,17 +1,24 @@
 import {
+  type Charge,
   type RecurringMark,
+  type RecurringPeriod,
   type RecurringSeries,
+  foldTwins,
+  groupKeyOf,
   amountPiecesOf,
+  chargeGroupsOf,
   detectRecurringSeries,
 } from '@kiko/recurring/detection';
+import { DAY_MS } from '@kiko/dates';
+import maybe, { foldMap } from 'fnts/maybe';
 import {
+  at,
   nowOf,
   timesOf,
   ledgerOf,
   dayKeyOf,
   shuffled,
   randomLedgerOf,
-  foldBucketsOf,
   type Ledger,
 } from '@kiko/test-support/recurring-ledger';
 import {
@@ -30,18 +37,43 @@ import {
   ONE_AMOUNT_WORLDS,
   type MarkedWorld,
 } from '@kiko/test-support/marked-series-worlds';
+import type { Currency } from '@kiko/currency/currency';
 import { sweep } from '@kiko/test-support/property-sweep';
+import { buildRateTable } from '@kiko/rates/net-worth-view';
+import type { RecurringMerchantChoice } from '@kiko/settings';
 import { seededRandom } from '@kiko/test-support/seeded-random';
+import { rowRecurrenceOf } from '@kiko/recurring/row-recurrence';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
+import { paidSoFarOf, recurringGroupsOf } from '@kiko/recurring/recurring-groups';
 import { AMOUNT_CHAIN_WORLDS } from '@kiko/test-support/marked-series-chain-worlds';
 import { isRecurringCandidate, recurringExcludedIds } from '@kiko/recurring/eligibility';
 
-import { type MarkedEntry, markedChainOfAmount } from './marked-series';
+import type { MarkedEntry } from './marked-series';
+
+type MarkedChainOfRow = (
+  charges: readonly Charge[],
+  marks: readonly RecurringMark[],
+  row: { id: string; amountMinorUnits: number },
+  currency: Currency,
+) => { period: RecurringPeriod; marks: readonly RecurringMark[]; holdsRow: boolean } | null;
+
+// A lookup by name, so this file typechecks before the new signature exists.
+const markedChainOfRow = (
+  jest.requireActual('./marked-series') as { markedChainOfAmount: MarkedChainOfRow }
+).markedChainOfAmount;
 
 const SEED_SPREAD = 104_729;
 const AMOUNT_STEP = 1.25;
 const DEFAULT_NAME = 'Netflix';
+// Two charges in one slot sit less than one step apart; a day of slack covers a daylight shift.
+const STEP_REACH_DAYS: Record<RecurringPeriod, number> = {
+  weekly: 8,
+  monthly: 32,
+  everyThreeMonths: 93,
+  everySixMonths: 185,
+  yearly: 367,
+};
 
 const WORLDS: readonly MarkedWorld[] = [
   ...AMOUNT_CHAIN_WORLDS,
@@ -151,6 +183,78 @@ describe('the marked matrix', () => {
   });
 });
 
+const DROPPED_WORLDS = WORLDS.flatMap(
+  (world) => foldMap(maybe(world.dropped), (dropped) => [{ world, dropped }]) ?? [],
+);
+
+const choicesOf = (world: MarkedWorld): Map<string, RecurringMerchantChoice> =>
+  new Map(
+    entriesOf(world).map(({ key, name, marks }): [string, RecurringMerchantChoice] => [
+      key,
+      { name, marks: [...marks] },
+    ]),
+  );
+
+describe('one charge per period in a marked chain', () => {
+  const chargedRowsOf = (ledger: Ledger) =>
+    ledger.rows.map(({ id, amountMinorUnits }) => ({
+      id,
+      amountMinorUnits,
+      currency: 'UAH' as const,
+      category: null,
+    }));
+
+  describe.each(DROPPED_WORLDS)('$world.title', ({ world, dropped }) => {
+    const outcome = () => outcomeOf(world.ledger(), entriesOf(world), nowOf());
+
+    it('leaves the dropped rows out of the marked series', () => {
+      const rowIds = world.ledger().rows.map(({ id }) => id);
+
+      expect(dropped.rowIds.filter((id) => !rowIds.includes(id))).toEqual([]);
+      expect(idsOf(outcome().marked).filter((id) => dropped.rowIds.includes(id))).toEqual([]);
+    });
+
+    it('reads "All paid so far" over the kept charges alone', () => {
+      const paid = outcome().marked.map(
+        (series) => paidSoFarOf(series, chargedRowsOf(world.ledger())).minorUnits,
+      );
+
+      expect(paid).toEqual([dropped.paidSoFar * 100]);
+    });
+
+    it('adds the last charge of each shown series to the group total', () => {
+      const { total } = recurringGroupsOf({
+        shown: outcome().shown,
+        rows: chargedRowsOf(world.ledger()),
+        categories: [{ key: 'general', title: 'General', icon: 'star', color: null }],
+        defaultCategoryKey: 'general',
+        baseCurrency: 'UAH',
+        rateTable: buildRateTable([]),
+      });
+      const lastAmounts = world.shown.map(({ lastAmount }) => lastAmount ?? 0);
+
+      expect(total?.minorUnits).toBe(100 * lastAmounts.reduce((sum, amount) => sum + amount, 0));
+    });
+
+    it('reads the form on each dropped row as no marked chain holds it', () => {
+      const chargeGroups = chargeGroupsOf(world.ledger(), nowOf());
+      const [{ key }] = entriesOf(world);
+      const reads = dropped.rowIds.map((rowId) =>
+        rowRecurrenceOf({
+          chargeGroups,
+          key,
+          currency: 'UAH',
+          rowId,
+          choices: choicesOf(world),
+          today: nowOf(),
+        }),
+      );
+
+      expect(reads).toEqual(dropped.rowIds.map(() => dropped.reads));
+    });
+  });
+});
+
 describe('the order of the chains without a charge', () => {
   // Apple's three pieces (two amounts in hryvnias, one in dollars) and ATB's one, with no charge.
   const GHOST_ENTRIES: MarkedEntry[] = [
@@ -186,6 +290,32 @@ describe('the order of the chains without a charge', () => {
     },
   );
 });
+
+const timeOfRow = (ledger: Ledger, rowId: string): number =>
+  ledger.rows.find(({ id }) => id === rowId)?.time ?? 0;
+
+const surplusOnOneDay = (times: readonly number[]): number =>
+  times.length - new Set(times.map(dayKeyOf)).size;
+
+// The charges of a series' piece after the twin fold: the ones it keeps and the ones it drops.
+const pieceChargesOf = (ledger: Ledger, series: RecurringSeries): Charge[] => {
+  const { lowest, highest } = series.markedSpan ?? { lowest: 0, highest: 0 };
+  const group = chargeGroupsOf(ledger, nowOf()).groups.get(
+    groupKeyOf(series.merchantKey, series.currency),
+  );
+
+  return foldTwins(group?.charges ?? []).filter(
+    ({ amount }) => amount >= lowest && amount <= highest,
+  );
+};
+
+const goneChargesOf = (ledger: Ledger, series: RecurringSeries): Charge[] =>
+  pieceChargesOf(ledger, series).filter(({ id }) => !series.chargeIds.includes(id));
+
+const isBesideKept = (ledger: Ledger, series: RecurringSeries, { time }: Charge): boolean =>
+  series.chargeIds.some(
+    (id) => Math.abs(timeOfRow(ledger, id) - time) <= STEP_REACH_DAYS[series.period] * DAY_MS,
+  );
 
 describe('markedSeriesOf over random ledgers and marks', () => {
   // Seeds 1, 13 and 24 (the first, middle and last of 1 to 24) reach no one-mark chain, so
@@ -312,9 +442,10 @@ describe('markedSeriesOf over random ledgers and marks', () => {
 
     for (const { ledger, outcome } of outcomes()) {
       for (const series of outcome.marked) {
-        // A stored amount sits in the cut like a charge, so it may bridge two charges.
+        // The piece holds the dropped charges too: a dropped bridge may leave two kept amounts
+        // over 1.25 apart, and a stored amount sits in the cut like a charge.
         const amounts = [
-          ...series.chargeIds.map((id) => amountOfRow(ledger, id)),
+          ...pieceChargesOf(ledger, series).map(({ amount }) => amount),
           ...(series.marks ?? []).map(({ amountMinorUnits }) => amountMinorUnits),
         ].sort(ascending);
 
@@ -328,8 +459,9 @@ describe('markedSeriesOf over random ledgers and marks', () => {
     expect(pairCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
   });
 
-  it('equals the piece of amountPiecesOf for one mark on a charge', () => {
+  it('keeps only amounts of the piece, and drops a charge only beside a kept one', () => {
     let checkedCount = 0;
+    let droppedCount = 0;
 
     for (const { ledger, entries, outcome } of outcomes()) {
       const excludedIds = recurringExcludedIds(ledger.rows, ledger.holdings, ledger.accounts);
@@ -367,21 +499,59 @@ describe('markedSeriesOf over random ledgers and marks', () => {
         );
 
         expect(holding).toHaveLength(1);
-        expect(new Set(seriesAmounts)).toEqual(new Set(piece));
+        expect(seriesAmounts.filter((amount) => !piece.includes(amount))).toEqual([]);
+
+        const gone = goneChargesOf(ledger, holding[0]);
+
+        expect(gone.filter((charge) => !isBesideKept(ledger, holding[0], charge))).toEqual([]);
+        droppedCount += gone.length;
         checkedCount += 1;
       }
     }
 
     expect(checkedCount).toBeGreaterThanOrEqual(MIN_MARKED_CHAINS);
+    expect(droppedCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
   });
 
-  it('never leaves fewer charges on a day and amount than the largest count of one source', () => {
-    const buckets = outcomes().flatMap(({ ledger, outcome }) =>
-      outcome.marked.flatMap((series) => foldBucketsOf(ledger, series)),
+  it('never holds two charges on one local day, which share a slot whatever the period', () => {
+    const marked = outcomes().flatMap(({ ledger, outcome }) =>
+      outcome.marked.map((series) => ({
+        keptSurplus: surplusOnOneDay(series.chargeIds.map((id) => timeOfRow(ledger, id))),
+        pieceSurplus: surplusOnOneDay(pieceChargesOf(ledger, series).map(({ time }) => time)),
+      })),
     );
 
-    expect(buckets.filter(({ kept, largestOfOneSource }) => kept < largestOfOneSource)).toEqual([]);
-    expect(buckets.length).toBeGreaterThanOrEqual(MIN_PER_RUN);
+    expect(marked.filter(({ keptSurplus }) => keptSurplus > 0)).toEqual([]);
+    expect(marked.filter(({ pieceSurplus }) => pieceSurplus > 0).length).toBeGreaterThanOrEqual(
+      MIN_PER_RUN,
+    );
+  });
+
+  it('answers holdsRow false for exactly the charges of the piece its series leaves out', () => {
+    let checkedCount = 0;
+
+    for (const { ledger, entries, outcome } of outcomes()) {
+      const groups = chargeGroupsOf(ledger, nowOf());
+
+      for (const series of outcome.marked) {
+        const marks = entries.find(({ key }) => key === series.merchantKey)?.marks ?? [];
+        const charges = groups.groups.get(groupKeyOf(series.merchantKey, series.currency))?.charges;
+
+        for (const { id, amount } of pieceChargesOf(ledger, series)) {
+          const chain = markedChainOfRow(
+            charges ?? [],
+            marks,
+            { id, amountMinorUnits: amount },
+            series.currency,
+          );
+
+          expect(chain?.holdsRow).toBe(series.chargeIds.includes(id));
+          checkedCount += 1;
+        }
+      }
+    }
+
+    expect(checkedCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
   });
 });
 
@@ -533,79 +703,129 @@ describe('markedChainOfAmount', () => {
     currency: RecurringMark['currency'] = 'UAH',
   ): RecurringMark => ({ currency, amountMinorUnits, period });
 
-  const chargesOf = (...amounts: number[]) =>
-    amounts.map((amountMinorUnits) => ({ amountMinorUnits }));
+  // One a month, the first in October, so no two share a slot of any period.
+  const chargesOf = (...amounts: number[]): Charge[] =>
+    amounts.map((amount, index) => ({
+      id: `charge-${index}`,
+      time: at(2026, 10 - index, 5),
+      amount,
+      source: 'monobank',
+      holdingId: 'card',
+      holdingName: 'card',
+      description: 'Netflix',
+    }));
+
+  // A stored amount with no charge at it is a row outside the read.
+  const rowAt = (charges: readonly Charge[], amountMinorUnits: number) => ({
+    id: charges.find(({ amount }) => amount === amountMinorUnits)?.id ?? 'stored',
+    amountMinorUnits,
+  });
 
   it('finds the chain whose lowest and highest amounts span the amount', () => {
     const marks = [markOf('monthly', 10_000), markOf('everyThreeMonths', 40_000)];
     const charges = chargesOf(10_000, 11_000, 12_500, 40_000);
 
-    expect(markedChainOfAmount(charges, marks, 11_000, 'UAH')).toEqual({
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 11_000), 'UAH')).toEqual({
       period: 'monthly',
       marks: [marks[0]],
+      holdsRow: true,
     });
-    expect(markedChainOfAmount(charges, marks, 40_000, 'UAH')).toEqual({
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 40_000), 'UAH')).toEqual({
       period: 'everyThreeMonths',
       marks: [marks[1]],
+      holdsRow: true,
     });
   });
 
   it('finds a stored amount that no charge sits at', () => {
     const marks = [markOf('yearly', 10_000)];
+    const charges = chargesOf(12_000);
 
-    expect(markedChainOfAmount(chargesOf(12_000), marks, 10_000, 'UAH')).toEqual({
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 10_000), 'UAH')).toEqual({
       period: 'yearly',
       marks,
+      holdsRow: true,
     });
-    expect(markedChainOfAmount(chargesOf(12_000), marks, 12_000, 'UAH')).toEqual({
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 12_000), 'UAH')).toEqual({
       period: 'yearly',
       marks,
+      holdsRow: true,
     });
   });
 
   it('finds a charge between two stored amounts, in the period of the lower one', () => {
     const marks = [markOf('everyThreeMonths', 13_000), markOf('monthly', 10_000)];
+    const charges = chargesOf(11_500);
 
-    expect(markedChainOfAmount(chargesOf(11_500), marks, 11_500, 'UAH')).toEqual({
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 11_500), 'UAH')).toEqual({
       period: 'monthly',
       marks: [markOf('monthly', 10_000), markOf('everyThreeMonths', 13_000)],
+      holdsRow: true,
     });
   });
 
   it('gives the same chain for any order of the marks and of the charges', () => {
     const marks = [markOf('monthly', 10_000), markOf('weekly', 10_000), markOf('yearly', 12_000)];
     const charges = chargesOf(10_500, 12_000, 11_000);
-    const original = markedChainOfAmount(charges, marks, 11_000, 'UAH');
+    const row = rowAt(charges, 11_000);
+    const original = markedChainOfRow(charges, marks, row, 'UAH');
 
-    expect(original).toEqual({ period: 'weekly', marks: [marks[1], marks[0], marks[2]] });
-    expect(
-      markedChainOfAmount([...charges].reverse(), [...marks].reverse(), 11_000, 'UAH'),
-    ).toEqual(original);
+    expect(original).toEqual({
+      period: 'weekly',
+      marks: [marks[1], marks[0], marks[2]],
+      holdsRow: true,
+    });
+    expect(markedChainOfRow([...charges].reverse(), [...marks].reverse(), row, 'UAH')).toEqual(
+      original,
+    );
   });
 
   it('gives null for an amount outside every chain, and for a chain with no stored amount', () => {
     const marks = [markOf('monthly', 10_000)];
     const charges = chargesOf(10_000, 40_000);
 
-    expect(markedChainOfAmount(charges, marks, 10_000, 'UAH')).not.toBeNull();
-    expect(markedChainOfAmount(charges, marks, 25_000, 'UAH')).toBeNull();
-    expect(markedChainOfAmount(charges, marks, 40_000, 'UAH')).toBeNull();
-    expect(markedChainOfAmount(charges, marks, 9000, 'UAH')).toBeNull();
-    expect(markedChainOfAmount(charges, [], 10_000, 'UAH')).toBeNull();
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 10_000), 'UAH')).not.toBeNull();
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 25_000), 'UAH')).toBeNull();
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 40_000), 'UAH')).toBeNull();
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 9000), 'UAH')).toBeNull();
+    expect(markedChainOfRow(charges, [], rowAt(charges, 10_000), 'UAH')).toBeNull();
   });
 
   it('does not read the marks of another currency', () => {
     const marks = [markOf('monthly', 10_000), markOf('yearly', 12_000, 'USD')];
     const charges = chargesOf(15_000);
+    const chargeRow = rowAt(charges, 15_000);
 
-    expect(markedChainOfAmount(charges, marks, 15_000, 'UAH')).toBeNull();
-    expect(markedChainOfAmount(charges, marks, 15_000, 'USD')).toEqual({
+    expect(markedChainOfRow(charges, marks, chargeRow, 'UAH')).toBeNull();
+    expect(markedChainOfRow(charges, marks, chargeRow, 'USD')).toEqual({
       period: 'yearly',
       marks: [marks[1]],
+      holdsRow: true,
     });
-    expect(markedChainOfAmount(charges, marks, 10_000, 'UAH')).toEqual({
+    expect(markedChainOfRow(charges, marks, rowAt(charges, 10_000), 'UAH')).toEqual({
       period: 'monthly',
       marks: [marks[0]],
+      holdsRow: true,
     });
   });
+
+  it.each(DROPPED_WORLDS)(
+    'holds no dropped row and every kept one: $world.title',
+    ({ world, dropped }) => {
+      const ledger = world.ledger();
+      const [{ key, marks }] = entriesOf(world);
+      const group = chargeGroupsOf(ledger, nowOf()).groups.get(groupKeyOf(key, 'UAH'));
+      const holdsRowOf = (id: string) =>
+        markedChainOfRow(
+          group?.charges ?? [],
+          marks,
+          { id, amountMinorUnits: amountOfRow(ledger, id) },
+          'UAH',
+        )?.holdsRow;
+      const keptIds = idsOf(outcomeOf(ledger, entriesOf(world), nowOf()).marked);
+
+      expect(dropped.rowIds.map(holdsRowOf)).toEqual(dropped.rowIds.map(() => false));
+      expect(keptIds.map(holdsRowOf)).toEqual(keptIds.map(() => true));
+    },
+  );
 });

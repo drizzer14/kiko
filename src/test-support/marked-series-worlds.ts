@@ -1,3 +1,5 @@
+import type { RowRecurrence } from '@kiko/recurring/row-recurrence';
+
 import {
   at,
   weekly,
@@ -26,6 +28,13 @@ export type MarkedWorld = {
   noEntry: ExpectedSeries[];
   shown: ExpectedShown[];
   withoutCharges?: ExpectedChain[];
+  // Rows the marked series leaves out of a period that already holds a charge of it: what the
+  // form reads on them, and what the marked series has paid in major units.
+  dropped?: {
+    rowIds: string[];
+    reads: Exclude<RowRecurrence, { kind: 'marked' }>;
+    paidSoFar: number;
+  };
 };
 
 type ExclusionWorld = MarkedWorld & { rowId: string; isExcluded: boolean };
@@ -48,6 +57,9 @@ const GROCERY_MCC = 5411;
 const ARCHIVED_AT = 1_700_000_000_000;
 const EXCLUSION_AMOUNT = 250;
 const DAILY_ROWS = 500;
+// The daily rows run from 22 Jun 2025 to 3 Nov 2026, and the newest row is the stored amount's own,
+// so the rhythm sits on the 3rd: one charge for each of the 17 thirds from 3 Jul 2025.
+const DAILY_SLOTS = 17;
 
 export const MARKED_LINE: RecurrenceView = { kind: 'marked' };
 
@@ -288,7 +300,7 @@ export const ONE_AMOUNT_WORLDS: readonly MarkedWorld[] = [
       ),
     marks: [['yearly', 400]],
     noEntry: [],
-    shown: [marked('yearly', 2, MARKED_LINE)],
+    shown: [marked('yearly', 1, MARKED_LINE, { lastCharge: at(2026, 1, 15) })],
   },
   {
     title: 'monthly with one month skipped',
@@ -324,14 +336,14 @@ export const ONE_AMOUNT_WORLDS: readonly MarkedWorld[] = [
     name: 'Silpo',
     marks: [['monthly', dailyFirstAmount()]],
     noEntry: [],
-    shown: [marked('monthly', DAILY_ROWS, MARKED_LINE, { lastCharge: at(2026, 11, 3) })],
+    shown: [marked('monthly', DAILY_SLOTS, MARKED_LINE, { lastCharge: at(2026, 11, 3) })],
   },
   {
     title: 'a period that conflicts with the charges',
     ledger: () => ledgerOf(monthly(12, 3, 199)),
     marks: [['yearly', 199]],
     noEntry: [series('monthly', 12, onDay(3))],
-    shown: [marked('yearly', 12, MARKED_LINE)],
+    shown: [marked('yearly', 2, MARKED_LINE, { lastCharge: at(2026, 10, 3) })],
   },
   {
     title: 'stopped by the period of the mark',
