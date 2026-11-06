@@ -38,6 +38,18 @@ jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: { recurringLedgerQuery: () => mockTaggedQuery('recurringLedger') },
 }));
 jest.mock('@kiko/settings', () => mockSettingsModuleWith(mockWrites.repo));
+// Text's tone -> color mapping is a react-native-unistyles variant that the Jest setup cannot
+// resolve from a rendered style, so the mock surfaces the `tone` prop on the host element.
+jest.mock('@kiko/design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ children, ...rest }: { children: unknown }) => (
+      <RNText {...rest}>{children}</RNText>
+    ),
+  };
+});
 
 type World = {
   settingsRows: SettingsRows;
@@ -197,6 +209,21 @@ describe('RecurringMarkField', () => {
 
       expect(rendered.getByText(NOT_MARKED)).toBeTruthy();
       expect(isDisabled(rendered)).toBe(false);
+    });
+
+    it('reads "Not marked" as an empty value, in the secondary tone', async () => {
+      const rendered = await showField(UNMARKED);
+
+      expect(rendered.getByText(NOT_MARKED).props.tone).toBe('textSecondary');
+    });
+
+    it.each(RECURRING_PERIODS)('reads %s in the primary tone', async (period) => {
+      const rendered = await showField({
+        ...INSIDE_CHAIN,
+        settingsRows: netflixSettingsOf({ marks: [markOf(period, 10_000)] }),
+      });
+
+      expect(rendered.getByText(PERIOD_LABELS[period]).props.tone).toBe('textPrimary');
     });
 
     it('shows the period of a row of 144 beside a stored 100', async () => {

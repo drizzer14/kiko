@@ -7,6 +7,21 @@ import type { SelectFieldProps } from './select-field.props';
 
 type Kind = 'a' | 'b' | 'c';
 
+// Text's tone -> color mapping is a react-native-unistyles variant that the Jest setup cannot
+// resolve from a rendered style, so the mock surfaces the `tone` prop on the host element.
+jest.mock('@kiko/design-system/components/text', () => {
+  const { Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ children, ...rest }: { children: unknown }) => (
+      <RNText {...rest}>{children}</RNText>
+    ),
+  };
+});
+
+const toneOf = (element: { props: Record<string, unknown> }): unknown => element.props.tone;
+
 const options: readonly Kind[] = ['a', 'b', 'c'];
 const labels: Record<Kind, string> = { a: 'Alpha', b: 'Beta', c: 'Gamma' };
 const subtitles: Record<Kind, string> = { a: 'First', b: 'Second', c: 'Third' };
@@ -46,6 +61,26 @@ describe('SelectField', () => {
     const { getByTestId } = await setup();
 
     expect(getByTestId('kind-field')).toHaveTextContent('Alpha');
+  });
+
+  describe('the value tone', () => {
+    it('reads textSecondary when the selected option is the empty option', async () => {
+      const { getByText } = await setup({ selected: 'a', emptyOption: 'a' });
+
+      expect(toneOf(getByText('Alpha'))).toBe('textSecondary');
+    });
+
+    it('reads textPrimary when another option than the empty option is selected', async () => {
+      const { getByText } = await setup({ selected: 'b', emptyOption: 'a' });
+
+      expect(toneOf(getByText('Beta'))).toBe('textPrimary');
+    });
+
+    it('reads textPrimary with no empty option', async () => {
+      const { getByText } = await setup({ selected: 'a' });
+
+      expect(toneOf(getByText('Alpha'))).toBe('textPrimary');
+    });
   });
 
   it('shows the placeholder when nothing is selected yet', async () => {

@@ -37,7 +37,8 @@ file before you edit the component it describes.
   `CardContextMenu`, `ImportBalanceLine`, `HoldingCard`, `CloseHoldingSheet`, `SymbolIcon`,
   `EntityIconTile`, the section heading disclosure row, `Divider`, `Switch`, `TextField`,
   `FieldError`, `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`,
-  `EntryDateHeader`, the field and filter helpers (`deriveFieldTestID`, `toggleFilterValue`),
+  `EntryDateHeader`, `PairedFieldsRow`, the field and filter helpers (`deriveFieldTestID`,
+  `toggleFilterValue`),
   `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `DayOfMonthGrid`,
   `SegmentedControl` with the tabs-vs-chips rule, the chart components (`BarChart`, `PieChart`,
   `NetWorthLine`), `ColorPicker`, `TransactionCard`, and the form header) and the rules
@@ -551,7 +552,12 @@ The established patterns grouped under this heading:
   2026-10-11: the Edit template form's "Create transaction") may stay
   in the footer as a lone secondary button. The same holds on a `bleedTop` list screen: the
   recurring series screen's footer button ('Not a recurring charge' / 'Remove mark') is the lone
-  secondary footer action. A native bar button does not
+  secondary footer action. The transaction form's convert action is
+  another: the builder `footerActionOf` in
+  `src/screens/forms/transaction-form/footer-action/` decides its footer
+  ("Create transaction" on a template edit, else the "Exchange" button
+  when eligible and not converting; `secondaryTonal`); see the
+  `footer={...}` call sites. A native bar button does not
   end editing, so a value derived on blur is settled in the save path
   (see `kiko-code-style`'s "Form validation model"). Tests use the
   helpers in `src/test-support/form-header-items.ts`, never

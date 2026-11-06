@@ -1192,7 +1192,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
       expect(tree.indexOf('Paid cash')).toBeGreaterThan(-1);
       expect(tree.indexOf(SWITCH_LABEL)).toBeGreaterThan(tree.indexOf('Paid cash'));
       expect(tree.indexOf(SWITCH_LABEL)).toBeGreaterThan(tree.indexOf('Description'));
-      expect(utils.queryByTestId('screen-footer')).toBeNull();
+      expect(within(utils.getByTestId('screen-footer')).queryByText(SWITCH_LABEL)).toBeNull();
       expect(within(utils.getByTestId('transaction-form')).getByText(SWITCH_LABEL)).toBeTruthy();
     });
 
