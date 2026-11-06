@@ -13,20 +13,22 @@ import {
 } from '@kiko/statistics/statistics-filter-scope';
 import Box from '@kiko/design-system/components/box';
 import Screen from '@kiko/design-system/components/screen';
-import type { TablesParams } from '@kiko/navigation/types';
 import { type FC, useEffect, useMemo, useState } from 'react';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
+import type { TablesParams, TablesView } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import { styles } from './tables.styles';
 import CategoryTable from './category-table';
+import CashFlowTable from './cash-flow-table';
 import TablePeriodField from './table-period-field';
 
 // This screen is registered in the Home and the Statistics stacks (the Statistics screen that
@@ -36,6 +38,8 @@ type TablesScreenProps = {
   route: { params?: TablesParams };
   navigation: { setParams: (params: TablesParams) => void };
 };
+
+const VIEWS: readonly TablesView[] = ['categories', 'cashFlow'];
 
 /**
  * The monthly tables behind the Statistics charts. It reads the same sources, ledger and account
@@ -85,21 +89,25 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);
   const period = resolveTablePeriod(route.params?.period, periodOptions);
   const months = useMemo(() => monthsOfPeriod(period, spanStart, now), [period, spanStart, now]);
+  const view = route.params?.view ?? 'categories';
+  const isCashFlow = view === 'cashFlow';
 
   // The category menu lists what the months spent on, so a table never offers a category it has
   // no cell for; a held pick that fell out of the period stays listed, checked. The pick excludes
   // by the same list, so it removes every row it does not cover, a row the period nets out too.
   const periodSlices = useMemo(
     () =>
-      categorySlicesOfMonths({
-        ledger,
-        months,
-        categoryDisplay: categoryByKey,
-        rateTable,
-        baseCurrency,
-        defaultCategoryKey,
-      }),
-    [months, ledger, categoryByKey, rateTable, baseCurrency, defaultCategoryKey],
+      isCashFlow
+        ? []
+        : categorySlicesOfMonths({
+            ledger,
+            months,
+            categoryDisplay: categoryByKey,
+            rateTable,
+            baseCurrency,
+            defaultCategoryKey,
+          }),
+    [isCashFlow, months, ledger, categoryByKey, rateTable, baseCurrency, defaultCategoryKey],
   );
 
   const categoryOptions = useMemo(
@@ -123,6 +131,10 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
 
   const selectPeriod = (next: TablePeriod): void => {
     navigation.setParams({ period: next });
+  };
+
+  const selectView = (next: TablesView): void => {
+    navigation.setParams({ view: next });
   };
 
   if (!isReady) {
@@ -149,16 +161,18 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
           triggerIcon="tray"
         />
 
-        <FilterMenu
-          key={`category-filter-${sheetGeneration}`}
-          label={t('statistics.filterCategories')}
-          sheetTitle={t('statistics.filterCategoriesSheetTitle')}
-          testID="tables-category-filter"
-          options={categoryOptions}
-          selected={visibleSelectedCategories}
-          onToggle={toggleCategory}
-          triggerIcon={genericEntitySymbol.category}
-        />
+        {!isCashFlow && (
+          <FilterMenu
+            key={`category-filter-${sheetGeneration}`}
+            label={t('statistics.filterCategories')}
+            sheetTitle={t('statistics.filterCategoriesSheetTitle')}
+            testID="tables-category-filter"
+            options={categoryOptions}
+            selected={visibleSelectedCategories}
+            onToggle={toggleCategory}
+            triggerIcon={genericEntitySymbol.category}
+          />
+        )}
       </Box>
 
       <TablePeriodField
@@ -174,17 +188,43 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   return (
     <Screen belowHeader uncapped>
       <Box gap={3} style={styles.content}>
-        <CategoryTable
-          ledger={ledger}
-          months={months}
-          now={now}
-          categoryDisplay={categoryByKey}
-          rateTable={rateTable}
-          baseCurrency={baseCurrency}
-          defaultCategoryKey={defaultCategoryKey}
-          excludedCategories={excludedCategories}
-          topContent={controls}
+        <SegmentedControl<TablesView>
+          options={VIEWS}
+          selected={view}
+          onSelect={selectView}
+          labels={{
+            categories: t('tables.view.categories'),
+            cashFlow: t('tables.view.cashFlow'),
+          }}
+          labelVariant="caption"
+          accessibilityLabel={t('tables.view.label')}
+          testID="tables-view"
         />
+
+        {isCashFlow ? (
+          <CashFlowTable
+            ledger={ledger}
+            months={months}
+            now={now}
+            categoryDisplay={categoryByKey}
+            rateTable={rateTable}
+            baseCurrency={baseCurrency}
+            defaultCategoryKey={defaultCategoryKey}
+            topContent={controls}
+          />
+        ) : (
+          <CategoryTable
+            ledger={ledger}
+            months={months}
+            now={now}
+            categoryDisplay={categoryByKey}
+            rateTable={rateTable}
+            baseCurrency={baseCurrency}
+            defaultCategoryKey={defaultCategoryKey}
+            excludedCategories={excludedCategories}
+            topContent={controls}
+          />
+        )}
       </Box>
     </Screen>
   );

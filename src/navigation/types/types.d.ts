@@ -176,11 +176,15 @@ type HoldingFormParams = (
   handbackId?: string;
 };
 
+/** The table the Tables screen shows. */
+export type TablesView = 'categories' | 'cashFlow';
+
 /**
- * The Tables screen's period. It lives in the route params, so a fold or a resize that remounts
- * the screen keeps it, and a new push has none, which reads as the last 12 months.
+ * The Tables screen's period and view. They live in the route params, so a fold or a resize that
+ * remounts the screen keeps them, and a new push has none, which reads as the last 12 months of
+ * the category table.
  */
-export type TablesParams = { period?: TablePeriod };
+export type TablesParams = { period?: TablePeriod; view?: TablesView };
 
 // `Statistics` is the companion pane of the Home tab on a wide window, and Home with
 // `TransactionForm` are the same on the Statistics tab: each tab shows the other's root beside

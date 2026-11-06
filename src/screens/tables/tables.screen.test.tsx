@@ -526,6 +526,234 @@ describe('TablesScreen', () => {
     });
   });
 
+  describe('the view', () => {
+    it('opens on the category table when the route carries no view', async () => {
+      const { getByTestId, queryByTestId } = await renderTables();
+
+      expect(getByTestId('category-table')).toBeTruthy();
+      expect(queryByTestId('cash-flow-table')).toBeNull();
+      expect(getByTestId('tables-view-selected')).toBeTruthy();
+    });
+
+    it('shows the cash flow table when the route carries it', async () => {
+      const { getByTestId, queryByTestId } = await renderTables({ view: 'cashFlow' });
+
+      expect(getByTestId('cash-flow-table')).toBeTruthy();
+      expect(queryByTestId('category-table')).toBeNull();
+    });
+
+    it('writes a pick to the route params, either way', async () => {
+      const first = await renderTables();
+
+      await fireEvent.press(first.getByTestId('tables-view-option-cashFlow'));
+
+      expect(first.navigation.setParams).toHaveBeenCalledWith({ view: 'cashFlow' });
+      await first.unmount();
+
+      const second = await renderTables({ view: 'cashFlow' });
+
+      await fireEvent.press(second.getByTestId('tables-view-option-categories'));
+
+      expect(second.navigation.setParams).toHaveBeenCalledWith({ view: 'categories' });
+    });
+  });
+
+  describe('the cash flow table', () => {
+    const NO_MARKERS = {
+      category: null,
+      setsBalance: false,
+      changeGroupId: null,
+      exchangeCounterpartHoldingId: null,
+      untrackedCounterpart: null,
+      loanHoldingId: null,
+    };
+    const rowOf = (row: Record<string, unknown>) => ({ ...NO_MARKERS, ...row });
+    const withRows = (...rows: Record<string, unknown>[]) =>
+      mockUseLiveQuery.mockImplementation(
+        answerWith((tables, answer) =>
+          tables[0] === 'transactions'
+            ? [...(answer.data as object[]), ...rows.map(rowOf)]
+            : undefined,
+        ),
+      );
+    const SALARY = {
+      id: 'salary',
+      holdingId: 'h1',
+      time: SPENT_AT + 1_000,
+      amountMinorUnits: 500_00,
+    };
+
+    it('reads the income, the expenses, the net and the savings rate of the month', async () => {
+      withRows(SALARY);
+
+      const { getByLabelText } = await renderTables({ view: 'cashFlow' });
+
+      expect(spokenValue(getByLabelText(`Income, ${SPENT_IN}`))).toBe('500.00 ₴');
+      expect(spokenValue(getByLabelText(`Expenses, ${SPENT_IN}`))).toBe('400.00 ₴');
+      expect(spokenValue(getByLabelText(`Net, ${SPENT_IN}`))).toBe('100.00 ₴');
+      expect(spokenValue(getByLabelText(`Savings rate, ${SPENT_IN}`))).toBe('20%');
+    });
+
+    it('names the base currency and the rate in the caption', async () => {
+      const { getByTestId } = await renderTables({ view: 'cashFlow' });
+
+      expect(getByTestId('cash-flow-table-caption')).toHaveTextContent(
+        "Cash flow in UAH, in whole units, at today's rate.",
+        { exact: false },
+      );
+    });
+
+    it('shows a dash for a month with no income and reads a word for it', async () => {
+      const { getByLabelText } = await renderTables({ view: 'cashFlow' });
+      const rate = getByLabelText(`Savings rate, ${SPENT_IN}`);
+
+      expect(rate).toHaveTextContent('–', { exact: false });
+      expect(spokenValue(rate)).toBe('No income, so no savings rate');
+    });
+
+    it('hides the category filter, and keeps the account filter and the period', async () => {
+      const { getByTestId, queryByTestId } = await renderTables({ view: 'cashFlow' });
+
+      expect(queryByTestId('tables-category-filter')).toBeNull();
+      expect(getByTestId('tables-account-filter')).toBeTruthy();
+      expect(getByTestId('tables-period')).toBeTruthy();
+    });
+
+    it('holds a category pick without changing a figure of the table', async () => {
+      withRows(SALARY);
+
+      const held = await renderHook(() => useStatisticsFilterSelection());
+
+      await act(async () => {
+        held.result.current.toggleCategory('groceries');
+      });
+
+      const { getByLabelText } = await renderTables({ view: 'cashFlow' });
+
+      expect(spokenValue(getByLabelText(`Income, ${SPENT_IN}`))).toBe('500.00 ₴');
+      expect(spokenValue(getByLabelText(`Expenses, ${SPENT_IN}`))).toBe('400.00 ₴');
+      expect(spokenValue(getByLabelText(`Net, ${SPENT_IN}`))).toBe('100.00 ₴');
+      await held.unmount();
+    });
+
+    it('narrows to an account held from Statistics', async () => {
+      withRows(SALARY);
+
+      const held = await renderHook(() => useStatisticsFilterSelection());
+
+      await act(async () => {
+        held.result.current.toggleAccount('b');
+      });
+
+      const { getByLabelText } = await renderTables({ view: 'cashFlow' });
+
+      expect(spokenValue(getByLabelText(`Income, ${SPENT_IN}`))).toBe('0.00 ₴');
+      expect(spokenValue(getByLabelText(`Expenses, ${SPENT_IN}`))).toBe('100.00 ₴');
+      await held.unmount();
+    });
+
+    it('leaves a row that sets a balance out of the expenses and out of the income', async () => {
+      withRows(
+        {
+          id: 'negative-opening',
+          holdingId: 'h1',
+          time: SPENT_AT,
+          amountMinorUnits: -999_00,
+          setsBalance: true,
+        },
+        {
+          id: 'positive-opening',
+          holdingId: 'h1',
+          time: SPENT_AT,
+          amountMinorUnits: 700_00,
+          setsBalance: true,
+        },
+      );
+
+      const { getByLabelText } = await renderTables({ view: 'cashFlow' });
+
+      expect(spokenValue(getByLabelText(`Expenses, ${SPENT_IN}`))).toBe('400.00 ₴');
+      expect(spokenValue(getByLabelText(`Income, ${SPENT_IN}`))).toBe('0.00 ₴');
+    });
+
+    describe('beside a row that sets a balance, with the same amount on another holding', () => {
+      it('counts the real debit in the expenses', async () => {
+        withRows({
+          id: 'balance-credit',
+          holdingId: 'h1',
+          time: SPENT_AT + 1_000,
+          amountMinorUnits: 100_00,
+          setsBalance: true,
+        });
+
+        const { getByLabelText } = await renderTables({ view: 'cashFlow' });
+
+        expect(spokenValue(getByLabelText(`Expenses, ${SPENT_IN}`))).toBe('400.00 ₴');
+        expect(spokenValue(getByLabelText(`Income, ${SPENT_IN}`))).toBe('0.00 ₴');
+      });
+
+      it('counts the real credit in the income', async () => {
+        withRows(
+          {
+            id: 'balance-debit',
+            holdingId: 'h2',
+            time: SPENT_AT,
+            amountMinorUnits: -250_00,
+            setsBalance: true,
+          },
+          { id: 'real-credit', holdingId: 'h1', time: SPENT_AT + 1_000, amountMinorUnits: 250_00 },
+        );
+
+        const { getByLabelText } = await renderTables({ view: 'cashFlow' });
+
+        expect(spokenValue(getByLabelText(`Income, ${SPENT_IN}`))).toBe('250.00 ₴');
+        expect(spokenValue(getByLabelText(`Expenses, ${SPENT_IN}`))).toBe('400.00 ₴');
+      });
+    });
+
+    it('shows the empty state and no table of zeros for a period with nothing in it', async () => {
+      mockUseLiveQuery.mockImplementation(
+        answerWith((tables) => (tables[0] === 'transactions' ? [] : undefined)),
+      );
+
+      const { getByText, getByTestId, queryByTestId } = await renderTables({ view: 'cashFlow' });
+
+      expect(getByText('No income or spending in this period')).toBeTruthy();
+      expect(queryByTestId('cash-flow-table-caption')).toBeNull();
+      expect(getByTestId('tables-account-filter')).toBeTruthy();
+      expect(getByTestId('tables-period')).toBeTruthy();
+    });
+  });
+
+  describe('a switch of language while the cash flow table shows', () => {
+    let rendered: Awaited<ReturnType<typeof renderTables>>;
+
+    beforeEach(async () => {
+      rendered = await renderTables({ view: 'cashFlow' });
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('writes the caption, the view and the row labels in the new language at once', () => {
+      expect(rendered.getByTestId('cash-flow-table-caption')).toHaveTextContent(
+        'Рух коштів у UAH',
+        { exact: false },
+      );
+      expect(rendered.getByTestId('tables-view-selected')).toBeTruthy();
+      expect(
+        rendered.getAllByText('Надходження', { includeHiddenElements: true }).length,
+      ).toBeGreaterThan(0);
+      expect(rendered.queryByText('Income', { includeHiddenElements: true })).toBeNull();
+    });
+  });
+
   describe('a switch of language while the table shows', () => {
     let rendered: Awaited<ReturnType<typeof renderTables>>;
 
