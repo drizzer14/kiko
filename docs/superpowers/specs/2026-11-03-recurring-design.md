@@ -1147,15 +1147,18 @@ is in section 9.6 ("The detected period"), 8.2 and 13. Detection itself does not
 
 The user's device check of `next` 258396580, relayed by the coordinator, three items. Words in quotes are the user's (as
 relayed). This section overrides sections 8.1, 9.2, 9.3, 17.2, 17.4 and 17.6 where they differ. Detection, marks, the store,
-the routes, the form's mark field and the reads (17.5) do not change. **Status: DRAFT. Section 18.8's questions and the texts
-(18.7) wait for the user; no code before both.** Every fact here was read at 85215396e: re-grep each symbol on the base.
+the routes, the form's mark field and the reads (17.5) do not change. **Status: Q1 to Q4 answered by the user 2026-11-06
+(18.8); texts approved 2026-11-06 ("Texts approved"). OPEN, waiting for the user: 18.8 Q5, a way to remove a stopped series
+from the list (a need the Q2 answer added); its texts are pending.** 18.1 to 18.5 do not wait on Q5. Every fact here was read at
+85215396e or 6df66759b: re-grep each symbol on the base.
 
 ### 18.1 What this reverses
 
 | Rule | was: | now |
 |---|---|---|
 | A group total (17.4; B, C: "Total = sum of all charges") | the sum of every charge of every series in the group, converted per series | the sum of the LAST charge of each counted series in the group (item 1: "sum only the last payment of each series"), converted per series by the same rule (18.2) |
-| The total of all (17.2, 17.4) | "All paid so far", the sum of the group totals | if Q1 A: still the sum of the group totals, so of last charges, labelled "Sum of last charges" (18.8 Q1) |
+| The total of all (17.2, 17.4) | "All paid so far", the sum of the group totals | still the sum of the group totals, so of last charges, labelled "Sum of last charges" (Q1 A) |
+| A hidden series in a total (8.1: a hidden series was not listed, so not counted) | not counted | not counted, now while listed: tagged "Hidden", amount greyed (Q3 A) |
 | The series screen header (9.3, 17.6) | text lines: recurrence line, last-charge line, charge count, an "All paid so far" row | one `SummaryTable` (18.3) |
 | Hidden merchants on the list (8.1, 9.2, 17.2) | a last "Hidden" section, one line per hidden key with "Show again", even with no rows | no section; each detected series of a hidden key is a row in its category group (18.4) |
 | The series screen's footer on a hidden detected series (9.3, 17.6) | "Not a recurring charge", `secondaryTonal` | "Show again", `primary` (18.5) |
@@ -1171,9 +1174,9 @@ the routes, the form's mark field and the reads (17.5) do not change. **Status: 
 - **Currency:** a series has one currency (its group key holds it), so its last charge is in the series currency. It converts
   as 17.4 says, unchanged: the current `buildRateTable(rates)`, `canConvert` as the guard, one `convert` per series; a series
   `canConvert` rejects is left out of the totals and its row still shows its amount.
-- **Stopped series:** today's code counts them (`recurringGroupsOf` reduces over every series of a group, stopped included;
-  P2, "their charges were paid"). Their last charge counts the same way unless Q2 says otherwise.
-- **Hidden series:** not counted (Q3 A or B), or counted (Q3 C).
+- **Stopped series:** counted with their last charge, as today (`recurringGroupsOf` reduces over every series of a group,
+  stopped included; P2). USER 2026-11-06 (Q2): "If "stopped" means recurring in the past, but not anymore, then it can count".
+- **Hidden series:** not counted (Q2: "If by "stopped" you mean hidden, then no"; Q3 A).
 - **The series screen's "All paid so far"** (`paidSoFarOf`) does not change: one series' sum of every listed charge in its own
   currency, a different figure from a group total, and item 1 names group totals only. It moves into the table (18.3).
 - No other total is on these screens (every `MoneyText` of both screens and the row at 85215396e: the row's amount, the group
@@ -1206,8 +1209,10 @@ Value testIDs: `recurring-series-summary-repeats`, `-last-charge`, `-status`, `-
   A row is hidden when it has no `marks` and `choices.get(merchantKey)?.hidden === true`.
 - **Grouping:** a hidden series takes its category exactly as a shown one (17.2). `recurringGroupsOf` takes the hidden series
   as its own input, `hidden`, beside `shown`; a group exists when it holds any listed series.
-- **Look, order, totals (Q3, proposal A):** a hidden row is the regular `RecurringSeriesRow` plus one caption line, `hiddenTag`
-  ("Hidden"), under the recurrence line. It sits after the group's active and stopped series, `newestChargeFirst` among the
+- **Look, order, totals (Q3 A, USER 2026-11-06, plus "the amount greyed"):** a hidden row is the regular
+  `RecurringSeriesRow` plus one caption line, `hiddenTag` ("Hidden"), under the recurrence line, and its amount in
+  `MoneyText tone="muted"`, which renders the theme token `textSecondary` (`money-text.component.tsx`, the `'muted'` arm; the
+  same grey as the row's caption lines). It sits after the group's active and stopped series, `newestChargeFirst` among the
   hidden. It is left out of the group total and the total of all. A group of hidden series only shows its heading with no
   total; with no counted series at all, no total-of-all row.
 - **Empty state:** shows only when no series of any kind lists (a hidden row counts as listed).
@@ -1225,7 +1230,7 @@ By kind: a marked series, "Remove mark" (`secondaryTonal`, unchanged); a detecte
 `recurring-series-show-again`). It calls `settingsRepo.showRecurringMerchantAgain(series.merchantKey)` through `useSubmitOnce`,
 with `loading` and the save-error alert as the hide. "Show again" as primary is the user's word (item 3); kiko-design-system's
 "the lone secondary footer action" line names this screen and gains the third kind. After either write the screen goes back
-(Q4 proposal B), with the hide's rules: only after the write, and only while still focused.
+(Q4 B, USER 2026-11-06), with the hide's rules: only after the write, and only while still focused.
 
 ### 18.6 Guideline 2.5.19 and compliance
 
@@ -1234,34 +1239,53 @@ sent or logged. The store and its parser do not change.
 
 ### 18.7 i18n
 
-Draft rows in `.superpowers/sdd/1.4-recurring/texts-visual-2.md`; the user reviews them in both languages before any copy.
-New: `recurringCharges.lastChargesTotal` (if Q1 A), `recurringCharges.hiddenTag` (if Q3 A or B),
+Rows in `.superpowers/sdd/1.4-recurring/texts-visual-2.md`, APPROVED 2026-11-06 ("Texts approved") except its section "Q2
+option texts (pending)". New: `recurringCharges.lastChargesTotal`, `recurringCharges.hiddenTag`,
 `recurringCharges.summary.{repeats,lastCharge,status,stopped,chargeCount}`. Changed: `help.topics.viewRecurringCharges.steps.4`
 (the "Hidden" section is gone). Removed: `recurringCharges.hiddenHeading` (with its `title-keys.ts` line) and
-`recurringCharges.chargeCount_{one,few,many,other}`.
+`recurringCharges.chargeCount_{one,few,many,other}`. Q5's keys (18.8) are pending and are copied only after its answer and
+their own approval.
 
 ### 18.8 Questions for the user
 
-**Q1. The total of all.** Item 1 names the group totals; the total above the groups is defined as their sum.
-- A (recommended): it changes with them (the sum of the group totals, so of last charges), labelled "Sum of last charges" /
-  «Сума останніх списань». It still equals what the groups show.
-- B: it stays the sum of every charge ("All paid so far"). It no longer equals the sum of the groups under it, which reads as
-  an error.
-- C: remove the total row; only the group totals remain.
+Answered 2026-11-06 (relayed by the coordinator); the options not picked are dropped from this section.
 
-**Q2. A stopped series' last charge.** Today stopped series count in every total (P2).
-- A (recommended): it counts, as today. Nothing moves when a series stops, and the total stays a past fact, never a view of
-  what will be charged.
-- B: it is left out. The total then reads as "what still recurs", close to a forecast, and drops when a series stops.
+| Q | Answer | Rule |
+|---|---|---|
+| Q1 the total of all | A | the sum of the group totals, labelled "Sum of last charges" / «Сума останніх списань» (18.1, 18.2) |
+| Q2 a stopped series' last charge | "If by "stopped" you mean hidden, then no. If "stopped" means recurring in the past, but not anymore, then it can count, but there must be a way to remove stopped from the list." | a stopped series counts, a hidden one does not (18.2); the removal is Q5 |
+| Q3 a hidden row | A, plus "the amount greyed" | tag, after the group's active and stopped rows, out of the totals, amount `textSecondary` (18.4) |
+| Q4 after "Show again" or "Not a recurring charge" | B | the screen goes back, as the hide does (18.5) |
 
-**Q3. A hidden row.** "Regular rows" does not say whether a hidden row differs, where it sits, or whether it counts.
-- A (recommended): the same row plus a caption "Hidden", after the group's active and stopped rows, left out of the totals. The
-  user sees what is hidden and why the totals leave it out.
-- B: as A, but in the group's usual order (newest charge first, active before stopped); hidden rows mix with the rest.
-- C: fully regular: no caption, usual order, counted. Hiding then changes only the footer button and the form's mark field, and
-  the list cannot show which series are hidden.
+**Q5. A way to remove a stopped series from the list. OPEN, waiting for the user.** Facts (re-grep on the base):
+`settingsRepo.hideRecurringMerchant(key, name)` sets `hidden: true` on a merchant KEY's entry and keeps its marks
+(`settings.repo.ts`); a hide covers every detected series of that key, all currencies and periods, and never a marked series
+(`shownSeriesOf`, `recurring-charges.screen.tsx`). A series is stopped when its newest charge is before
+`stoppedCutoffOf(period, today)` and quiet when its account also has no newer row (`seriesOfCharges`, `detection.ts`), so
+"stopped" is recomputed each day and a new charge makes a series active again. The form's mark field skips the ledger read for
+a key hidden without a mark in the row's currency (`isHiddenWithoutMark`, `use-row-mark.ts`) and reads "Not marked" (9.6). A
+choice entry holds only `name`, `hidden` and `marks` (`RecurringMerchantChoice`, `recurring-merchant-choices.ts`). With Q3 A a
+hidden row stays listed, so today's "Not a recurring charge" on a stopped series takes it out of the totals but not off the
+list. The series screen's footer has one button by kind (`recurring-series.screen.tsx`, the `footer` prop; 18.5).
 
-**Q4. After "Show again" or "Not a recurring charge" on the series screen.**
-- A: stay on the screen; the footer button switches to the other one. The hide's go-back pins are rewritten.
-- B (recommended): go back to the list, as the hide does today. The list shows the result at once, and the existing go-back
-  pins (a late write, a form opened over the screen) hold for both buttons.
+- **A (recommended): "Remove from list" hides a stopped series, and a hidden stopped series is not listed.** On a stopped
+  detected series not hidden, the footer reads "Remove from list" (`secondaryTonal`, testID `recurring-series-remove`) and
+  writes the same `hideRecurringMerchant`; the screen goes back (Q4 B). The list leaves out a detected series that is hidden
+  AND stopped; a hidden active series stays a "Hidden" row (Q3 A). Totals: the series leaves them (hidden does not count, Q2),
+  so "Sum of last charges" still equals the groups. Undo: a new charge makes it active, so it lists again as a "Hidden" row with
+  "Show again"; before that, marking one of its charges on the form (9.6) lists it as marked. Risk: the hide is per key, so an
+  active series of the same key in another currency becomes a "Hidden" row too (visible, out of the totals); a hidden active
+  series that later stops leaves the list on its own. Data: no new field, no migration, marks untouched. Pins: 18.4's "a hidden
+  series lists in its group" gains "unless stopped" (a named edit); the Q3 A worlds with a hidden stopped series move. Texts:
+  one button, one help step. Size: the smallest; one predicate in the screen's split, one footer kind, one help step.
+- **B: "Remove from list" stores a per-series removal that ends with a new charge.** Same button; the write stores, in the
+  key's entry, the removed series' currency and last-charge time (a new optional field, the parser and its tests change). The
+  list and the totals leave out a series whose newest charge is not after the stored time; a newer charge brings it back on
+  its own, counted, and the stored entry no longer matches. Undo before a new charge: as A (a mark on the form). Risk: none to
+  other series of the key; a store-shape change (a JSON field in the existing column, no migration, a reviewer step for the
+  parser), and "a settled mark must expire" is met by the time compare. Texts: one button, one help step. Size: medium (the
+  choice type, its parser, a repo write, the screen's split, the footer).
+- **C: a list switch "Show stopped charges".** One switch row above the total; off, every stopped series leaves the list and
+  the totals (the total of all keeps equalling the groups). Undo: turn it on. Risk: removes all stopped series at once, never
+  one; kept across launches it needs a settings column (a migration, a reviewer step), else it resets on each visit. Texts: one
+  switch label, one help step. Size: medium to large (a control, a stored setting, every list world with a stopped series).
