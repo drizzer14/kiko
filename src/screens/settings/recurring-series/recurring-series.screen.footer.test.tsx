@@ -1,5 +1,5 @@
 import type { ReactNode, ComponentProps } from 'react';
-import { render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
@@ -48,6 +48,9 @@ jest.mock('@kiko/navigation/pane-stack', () => ({
 // strips, so the screen's wiring is proven by recording the props Button receives.
 const mockButtonProps = new Map<string, Omit<ButtonProps, 'children' | 'onPress'>>();
 
+// The same props by label, for a button with no testID of its own.
+const mockButtonsByLabel = new Map<string, Omit<ButtonProps, 'children' | 'onPress'>[]>();
+
 jest.mock('@kiko/design-system/components/button', () => {
   const { Pressable, Text: RNText } = require('react-native');
 
@@ -55,6 +58,10 @@ jest.mock('@kiko/design-system/components/button', () => {
     __esModule: true,
     default: ({ children, onPress, testID, ...rest }: ButtonProps) => {
       mockButtonProps.set(String(testID), { testID, ...rest });
+      mockButtonsByLabel.set(String(children), [
+        ...(mockButtonsByLabel.get(String(children)) ?? []),
+        { testID, ...rest },
+      ]);
 
       return (
         <Pressable accessibilityRole="button" testID={testID} onPress={onPress}>
@@ -145,6 +152,8 @@ const ledgerOf = (currency: 'UAH' | 'USD'): ContextRow[] => [
 
 const PAID = 10000 + 20050 + 30025;
 
+const PAID_VALUE = 'recurring-series-summary-paid';
+
 const MARKED = seriesWith({
   recurrence: { kind: 'marked' },
   marks: [{ currency: 'UAH', amountMinorUnits: 25000, period: 'monthly' }],
@@ -191,6 +200,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   mockButtonProps.clear();
+  mockButtonsByLabel.clear();
   mockReadTables.length = 0;
   mockRowsLoading = false;
 });
@@ -234,23 +244,26 @@ describe('RecurringSeriesScreen — all paid so far', () => {
     const header = within(getByTestId('recurring-series-header'));
 
     expect(header.getByText('All paid so far')).toBeTruthy();
-    expect(header.getByText(formatMoney(Money.of('UAH', PAID)))).toBeTruthy();
+    expect(header.getByTestId(PAID_VALUE)).toHaveTextContent(formatMoney(Money.of('UAH', PAID)), {
+      exact: true,
+    });
   });
 
   it('sums a series in its own currency, whatever the base currency is', async () => {
     const { getByTestId } = await renderDetected(seriesWith({ currency: 'USD' }), ledgerOf('USD'));
 
     expect(
-      within(getByTestId('recurring-series-header')).getByText(formatMoney(Money.of('USD', PAID))),
-    ).toBeTruthy();
+      within(getByTestId('recurring-series-header')).getByTestId(PAID_VALUE),
+    ).toHaveTextContent(formatMoney(Money.of('USD', PAID)), { exact: true });
   });
 
   it('waits for the rows read, then shows the sum', async () => {
     mockRowsLoading = true;
 
-    const { getByTestId, queryByText, rerender } = await renderDetected();
+    const { getByTestId, queryByTestId, queryByText, rerender } = await renderDetected();
 
     expect(queryByText('All paid so far')).toBeNull();
+    expect(queryByTestId(PAID_VALUE)).toBeNull();
 
     mockRowsLoading = false;
     await rerender(screenElement(DETECTED_ROUTE));
@@ -258,7 +271,9 @@ describe('RecurringSeriesScreen — all paid so far', () => {
     expect(
       within(getByTestId('recurring-series-header')).getByText('All paid so far'),
     ).toBeTruthy();
-    expect(queryByText(formatMoney(Money.of('UAH', PAID)))).toBeTruthy();
+    expect(getByTestId(PAID_VALUE)).toHaveTextContent(formatMoney(Money.of('UAH', PAID)), {
+      exact: true,
+    });
   });
 
   it('reads no rates for it', async () => {
@@ -272,3 +287,69 @@ describe('RecurringSeriesScreen — all paid so far', () => {
     allQuery.mockRestore();
   });
 });
+
+const CONFIRM_TEXTS = {
+  en: {
+    title: 'Not a Recurring Charge?',
+    message:
+      '"Netflix" leaves recurring charges and their totals in every currency, and new charges won\'t bring it back. To bring it back, mark one of its transactions as recurring.',
+    confirm: 'Not a recurring charge',
+    cancel: 'Cancel',
+    deleteLabel: /Delete/,
+  },
+  uk: {
+    title: 'Це не регулярний платіж?',
+    message:
+      '«Netflix» зникне з регулярних платежів і їхніх сум у всіх валютах, і нові списання його не повернуть. Щоб повернути його, позначте одну з його транзакцій як регулярну.',
+    confirm: 'Це не регулярний платіж',
+    cancel: 'Скасувати',
+    deleteLabel: /Видалити/,
+  },
+};
+
+describe.each(['en', 'uk'] as const)(
+  'RecurringSeriesScreen — the footer confirm, in %s',
+  (language) => {
+    const texts = CONFIRM_TEXTS[language];
+
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('opens on a tap of the footer button, titled and worded as approved, with Cancel', async () => {
+      const { getByTestId, queryByTestId } = await renderDetected();
+
+      expect(queryByTestId('confirm-sheet')).toBeNull();
+
+      await fireEvent.press(getByTestId('recurring-series-hide'));
+
+      const sheet = within(getByTestId('confirm-sheet'));
+
+      expect(sheet.getByText(texts.title)).toBeTruthy();
+      expect(sheet.getByText(texts.message)).toBeTruthy();
+      expect(sheet.getByText(texts.confirm)).toBeTruthy();
+      expect(sheet.getByText(texts.cancel)).toBeTruthy();
+    });
+
+    it('labels its confirm button as the action, never Delete, and makes it destructive', async () => {
+      const { getByTestId } = await renderDetected();
+
+      await fireEvent.press(getByTestId('recurring-series-hide'));
+
+      const sheet = within(getByTestId('confirm-sheet'));
+
+      expect(sheet.queryByText(texts.deleteLabel)).toBeNull();
+      expect(mockButtonsByLabel.get(texts.confirm)?.map(({ variant }) => variant)).toContain(
+        'destructive',
+      );
+    });
+  },
+);

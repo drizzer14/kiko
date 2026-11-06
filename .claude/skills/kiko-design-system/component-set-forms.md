@@ -85,7 +85,9 @@
   — wraps a grid/list card in a touch-and-hold delete (and, when an
   `onEdit`, `onDuplicate`, `onViewAccount`, `onViewHolding` and/or `closeAction`
   is passed, an Edit/Duplicate/View account/View holding/Close/Delete choice,
-  in that order; read the JSX in `card-context-menu.component.tsx`) menu. `onEdit` is
+  in that order; read the JSX in `card-context-menu.component.tsx`) menu. The optional
+  `deleteLabel` names the destructive item and its confirm button (default `common.delete`);
+  the recurring list's series rows pass 'Not a recurring charge'. `onEdit` is
   for a row with no tap target of its own: the holding detail's
   share-change rows and lot rows (`LotRowMenu`, Edit + Delete; Delete
   is offered only while every later sale stays covered without the lot,
@@ -293,8 +295,10 @@
   top, when `useWindowDimensions().fontScale >= STACK_FONT_SCALE`. The
   constant sits between React Native's xxxLarge (1.353) and AX1 (1.786)
   values (`node_modules/react-native/React/Base/RCTUtils.mm:367-378`), so
-  the row stacks from AX1. Used by `FieldGroup` (Type + Amount) and
-  `ExchangeFields` (`leadingField` + Value out).
+  the row stacks from AX1. `STACK_FONT_SCALE` lives in `src/design-system/stack-font-scale/`
+  (import `@kiko/design-system/stack-font-scale`; read it for the value). Any row that stacks at
+  large text sizes imports it from there and never redefines it. Used by
+  `FieldGroup` (Type + Amount) and `ExchangeFields` (`leadingField` + Value out).
 - **Scroll to the first invalid field.** A form that scrolls to its
   first invalid field on a blocked Save uses `useScrollToField()` from
   `@kiko/design-system/use-scroll-to-field` (`{ scrollableRef,
@@ -359,7 +363,7 @@
   width and the value wraps inside the row; rows without it lay out exactly as before. The rule
   card on the category form (the rule card under `src/screens/forms/category-form/`) is the caller. At
   very large Dynamic Type a wrapping value can be squeezed narrow; check it on the device.
-  Extracted from the
+  Callers: grep `SummaryTable` under `src/`. Extracted from the
   holding-detail deposit/bond value-breakdown block —
   `HoldingDetailScreen` renders its own
   principal/gross/interest/tax/expected-profit rows through this (and,
@@ -371,13 +375,10 @@
   `textSecondary` value like its ISIN summary, testID
   `bond-form-yield-to-maturity`), passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
-  visual change from before the extraction. The statement-import preview
-  (`StatementPreviewBlock`, `statement-import/statement-preview-block/`) and the
-  column-mapping result section (`MappingResult`) reuse the SAME row
-  layout/alignment/styling for their own summary rows (transaction count,
-  currency, date span) — never the deposit table's value/percent/tax
-  COLUMNS, only its layout. The loan detail's ledger breakdown is a
-  `SummaryTable` too; its linked and scheduled payments are NOT (they are
+  visual change from before the extraction. Every other caller reuses the SAME row
+  layout/alignment/styling for its own summary rows — never the deposit table's
+  value/percent/tax COLUMNS, only its layout. A loan's linked and scheduled
+  payments are NOT `SummaryTable` rows (they are
   `EntryCard` rows in the day-grouped ledger, see **EntryCard**). A property
   owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /

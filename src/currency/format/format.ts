@@ -33,18 +33,33 @@ const formatCryptoBody = (minorUnits: number, scale: number, locale: string): st
   return `${wholeText}${decimalSeparatorOf(locale)}${paddedFraction}`;
 };
 
+// Rounds in integers, half away from zero, before `Intl` sees the value: an engine's own rounding
+// mode (half to even on some) must not decide the last digit. The remainder is exact; a float
+// quotient near a tie is not.
+const roundedToDigits = (absolute: number, scale: number, fractionDigits: number): number => {
+  if (fractionDigits >= scale) {
+    return absolute / 10 ** scale;
+  }
+
+  const divisor = 10 ** (scale - fractionDigits);
+  const remainder = absolute % divisor;
+  const kept = (absolute - remainder) / divisor;
+
+  return (remainder * 2 >= divisor ? kept + 1 : kept) / 10 ** fractionDigits;
+};
+
 const formatFiatBody = (
   minorUnits: number,
   scale: number,
   locale: string,
   fractionDigits = scale,
 ): string =>
-  (Math.abs(minorUnits) / 10 ** scale).toLocaleString(locale, {
+  roundedToDigits(Math.abs(minorUnits), scale, fractionDigits).toLocaleString(locale, {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   });
 
-// Half rounds away from zero, as `toLocaleString` does, so an amount below half a unit of the last
+// Half rounds away from zero, as `roundedToDigits` does, so an amount below half a unit of the last
 // shown digit shows as zero. The comparison stays in integers: no float step decides the edge.
 const roundsToZero = (minorUnits: number, scale: number, fractionDigits: number): boolean =>
   Math.abs(minorUnits) * 10 ** fractionDigits * 2 < 10 ** scale;

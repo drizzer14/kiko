@@ -276,6 +276,7 @@ const donutOf = (
     defaultCategoryKey: 'other',
     excludedCategories,
     excludedTransactionIds: ledger.excludedTransactionIds,
+    scheme: 'dark',
   });
 
 const sumOf = (values: readonly number[]): number => values.reduce((sum, value) => sum + value, 0);
@@ -287,6 +288,7 @@ const inputOf = (ledger: SpendingLedger) => ({
   rateTable: RATE_TABLE,
   baseCurrency: 'UAH' as const,
   defaultCategoryKey: 'other',
+  scheme: 'dark' as const,
 });
 
 const tableOf = (ledger: SpendingLedger, excludedCategories?: ReadonlySet<string>) =>

@@ -52,7 +52,10 @@ jest.mock('@bottom-tabs/react-navigation', () => {
 
 const navigationRef = createNavigationContainerRef<ParamListBase>();
 
-type StackRoute = { name: string; params?: { period?: { kind: string; year?: number } } };
+type StackRoute = {
+  name: string;
+  params?: { period?: { kind: string; year?: number }; view?: string };
+};
 
 const BUTTON = 'statistics-open-tables';
 
@@ -175,6 +178,49 @@ describe('the Tables route on the real RootNavigator', () => {
     expect(tablesRouteOf('StatisticsTab')?.params?.period).toBeUndefined();
     expect(rendered.getByTestId('tables-period')).toHaveTextContent('Last 12 months', {
       exact: false,
+    });
+  });
+
+  describe('the table that shows', () => {
+    const pickCashFlow = async (rendered: Awaited<ReturnType<typeof renderRoot>>) => {
+      await fireEvent.press(rendered.getByTestId('tables-view-option-cashFlow'));
+    };
+
+    it('keeps the cash flow table from one pane to two and back', async () => {
+      const rendered = await renderRoot();
+
+      await goToTab('StatisticsTab');
+      await fireEvent.press(rendered.getByTestId(BUTTON));
+      await pickCashFlow(rendered);
+
+      expect(rendered.getByTestId('cash-flow-table')).toBeTruthy();
+
+      await setLayout('columns');
+
+      expect(tablesRouteOf('StatisticsTab')?.params?.view).toBe('cashFlow');
+      expect(rendered.getByTestId('cash-flow-table')).toBeTruthy();
+
+      await setLayout('single');
+
+      expect(rendered.getByTestId('cash-flow-table')).toBeTruthy();
+      expect(rendered.queryByTestId('category-table')).toBeNull();
+    });
+
+    it('opens a new push on the category table after the cash flow table was popped', async () => {
+      const rendered = await renderRoot();
+
+      await goToTab('StatisticsTab');
+      await fireEvent.press(rendered.getByTestId(BUTTON));
+      await pickCashFlow(rendered);
+
+      await act(async () => {
+        navigationRef.goBack();
+      });
+      await fireEvent.press(rendered.getByTestId(BUTTON));
+
+      expect(tablesRouteOf('StatisticsTab')?.params?.view).toBeUndefined();
+      expect(rendered.getByTestId('category-table')).toBeTruthy();
+      expect(rendered.queryByTestId('cash-flow-table')).toBeNull();
     });
   });
 });

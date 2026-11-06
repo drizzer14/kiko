@@ -218,8 +218,9 @@ The token values live in `theme.ts` (`darkTheme`, `lightTheme`) and
 `palette.ts`; read those directly rather than restating them here.
 The light values come from `docs/design/light-palette/palette.json`, pinned by
 `src/design-system/palette/light-palette-source.test.ts`; change the JSON, never a light hex alone.
-The palette check reads `palette.ts` by text position, and code placed above the
-`chartSeriesDark` block failed it: keep that block in place and put new light sets below it.
+Keep `chartSeriesDark` and the other dark blocks of `palette.ts` in place, and put new light sets
+below them. The palette check reads `palette.ts` by text position, so code placed above a dark
+block fails it.
 
 ## Locked decisions (user-approved)
 
@@ -820,8 +821,16 @@ where they can drift. The pipeline is:
   (`src/statistics/account-contribution/account-contribution.ts`) is
   the exception: its input has no icon, so it calls
   `resolveEntityColor` directly for the color only.
-- `resolveEntityColor`'s result feeds `EntityIconTile`
-  (`src/design-system/components/entity-icon-tile/`), the shared
+- `resolveEntityColor` returns the canonical dark hex. Display goes through
+  `entityDisplayColor(hex, scheme)` (`src/design-system/entity-tint/entity-tint.ts`),
+  and that result feeds `EntityIconTile`. Producers take a required `scheme` from
+  `useActiveColorScheme` (`src/design-system/active-color-scheme/`). `ColorPicker`
+  (`swatchSet` prop) and the forms keep and report the dark hex; only display is
+  mapped. A category takes the same path with `categoryDisplayColor` and the category
+  set: `resolveCategoryColor(stored, key, scheme)` displays,
+  `resolveCanonicalCategoryColor(stored, key)` feeds the picker. `EntityIconTile` reads
+  `theme.colors.glyphOnLightTile`. The tile
+  (`src/design-system/components/entity-icon-tile/`) is the shared
   squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)
   derives its two vertical-gradient stops (lighter top, darker bottom)
   from the one resolved hue via `lightenHex`/`darkenHex`, and

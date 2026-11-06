@@ -2,8 +2,9 @@ import { render } from '@testing-library/react-native';
 import { Dimensions, StyleSheet, Text } from 'react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import { STACK_FONT_SCALE } from '@kiko/design-system/stack-font-scale';
 
-import PairedFieldsRow, { STACK_FONT_SCALE } from './paired-fields-row.component';
+import PairedFieldsRow from './paired-fields-row.component';
 
 const DEFAULT_FONT_SCALE = 2;
 const DEFAULT_BODY_POINTS = 17;

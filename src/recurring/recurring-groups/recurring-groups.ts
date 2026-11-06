@@ -6,6 +6,7 @@ import {
 import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { type RateTable, convert } from '@kiko/rates/conversion';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { compareText, type RecurringSeries } from '@kiko/recurring/detection';
@@ -24,6 +25,7 @@ type RecurringGroupsInput = {
   defaultCategoryKey: string;
   baseCurrency: Currency;
   rateTable: RateTable;
+  scheme: ColorScheme;
 };
 
 export type RecurringGroup = {
@@ -64,6 +66,7 @@ export const recurringGroupsOf = ({
   defaultCategoryKey,
   baseCurrency,
   rateTable,
+  scheme,
 }: RecurringGroupsInput) => {
   const rowById = new Map(rows.map((row) => [row.id, row]));
   const displayByKey = buildCategoryDisplayMap(categories);
@@ -109,14 +112,14 @@ export const recurringGroupsOf = ({
     }
 
     const display = resolveCategoryDisplay(key, displayByKey, defaultCategoryKey);
-    // One conversion per series sum, never per row, so a group total equals the sum of what it
-    // holds. A currency with no rate is left out of the totals and its series stays listed.
+    // One conversion per series, so a group total equals the sum of what it holds. A currency
+    // with no rate is left out of the totals and its series stays listed.
     const total = series.reduce(
       (sum, entry) => {
-        const paid = paidFromRowsById(entry, rowById);
+        const last = Money.of(entry.currency, entry.lastChargeAmountMinorUnits);
 
-        return canConvert(paid.currency, baseCurrency, rateTable)
-          ? sum.add(convert(paid, baseCurrency, rateTable))
+        return canConvert(last.currency, baseCurrency, rateTable)
+          ? sum.add(convert(last, baseCurrency, rateTable))
           : sum;
       },
       Money.of(baseCurrency, 0),
@@ -127,7 +130,7 @@ export const recurringGroupsOf = ({
         key,
         title: display.title,
         icon: display.icon,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
         series,
         total,
       },

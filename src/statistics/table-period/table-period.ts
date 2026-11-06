@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { sumOf } from '@kiko/numbers';
 import { type CalendarMonth, calendarMonthOf, calendarMonthsBetween } from '@kiko/dates';
 
 /** The months a table covers: the last 12 up to now, or one whole calendar year. */
@@ -115,5 +116,5 @@ export const averageOverComplete = (
     return null;
   }
 
-  return complete.reduce((sum, value) => sum + value, 0) / complete.length;
+  return sumOf(complete) / complete.length;
 };

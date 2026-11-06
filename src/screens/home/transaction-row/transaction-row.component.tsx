@@ -12,6 +12,7 @@ import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { isDeletableTransaction, isSyncedTransaction } from '@kiko/holdings/deletable';
 
 import { styles } from './transaction-row.styles';
@@ -32,6 +33,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
 }) => {
   const { t } = useTranslation();
   const clock = useTimeClock();
+  const scheme = useActiveColorScheme();
   const isSynced = isSyncedTransaction(item);
   // Read when the delete is requested, so it names what is stored now: a row
   // that is one part of a movement takes the rest with it.
@@ -99,7 +101,11 @@ const TransactionRow: FC<TransactionRowProps> = ({
           // the raw lowercased slug renders one category in two hues
           // whenever that slug is absent from the categories table, since
           // the chip has already folded it onto the default key.
-          categoryIconColor={resolveCategoryColor(category.color, categoryKeyForRow(item.category))}
+          categoryIconColor={resolveCategoryColor(
+            category.color,
+            categoryKeyForRow(item.category),
+            scheme,
+          )}
           categoryAccessibilityLabel={category.title}
           money={Money.of(item.currency, item.amountMinorUnits)}
           footerMeta={`${item.accountName} · ${category.title}`}

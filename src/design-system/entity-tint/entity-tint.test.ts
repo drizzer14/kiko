@@ -1,11 +1,17 @@
 import { sweep } from '@kiko/test-support/property-sweep';
 import { seededRandom } from '@kiko/test-support/seeded-random';
 
+import {
+  type SwatchName,
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '../palette';
 import { darkTheme } from '../theme';
-import { type SwatchName, entityColorsDark, entityColorsLight } from '../palette';
 
 import {
   darkenHex,
+  categoryDisplayColor,
   entityDisplayColor,
   entityIconTileGradient,
   isLightEntityColor,
@@ -201,6 +207,10 @@ describe('entityDisplayColor', () => {
     expect(entityDisplayColor('#123456', 'dark')).toBe('#123456');
   });
 
+  it('throws on an unset scheme instead of reading it as light', () => {
+    expect(() => entityDisplayColor('#FF9F0A', undefined as never)).toThrow();
+  });
+
   it.each(SWATCHES)('light maps %s by key, in either letter case', (name) => {
     expect(entityDisplayColor(entityColorsDark[name], 'light')).toBe(entityColorsLight[name]);
     expect(entityDisplayColor(entityColorsDark[name].toLowerCase(), 'light')).toBe(
@@ -258,4 +268,47 @@ describe('entityDisplayColor', () => {
       }
     },
   );
+});
+
+describe('categoryDisplayColor', () => {
+  const SWATCHES = Object.keys(entityColorsDark) as SwatchName[];
+  const OUT_OF_SET = ['#FFFF00', '#00FF00', '#112233', '#FF0000'];
+  const MINIMUM_LIGHT_CONTRAST = 3.4;
+
+  it('dark returns the input verbatim, any case, in or out of the set', () => {
+    expect(categoryDisplayColor('#ff9f0a', 'dark')).toBe('#ff9f0a');
+    expect(categoryDisplayColor('#123456', 'dark')).toBe('#123456');
+  });
+
+  it('throws on an unset scheme instead of reading it as light', () => {
+    expect(() => categoryDisplayColor('#FF9F0A', undefined as never)).toThrow();
+  });
+
+  it.each(SWATCHES)('light maps %s by key to the category set, in either letter case', (name) => {
+    expect(categoryDisplayColor(entityColorsDark[name], 'light')).toBe(categoryColorsLight[name]);
+    expect(categoryDisplayColor(entityColorsDark[name].toLowerCase(), 'light')).toBe(
+      categoryColorsLight[name],
+    );
+  });
+
+  it('the same dark hex differs by producer where the palette differs', () => {
+    const differing = SWATCHES.filter(
+      (name) => entityColorsLight[name] !== categoryColorsLight[name],
+    );
+
+    expect(differing.length).toBeGreaterThan(0);
+
+    for (const name of differing) {
+      expect(categoryDisplayColor(entityColorsDark[name], 'light')).not.toBe(
+        entityDisplayColor(entityColorsDark[name], 'light'),
+      );
+    }
+  });
+
+  it.each(OUT_OF_SET)('light out of set takes the entity lightness rule: %s', (stored) => {
+    const shown = categoryDisplayColor(stored, 'light');
+
+    expect(shown).toBe(entityDisplayColor(stored, 'light'));
+    expect(wcagContrastRatio(shown, '#FFFFFF')).toBeGreaterThanOrEqual(MINIMUM_LIGHT_CONTRAST);
+  });
 });

@@ -109,8 +109,9 @@ export const buildCategoryOptions = (input: {
   categories: readonly Pick<CategoryRow, 'key'>[];
   categoryByKey: ReadonlyMap<string, CategoryDisplay>;
   keptKeys: Iterable<string>;
+  scheme: ColorScheme;
 }): FilterOption[] => {
-  const { slices, categories, categoryByKey, keptKeys } = input;
+  const { slices, categories, categoryByKey, keptKeys, scheme } = input;
   const byKey = new Map<string, FilterOption>();
 
   for (const slice of slices) {
@@ -140,7 +141,7 @@ export const buildCategoryOptions = (input: {
       value: key,
       label: display.title,
       icon: display.icon,
-      color: resolveCategoryColor(display.color, key),
+      color: resolveCategoryColor(display.color, key, scheme),
     });
   }
 

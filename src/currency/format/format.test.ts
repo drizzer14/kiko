@@ -155,6 +155,55 @@ describe('formatMoney whole units without a symbol', () => {
     expect(formatMoney(Money.of('UAH', -50), 'en-US', WHOLE_UNITS)).toBe('-1');
   });
 
+  describe('on an engine whose Intl rounds half to even', () => {
+    const originalToLocaleString = Number.prototype.toLocaleString;
+
+    const roundHalfToEven = (value: number, digits: number): number => {
+      const scaled = value * 10 ** digits;
+      const floor = Math.floor(scaled);
+      const isHalf = scaled - floor === 0.5;
+      const rounded = isHalf ? floor + (floor % 2) : Math.round(scaled);
+
+      return rounded / 10 ** digits;
+    };
+
+    beforeEach(() => {
+      jest.spyOn(Number.prototype, 'toLocaleString').mockImplementation(function halfToEvenFormat(
+        this: number,
+        locales?: Intl.LocalesArgument,
+        options?: Intl.NumberFormatOptions,
+      ) {
+        return originalToLocaleString.call(
+          roundHalfToEven(this, options?.maximumFractionDigits ?? 0),
+          locales,
+          options,
+        );
+      });
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('still rounds half away from zero on both signs', () => {
+      expect(formatMoney(Money.of('UAH', 250), 'en-US', WHOLE_UNITS)).toBe('3');
+      expect(formatMoney(Money.of('UAH', -250), 'en-US', WHOLE_UNITS)).toBe('-3');
+      expect(formatMoney(Money.of('UAH', -150), 'en-US', WHOLE_UNITS)).toBe('-2');
+      expect(formatMoney(Money.of('UAH', 50), 'en-US', WHOLE_UNITS)).toBe('1');
+      expect(formatMoney(Money.of('UAH', -50), 'en-US', WHOLE_UNITS)).toBe('-1');
+    });
+
+    it('rounds half away from zero at one decimal too', () => {
+      expect(formatMoney(Money.of('UAH', 1_025), 'en-US', { fractionDigits: 1 })).toBe('10.3 ₴');
+      expect(formatMoney(Money.of('UAH', -1_025), 'en-US', { fractionDigits: 1 })).toBe('-10.3 ₴');
+    });
+
+    it('gives a value that rounds to zero no sign', () => {
+      expect(formatMoney(Money.fromMajor('UAH', -0.4), 'en-US', WHOLE_UNITS)).toBe('0');
+      expect(formatMoney(Money.of('UAH', -49), 'en-US', WHOLE_UNITS)).toBe('0');
+    });
+  });
+
   it('gives a rounded zero no sign', () => {
     expect(formatMoney(Money.of('UAH', -49), 'en-US', WHOLE_UNITS)).toBe('0');
     expect(formatMoney(Money.of('UAH', -1), 'uk-UA', WHOLE_UNITS)).toBe('0');

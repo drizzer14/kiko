@@ -48,6 +48,7 @@ type MoveLeg = {
   exchangePairId: string | null;
   exchangeCounterpartHoldingId: string | null;
   untrackedCounterpart: string | null;
+  setsBalance?: boolean;
 };
 
 /**
@@ -62,6 +63,9 @@ type MoveLeg = {
  * crosses currencies, or whose amounts differ (a fee, an edited amount), stays in spending: the
  * user ruled that a synced debit a Convert sent into another currency still counts.
  *
+ * A row that sets a balance is skipped before the grouping, so it is neither a debit nor a
+ * credit: the app's own correction is no partner for a real leg of the same amount.
+ *
  * The caller passes the unfiltered ledger, so a partner on an account the filter hides still
  * counts as the partner.
  */
@@ -69,7 +73,7 @@ export const sameCurrencyMoveTransactionIds = (transactions: readonly MoveLeg[])
   const legsByPairId = new Map<string, MoveLeg[]>();
 
   for (const transaction of transactions) {
-    if (transaction.exchangePairId !== null) {
+    if (transaction.exchangePairId !== null && transaction.setsBalance !== true) {
       legsByPairId.set(transaction.exchangePairId, [
         ...(legsByPairId.get(transaction.exchangePairId) ?? []),
         transaction,

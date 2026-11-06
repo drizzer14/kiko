@@ -162,7 +162,7 @@ describe('help topic registry', () => {
     ['useTemplates', 4],
     ['manageCategories', 5],
     ['categoryRules', 6],
-    ['viewStatistics', 9],
+    ['viewStatistics', 11],
     ['viewRecurringCharges', 5],
     ['backupData', 4],
     ['restoreData', 4],
@@ -474,6 +474,143 @@ describe('the choices a help step names', () => {
       expect(step).not.toContain(below);
     },
   );
+
+  it.each([
+    [
+      'en',
+      enValues,
+      'money you withdraw or sell from Binance to your bank',
+      'exchange rates',
+      'revaluation',
+    ],
+    [
+      'uk',
+      ukValues,
+      'гроші, які ви виводите чи продаєте з Binance на ваш банківський рахунок',
+      'курси валют',
+      'переоцінка',
+    ],
+  ] as const)(
+    'names in %s the Binance money that counts as income and why net is not the net worth change',
+    (_language, values, binanceMoney, rates, revaluation) => {
+      const step = stepOf(values, 'viewStatistics', 10);
+
+      expect(step).toContain(binanceMoney);
+      expect(step).toContain(rates);
+      expect(step).toContain(revaluation);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      enValues,
+      [
+        'more than 2 minutes apart or only one side was synced',
+        'a transfer from one of your Monobank cards that Kiko syncs or synced',
+        'a category you pick with "Categories" narrows the category table only',
+      ],
+      'are the figures of the category table',
+    ],
+    [
+      'uk',
+      ukValues,
+      [
+        'понад 2 хвилини або синхронізовано лише одну',
+        'переказ з вашої картки Monobank, яку синхронізує або синхронізував Кіко',
+        'звужує лише таблицю за категоріями',
+      ],
+      'це дані таблиці за категоріями',
+    ],
+  ] as const)(
+    'names in %s the own transfers and the synced Monobank card credit that income can get wrong, and a category pick that narrows only the category table',
+    (_language, values, wrongRows, falseClaim) => {
+      const step = stepOf(values, 'viewStatistics', 10);
+
+      for (const wrongRow of wrongRows) {
+        expect(step).toContain(wrongRow);
+      }
+
+      expect(step).not.toContain(falseClaim);
+    },
+  );
+
+  it('words the refund credit of step 10 in uk without the change-return word and with the bank account in full', () => {
+    const step = stepOf(ukValues, 'viewStatistics', 10);
+
+    expect(step).not.toContain('Повернення коштів');
+    expect(step).not.toContain('рахується');
+    expect(step).not.toContain('на ваш банк ');
+    expect(step).not.toContain('Binance на банк,');
+    expect(step).toContain(
+      'Кошти, які продавець повернув окремим зарахуванням, вважаються надходженням',
+    );
+    expect(step).toContain('на ваш банківський рахунок');
+  });
+
+  // The control has three parts, so step 10 may not say it switches between two tables.
+  it.each([
+    ['en', enValues, 'switch between the two tables', 'switch between the three tables'],
+    ['uk', ukValues, 'перемикати «Категорії» та «Рух коштів».', 'і «Капітал».'],
+  ] as const)(
+    'says in %s that the control at the top of Tables switches between three tables',
+    (_language, values, falseClaim, trueClaim) => {
+      const step = stepOf(values, 'viewStatistics', 10);
+
+      expect(step).not.toContain(falseClaim);
+      expect(step).toContain(trueClaim);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      enValues,
+      /"([^"]*)"/g,
+      [
+        en.tables.view.netWorth,
+        en.tables.all,
+        en.statistics.netWorthOverTime,
+        en.tables.netWorth.change,
+      ],
+      ['an archived account is not counted', "A currency with no history uses today's rate"],
+      'has no category filter',
+    ],
+    [
+      'uk',
+      ukValues,
+      /«([^»]*)»/g,
+      [
+        uk.tables.view.netWorth,
+        uk.tables.all,
+        uk.statistics.netWorthOverTime,
+        uk.tables.netWorth.change,
+      ],
+      ['архівований рахунок не враховується', 'Валюта без історії береться за сьогоднішнім курсом'],
+      'немає фільтра за категоріями',
+    ],
+  ] as const)(
+    'names in %s the labels of the net worth table, its rate rule and that it has no category filter',
+    (_language, values, quote, labels, claims, noCategoryFilter) => {
+      const step = stepOf(values, 'viewStatistics', 11);
+
+      expect(quotedSpans(step, quote)).toEqual(expect.arrayContaining([...labels]));
+
+      for (const claim of claims) {
+        expect(step).toContain(claim);
+      }
+
+      expect(step).toContain(noCategoryFilter);
+    },
+  );
+
+  it('names the main currency in uk step 11 and says which table has no category filter', () => {
+    const step = stepOf(ukValues, 'viewStatistics', 11);
+
+    expect(step).not.toContain('базов');
+    expect(step).toContain('у цілих одиницях основної валюти');
+    expect(step).toContain('У таблиці «Капітал» немає фільтра за категоріями.');
+  });
 
   it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],

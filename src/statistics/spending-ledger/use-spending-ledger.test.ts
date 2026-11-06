@@ -4,9 +4,11 @@ import { internalTransferTransactionIds } from '@kiko/statistics/internal-transf
 import { sameCurrencyMoveTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
 import {
+  BASE_TIME,
   CARD,
   CASH,
   LOAN_PAYMENT,
+  MINUTE,
   transactionRow,
   worldInput,
   WORLD_TRANSACTIONS,
@@ -82,6 +84,27 @@ describe('useSpendingLedger', () => {
 
     expect(result.current).toEqual(buildSpendingLedger(input));
     expect(result.current.excludedTransactionIds.has('cash-balance-set')).toBe(true);
+  });
+
+  it('counts a real debit a marked credit would have cancelled, as the builder does', async () => {
+    const realDebit = transactionRow({
+      id: 'real-debit',
+      holdingId: 'card',
+      amountMinorUnits: -6_000,
+      time: BASE_TIME + 20 * MINUTE,
+    });
+    const setCredit = transactionRow({
+      id: 'set-credit',
+      holdingId: 'cash',
+      amountMinorUnits: 6_000,
+      setsBalance: true,
+      time: BASE_TIME + 20 * MINUTE + 1_000,
+    });
+    const input = worldInput({ transactions: [...WORLD_TRANSACTIONS, setCredit, realDebit] });
+    const { result } = await renderHook(() => useSpendingLedger(input));
+
+    expect(result.current.excludedTransactionIds.has('real-debit')).toBe(false);
+    expect(result.current).toEqual(buildSpendingLedger(input));
   });
 
   it('derives no loan entry for a marked row linked to a loan', async () => {

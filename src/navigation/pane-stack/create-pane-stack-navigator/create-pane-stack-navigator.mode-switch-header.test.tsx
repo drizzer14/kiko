@@ -8,6 +8,7 @@ import {
 import { useLayoutEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { LayoutMode } from '@kiko/display-regions';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
@@ -102,39 +103,17 @@ const App = () => (
   </NavigationContainer>
 );
 
-type RenderedNode = {
-  type: string;
-  props: Record<string, unknown>;
-  children: (RenderedNode | string)[] | null;
-};
-
 type HeaderConfig = { title: string; rightItemCount: number };
-
-const headerConfigs = (node: RenderedNode | string | null): HeaderConfig[] => {
-  if (node === null || typeof node === 'string') {
-    return [];
-  }
-
-  const own =
-    node.type === 'RNSScreenStackHeaderConfig'
-      ? [
-          {
-            title: String(node.props.title),
-            rightItemCount: ((node.props.headerRightBarButtonItems as unknown[] | undefined) ?? [])
-              .length,
-          },
-        ]
-      : [];
-
-  return [...own, ...(node.children ?? []).flatMap(headerConfigs)];
-};
 
 // The detail screen's header is the one titled with the entity, or with the route name it falls
 // back to once its own options are lost.
 const detailHeaders = (): HeaderConfig[] =>
-  headerConfigs(screen.toJSON() as unknown as RenderedNode).filter(
-    (config) => config.title === ENTITY_NAME || config.title === 'AccountDetail',
-  );
+  headerConfigsIn<{ title?: unknown; headerRightBarButtonItems?: unknown[] }>(screen.toJSON())
+    .map((props) => ({
+      title: String(props.title),
+      rightItemCount: (props.headerRightBarButtonItems ?? []).length,
+    }))
+    .filter((config) => config.title === ENTITY_NAME || config.title === 'AccountDetail');
 
 describe('a pane stack mode switch', () => {
   beforeEach(() => {

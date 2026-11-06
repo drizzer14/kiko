@@ -1,8 +1,9 @@
 import i18next from 'i18next';
 import { settingsRepo } from '@kiko/settings';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { createNavigationContainerRef, type ParamListBase } from '@react-navigation/native';
 import { renderStackInContainer, stackProbe } from '@kiko/test-support/navigator-stack-probe';
 import { transactionFormDataLayer as mockDataLayer } from '@kiko/test-support/transaction-form-data-layer';
@@ -248,25 +249,8 @@ type HeaderConfigProps = {
   onPressHeaderBarButtonItem?: (event: { nativeEvent: { buttonId: string } }) => void;
 };
 
-type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
-
-const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfigProps[] => {
-  if (node === null || typeof node === 'string') {
-    return [];
-  }
-
-  return [
-    ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as HeaderConfigProps] : []),
-    ...(node.children ?? []).flatMap(headerConfigsOf),
-  ];
-};
-
 const saveItemOnTopForm = () => {
-  const tree = screen.toJSON() as RenderedNode | RenderedNode[] | null;
-  const roots = Array.isArray(tree) ? tree : [tree];
-
-  const config = roots
-    .flatMap(headerConfigsOf)
+  const config = headerConfigsIn<HeaderConfigProps>(screen.toJSON())
     .filter((candidate) =>
       (candidate.headerRightBarButtonItems ?? []).some((item) => item.title === 'Save'),
     )
@@ -404,6 +388,13 @@ describe('Settings stack: a hide write that lands after the user moved on', () =
     });
   };
 
+  const confirmHide = async (view: View): Promise<void> => {
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await fireEvent.press(
+      within(view.getByTestId('confirm-sheet')).getByText('Not a recurring charge'),
+    );
+  };
+
   it('keeps the form on top of the series when a charge was opened while the write was queued', async () => {
     const view = await renderSettings();
 
@@ -411,7 +402,7 @@ describe('Settings stack: a hide write that lands after the user moved on', () =
 
     const seriesKey = keyOf('RecurringSeries');
 
-    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
     await openCharge(view, MANUAL_CHARGE);
 
     expect(hideSpy).toHaveBeenCalledTimes(1);
@@ -427,7 +418,7 @@ describe('Settings stack: a hide write that lands after the user moved on', () =
     const view = await renderSettings();
 
     await openSeries(view);
-    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
     await goBack();
 
     expect(routeNames()).toEqual(ROUTES_TO_LIST);
@@ -441,13 +432,28 @@ describe('Settings stack: a hide write that lands after the user moved on', () =
     const view = await renderSettings();
 
     await openSeries(view);
-    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
 
     expect(routeNames()).toEqual(ROUTES_TO_SERIES);
 
     await settle();
 
     expect(routeNames()).toEqual(ROUTES_TO_LIST);
+  });
+
+  it('writes nothing and stays on the series when the confirm opened by the button is cancelled', async () => {
+    const view = await renderSettings();
+
+    await openSeries(view);
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+
+    expect(hideSpy).not.toHaveBeenCalled();
+    expect(routeNames()).toEqual(ROUTES_TO_SERIES);
+
+    await fireEvent.press(within(view.getByTestId('confirm-sheet')).getByText('Cancel'));
+
+    expect(hideSpy).not.toHaveBeenCalled();
+    expect(routeNames()).toEqual(ROUTES_TO_SERIES);
   });
 });
 
