@@ -948,9 +948,14 @@ and use Convert on that transaction instead.
 A category's display color is never read as a raw
 `category.color ?? undefined` at the call site — every renderer
 (chart legend, chart slice, filter chip, transaction-row icon)
-resolves it through `resolveCategoryColor(storedColor, key)`
+resolves it through `resolveCategoryColor(storedColor, key, scheme)`
 (`src/statistics/`), which falls back to a stable
-per-key palette hash when no color is stored. The raw-fallback pattern
+per-key palette hash when no color is stored, then maps the canonical
+dark hex through the category set of the active scheme (`scheme` is
+required: read it with `useActiveColorScheme()`). The category form's
+`ColorPicker value` is the canonical hex from
+`resolveCanonicalCategoryColor(storedColor, key)`, never the display
+hex, so a write keeps the dark hex. The raw-fallback pattern
 renders gray for an uncolored category while a chip for that same
 category shows a palette hue — a past transaction-row icon regressed
 this way.

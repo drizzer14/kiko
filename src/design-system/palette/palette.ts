@@ -96,3 +96,12 @@ export const categoryColorsLight: Record<SwatchName, string> = {
 export const chartSeriesLight: readonly string[] = (
   ['blue', 'green', 'orange', 'violet', 'teal', 'pink', 'yellow', 'indigo'] as const
 ).map((name) => categoryColorsLight[name]);
+
+// The alpha of the net-worth area band's stop next to the line, from the file's chartParameters
+// (pinned by light-palette-source.test.ts). Dark needs the higher negative alpha because blending
+// toward black loses the color; on white the same alpha as the positive band already reads.
+type ChartFill = { areaOpacity: number; negativeAreaOpacity: number };
+
+export const chartFillDark: ChartFill = { areaOpacity: 0.3, negativeAreaOpacity: 0.5 };
+
+export const chartFillLight: ChartFill = { areaOpacity: 0.3, negativeAreaOpacity: 0.3 };

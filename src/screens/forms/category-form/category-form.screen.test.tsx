@@ -1,7 +1,12 @@
-import { Alert, TextInput } from 'react-native';
 import type { ComponentProps, ReactNode } from 'react';
+import { Alert, StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import {
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '@kiko/design-system/palette';
 import { i18n } from '@kiko/i18n/init';
 import {
   asNavigationProp,
@@ -10,15 +15,20 @@ import {
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
 import type { TimeClock } from '@kiko/dates';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
+import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
-import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
+import { resolveCanonicalCategoryColor } from '@kiko/statistics/category-breakdown';
 import { DELETE_CONFIRM_TEST_ID } from '@kiko/design-system/components/card-context-menu';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 
@@ -213,7 +223,7 @@ const withUkrainian = (): void => {
 
 // The swatch the colour picker rings when a new category's form opens: the palette's own fallback
 // for the placeholder key, read from the same resolver the form uses.
-const openPreviewHex = resolveCategoryColor(null, 'new-category');
+const openPreviewHex = resolveCanonicalCategoryColor(null, 'new-category');
 const openSwatchName = Object.entries(darkTheme.colors.entityColors).find(
   ([, hex]) => hex === openPreviewHex,
 )?.[0];
@@ -1254,5 +1264,64 @@ describe('CategoryFormScreen', () => {
       await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
       expect(navigation.setParams).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('CategoryFormScreen in the light world', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCreate.mockResolvedValue('new-key');
+    mockCategories = [GROCERIES, OTHER];
+    mockRules = [];
+    mockAccounts = [];
+    mockSettingsRows = [{ defaultCategoryKey: 'other' }];
+    mockCategoriesIsLoading = false;
+    mockCategoriesIsFresh = true;
+    mockRulesIsLoading = false;
+    mockSettingsIsLoading = false;
+    mockClock = { uses24Hour: true };
+    registerLightThemeFirst();
+  });
+
+  afterEach(() => {
+    restoreThemeOrder();
+  });
+
+  it('a light category form paints the preview through the category map', async () => {
+    const { getByLabelText } = await renderForm('groceries');
+
+    expect(entityColorsLight.khaki).not.toBe(categoryColorsLight.khaki);
+    expect(glyphTintsWithin(getByLabelText('Change Icon'))).toEqual([categoryColorsLight.khaki]);
+  });
+
+  it('paints the swatches from the category set and rings the swatch of the stored dark hex', async () => {
+    const { getByLabelText, getByTestId } = await renderForm('groceries');
+
+    expect(getByLabelText('Color khaki').props.accessibilityState.selected).toBe(true);
+    expect(StyleSheet.flatten(getByTestId('color-swatch-white').props.style).backgroundColor).toBe(
+      categoryColorsLight.white,
+    );
+  });
+
+  it('rings the dark hash swatch of an uncolored new category', async () => {
+    const { getByLabelText } = await renderForm();
+
+    expect(getByLabelText(`Color ${openSwatchName}`).props.accessibilityState.selected).toBe(true);
+  });
+
+  it('a light form saves the dark hex', async () => {
+    const { getByLabelText } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'Travel');
+    await fireEvent.press(getByLabelText('Color violet'));
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith({
+        title: 'Travel',
+        icon: 'tag',
+        color: entityColorsDark.violet,
+      }),
+    );
   });
 });

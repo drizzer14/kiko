@@ -810,7 +810,10 @@ where they can drift. The pipeline is:
   and that result feeds `EntityIconTile`. Producers take a required `scheme` from
   `useActiveColorScheme` (`src/design-system/active-color-scheme/`). `ColorPicker`
   (`swatchSet` prop) and the forms keep and report the dark hex; only display is
-  mapped. `EntityIconTile` reads `theme.colors.glyphOnLightTile`. The tile
+  mapped. A category takes the same path with `categoryDisplayColor` and the category
+  set: `resolveCategoryColor(stored, key, scheme)` displays,
+  `resolveCanonicalCategoryColor(stored, key)` feeds the picker. `EntityIconTile` reads
+  `theme.colors.glyphOnLightTile`. The tile
   (`src/design-system/components/entity-icon-tile/`) is the shared
   squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)
   derives its two vertical-gradient stops (lighter top, darker bottom)

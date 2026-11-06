@@ -6,6 +6,7 @@ import { buildRateTable } from '@kiko/rates/net-worth-view';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import { neutralCategory } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { categoryColorsLight, entityColorsDark } from '@kiko/design-system/palette';
 
 type ChargeRow = {
   id: string;
@@ -23,6 +24,7 @@ type GroupsInput = {
   defaultCategoryKey: string;
   baseCurrency: Currency;
   rateTable: ReturnType<typeof buildRateTable>;
+  scheme: 'dark' | 'light';
 };
 
 type Group = {
@@ -83,6 +85,7 @@ const inputOf = (overrides: Partial<GroupsInput>): GroupsInput => ({
   defaultCategoryKey: 'general',
   baseCurrency: 'UAH',
   rateTable: RATE_TABLE,
+  scheme: 'dark',
   ...overrides,
 });
 
@@ -180,7 +183,22 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
     const defaultGroup = recurringGroupsOf(worldOf()).groups.find(({ key }) => key === 'general');
 
     expect(defaultGroup).toMatchObject({ title: 'Mango', icon: 'star' });
-    expect(defaultGroup?.color).toBe(resolveCategoryColor('#445566', 'general'));
+    expect(defaultGroup?.color).toBe(resolveCategoryColor('#445566', 'general', 'dark'));
+  });
+
+  it('paints a group heading through the category map in the light scheme', () => {
+    const { recurringGroupsOf } = groupsModule();
+
+    const lightGroup = recurringGroupsOf({
+      ...worldOf(),
+      categories: CATEGORIES.map((category) =>
+        category.key === 'general' ? { ...category, color: entityColorsDark.khaki } : category,
+      ),
+      scheme: 'light',
+    }).groups.find(({ key }) => key === 'general');
+
+    expect(lightGroup?.color).toBe(categoryColorsLight.khaki);
+    expect(lightGroup?.color).not.toBe(entityColorsDark.khaki);
   });
 
   it('names no group "Uncategorized", by key or by title', () => {

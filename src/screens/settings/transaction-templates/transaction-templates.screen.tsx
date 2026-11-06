@@ -24,6 +24,7 @@ import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { buildCategoryDisplayMap, neutralCategory } from '@kiko/categories/category-display';
 
 import { styles } from './transaction-templates.styles';
@@ -54,6 +55,7 @@ const storedMoney = ({ draft }: TransactionTemplate): Money | undefined =>
 const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const scheme = useActiveColorScheme();
   const liveOptions = { cached: true } as const;
   const { data: rows, isLoading: templatesLoading } = useLiveQuery(
     transactionTemplatesRepo.listQuery(),
@@ -100,7 +102,7 @@ const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navig
     const { category, categoryColor } = foldMap(maybe(draft.category), (key) =>
       foldMap(maybe(categoryByKey.get(key)), (display) => ({
         category: display,
-        categoryColor: resolveCategoryColor(display.color, key),
+        categoryColor: resolveCategoryColor(display.color, key, scheme),
       })),
     ) ?? { category: neutralCategory(), categoryColor: theme.colors.textSecondary };
     const typeLabel = t(`forms.transaction.${draft.mode}`);

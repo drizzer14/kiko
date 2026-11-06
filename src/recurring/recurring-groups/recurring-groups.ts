@@ -6,6 +6,7 @@ import {
 import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { type RateTable, convert } from '@kiko/rates/conversion';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { compareText, type RecurringSeries } from '@kiko/recurring/detection';
@@ -24,6 +25,7 @@ type RecurringGroupsInput = {
   defaultCategoryKey: string;
   baseCurrency: Currency;
   rateTable: RateTable;
+  scheme: ColorScheme;
 };
 
 export type RecurringGroup = {
@@ -62,6 +64,7 @@ export const recurringGroupsOf = ({
   defaultCategoryKey,
   baseCurrency,
   rateTable,
+  scheme,
 }: RecurringGroupsInput) => {
   const rowById = new Map(rows.map((row) => [row.id, row]));
   const displayByKey = buildCategoryDisplayMap(categories);
@@ -110,7 +113,7 @@ export const recurringGroupsOf = ({
         key,
         title: display.title,
         icon: display.icon,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
         series,
         total,
       },

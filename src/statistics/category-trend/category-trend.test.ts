@@ -1,5 +1,7 @@
 import { DAY_MS, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
+import { categoryDisplayColor } from '@kiko/design-system/entity-tint';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
+import { categoryColorsLight, entityColorsDark } from '@kiko/design-system/palette';
 
 import {
   type BreakdownTransaction,
@@ -58,6 +60,7 @@ const buildTrend = (
     defaultCategoryKey: 'other',
     range: DEFAULT_RANGE,
     bucketDays: DEFAULT_BUCKET_DAYS,
+    scheme: 'dark',
     ...extra,
   });
 
@@ -155,6 +158,25 @@ describe('buildCategoryTrend', () => {
 
     expect(series[0].title).toBe('Groceries');
     expect(series[0].color).toBe(categoryColor('groceries'));
+  });
+
+  it('paints each light series through the category set, stored or hashed', () => {
+    const colored = buildCategoryDisplayMap([
+      { key: 'groceries', title: 'Groceries', icon: 'cart', color: entityColorsDark.blue },
+      { key: 'transport', title: 'Transport', icon: 'car' },
+      { key: 'other', title: 'Other', icon: 'square.grid.2x2' },
+    ]);
+    const series = buildTrend(
+      [
+        transaction({ id: 'a', category: 'groceries', amountMinorUnits: -30_00 }),
+        transaction({ id: 'b', category: 'transport', amountMinorUnits: -20_00 }),
+      ],
+      { categoryDisplay: colored, scheme: 'light' },
+    );
+    const byKey = new Map(series.map((entry) => [entry.key, entry.color]));
+
+    expect(byKey.get('groceries')).toBe(categoryColorsLight.blue);
+    expect(byKey.get('transport')).toBe(categoryDisplayColor(categoryColor('transport'), 'light'));
   });
 
   it('ignores income (non-negative amounts) entirely', () => {
@@ -572,6 +594,7 @@ describe('buildCategoryTrend / buildCategoryMeasures — category-key fold parit
         rateTable: {},
         baseCurrency: 'UAH',
         defaultCategoryKey: 'other',
+        scheme: 'dark',
       }).map((slice) => slice.key),
     );
     const trendKeys = new Set(

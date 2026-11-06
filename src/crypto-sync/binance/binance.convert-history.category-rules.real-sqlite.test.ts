@@ -262,6 +262,7 @@ describe('the spending totals when a rule reaches exchange legs', () => {
       baseCurrency: 'UAH',
       defaultCategoryKey: 'other',
       excludedTransactionIds: exchangeExcludedTransactionIds(transactions),
+      scheme: 'dark',
     });
   };
 

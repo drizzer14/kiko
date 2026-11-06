@@ -7,8 +7,9 @@ import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
-import { chartSeriesDark } from '@kiko/design-system/palette';
 import { convert, type RateTable } from '@kiko/rates/conversion';
+import { categoryDisplayColor } from '@kiko/design-system/entity-tint';
+import { type ColorScheme, chartSeriesDark } from '@kiko/design-system/palette';
 
 /**
  * A transaction as the spending breakdown needs it: its stored `category` key,
@@ -37,7 +38,8 @@ export type BreakdownTransaction = Pick<
  * `Money`); `share` is that amount over the total of all returned slices, in
  * `[0, 1]`. `key` is the stable category slug; `title`/`icon` are its resolved
  * display; `color` is the category's stored color when set, else its stable
- * categorical-palette hue (see resolveCategoryColor).
+ * categorical-palette hue, painted for the scheme the slices were built for (see
+ * resolveCategoryColor).
  */
 export type CategorySlice = {
   key: string;
@@ -55,7 +57,7 @@ export type CategorySlice = {
  * palette by hashing its key. The same key always lands on the same hue,
  * regardless of which other categories are present, so an uncolored slice's
  * color stays put as the filter toggles other categories in and out. See
- * `resolveCategoryColor` below for how a stored color, when present, wins over
+ * `resolveCanonicalCategoryColor` below for how a stored color, when present, wins over
  * this fallback.
  */
 export const categoryColor = (key: string): string => {
@@ -77,13 +79,24 @@ export const categoryColor = (key: string): string => {
  * (which `??` would let through and a bad hex would leak downstream) the same way
  * resolveEntityColor does.
  */
-export const resolveCategoryColor = (
+export const resolveCanonicalCategoryColor = (
   storedColor: string | null | undefined,
   key: string,
 ): string =>
   typeof storedColor === 'string' && /^#[0-9a-f]{6}$/i.test(storedColor)
     ? storedColor
     : categoryColor(key);
+
+/**
+ * The hex a surface PAINTS for a category: the canonical (dark) color above, mapped through the
+ * category set of `scheme`. Dark is the identity. The category form's picker keeps the canonical
+ * value (`resolveCanonicalCategoryColor`), so a write never carries a display hex.
+ */
+export const resolveCategoryColor = (
+  storedColor: string | null | undefined,
+  key: string,
+  scheme: ColorScheme,
+): string => categoryDisplayColor(resolveCanonicalCategoryColor(storedColor, key), scheme);
 
 // The normalized grouping key for a transaction's category: lowercased, with a
 // null/empty category AND a slug the display map cannot resolve both folding
@@ -157,6 +170,7 @@ export const buildCategoryBreakdown = (input: {
   defaultCategoryKey: string;
   excludedCategories?: ReadonlySet<string>;
   excludedTransactionIds?: ReadonlySet<string>;
+  scheme: ColorScheme;
 }): CategorySlice[] => {
   const {
     transactions,
@@ -166,6 +180,7 @@ export const buildCategoryBreakdown = (input: {
     defaultCategoryKey,
     excludedCategories,
     excludedTransactionIds,
+    scheme,
   } = input;
   const excluded = excludedCategories ?? new Set<string>();
   const excludedIds = excludedTransactionIds ?? new Set<string>();
@@ -221,7 +236,7 @@ export const buildCategoryBreakdown = (input: {
         title: display.title,
         icon: display.icon,
         amount,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
       };
     })
     .filter((slice) => slice.amount > 0)

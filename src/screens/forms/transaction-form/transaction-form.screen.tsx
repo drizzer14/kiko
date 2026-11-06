@@ -323,11 +323,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     () => (editingId != null ? [] : pastDescriptionRows.map((row) => row.description)),
     [editingId, pastDescriptionRows],
   );
+  const scheme = useActiveColorScheme();
   const categoryOptions = categories.map((category) => ({
     key: category.key,
     title: categoryByKey.get(category.key)?.title ?? category.title,
     icon: category.icon,
-    color: resolveCategoryColor(category.color, category.key),
+    color: resolveCategoryColor(category.color, category.key, scheme),
   }));
 
   // The latest cached FX rates, parsed into a
@@ -399,7 +400,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The picker's eligible options (open, non-synced, transaction-eligible),
   // Accounts-ordered — also the fallback source when the user has no manual
   // history to default from.
-  const scheme = useActiveColorScheme();
   const primaryOptions = buildPrimaryOptions(
     holdings,
     accountNameById,

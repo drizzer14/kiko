@@ -19,6 +19,8 @@ export const useRecurringGroups = (shown: readonly RecurringSeries[]) => ({
     defaultCategoryKey: DEFAULT_CATEGORY.key,
     baseCurrency: 'UAH',
     rateTable: buildRateTable([]),
+    // The suites that use this stand-in assert the order and the totals, never a color.
+    scheme: 'dark',
   }),
   isLoading: false,
 });
