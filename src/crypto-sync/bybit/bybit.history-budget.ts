@@ -56,7 +56,7 @@ export const createBybitRunBudget = (): BybitRunBudget => {
 };
 
 /** The pacing gate and the call budget every walk of one Bybit arm run shares. */
-type BybitHistoryRun = ExchangeRun<BybitLane, BybitCallWeights, BybitCallWeights>;
+export type BybitHistoryRun = ExchangeRun<BybitLane, BybitCallWeights, BybitCallWeights>;
 
 /**
  * A request that rejected was made all the same: it is a call of the lane that gave nothing to
