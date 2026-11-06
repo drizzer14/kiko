@@ -11,8 +11,6 @@ export type ModeAndActionsProps = {
   categoryOptions: { key: string; title: string; icon: string; color: string }[];
   selectedCategory: string | null;
   onSelectCategory: (key: string) => void;
-  convertEligible: boolean;
-  onPressConvert: () => void;
   categoryRequired: boolean;
   t: TFunction;
   // The category picker's own validation-failure message, or `undefined` when
