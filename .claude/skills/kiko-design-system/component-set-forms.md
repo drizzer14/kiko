@@ -287,6 +287,14 @@
   Every form composes this instead of hand-rolling its own error
   caption — see `kiko-code-style`'s "Form validation model" section for
   when to show it.
+- **PairedFieldsRow** (`src/screens/forms/paired-fields-row/`; read the
+  component for its props) lays two fields in one row of equal `flex: 1`
+  columns (`Box` gap token 3, as `DateTimeRow`) and stacks them, first on
+  top, when `useWindowDimensions().fontScale >= STACK_FONT_SCALE`. The
+  constant sits between React Native's xxxLarge (1.353) and AX1 (1.786)
+  values (`node_modules/react-native/React/Base/RCTUtils.mm:367-378`), so
+  the row stacks from AX1. Used by `FieldGroup` (Type + Amount) and
+  `ExchangeFields` (`leadingField` + Value out).
 - **Scroll to the first invalid field.** A form that scrolls to its
   first invalid field on a blocked Save uses `useScrollToField()` from
   `@kiko/design-system/use-scroll-to-field` (`{ scrollableRef,
