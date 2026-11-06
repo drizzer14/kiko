@@ -1059,7 +1059,8 @@ there for the rules and thresholds; none is restated here. Eligibility reuses `l
 
 A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
 `src/recurring/marked-series/marked-series.ts` (the chain and series rules),
-`src/recurring/recurring-periods/recurring-periods.ts` (the periods and their order) and
+`src/recurring/recurring-periods/recurring-periods.ts` (the periods and their order),
+`src/recurring/row-recurrence/` (the row's detected or marked period) and
 `src/settings/recurring-merchant-choices.ts` (the one map). The rules, in words:
 - A mark stores the absolute stored amount and the currency of the marked row's holding, under the
   merchant key. It covers one currency: the same amount in another currency never compares.
@@ -1080,6 +1081,13 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   total. The detail's 'All paid so far' is `paidSoFarOf` in the series' own currency.
 - One choice map holds every key's hide flag and its list of marks, one entry per key; removing
   a mark clears only that mark, and "Show again" clears only the hide.
+- The transaction form's mark field shows 'Detected: <period>' (keys
+  `forms.transaction.detectedRecurring.*`) for a row of a shown detected series. The one shared
+  pure module is `src/recurring/row-recurrence/` (`rowDetectionOf`, memoized on the ledger fire;
+  `rowRecurrenceFromDetection`, per settings fire; `rowRecurrenceOf`, their composition;
+  `markedEntriesOf` is defined there and imported by `use-recurring-series.ts`); read it for the
+  rules. A hidden key with no mark in this currency reads 'Not marked' with no ledger read
+  (`useRowMark`).
 
 Which rows each step reads (`src/statistics/spending-ledger/`, one hook and one pure builder
 that the Statistics screen calls; `useStatisticsSources` in
