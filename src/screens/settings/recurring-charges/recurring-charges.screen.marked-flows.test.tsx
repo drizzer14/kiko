@@ -13,6 +13,10 @@ import {
   holdingOf,
   type Ledger,
 } from '@kiko/test-support/recurring-ledger';
+import {
+  REMOVED_PARTS,
+  useRecurringGroups as mockUseRecurringGroups,
+} from '@kiko/test-support/mock-recurring-groups';
 import { formatMoney } from '@kiko/currency/format';
 import { holdCard } from '@kiko/test-support/hold-card';
 import { activeLocale } from '@kiko/i18n/active-locale';
@@ -22,7 +26,6 @@ import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
 import { DELETE_CONFIRM_TEST_ID } from '@kiko/design-system/components/card-context-menu';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
-import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
 import RecurringChargesScreen from './recurring-charges.screen';
 
@@ -99,7 +102,6 @@ jest.mock('@kiko/navigation/pane-stack', () => ({
 }));
 
 const ROW = /^recurring-series-row-/;
-const REMOVED_PARTS = /^recurring-charges-(heading-hidden|hidden-|show-again-)/;
 
 const NETFLIX = ledgerOf(monthly(6, 3, 419, { prefix: 'netflix' }));
 const APPLE = ledgerOf([

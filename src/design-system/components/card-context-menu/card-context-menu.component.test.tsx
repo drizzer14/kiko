@@ -283,12 +283,15 @@ describe('CardContextMenu', () => {
   });
 
   describe('the deleteLabel', () => {
-    const LABEL = { deleteLabel: 'Not a recurring charge' };
-
     it('labels the confirm button of a delete-only card with it, and still routes it to onDelete', async () => {
       const onDelete = jest.fn();
       const { getByTestId, queryByText } = await render(
-        <CardContextMenu name="Netflix" deletable onDelete={onDelete} {...LABEL}>
+        <CardContextMenu
+          name="Netflix"
+          deletable
+          onDelete={onDelete}
+          deleteLabel="Not a recurring charge"
+        >
           <Text>card</Text>
         </CardContextMenu>,
         { wrapper: GestureRootWrapper },
@@ -314,7 +317,7 @@ describe('CardContextMenu', () => {
           deletable
           onDelete={onDelete}
           onDuplicate={jest.fn()}
-          {...LABEL}
+          deleteLabel="Not a recurring charge"
         >
           <Text>card</Text>
         </CardContextMenu>,

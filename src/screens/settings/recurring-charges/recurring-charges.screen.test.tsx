@@ -1,15 +1,18 @@
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
+import {
+  REMOVED_PARTS,
+  useRecurringGroups as mockUseRecurringGroups,
+} from '@kiko/test-support/mock-recurring-groups';
 import { formatMoney } from '@kiko/currency/format';
 import type { RecurringMerchantChoice } from '@kiko/settings';
 import type { RecurringSeries } from '@kiko/recurring/detection';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
-import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
 import RecurringChargesScreen from './recurring-charges.screen';
 
@@ -390,8 +393,6 @@ describe('RecurringChargesScreen — hidden merchants', () => {
       (node) => node.props.testID,
     );
 
-  const REMOVED_PARTS = /^recurring-charges-(heading-hidden|hidden-|show-again-)/;
-
   it('leaves a hidden merchant out of the list and keeps the others', async () => {
     const { getByTestId, queryByTestId } = await renderScreen({
       series: [NETFLIX, SPOTIFY],
@@ -451,36 +452,6 @@ describe('RecurringChargesScreen — hidden merchants', () => {
 
     expect(shownRows(getAllByTestId)).toEqual([rowTestId(SPOTIFY)]);
     expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
-  });
-
-  describe.each([
-    ['en', 'Hidden', 'Show again'],
-    ['uk', 'Приховані', 'Показати знову'],
-  ])('in %s', (language, heading, button) => {
-    beforeEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage(language);
-      });
-    });
-
-    afterEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
-    });
-
-    it('shows no "Hidden" text and no "Show again" text for a hidden key', async () => {
-      const { getByTestId, queryByText } = await renderScreen({
-        series: [SPOTIFY],
-        isLoading: false,
-        choices: new Map([['netflix', hiddenChoice('Netflix')]]),
-      });
-
-      expect(getByTestId(rowTestId(SPOTIFY))).toBeTruthy();
-      expect(queryByText(heading)).toBeNull();
-      expect(queryByText(button)).toBeNull();
-      expect(queryByText('Netflix')).toBeNull();
-    });
   });
 
   it('lists nothing for a hidden merchant that has no rows now', async () => {

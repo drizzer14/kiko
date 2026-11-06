@@ -341,15 +341,6 @@ describe('isReminderOfferDismissed', () => {
 
 const hide = (key: string, name: string) => settingsRepo.hideRecurringMerchant(key, name);
 
-type HideWithChain = (
-  key: string,
-  name: string,
-  chain: readonly RecurringMark[],
-) => ReturnType<typeof settingsRepo.hideRecurringMerchant>;
-
-const hideWithChain: HideWithChain = (key, name, chain) =>
-  (settingsRepo.hideRecurringMerchant as HideWithChain)(key, name, chain);
-
 const COLUMN = 'recurring_merchant_choices';
 
 const writeCounts = { count: 0 };
@@ -765,7 +756,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         await mark('apple', 'Apple', APPLE_399);
         writeCounts.count = 0;
 
-        await hideWithChain('apple', 'Apple', [APPLE_99]);
+        await settingsRepo.hideRecurringMerchant('apple', 'Apple', [APPLE_99]);
 
         expect(writeCounts.count).toBe(1);
         expect(storedEntries()).toEqual(
@@ -777,7 +768,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         await mark('apple', 'Apple', APPLE_99);
         await mark('apple', 'Apple', APPLE_399);
 
-        await hideWithChain('apple', 'Apple', [APPLE_99, APPLE_399]);
+        await settingsRepo.hideRecurringMerchant('apple', 'Apple', [APPLE_99, APPLE_399]);
 
         expect(storedEntries().get('apple')).toStrictEqual({ name: 'Apple', hidden: true });
       });
@@ -788,7 +779,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         await mark('apple', 'Apple', APPLE_99);
         await mark('apple', 'Apple', apple99Dollars);
 
-        await hideWithChain('apple', 'Apple', [APPLE_99]);
+        await settingsRepo.hideRecurringMerchant('apple', 'Apple', [APPLE_99]);
 
         expect(storedEntries().get('apple')).toEqual({
           name: 'Apple',
@@ -800,7 +791,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
       it('hides a key that holds no mark of the chain, and takes the last name', async () => {
         await mark('apple', 'Apple', APPLE_399);
 
-        await hideWithChain('apple', 'APPLE', [APPLE_99]);
+        await settingsRepo.hideRecurringMerchant('apple', 'APPLE', [APPLE_99]);
 
         expect(storedEntries().get('apple')).toEqual({
           name: 'APPLE',
@@ -810,7 +801,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
       });
 
       it('hides an absent key with an empty chain, as a hide with no chain does', async () => {
-        await hideWithChain('apple', 'Apple', []);
+        await settingsRepo.hideRecurringMerchant('apple', 'Apple', []);
 
         expect(storedEntries()).toEqual(new Map([['apple', { name: 'Apple', hidden: true }]]));
       });
@@ -819,7 +810,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         await mark('apple', 'Apple', APPLE_99);
         await mark('apple', 'Apple', APPLE_399);
 
-        await hideWithChain('apple', 'Apple', []);
+        await settingsRepo.hideRecurringMerchant('apple', 'Apple', []);
 
         expect(storedEntries().get('apple')).toEqual({
           name: 'Apple',
@@ -832,7 +823,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         await mark('apple', 'Apple', APPLE_99);
         await mark('netflix', 'Netflix', APPLE_99);
 
-        await hideWithChain('apple', 'Apple', [APPLE_99]);
+        await settingsRepo.hideRecurringMerchant('apple', 'Apple', [APPLE_99]);
 
         expect(storedEntries().get('netflix')).toEqual({ name: 'Netflix', marks: [APPLE_99] });
       });
@@ -846,7 +837,7 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
       await setPeriod('apple', [APPLE_99], 'yearly');
       await hide('apple', 'Apple');
       await unmark('apple', [APPLE_399]);
-      await hideWithChain('apple', 'Apple', [markOf(9_900, 'yearly')]);
+      await settingsRepo.hideRecurringMerchant('apple', 'Apple', [markOf(9_900, 'yearly')]);
       await unmark('apple', [markOf(9_900, 'yearly')]);
 
       expect(before.count).toBe(2);

@@ -1,17 +1,21 @@
 import type { ComponentProps } from 'react';
+import { Dimensions, StyleSheet } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { settingsRepo } from '@kiko/settings';
+import {
+  REMOVED_PARTS,
+  useRecurringGroups as mockUseRecurringGroups,
+} from '@kiko/test-support/mock-recurring-groups';
 import { formatMoney } from '@kiko/currency/format';
 import { chargesAt } from '@kiko/test-support/marked-series-worlds';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ledgerOf, monthly, chargeOf, at } from '@kiko/test-support/recurring-ledger';
 import { hookStateOf, type MarkedNames } from '@kiko/test-support/marked-series-hook-result';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
-import { useRecurringGroups as mockUseRecurringGroups } from '@kiko/test-support/mock-recurring-groups';
 
 import RecurringChargesScreen from './recurring-charges.screen';
 
@@ -52,7 +56,6 @@ const renderScreen = async (state: HookState) => {
 
 const ROW = /^recurring-series-row-/;
 const EMPTY = 'recurring-charges-empty';
-const REMOVED_PARTS = /^recurring-charges-(heading-hidden|hidden-|show-again-)/;
 
 const markedEmptyHeading = (): string => i18n.t('recurringCharges.markedEmptyHeading');
 const markedEmptyMessage = (): string => i18n.t('recurringCharges.markedEmptyMessage');
@@ -268,6 +271,55 @@ describe('RecurringChargesScreen — Marked, No Charges', () => {
     expect(getByText(markedEmptyHeading())).toBeTruthy();
     expect(queryAllByTestId(REMOVED_PARTS)).toHaveLength(0);
     expect(queryByText('Zeta')).toBeNull();
+  });
+});
+
+describe('RecurringChargesScreen — Marked, No Charges at a large text size', () => {
+  // The first accessibility text size, AX1, is 28 pt against the 17 pt body: the scale from which
+  // `PairedFieldsRow` stacks, held here as a literal because that constant sits in another
+  // screen's folder.
+  const STACK_FONT_SCALE = 28 / 17;
+  const DEFAULT_FONT_SCALE = 2;
+
+  const renderAt = async (fontScale: number) => {
+    Dimensions.set({ window: { ...Dimensions.get('window'), fontScale } });
+
+    return renderScreen(hookStateOf(ledgerOf([]), GHOSTS));
+  };
+
+  afterEach(() => {
+    Dimensions.set({ window: { ...Dimensions.get('window'), fontScale: DEFAULT_FONT_SCALE } });
+  });
+
+  const directionsOfRows = (screen: Awaited<ReturnType<typeof renderAt>>): unknown[] =>
+    screen.getAllByTestId(/^recurring-charges-marked-empty-/).map((nameBlock) => {
+      const button = screen.getByTestId(
+        nameBlock.props.testID.replace('marked-empty', 'remove-mark'),
+      );
+      let shared = nameBlock.parent;
+
+      while (shared !== null && within(shared).queryByTestId(button.props.testID) === null) {
+        shared = shared.parent;
+      }
+
+      return StyleSheet.flatten(shared?.props.style)?.flexDirection;
+    });
+
+  it('keeps the name beside its button in a row at the size just under AX1', async () => {
+    const screen = await renderAt(STACK_FONT_SCALE - 0.01);
+    const directions = directionsOfRows(screen);
+
+    expect(directions).toHaveLength(4);
+    expect(directions.every((direction) => direction === 'row')).toBe(true);
+  });
+
+  it('stacks the button under the name and message at AX1', async () => {
+    const screen = await renderAt(STACK_FONT_SCALE);
+    const directions = directionsOfRows(screen);
+
+    expect(directions).toHaveLength(4);
+    expect(directions.some((direction) => direction === 'row')).toBe(false);
+    expect(screen.getAllByText(removeMarkText())).toHaveLength(4);
   });
 });
 
