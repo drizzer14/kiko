@@ -222,6 +222,33 @@ Keep `chartSeriesDark` and the other dark blocks of `palette.ts` in place, and p
 below them. The palette check reads `palette.ts` by text position, so code placed above a dark
 block fails it.
 
+## Native chrome follows the window
+
+The window's interface style decides the scheme of every native view: the OS sets it, and
+`Appearance.setColorScheme` sets it for the Light and Dark modes. No file pins a scheme beside
+it, and no file switches the Unistyles theme by hand. Three pre-write guard rules in
+`rules/semgrep-prewrite.yml` keep it so; each has a fixture pair under `rules/fixtures/`.
+
+- `kiko-no-unistyles-set-theme`: no call of `UnistylesRuntime.setTheme` or
+  `UnistylesRuntime.setAdaptiveThemes`. Unistyles' `adaptiveThemes` setting, passed to
+  `StyleSheet.configure`, is the one theme switch, and it follows the window. A manual call is a
+  second switch that can disagree with the native chrome, and on Unistyles 3.3.0 these two calls
+  were the #1179 path. Reading `UnistylesRuntime.themeName` stays allowed.
+- `kiko-no-hard-coded-native-scheme`: no `colorScheme="dark"` or `colorScheme="light"` JSX prop
+  (`colorScheme="system"` follows the window, as `GlassSurface` and `BottomSheet` set it), no
+  `keyboardAppearance` of `'dark'` or `'light'` as a prop or an object field (an input that sets
+  none takes the window's style), and no `headerBlurEffect` whose string ends in `Dark` or
+  `Light` in any case (`systemChromeMaterial` has no scheme in its name, so it follows the
+  window; `large-title-screen-options.ts` uses it). A pinned value keeps the view in the old
+  scheme when the window changes, and the dark-only app hid that.
+- `kiko-no-nested-text`: no `Text` or `MoneyText` inside a `Text`. Unistyles 3.6.0 (issue #1329)
+  leaves a nested `Text` on its old color under a Reanimated view when the theme changes; the fix
+  (PR #1353) ships in 3.8.0, so the nested form waits for that version. The tree has no nested
+  site. Put the parts side by side in a `View`, or render one `Text` with the whole string.
+
+The tab bar's `tabBarStyle`, `tabBarActiveTintColor` and `tabBarInactiveTintColor` stay as props
+read from `useUnistyles`: they carry token colors, not a scheme, and are outside all three rules.
+
 ## Locked decisions (user-approved)
 
 Each entry is a visual the user approved. Never change or revert one —
