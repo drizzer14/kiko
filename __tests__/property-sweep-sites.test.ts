@@ -48,6 +48,7 @@ describe('property sweep sites', () => {
       'src/recurring/detection/detection.test.ts',
       'src/recurring/eligibility/eligibility.test.ts',
       'src/recurring/marked-series/marked-series.test.ts',
+      'src/statistics/cash-flow/cash-flow.property.test.ts',
       'src/statistics/category-by-month/category-by-month.property.test.ts',
       'src/statistics/internal-transfers/internal-transfers.test.ts',
       'src/transactions/merchant-name/merchant-name.test.ts',
