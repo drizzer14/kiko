@@ -69,6 +69,155 @@ export const transferRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// The log page's three sample rows, as the page prints them (a SETTLEMENT and two linear TRADE
+// rows, from the page's response example read 2026-11-06). No page shows a spot row.
+export const LOG_PAGE_SAMPLE = [
+  {
+    transSubType: '',
+    id: '592324_XRPUSDT_161440249321',
+    symbol: 'XRPUSDT',
+    side: 'Buy',
+    funding: '-0.003676',
+    orderLinkId: '',
+    orderId: '1672128000-8-592324-1-2',
+    fee: '0.00000000',
+    change: '-0.003676',
+    cashFlow: '0',
+    transactionTime: '1672128000000',
+    type: 'SETTLEMENT',
+    feeRate: '0.0001',
+    bonusChange: '',
+    size: '100',
+    qty: '100',
+    cashBalance: '5086.55825002',
+    currency: 'USDT',
+    category: 'linear',
+    tradePrice: '0.3676',
+    tradeId: '534c0003-4bf7-486f-aa02-78cee36825e4',
+    extraFees: '',
+  },
+  {
+    transSubType: '',
+    id: '592324_XRPUSDT_161440249321',
+    symbol: 'XRPUSDT',
+    side: 'Buy',
+    funding: '',
+    orderLinkId: 'linear-order',
+    orderId: '592b7e41-78fd-42e2-9aa3-91e1835ef3e1',
+    fee: '0.01908720',
+    change: '-0.0190872',
+    cashFlow: '0',
+    transactionTime: '1672121182224',
+    type: 'TRADE',
+    feeRate: '0.0006',
+    bonusChange: '-0.1430544',
+    size: '100',
+    qty: '88',
+    cashBalance: '5086.56192602',
+    currency: 'USDT',
+    category: 'linear',
+    tradePrice: '0.3615',
+    tradeId: '5184f079-88ec-54c7-8774-5173cafd2b4e',
+    extraFees: '',
+  },
+  {
+    transSubType: '',
+    id: '592324_XRPUSDT_161407743011',
+    symbol: 'XRPUSDT',
+    side: 'Buy',
+    funding: '',
+    orderLinkId: 'linear-order',
+    orderId: '592b7e41-78fd-42e2-9aa3-91e1835ef3e1',
+    fee: '0.00260280',
+    change: '-0.0026028',
+    cashFlow: '0',
+    transactionTime: '1672121182224',
+    type: 'TRADE',
+    feeRate: '0.0006',
+    bonusChange: '',
+    size: '12',
+    qty: '12',
+    cashBalance: '5086.58101322',
+    currency: 'USDT',
+    category: 'linear',
+    tradePrice: '0.3615',
+    tradeId: '8569c10f-5061-5891-81c4-a54929847eb3',
+    extraFees: '',
+  },
+];
+
+export const SPOT_TRADE_ID = '5184f079-88ec-54c7-8774-5173cafd2b4e';
+
+/**
+ * A spot TRADE row, BUILT on the field words of the page's TRADE sample and never read from a live
+ * answer (no page shows a spot row): 0.003 BTC bought, with a fee of 0.000003 BTC inside the
+ * change, so `change + fee = qty`. `userId`, `orderLinkId` and `extInfo` hold a sentinel: the
+ * client must read none of them (the page lists no `userId` and no `extInfo` on this route).
+ */
+export const spotLogRow = (overrides: Record<string, unknown> = {}) => ({
+  ...LOG_PAGE_SAMPLE[1],
+  symbol: 'BTCUSDT',
+  currency: 'BTC',
+  category: 'spot',
+  qty: '0.003',
+  fee: '0.000003',
+  change: '0.002997',
+  tradeId: SPOT_TRADE_ID,
+  orderLinkId: NEVER_READ,
+  userId: NEVER_READ,
+  extInfo: { paramType: NEVER_READ, paramValue: NEVER_READ },
+  ...overrides,
+});
+
+// The convert page's two sample rows, as the page prints them (response example read 2026-11-06).
+export const CONVERT_PAGE_SAMPLE = [
+  {
+    accountType: 'eb_convert_funding',
+    exchangeTxId: '10100108106409343501030232064',
+    userId: 'XXXXX',
+    fromCoin: 'ETH',
+    fromCoinType: 'crypto',
+    fromAmount: '0.1',
+    toCoin: 'BTC',
+    toCoinType: 'crypto',
+    toAmount: '0.00534882723991',
+    exchangeStatus: 'success',
+    extInfo: { paramType: 'opFrom', paramValue: 'broker-id-001' },
+    convertRate: '0.0534882723991',
+    createdAt: '1720071899995',
+  },
+  {
+    accountType: 'eb_convert_uta',
+    exchangeTxId: '23070eb_convert_uta408933875189391360',
+    userId: 'XXXXX',
+    fromCoin: 'BTC',
+    fromCoinType: 'crypto',
+    fromAmount: '0.1',
+    toCoin: 'ETH',
+    toCoinType: 'crypto',
+    toAmount: '1.773938248611074',
+    exchangeStatus: 'success',
+    extInfo: {},
+    convertRate: '17.73938248611074',
+    createdAt: '1719974243256',
+  },
+];
+
+/** The UTA convert of the page's sample, with the fields the client must never read set apart. */
+export const convertRow = (overrides: Record<string, unknown> = {}) => ({
+  ...CONVERT_PAGE_SAMPLE[1],
+  userId: NEVER_READ,
+  extInfo: { paramType: NEVER_READ, paramValue: NEVER_READ },
+  convertRate: NEVER_READ,
+  fromCoinType: NEVER_READ,
+  toCoinType: NEVER_READ,
+  ...overrides,
+});
+
+/** A row without one of its fields: an absent field is no `undefined` value of that field. */
+export const withoutField = (row: Record<string, unknown>, field: string) =>
+  Object.fromEntries(Object.entries(row).filter(([name]) => name !== field));
+
 /** A fetch that answers one page of the route's list, with the cursor the page names. */
 export const pageAnswer = (field: 'rows' | 'list', list: unknown, nextPageCursor: unknown = '') =>
   answerWith({ body: envelopeOf(0, { [field]: list, nextPageCursor }) });

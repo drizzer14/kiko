@@ -444,7 +444,10 @@ verified usage, not dead weight:
   `src/crypto-sync/bybit/bybit.client-test-fixtures.ts` (`msg`, from `retMsg`) mirrors the text
   field of Bybit's own answer envelope `{retCode, retMsg, result}`;
   `src/crypto-sync/bybit/bybit.history-test-fixtures.ts` (`tx`, from `txID`) mirrors the literal
-  `txID` field of Bybit's internal deposit page, so the fixture carries a sentinel in it;
+  `txID` field of Bybit's internal deposit page, so the fixture carries a sentinel in it; the same
+  fixture file, `src/crypto-sync/bybit/bybit.history-client.ts` and
+  `src/crypto-sync/bybit/bybit.history-client.convert.test.ts` (`tx`, from `exchangeTxId`) mirror
+  the literal `exchangeTxId` field of Bybit's convert history page;
   `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts`/`.placement.test.ts`
   and `binance.pay-history.real-sqlite.test.ts` (`tx`, from `txId`) mirror the literal field name on Binance's deposit/withdraw
   history records (`GET /sapi/v1/capital/deposit/hisrec` and

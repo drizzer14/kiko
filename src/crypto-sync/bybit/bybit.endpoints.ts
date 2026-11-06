@@ -4,9 +4,11 @@
 
 /** The signed (key and secret) paths the app reads. */
 export const BYBIT_SIGNED_PATHS = [
+  '/v5/account/transaction-log',
   '/v5/account/wallet-balance',
   '/v5/asset/deposit/query-internal-record',
   '/v5/asset/deposit/query-record',
+  '/v5/asset/exchange/query-convert-history',
   '/v5/asset/transfer/query-account-coins-balance',
   '/v5/asset/transfer/query-inter-transfer-list',
   '/v5/asset/withdraw/query-record',

@@ -197,6 +197,24 @@ const EXEMPTIONS = [
     name: 'txID',
     reason: 'the internal deposit fixture mirrors the literal txID field of Bybit’s page',
   },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-test-fixtures.ts',
+    word: 'tx',
+    name: 'exchangeTxId',
+    reason: 'the convert fixtures mirror the literal exchangeTxId field of Bybit’s page',
+  },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-client.convert.test.ts',
+    word: 'tx',
+    name: 'exchangeTxId',
+    reason: 'the convert tests name the literal exchangeTxId field of Bybit’s page',
+  },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-client.ts',
+    word: 'tx',
+    name: 'exchangeTxId',
+    reason: 'the convert reader names the literal exchangeTxId field of Bybit’s page',
+  },
 ];
 
 const isExempt = (targetPath, word, name) => {

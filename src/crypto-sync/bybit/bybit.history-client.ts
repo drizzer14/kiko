@@ -7,6 +7,7 @@ import type { WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 import type { BybitSignedPath } from './bybit.endpoints';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_HISTORY_PAGE_SIZE } from './bybit.walk-config';
+import { type BybitLogKind, kindOfLogRow } from './bybit.log-types';
 import { type BybitReadOptions, signedBybitGet } from './bybit.client';
 
 /**
@@ -152,8 +153,15 @@ type Series<Row> = {
   params: Record<string, string>;
   /** The fields a window filters on. The first is the time the row shows. */
   timeFields: readonly string[];
+  /**
+   * The coin a row is counted by when the app does not track it: `coin` unless the series says
+   * otherwise. A row of no such coin is read in full.
+   */
+  coinOf?: (fields: Record<string, unknown>) => unknown;
   readRow: (fields: Record<string, unknown>) => Row;
 };
+
+const coinFieldOf = (fields: Record<string, unknown>): unknown => fields.coin;
 
 const readingsOf = (fields: Record<string, unknown>, names: readonly string[]): WalkWindow[] =>
   names.flatMap((name) => foldMap(maybe(readableTimeOf(fields[name])), (time) => [time]) ?? []);
@@ -171,8 +179,10 @@ const itemOf =
     const times = readingsOf(value, series.timeFields).flatMap(instantsOf);
     const time = readableTimeOf(value[series.timeFields[0]]);
 
-    if (typeof value.coin === 'string' && value.coin !== '' && !isTrackedBybitAsset(value.coin)) {
-      return { kind: 'untracked', times, ticker: value.coin, status: statusOf(value.status), time };
+    const coin = (series.coinOf ?? coinFieldOf)(value);
+
+    if (typeof coin === 'string' && coin !== '' && !isTrackedBybitAsset(coin)) {
+      return { kind: 'untracked', times, ticker: coin, status: statusOf(value.status), time };
     }
 
     return bifoldMap(
@@ -296,3 +306,132 @@ export const fetchTransferPage = fetcherOf({
     time: timeOf(fields.timestamp),
   }),
 });
+
+type SpotTradeRow = {
+  logKind: 'spotTrade';
+  id: string;
+  symbol: string;
+  currency: string;
+  qty: string;
+  fee: string;
+  change: string;
+  orderId: string;
+  /** Whether the row names a trade. The value of `tradeId` is never kept. */
+  hasTradeId: boolean;
+  time: WalkWindow | undefined;
+};
+
+/** An entry of any other kind gives its kind and its time, and no field of it is read. */
+type LogEntryRow = { logKind: Exclude<BybitLogKind, 'spotTrade'>; time: WalkWindow | undefined };
+
+/**
+ * A spot trade is read by the named fields of the log table. `side`, `cashFlow`, `funding`, the
+ * prices and the order link are never read, and `userId` and `extInfo` have no place here. An
+ * entry of another kind is never imported, so a time it cannot give is no loss and does not make
+ * it unreadable (a perps account sends thousands of them).
+ */
+const readLogRow = (fields: Record<string, unknown>): SpotTradeRow | LogEntryRow => {
+  const logKind = kindOfLogRow(fields.type, fields.category);
+
+  if (logKind !== 'spotTrade') {
+    return { logKind, time: readableTimeOf(fields.transactionTime) };
+  }
+
+  return {
+    logKind,
+    id: identifier(fields.id),
+    symbol: nonEmptyText(fields.symbol),
+    currency: nonEmptyText(fields.currency),
+    qty: text(fields.qty),
+    fee: text(fields.fee),
+    change: text(fields.change),
+    orderId: identifier(fields.orderId),
+    hasTradeId: optionalIdentifier(fields.tradeId) !== undefined,
+    time: timeOf(fields.transactionTime),
+  };
+};
+
+/**
+ * The Unified account's transaction log. No `category`, no `type` and no `currency` is sent, so
+ * every entry comes back and can be named in the line. Only a spot trade is counted by a coin,
+ * its `currency`.
+ */
+export const fetchLogPage = fetcherOf({
+  path: '/v5/account/transaction-log',
+  list: 'list',
+  params: { accountType: 'UNIFIED' },
+  timeFields: ['transactionTime'],
+  coinOf: (fields) =>
+    kindOfLogRow(fields.type, fields.category) === 'spotTrade' ? fields.currency : undefined,
+  readRow: readLogRow,
+});
+
+/** The rows asked of the convert history per page: the most the page allows. */
+const CONVERT_PAGE_SIZE = 100;
+
+type ConvertRow = {
+  /** The wallet word as the page sent it: the walk decides which words it knows. */
+  accountType: string;
+  exchangeTransactionId: string;
+  fromCoin: string;
+  toCoin: string;
+  fromAmount: string;
+  toAmount: string;
+  exchangeStatus: string;
+  /** No time when the page sent none that can be read: the walk refuses such a row. */
+  time: WalkWindow | undefined;
+};
+
+type ConvertItem =
+  | { kind: 'row'; row: ConvertRow }
+  | { kind: 'unreadable'; time: WalkWindow | undefined };
+
+const readConvertRow = (fields: Record<string, unknown>): ConvertRow => ({
+  accountType: text(fields.accountType),
+  exchangeTransactionId: identifier(fields.exchangeTxId),
+  fromCoin: nonEmptyText(fields.fromCoin),
+  toCoin: nonEmptyText(fields.toCoin),
+  fromAmount: text(fields.fromAmount),
+  toAmount: text(fields.toAmount),
+  exchangeStatus: text(fields.exchangeStatus),
+  time: readableTimeOf(fields.createdAt),
+});
+
+const convertItemOf = (value: unknown): ConvertItem => {
+  if (!isRecord(value)) {
+    return { kind: 'unreadable', time: undefined };
+  }
+
+  return bifoldMap(
+    eitherSync<unknown, ConvertRow>(() => readConvertRow(value)),
+    (): ConvertItem => ({ kind: 'unreadable', time: readableTimeOf(value.createdAt) }),
+    (row): ConvertItem => ({ kind: 'row', row }),
+  );
+};
+
+/**
+ * One page of the convert history, by `index`. The route has no time, no cursor and no wallet
+ * type, so every wallet comes back. `userId`, `extInfo`, `convertRate` and the coin types are
+ * never read.
+ */
+export const fetchConvertPage = async (
+  apiKey: string,
+  secret: string,
+  { index }: { index: number },
+  options: BybitReadOptions = {},
+): Promise<{ rows: ConvertItem[] }> => {
+  const result = await signedBybitGet(
+    apiKey,
+    secret,
+    '/v5/asset/exchange/query-convert-history',
+    { index: String(index), limit: String(CONVERT_PAGE_SIZE) },
+    options,
+  );
+  const list = isRecord(result) ? result.list : undefined;
+
+  if (!Array.isArray(list)) {
+    return parseFailure();
+  }
+
+  return { rows: list.map((value) => convertItemOf(value)) };
+};

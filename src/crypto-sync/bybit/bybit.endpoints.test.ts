@@ -9,10 +9,12 @@ import {
   signedBybitGet,
 } from './bybit.client';
 import {
+  fetchLogPage,
+  fetchConvertPage,
   fetchDepositPage,
-  fetchInternalDepositPage,
   fetchTransferPage,
   fetchWithdrawalPage,
+  fetchInternalDepositPage,
 } from './bybit.history-client';
 import { BYBIT_SIGNED_PATHS } from './bybit.endpoints';
 import { API_KEY, SECRET, answerWith, envelopeOf } from './bybit.client-test-fixtures';
@@ -22,9 +24,11 @@ const ROOT = path.join(__dirname, '../../..');
 // The closed list of reads. A route is added here, by its literal, in the step that adds it, so no
 // other path can reach the client without this file changing in the same commit.
 const READ_PATHS = [
+  '/v5/account/transaction-log',
   '/v5/account/wallet-balance',
   '/v5/asset/deposit/query-internal-record',
   '/v5/asset/deposit/query-record',
+  '/v5/asset/exchange/query-convert-history',
   '/v5/asset/transfer/query-account-coins-balance',
   '/v5/asset/transfer/query-inter-transfer-list',
   '/v5/asset/withdraw/query-record',
@@ -78,6 +82,8 @@ describe('the closed list of Bybit reads', () => {
     await fetchInternalDepositPage(API_KEY, SECRET, FIRST_PAGE);
     await fetchWithdrawalPage(API_KEY, SECRET, FIRST_PAGE);
     await fetchTransferPage(API_KEY, SECRET, FIRST_PAGE);
+    await fetchLogPage(API_KEY, SECRET, FIRST_PAGE);
+    await fetchConvertPage(API_KEY, SECRET, { index: 1 });
     fetchSpy.mockRestore();
 
     expect(sent.map((request) => pathOf(request.url)).sort()).toEqual(READ_PATHS);
