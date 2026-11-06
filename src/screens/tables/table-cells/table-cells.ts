@@ -38,6 +38,31 @@ export const cellOf = (amount: number, label: string, spoken: Spoken): DataTable
   };
 };
 
+/**
+ * A money cell that opens the rows behind it, with the hint that says so. A cell of exactly zero
+ * has no rows to show, so it stays a plain cell rather than read as a button that opens nothing.
+ */
+export const openingCellOf = (
+  amount: number,
+  label: string,
+  spoken: Spoken,
+  open: () => void,
+): DataTableCell => {
+  const cell = cellOf(amount, label, spoken);
+
+  return amount === 0
+    ? cell
+    : { ...cell, onPress: open, accessibilityHint: spoken.t('tables.cellRows.hint') };
+};
+
+/** The whole period, first month's start to last month's end: the range of a Total cell. */
+export const periodOf = (
+  months: readonly CalendarMonth[],
+): Pick<CalendarMonth, 'start' | 'end'> => ({
+  start: months[0].start,
+  end: months[months.length - 1].end,
+});
+
 /** A dash for a value there is none of, with a word for VoiceOver instead of silence. */
 export const dashCellOf = (label: string, spokenValue: string): DataTableCell => ({
   text: NO_VALUE,

@@ -17,6 +17,8 @@ export type CategoryTableProps = {
   defaultCategoryKey: string;
   /** Category keys a held pick leaves out; empty means every category. */
   excludedCategories: ReadonlySet<string>;
+  /** The screen's count of times it stopped showing; a sheet opened before the last one closes. */
+  sheetGeneration: number;
   /**
    * The filters and the period. They scroll with the caption above the rows, and stay on screen
    * in the empty state, where they are the way out of an empty period.

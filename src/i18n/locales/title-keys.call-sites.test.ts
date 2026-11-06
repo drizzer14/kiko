@@ -103,6 +103,8 @@ const UNCHECKED_HEADING_SITES: Record<string, string> = {
     'the recurring series’ title, the merchant’s own text from the route',
   'screens/settings/help/help.screen.tsx#group.titleKey':
     'the help group’s title, whose key help-topics.test.ts requires in TITLE_KEYS for every group',
+  'screens/tables/cell-rows-sheet/cell-rows-sheet.component.tsx#title':
+    'the label of a table cell, a row name (a category title or a cash flow line) and a month',
   'screens/forms/category-form/category-form.screen.tsx#displayName':
     'the category’s display name, the localized default or the title the user typed',
   'design-system/components/card-context-menu/card-context-menu.component.tsx#name':

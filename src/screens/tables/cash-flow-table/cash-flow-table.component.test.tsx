@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import type { ComponentProps } from 'react';
-import { render } from '@testing-library/react-native';
+import { act, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
@@ -79,6 +79,7 @@ const propsOf = (
   rateTable: {},
   baseCurrency: 'UAH',
   defaultCategoryKey: 'other',
+  sheetGeneration: 0,
   topContent: <View testID="table-controls" />,
   ...overrides,
 });
@@ -275,6 +276,126 @@ describe('CashFlowTable', () => {
     const { table } = await shown(propsOf(WORLD));
 
     expect(table.initialColumnIndex).toBe(3);
+  });
+
+  describe('a cell that opens the rows behind it', () => {
+    const HINT = 'Shows the rows behind this amount.';
+    // 0 January, 1 February, 2 March, 3 April, 4 May, 5 June, 6 Total, 7 Average. The columns
+    // of each line that hold an amount, which are the ones that open.
+    const OPENING_COLUMNS: Record<string, number[]> = {
+      income: [0, 2, 5, 6],
+      expenses: [0, 1, 2, 6],
+    };
+
+    const pressed = async (props: CashFlowTableProps, key: string, column: number) => {
+      const { rendered, table } = await shown(props);
+
+      await act(async () => {
+        cellsOf(table, key)[column].onPress?.();
+      });
+
+      return { rendered, table };
+    };
+
+    const rowIdsOf = (rendered: Awaited<ReturnType<typeof shown>>['rendered']) =>
+      rendered.getAllByTestId(/^cell-row-/).map((row) => row.props.testID);
+
+    it.each(['income', 'expenses'])(
+      'opens from a month and the Total of %s, with a hint',
+      async (key) => {
+        const { table } = await shown(propsOf(WORLD));
+
+        for (const column of OPENING_COLUMNS[key]) {
+          expect(cellsOf(table, key)[column].onPress).toBeInstanceOf(Function);
+          expect(cellsOf(table, key)[column].accessibilityHint).toBe(HINT);
+        }
+      },
+    );
+
+    it.each(['income', 'expenses', 'net', 'savings-rate'])(
+      'does not open from the Average of %s',
+      async (key) => {
+        const { table } = await shown(propsOf(WORLD));
+
+        expect(cellsOf(table, key)[7].onPress).toBeUndefined();
+        expect(cellsOf(table, key)[7].accessibilityHint).toBeUndefined();
+      },
+    );
+
+    it.each([0, 1, 2, 3, 4, 5, 6])('does not open from column %i of net', async (column) => {
+      const { table } = await shown(propsOf(WORLD));
+
+      expect(cellsOf(table, 'net')[column].onPress).toBeUndefined();
+      expect(cellsOf(table, 'net')[column].accessibilityHint).toBeUndefined();
+    });
+
+    it.each([0, 1, 2, 3, 4, 5, 6])(
+      'does not open from column %i of the savings rate',
+      async (column) => {
+        const { table } = await shown(propsOf(WORLD));
+
+        expect(cellsOf(table, 'savings-rate')[column].onPress).toBeUndefined();
+        expect(cellsOf(table, 'savings-rate')[column].accessibilityHint).toBeUndefined();
+      },
+    );
+
+    it('does not open from a cell of zero', async () => {
+      const { table } = await shown(propsOf(WORLD));
+
+      expect(cellsOf(table, 'income')[1].text).toBe('0');
+      expect(cellsOf(table, 'income')[1].onPress).toBeUndefined();
+      expect(cellsOf(table, 'expenses')[5].text).toBe('0');
+      expect(cellsOf(table, 'expenses')[5].onPress).toBeUndefined();
+    });
+
+    it('lists the credits of a month under its income cell, adding up to the cell', async () => {
+      const { rendered, table } = await pressed(propsOf(WORLD), 'income', 0);
+
+      expect(rendered.getByText('Income, January 2025')).toBeTruthy();
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-salary-jan']);
+      expect(
+        within(rendered.getByTestId('cell-rows-total')).getByText(
+          cellsOf(table, 'income')[0].accessibilityValue,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('lists the credits of the whole period under the Total of income', async () => {
+      const { rendered, table } = await pressed(propsOf(WORLD), 'income', 6);
+
+      expect(rendered.getByText('Income, Total')).toBeTruthy();
+      expect(rowIdsOf(rendered)).toEqual([
+        'cell-row-pay-jun',
+        'cell-row-pay-mar',
+        'cell-row-salary-jan',
+      ]);
+      expect(
+        within(rendered.getByTestId('cell-rows-total')).getByText(
+          cellsOf(table, 'income')[6].accessibilityValue,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('lists the spending of a month under its expenses cell, adding up to the cell', async () => {
+      const { rendered, table } = await pressed(propsOf(WORLD), 'expenses', 2);
+
+      expect(rendered.getByText('Expenses, March 2025')).toBeTruthy();
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-spend-mar']);
+      expect(
+        within(rendered.getByTestId('cell-rows-total')).getByText(
+          cellsOf(table, 'expenses')[2].accessibilityValue,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('closes the sheet when the screen stops showing, which moves the generation on', async () => {
+      const props = propsOf(WORLD);
+      const { rendered } = await pressed(props, 'income', 0);
+
+      await rendered.rerender(<CashFlowTable {...props} sheetGeneration={1} />);
+
+      expect(rendered.queryByText('Income, January 2025')).toBeNull();
+    });
   });
 
   describe('the caption', () => {

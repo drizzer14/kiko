@@ -256,6 +256,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               baseCurrency={baseCurrency}
               defaultCategoryKey={defaultCategoryKey}
               excludedCategories={excludedCategories}
+              sheetGeneration={sheetGeneration}
               topContent={controls}
             />
           ))
@@ -268,6 +269,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               rateTable={rateTable}
               baseCurrency={baseCurrency}
               defaultCategoryKey={defaultCategoryKey}
+              sheetGeneration={sheetGeneration}
               topContent={controls}
             />
           ))

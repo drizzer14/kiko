@@ -1,7 +1,7 @@
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
-import { act, renderHook } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { act, fireEvent, renderHook, within } from '@testing-library/react-native';
 import { answerFilterData, transactionRowOf } from '@kiko/test-support/statistics-filter-data';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
@@ -55,6 +55,43 @@ describe('TablesScreen', () => {
       expect(figure('Expenses')).toBe('400.00 ₴');
       expect(figure('Net')).toBe('100.00 ₴');
       expect(figure('Savings rate')).toBe('20%');
+    });
+
+    describe('a tap on a cell', () => {
+      const tapped = async (label: string) => {
+        const rendered = await renderTables({ view: 'cashFlow' });
+
+        await act(async () => {
+          await fireEvent.press(rendered.getByLabelText(`${label}, ${SPENT_IN}`));
+        });
+
+        return rendered;
+      };
+
+      it('opens the credits of the month under its income cell, adding up to it', async () => {
+        withRows(SALARY);
+
+        const { getByTestId } = await tapped('Income');
+
+        expect(within(getByTestId('cell-row-salary')).getByText('500.00 ₴')).toBeTruthy();
+        expect(within(getByTestId('cell-rows-total')).getByText('500.00 ₴')).toBeTruthy();
+      });
+
+      it('opens the spending of the month under its expenses cell, adding up to it', async () => {
+        withRows(SALARY);
+
+        const { getByTestId } = await tapped('Expenses');
+
+        expect(within(getByTestId('cell-rows-total')).getByText('400.00 ₴')).toBeTruthy();
+      });
+
+      it.each(['Net', 'Savings rate'])('opens nothing from the %s cell', async (label) => {
+        withRows(SALARY);
+
+        const { queryByTestId } = await tapped(label);
+
+        expect(queryByTestId('cell-rows-sheet')).toBeNull();
+      });
     });
 
     it('writes the income row label in English, the text the language switch must remove', async () => {

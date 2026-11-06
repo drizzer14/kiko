@@ -1443,6 +1443,13 @@ export const en = {
       caption: "Spending by category in {{currency}}, in whole units, at today's rate.",
       partialMonth: 'The latest month is not over yet, so the average leaves it out.',
     },
+    cellRows: {
+      // Read for a cell that opens a list of the rows behind its amount.
+      hint: 'Shows the rows behind this amount.',
+      // The interest or the fee of a loan payment, which is filed under its own category.
+      loanPayment: 'Part of a loan payment.',
+      noDescription: 'No description',
+    },
     empty: {
       title: 'No spending in this period',
       message: 'Pick another period, or other accounts or categories, to see a table.',

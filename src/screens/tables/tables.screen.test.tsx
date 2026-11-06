@@ -126,6 +126,39 @@ describe('TablesScreen', () => {
         expect(spokenValue(getByLabelText(`All, ${SPENT_IN}`))).toBe('300.00 ₴');
       });
     });
+
+    describe('a tap on a cell', () => {
+      const tapped = async (label: string) => {
+        const rendered = await renderTables();
+
+        await act(async () => {
+          await fireEvent.press(rendered.getByLabelText(label));
+        });
+
+        return rendered;
+      };
+
+      it('opens the rows of a month cell in a sheet titled by the cell, adding up to it', async () => {
+        const { getByTestId, getByText } = await tapped(`Groceries, ${SPENT_IN}`);
+        const sheet = within(getByTestId('cell-rows-sheet'));
+
+        expect(getByText(`Groceries, ${SPENT_IN}`)).toBeTruthy();
+        expect(sheet.getByText('Total')).toBeTruthy();
+        expect(within(getByTestId('cell-rows-total')).getByText('300.00 ₴')).toBeTruthy();
+      });
+
+      it('opens the rows of the All cell, which are every category the cell adds up', async () => {
+        const { getByTestId } = await tapped(`All, ${SPENT_IN}`);
+
+        expect(within(getByTestId('cell-rows-total')).getByText('400.00 ₴')).toBeTruthy();
+      });
+
+      it('opens nothing from an Average cell', async () => {
+        const { queryByTestId } = await tapped('Groceries, Average');
+
+        expect(queryByTestId('cell-rows-sheet')).toBeNull();
+      });
+    });
   });
 
   describe('while the data loads', () => {
