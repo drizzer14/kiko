@@ -162,7 +162,7 @@ describe('help topic registry', () => {
     ['useTemplates', 4],
     ['manageCategories', 5],
     ['categoryRules', 6],
-    ['viewStatistics', 11],
+    ['viewStatistics', 12],
     ['viewRecurringCharges', 5],
     ['backupData', 4],
     ['restoreData', 4],
@@ -611,6 +611,30 @@ describe('the choices a help step names', () => {
     expect(step).toContain('у цілих одиницях основної валюти');
     expect(step).toContain('У таблиці «Капітал» немає фільтра за категоріями.');
   });
+
+  it.each([
+    ['en', enValues, /"([^"]*)"/g, en.tables, 'newest first'],
+    ['uk', ukValues, /«([^»]*)»/g, uk.tables, 'від найновіших'],
+  ] as const)(
+    'names in %s, in step 12, the cells that list the transactions behind them and the ones that have no list',
+    (_language, values, quote, tables, newestFirst) => {
+      const step = stepOf(values, 'viewStatistics', 12);
+
+      expect(quotedSpans(step, quote)).toEqual([
+        tables.view.categories,
+        tables.total,
+        tables.all,
+        tables.view.cashFlow,
+        tables.cashFlow.income,
+        tables.cashFlow.expenses,
+        tables.average,
+        tables.cashFlow.net,
+        tables.cashFlow.savingsRate,
+        tables.view.netWorth,
+      ]);
+      expect(step).toContain(newestFirst);
+    },
+  );
 
   it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],
