@@ -242,6 +242,7 @@ const topicsById = {
       'help.topics.viewStatistics.steps.7',
       'help.topics.viewStatistics.steps.8',
       'help.topics.viewStatistics.steps.9',
+      'help.topics.viewStatistics.steps.10',
     ],
     action: 'openStatistics',
   },

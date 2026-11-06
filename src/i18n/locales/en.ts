@@ -1359,6 +1359,7 @@ export const en = {
           '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category. A transaction that sets an account\'s balance, such as its initial value, does not count as spending either.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
           '9': 'Above the filters, "Monthly tables" opens your spending by category for each month, in whole units of your base currency at today\'s rate, so an earlier month changes when the rate does. "Period" chooses the last 12 months or one calendar year. The average is the mean of the cells for the months it counts: it leaves out the first month with data and the month that is not over yet. A return that falls in a different month from its payment lowers the "Total" or "All" figure, but not the cell of the payment\'s month.',
+          '10': 'On the "Tables" screen, "Categories" and "Cash flow" at the top switch between the two tables. "Cash flow" shows, for each month, "Income", "Expenses", "Net" (income minus expenses) and "Savings rate" (net divided by income, a dash in a month with no income). "Expenses" are the figures of the category table. "Income" is every credit that none of the spending rules leaves out, so it can be wrong. A refund counts as income. So does money that reaches your bank from an account Kiko does not track, money you withdraw or sell from Binance to your bank, and a loan you receive. A credit described as a deposit or bonds, or one that your bank codes as a cash withdrawal or a card top-up, does not count, even when it is an interest or coupon payout. "Net" is not the change in your net worth, which also moves with exchange rates and with the revaluation of what you hold.',
         },
         title: 'Read Your Statistics',
       },
@@ -1418,6 +1419,20 @@ export const en = {
   tables: {
     all: 'All',
     average: 'Average',
+    cashFlow: {
+      caption: "Cash flow in {{currency}}, in whole units, at today's rate.",
+      empty: {
+        title: 'No income or spending in this period',
+        message: 'Pick another period, or other accounts, to see a table.',
+      },
+      expenses: 'Expenses',
+      income: 'Income',
+      net: 'Net',
+      partialMonth: 'The latest month is not over yet, so the average leaves it out.',
+      savingsRate: 'Savings rate',
+      // Spoken for a savings rate cell that shows a dash.
+      savingsRateUnknown: 'No income, so no savings rate',
+    },
     category: {
       caption: "Spending by category in {{currency}}, in whole units, at today's rate.",
       partialMonth: 'The latest month is not over yet, so the average leaves it out.',
@@ -1435,6 +1450,11 @@ export const en = {
     },
     title: 'Tables',
     total: 'Total',
+    view: {
+      cashFlow: 'Cash flow',
+      categories: 'Categories',
+      label: 'Table',
+    },
   },
   // The Home and Holding-detail rows both render the same fallback label
   // (src/transactions/default-description/default-description.ts) for a transaction with no

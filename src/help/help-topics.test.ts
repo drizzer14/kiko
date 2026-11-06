@@ -162,7 +162,7 @@ describe('help topic registry', () => {
     ['useTemplates', 4],
     ['manageCategories', 5],
     ['categoryRules', 6],
-    ['viewStatistics', 9],
+    ['viewStatistics', 10],
     ['viewRecurringCharges', 5],
     ['backupData', 4],
     ['restoreData', 4],
@@ -472,6 +472,32 @@ describe('the choices a help step names', () => {
 
       expect(step.startsWith(above)).toBe(true);
       expect(step).not.toContain(below);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      enValues,
+      'money you withdraw or sell from Binance to your bank',
+      'exchange rates',
+      'revaluation',
+    ],
+    [
+      'uk',
+      ukValues,
+      'гроші, які ви виводите чи продаєте з Binance на банк',
+      'курси валют',
+      'переоцінка',
+    ],
+  ] as const)(
+    'names in %s the Binance money that counts as income and why net is not the net worth change',
+    (_language, values, binanceMoney, rates, revaluation) => {
+      const step = stepOf(values, 'viewStatistics', 10);
+
+      expect(step).toContain(binanceMoney);
+      expect(step).toContain(rates);
+      expect(step).toContain(revaluation);
     },
   );
 
