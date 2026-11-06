@@ -1004,6 +1004,8 @@ the domain's own glyph map (see `kiko-domain`'s "Entity glyphs" rule).
 
 - A React UI component file: `<name>.component.tsx`, its test
   `<name>.component.test.tsx`.
+- A builder that returns JSX but is not a component has no `.component`
+  suffix (see "One component per file, each in its own folder").
 - A screen: `<name>.screen.tsx`.
 - A repository: `<name>.repo.ts`.
 - A navigation stack component: `<name>.stack.tsx` — the stacks under
@@ -1073,6 +1075,15 @@ helper. Do not define such a helper inside another component's body;
 extract it to its own file and folder. The extracted component reads
 the theme through `useUnistyles()` itself, so it does not need the
 parent's closure.
+
+Exception: a footer builder. A function that returns
+`ReactElement | undefined` and is not a component (file `<name>.tsx`
+with no `.component` suffix, for example `footerActionOf` in
+`src/screens/forms/transaction-form/footer-action/footer-action.tsx`) is
+allowed because `Screen` pads its footer slot whenever
+`footer !== undefined` (`src/design-system/components/screen/screen.component.tsx`,
+`hasFloatingFooter` and `hasPinnedFooter`), so a component that returns
+null would still pad. The builder returns `undefined` for no footer.
 
 **Exception — a small local, non-reusable component.** A small
 component that must be extracted out of its parent's body (for

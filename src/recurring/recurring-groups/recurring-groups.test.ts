@@ -7,41 +7,13 @@ import type { RecurringSeries } from '@kiko/recurring/detection';
 import { neutralCategory } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 
-type ChargeRow = {
-  id: string;
-  amountMinorUnits: number;
-  currency: Currency;
-  category: string | null;
-};
+import { type RecurringGroup, paidSoFarOf, recurringGroupsOf } from './recurring-groups';
 
-type CategoryEntry = { key: string; title: string; icon: string; color: string | null };
+type GroupsInput = Parameters<typeof recurringGroupsOf>[0];
 
-type GroupsInput = {
-  shown: RecurringSeries[];
-  rows: ChargeRow[];
-  categories: CategoryEntry[];
-  defaultCategoryKey: string;
-  baseCurrency: Currency;
-  rateTable: ReturnType<typeof buildRateTable>;
-};
+type ChargeRow = GroupsInput['rows'][number];
 
-type Group = {
-  key: string;
-  title: string;
-  icon: string;
-  color: string;
-  series: RecurringSeries[];
-  total: Money;
-};
-
-type GroupsModule = {
-  recurringGroupsOf: (input: GroupsInput) => { groups: Group[]; total: Money | undefined };
-  paidSoFarOf: (series: RecurringSeries, rows: ChargeRow[]) => Money;
-};
-
-// A runtime lookup, per test, so each pin fails by itself while the module is missing and the file
-// still typechecks.
-const groupsModule = (): GroupsModule => jest.requireActual('./recurring-groups');
+type CategoryEntry = GroupsInput['categories'][number];
 
 const CATEGORIES: CategoryEntry[] = [
   { key: 'media', title: 'Zebra', icon: 'tv', color: '#112233' },
@@ -89,13 +61,12 @@ const inputOf = (overrides: Partial<GroupsInput>): GroupsInput => ({
 const plain = (money: Money | undefined): { currency: Currency; minorUnits: number } | undefined =>
   foldMap(maybe(money), ({ currency, minorUnits }) => ({ currency, minorUnits }));
 
-const keysOf = (groups: Group[]): string[] => groups.map((group) => group.key);
+const keysOf = (groups: RecurringGroup[]): string[] => groups.map((group) => group.key);
 
 const idsOf = (series: RecurringSeries[]): string[] => series.map((entry) => entry.id);
 
 describe('recurringGroupsOf: the category of a series', () => {
   it('is the newest charge`s, where two charges sit in two categories', () => {
-    const { recurringGroupsOf } = groupsModule();
     const series = seriesOf('netflix', { chargeIds: ['newer', 'older'] });
 
     const { groups } = recurringGroupsOf(
@@ -109,7 +80,6 @@ describe('recurringGroupsOf: the category of a series', () => {
   });
 
   it('takes the next id found when the newest row is not in the rows', () => {
-    const { recurringGroupsOf } = groupsModule();
     const series = seriesOf('netflix', { chargeIds: ['newest', 'next', 'oldest'] });
 
     const { groups } = recurringGroupsOf(
@@ -123,8 +93,6 @@ describe('recurringGroupsOf: the category of a series', () => {
   });
 
   it('folds an unknown slug to the default category, and reads a slug in any case', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const { groups } = recurringGroupsOf(
       inputOf({
         shown: [seriesOf('lost'), seriesOf('loud')],
@@ -159,8 +127,6 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
     });
 
   it('puts a null, an empty and a rowless series beside the default`s own in one group', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const { groups } = recurringGroupsOf(worldOf());
     const defaultGroup = groups.find((group) => group.key === 'general');
 
@@ -175,8 +141,6 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
   });
 
   it('heads that group with the default`s title, icon and resolved color', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const defaultGroup = recurringGroupsOf(worldOf()).groups.find(({ key }) => key === 'general');
 
     expect(defaultGroup).toMatchObject({ title: 'Mango', icon: 'star' });
@@ -184,8 +148,6 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
   });
 
   it('names no group "Uncategorized", by key or by title', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const { groups } = recurringGroupsOf(worldOf());
 
     for (const group of groups) {
@@ -196,8 +158,6 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
   });
 
   it('puts the default`s group last, with the neutral display, when the categories lack its key', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const { groups } = recurringGroupsOf(
       inputOf({
         shown: [seriesOf('no-category'), seriesOf('in-media'), seriesOf('in-bills')],
@@ -221,8 +181,6 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
 
 describe('recurringGroupsOf: the order of groups and of series', () => {
   it('follows the categories, not the totals, the titles or the keys', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const { groups } = recurringGroupsOf(
       inputOf({
         shown: [seriesOf('general-series'), seriesOf('bills-series'), seriesOf('media-series')],
@@ -239,8 +197,6 @@ describe('recurringGroupsOf: the order of groups and of series', () => {
   });
 
   it('lists only the shown series, and sums none of the rows of another', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const { groups, total } = recurringGroupsOf(
       inputOf({
         shown: [seriesOf('shown-series')],
@@ -259,7 +215,6 @@ describe('recurringGroupsOf: the order of groups and of series', () => {
   });
 
   it('lists the active series newest first, then the stopped by the same order', () => {
-    const { recurringGroupsOf } = groupsModule();
     const shown = [
       seriesOf('stopped-newest', { isStopped: true, lastChargeTime: 900 }),
       seriesOf('active-oldest', { lastChargeTime: 100 }),
@@ -291,7 +246,6 @@ describe('recurringGroupsOf: the order of groups and of series', () => {
 
 describe('recurringGroupsOf: the totals', () => {
   it('sums `-amountMinorUnits` over the rows of a series, skipping a row of another currency', () => {
-    const { recurringGroupsOf } = groupsModule();
     const series = seriesOf('netflix', { chargeIds: ['a', 'b', 'c'] });
 
     const { groups } = recurringGroupsOf(
@@ -334,8 +288,6 @@ describe('recurringGroupsOf: the totals', () => {
     });
 
     it('converts the USD sum once, in the base currency, and adds Money', () => {
-      const { recurringGroupsOf } = groupsModule();
-
       const { groups, total } = recurringGroupsOf(worldOf());
 
       expect(plain(groups[0].total)).toEqual({ currency: 'UAH', minorUnits: 5_121 });
@@ -343,8 +295,6 @@ describe('recurringGroupsOf: the totals', () => {
     });
 
     it('keeps both series listed in the group', () => {
-      const { recurringGroupsOf } = groupsModule();
-
       const { groups } = recurringGroupsOf(worldOf());
 
       expect(idsOf(groups[0].series).sort()).toEqual(['netflix', 'spotify']);
@@ -352,7 +302,6 @@ describe('recurringGroupsOf: the totals', () => {
   });
 
   it('makes the total of all the sum of the group totals', () => {
-    const { recurringGroupsOf } = groupsModule();
     const shown = [
       seriesOf('media-usd', { currency: 'USD' }),
       seriesOf('bills-usd', { currency: 'USD' }),
@@ -375,8 +324,6 @@ describe('recurringGroupsOf: the totals', () => {
   });
 
   it('leaves a currency the rate table cannot convert out of the totals, its series still listed', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const { groups, total } = recurringGroupsOf(
       inputOf({
         shown: [seriesOf('netflix'), seriesOf('coin-subscription', { currency: 'BTC' })],
@@ -393,8 +340,6 @@ describe('recurringGroupsOf: the totals', () => {
   });
 
   it('gives no group and no total with no shown series', () => {
-    const { recurringGroupsOf } = groupsModule();
-
     const result = recurringGroupsOf(inputOf({ rows: [rowOf('orphan', -100, 'media')] }));
 
     expect(result.groups).toEqual([]);
@@ -404,7 +349,6 @@ describe('recurringGroupsOf: the totals', () => {
 
 describe('paidSoFarOf', () => {
   it('sums the listed rows in the series currency, skipping a row of another currency', () => {
-    const { paidSoFarOf } = groupsModule();
     const series = seriesOf('spotify', { currency: 'USD', chargeIds: ['a', 'b', 'c'] });
 
     const paid = paidSoFarOf(series, [
@@ -417,8 +361,6 @@ describe('paidSoFarOf', () => {
   });
 
   it('is zero in the series currency with no rows', () => {
-    const { paidSoFarOf } = groupsModule();
-
     expect(plain(paidSoFarOf(seriesOf('netflix'), []))).toEqual({
       currency: 'UAH',
       minorUnits: 0,
@@ -426,8 +368,6 @@ describe('paidSoFarOf', () => {
   });
 
   it('takes the series and the rows, and no rate table', () => {
-    const { paidSoFarOf } = groupsModule();
-
     expect(paidSoFarOf.length).toBe(2);
   });
 });

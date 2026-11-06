@@ -122,4 +122,12 @@ describe('useTopClearance', () => {
 
     expect(result.current).toBe(0);
   });
+
+  it('is zero when the caller says its header is shown, though the context reports none', async () => {
+    const { result } = await renderHook(() => useTopClearance(true), {
+      wrapper: withHeader(0),
+    });
+
+    expect(result.current).toBe(0);
+  });
 });

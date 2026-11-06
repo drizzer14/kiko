@@ -65,6 +65,7 @@ const RecurringMarkField = ({
         everySixMonths: t('forms.transaction.recurringPeriod.everySixMonths'),
         yearly: t('forms.transaction.recurringPeriod.yearly'),
       }}
+      emptyOption="none"
       placeholder=""
       disabled={!isSettled}
     />

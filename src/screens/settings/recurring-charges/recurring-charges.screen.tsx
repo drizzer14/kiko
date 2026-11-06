@@ -155,7 +155,7 @@ const RecurringChargesScreen: FC<RecurringChargesScreenProps> = () => {
     () => shownSeriesOf(series, markedSeries, choices),
     [series, markedSeries, choices],
   );
-  // Every series, a hidden one included, so a hide re-keys no read (spec 17.5).
+  // Every series, a hidden one included, so hiding one leaves the groups' read keys unchanged.
   const every = useMemo(() => [...series, ...markedSeries], [series, markedSeries]);
   const { groups, total, isLoading: groupsLoading } = useRecurringGroups(shown, every);
   const isBusy = isLoading || groupsLoading;

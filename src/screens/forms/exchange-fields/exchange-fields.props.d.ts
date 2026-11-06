@@ -1,9 +1,12 @@
-import type { RefObject } from 'react';
+import type { ReactElement, RefObject } from 'react';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { HandbackId } from '@kiko/screens/forms/use-select-created-option';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 export type ExchangeFieldsProps = {
+  // A field that takes the first place in the "Value out" row (the transaction form's Type
+  // field), stacked above it at an accessibility text size. Omit it for "Value out" alone.
+  leadingField?: ReactElement;
   // The outgoing amount, in the source holding's major currency units.
   valueOut: string;
   onChangeValueOut: (text: string) => void;

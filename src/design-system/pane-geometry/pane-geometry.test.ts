@@ -1,7 +1,7 @@
 import { MINIMUM_PANE_LENGTH } from '@kiko/display-regions';
 
 import { EQUAL_SHARE } from './companion-share';
-import { belowTopBand, resolvePaneGeometry } from '.';
+import { belowTopBand, resolvePaneGeometry, wholeWindowFrame } from '.';
 
 const HAIRLINE = 1;
 const UNEQUAL_SHARE = 2 / 3;
@@ -269,5 +269,17 @@ describe('belowTopBand', () => {
     const geometry = resolvePaneGeometry(mode, window, null, HAIRLINE, EQUAL_SHARE);
 
     expect(belowTopBand(geometry, 0)).toEqual(geometry);
+  });
+});
+
+describe('wholeWindowFrame', () => {
+  const WINDOW = { width: 951, height: 669 };
+
+  it('is the window below the top-bar band', () => {
+    expect(wholeWindowFrame(WINDOW, 76)).toEqual({ x: 0, y: 76, width: 951, height: 593 });
+  });
+
+  it('is the whole window at band 0', () => {
+    expect(wholeWindowFrame(WINDOW, 0)).toEqual({ x: 0, y: 0, width: 951, height: 669 });
   });
 });

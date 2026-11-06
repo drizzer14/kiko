@@ -46,5 +46,8 @@ export type SelectFieldProps<Option extends string> = {
   // the sheet closes with no animation; it is never reported to `onSelect` or
   // `onSelectClosed`.
   emptyAction?: { label: string; onPress: () => void };
+  // The option that reads as "no value" (a "None" pick): while it is selected the trigger's value
+  // takes the secondary tone, as it does for a `null` selection.
+  emptyOption?: Option;
   testID?: string;
 };

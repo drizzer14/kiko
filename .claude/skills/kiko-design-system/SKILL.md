@@ -37,7 +37,8 @@ file before you edit the component it describes.
   `CardContextMenu`, `ImportBalanceLine`, `HoldingCard`, `CloseHoldingSheet`, `SymbolIcon`,
   `EntityIconTile`, the section heading disclosure row, `Divider`, `Switch`, `TextField`,
   `FieldError`, `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`,
-  `EntryDateHeader`, the field and filter helpers (`deriveFieldTestID`, `toggleFilterValue`),
+  `EntryDateHeader`, `PairedFieldsRow`, the field and filter helpers (`deriveFieldTestID`,
+  `toggleFilterValue`),
   `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `DayOfMonthGrid`,
   `SegmentedControl` with the tabs-vs-chips rule, the chart components (`BarChart`, `PieChart`,
   `NetWorthLine`), `ColorPicker`, `TransactionCard`, and the form header) and the rules
@@ -151,7 +152,7 @@ The token categories, defined once in a single theme module (read
   `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
   checkmark beside caption text), never an inline literal like `18`.
 - **layout** — `paneMaxWidth` caps a pane's SCREEN CONTENT (lists,
-  forms), except in a pane under a top tab bar (see the Screen entry
+  forms), except `Screen uncapped` and in a pane under a top tab bar (see the Screen entry
   under "Component set" in component-set.md), and never native bars;
   `hairline` is the flat two-pane divider
   width. Read `theme.ts` for the values; never restate them. Pane code
@@ -386,6 +387,15 @@ every one of them, so scan this list rather than the reference files for what is
   switch (`undefined` where the screen set none): the screen's own values from before the
   switch. A value the screen changes during heading mode is not kept (setOptions cannot remove
   a key). Never restore with fixed values. Device-confirm: Jest cannot show bar translucency.
+- **Tables has a small title in an opaque bar** (2026-11-04; user: "A: Small title
+  (Recommended)"). A normal small title, content below it, Tables only: an exception to "every
+  pane uses the native large title". The Statistics stack sets `headerLargeTitle: false` on it
+  (`src/navigation/statistics-stack/statistics.stack.tsx`); the Home stack sets only
+  `headerShown: true`.
+- **The Statistics Tables button stays 44 pt and full width** (2026-11-04; user: "As it is now").
+  It is `size="compact"` (`src/screens/statistics/statistics.screen.tsx`), an exception to the
+  inline secondary rule. The chevron is removed (user: "Remove it (Recommended)"): `icon` only.
+  It is the first child of the untagged `Box`, above the filter bar. Its press state is backlog.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
   for now"). There is no tip card, tip hook, or subtle-accent token; do not bring back a
   first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
@@ -546,7 +556,12 @@ The established patterns grouped under this heading:
   2026-10-11: the Edit template form's "Create transaction") may stay
   in the footer as a lone secondary button. The same holds on a `bleedTop` list screen: the
   recurring series screen's footer button ('Not a recurring charge' / 'Remove mark') is the lone
-  secondary footer action. A native bar button does not
+  secondary footer action. The transaction form's convert action is
+  another: the builder `footerActionOf` in
+  `src/screens/forms/transaction-form/footer-action/` decides its footer
+  ("Create transaction" on a template edit, else the "Exchange" button
+  when eligible and not converting; `secondaryTonal`); see the
+  `footer={...}` call sites. A native bar button does not
   end editing, so a value derived on blur is settled in the save path
   (see `kiko-code-style`'s "Form validation model"). Tests use the
   helpers in `src/test-support/form-header-items.ts`, never
