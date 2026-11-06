@@ -12,6 +12,7 @@ import {
 } from '@kiko/test-support/mock-recurring-groups';
 import { formatMoney } from '@kiko/currency/format';
 import { chargesAt } from '@kiko/test-support/marked-series-worlds';
+import { STACK_FONT_SCALE } from '@kiko/design-system/stack-font-scale';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { ledgerOf, monthly, chargeOf, at } from '@kiko/test-support/recurring-ledger';
 import { paneStackModule as mockPaneStackModule } from '@kiko/test-support/mock-pane-stack';
@@ -272,10 +273,6 @@ describe('RecurringChargesScreen — Marked, No Charges', () => {
 });
 
 describe('RecurringChargesScreen — Marked, No Charges at a large text size', () => {
-  // The first accessibility text size, AX1, is 28 pt against the 17 pt body: the scale from which
-  // `PairedFieldsRow` stacks, held here as a literal because that constant sits in another
-  // screen's folder.
-  const STACK_FONT_SCALE = 28 / 17;
   const DEFAULT_FONT_SCALE = 2;
 
   const renderAt = async (fontScale: number) => {
