@@ -116,6 +116,19 @@ describe('transactionsRepo.listWithContextByIdsQuery', () => {
     expect(query.toSQL().params).toHaveLength(1);
   });
 
+  it('reads transactions by its primary key, never a scan of the table', () => {
+    insertRow('first', 'card', 0);
+
+    const { sql, params } = transactionsRepo.listWithContextByIdsQuery(['first']).toSQL();
+    const plan = mockDatabase
+      .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+      .all(...(params as string[]))
+      .map((step) => String(step.detail));
+
+    expect(plan.some((detail) => /^SEARCH transactions USING .*\(id=\?\)/.test(detail))).toBe(true);
+    expect(plan.some((detail) => /^SCAN transactions/.test(detail))).toBe(false);
+  });
+
   it('leaves out the rows of a deleted holding', async () => {
     insertRow('kept', 'card', 0);
     insertRow('removed', 'gone', 10);

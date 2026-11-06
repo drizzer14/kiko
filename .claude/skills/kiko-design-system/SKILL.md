@@ -7,9 +7,9 @@ description: Invoke when touching theme tokens, react-native-unistyles styles, a
 
 Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Design system (started here)" section) and the token module itself,
-`src/design-system/theme/theme.ts`, which ships a single `darkTheme` (spacing,
+`src/design-system/theme/theme.ts`, which ships `darkTheme` and `lightTheme` (spacing,
 radii, typography, `colors`) plus its own entity/chart palette
-(`palette.ts`). The app is dark-only. This skill states the method and
+(`palette.ts`). Users see dark only until the flip of change set 6. This skill states the method and
 token categories; read `theme.ts`/`palette.ts` directly for the
 current values rather than trusting a copy of them here.
 
@@ -76,10 +76,11 @@ to see the open findings; do not restate its findings here.
 
 ## Dark-only theme
 
-Kiko is dark-only: there is no appearance toggle, no light theme, and
-no runtime scheme switching. `src/design-system/unistyles/unistyles.ts` registers
-a single `darkTheme` (`{ dark }`) with `initialTheme: 'dark'` — there
-is nothing to pick between, so `adaptiveThemes` is not used either.
+Kiko is dark-only for users: there is no appearance toggle and no runtime scheme
+switching. A `light` theme is registered and no user can reach it, until the flip of change
+set 6. `src/design-system/unistyles/unistyles.ts` registers
+`{ dark: darkTheme, light: lightTheme }` with `initialTheme: 'dark'`, so
+`adaptiveThemes` is not used either.
 `UIUserInterfaceStyle = Dark` is pinned in `ios/Kiko/Info.plist`, which
 is what keeps native chrome (bottom tab bar, stack headers/large-title
 blur, system controls, the native date picker) on the dark appearance
@@ -204,16 +205,16 @@ then one of these call sites, rather than reinventing the check.
 ## Styling layer: react-native-unistyles v3
 
 `react-native-unistyles` (3.6.0) is the styling layer. A single
-Unistyles v3 theme object — the OLED `darkTheme` above — is registered
-in `src/design-system/unistyles/unistyles.ts` as `themes = { dark: darkTheme }`,
-with `settings: { initialTheme: 'dark' }`. There is no second theme to
-switch to, so there is no `adaptiveThemes` and no runtime
+Unistyles v3 theme object — the OLED `darkTheme` above, beside the unreachable `lightTheme` —
+is registered in `src/design-system/unistyles/unistyles.ts` as
+`themes = { dark: darkTheme, light: lightTheme }`,
+with `settings: { initialTheme: 'dark' }`. Nothing switches themes, so there is no
+`adaptiveThemes` and no runtime
 `UnistylesRuntime.setTheme` call anywhere. Style components against
 the theme's tokens, not literal values, so the token keys stay the one
-contract every component styles against, even though there is only one
-theme supplying values today. The token values live in `theme.ts`
-(`darkTheme`) and `palette.ts`; read those directly rather than
-restating them here.
+contract every component styles against, whichever theme supplies values.
+The token values live in `theme.ts` (`darkTheme`, `lightTheme`) and
+`palette.ts`; read those directly rather than restating them here.
 
 ## Locked decisions (user-approved)
 
@@ -548,7 +549,9 @@ The established patterns grouped under this heading:
   pane); when a back button shows, the back button is the cancel. Save
   is never in a form's `Screen` footer. A secondary action (ruling
   2026-10-11: the Edit template form's "Create transaction") may stay
-  in the footer as a lone secondary button. A native bar button does not
+  in the footer as a lone secondary button. The same holds on a `bleedTop` list screen: the
+  recurring series screen's footer button ('Not a recurring charge' / 'Remove mark') is the lone
+  secondary footer action. A native bar button does not
   end editing, so a value derived on blur is settled in the save path
   (see `kiko-code-style`'s "Form validation model"). Tests use the
   helpers in `src/test-support/form-header-items.ts`, never
@@ -941,9 +944,11 @@ project-wide rule this follows.
 
 **Percentage widths.** Yoga resolves `%` widths in 32-bit float and
 wraps on a strict `>`, so N equal columns of `100 / N`% can drop the
-last column on some row widths. Always use a slightly smaller rounded
-percentage (see `SEVEN_COLUMN_WIDTH` in `src/design-system/seven-column-width/`) and pin it
-with a test that replays the float math.
+last column on some row widths. For N equal wrapping columns whose widths sum to 100%
+(`flexWrap`), use a slightly smaller rounded percentage (see `SEVEN_COLUMN_WIDTH` in
+`src/design-system/seven-column-width/`) and pin it with a test that replays the float math. A
+single `%` cap beside a `flex: 1` sibling with no `flexWrap` (for example `maxWidth: '60%'` in the
+recurring series row) cannot drop a column, so it needs neither.
 
 Separate sibling React nodes in JSX with a blank line, the same way
 sibling statements are separated in `kiko-code-style`'s "Blank lines

@@ -32,8 +32,6 @@ export const useReviewActions = () => {
   const run = useCallback(async (): Promise<void> => {
     const job = jobRef.current;
 
-    jobRef.current = null;
-
     if (job === null) {
       return;
     }
@@ -71,12 +69,9 @@ export const useReviewActions = () => {
   }, [t]);
   const { onPress: submit, isSubmitting } = useSubmitOnce(run);
 
-  // The job is handed over through a ref, so a tap `useSubmitOnce` ignores must not leave it there
-  // for the next one to find.
   const start = (job: Job): void => {
     jobRef.current = job;
     submit();
-    jobRef.current = null;
   };
 
   const pick = (category: string): void => {
@@ -85,6 +80,11 @@ export const useReviewActions = () => {
     }
 
     setPickFor(null);
+  };
+
+  // A tap on a suggestion has no options sheet to wait for, so the job starts at once.
+  const accept = (group: ReviewGroup, category: string): void => {
+    start({ group, category, confirmed: false });
   };
 
   const onOptionsClosed = (): void => {
@@ -112,6 +112,7 @@ export const useReviewActions = () => {
     choose: setPickFor,
     closeOptions: () => setPickFor(null),
     pick,
+    accept,
     onOptionsClosed,
     confirm,
     // A write that has started cannot be taken back, so a Cancel or scrim dismiss that lands

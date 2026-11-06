@@ -18,6 +18,7 @@ jest.mock('@kiko/db/client', () => {
 import {
   type NameRuleKind,
   type PreparedRules,
+  type ReviewEvidence,
   type ReviewGroup,
   planReviewGroups,
   prepareRules,
@@ -129,6 +130,7 @@ const currentGroups = async (): Promise<ReviewGroup[]> =>
     await preparedRules(),
     await categoryRulesRepo.reviewCandidateRowsQuery(),
     knownCategoryKeys(),
+    await reviewEvidenceQuery(),
   );
 
 // A row is listed when the plan keeps it alone: groups never depend on each other's rows.
@@ -137,7 +139,7 @@ const listedIdsOf = async (group: ReviewGroup): Promise<string[]> => {
   const known = knownCategoryKeys();
 
   return (await categoryRulesRepo.reviewCandidateRowsQuery())
-    .filter((row) => planReviewGroups(prepared, [row], known).at(0)?.key === group.key)
+    .filter((row) => planReviewGroups(prepared, [row], known, []).at(0)?.key === group.key)
     .map((row) => row.id)
     .sort();
 };
@@ -363,5 +365,106 @@ describe('reviewCandidateRowsQuery', () => {
     expect(query.toSQL().sql.toLowerCase()).toMatch(ARMS_IN_ONE_GROUP);
     expect(ids).toEqual(expect.arrayContaining(['atb-other-0', 'mixed-null', 'mixed-orphan']));
     expect(ids.filter((id) => id.startsWith('blank') || id === 'balance')).toEqual([]);
+  });
+});
+
+const reviewEvidenceQuery = () => categoryRulesRepo.reviewEvidenceQuery();
+
+// Sorted by code unit: a locale compare ignores the separator and puts `Cafe Roma 7` first.
+const sortKeyOf = (row: ReviewEvidence): string => `${row.description}\u0000${row.categoryKey}`;
+
+const evidenceSorted = async (): Promise<ReviewEvidence[]> =>
+  [...(await reviewEvidenceQuery())].sort((first, second) =>
+    sortKeyOf(first) < sortKeyOf(second) ? -1 : 1,
+  );
+
+const insertSplitChangeRow = (id: string, description: string, category: string): void => {
+  insertRow({ id, description, category });
+  mockDatabase
+    .prepare("UPDATE transactions SET change_group_id = 'change-group' WHERE id = ?")
+    .run(id);
+};
+
+describe('reviewEvidenceQuery', () => {
+  const NOT_AROUND_THE_THREE_ARMS =
+    /not \(("\w+"\.)?"category" is null or lower\(("\w+"\.)?"category"\) = 'other' or lower\(("\w+"\.)?"category"\) not in \(select lower\(("\w+"\.)?"key"\) from "categories"\)\)/;
+
+  it('reads real categories grouped by description and key', async () => {
+    insertRows('cafe-lower', 2, { description: 'Cafe Roma', category: 'dining' });
+    insertRow({ id: 'cafe-cased', description: 'Cafe Roma', category: 'Dining' });
+    insertRow({
+      id: 'cafe-hand',
+      description: 'Cafe Roma',
+      category: 'dining',
+      categorySetByHand: true,
+    });
+    insertRow({ id: 'cafe-mcc', description: 'Cafe Roma', category: 'dining', mcc: 5812 });
+    insertRow({ id: 'cafe-other-store', description: 'Cafe Roma 7', category: 'dining' });
+
+    expect(await evidenceSorted()).toEqual([
+      { description: 'ATB 0212', categoryKey: 'groceries', rowCount: 3 },
+      { description: 'ATB Market', categoryKey: 'shopping', rowCount: 1 },
+      { description: 'ATBANK', categoryKey: 'shopping', rowCount: 1 },
+      { description: 'Cafe Roma', categoryKey: 'dining', rowCount: 5 },
+      { description: 'Cafe Roma 7', categoryKey: 'dining', rowCount: 1 },
+    ]);
+  });
+
+  it('reads no balance, split, exchange or blank row', async () => {
+    insertRow({ id: 'e-balance', description: 'Edge Shop', category: 'dining', setsBalance: true });
+    insertSplitChangeRow('e-split', 'Edge Shop', 'dining');
+    insertRow({
+      id: 'e-paired',
+      description: 'Edge Shop',
+      category: 'dining',
+      exchangeCounterpartHoldingId: 'card',
+    });
+    insertRow({
+      id: 'e-untracked',
+      description: 'Edge Shop',
+      category: 'dining',
+      untrackedCounterpart: 'untracked',
+    });
+    insertRow({ id: 'e-blank', description: '', category: 'dining' });
+    insertRow({ id: 'e-real', description: 'Edge Shop', category: 'dining' });
+
+    const read = await evidenceSorted();
+
+    expect(read.filter((row) => row.description === '')).toEqual([]);
+    expect(read.filter((row) => row.description === 'Edge Shop')).toEqual([
+      { description: 'Edge Shop', categoryKey: 'dining', rowCount: 1 },
+    ]);
+  });
+
+  it('NOT noRealCategorySql negates the whole fragment', async () => {
+    insertRow({ id: 'n-other', description: 'Neg Shop', category: 'other' });
+    insertRow({ id: 'n-null', description: 'Neg Shop', category: null });
+    insertRow({ id: 'n-orphan', description: 'Neg Shop', category: 'ghost' });
+    insertRow({ id: 'n-real', description: 'Neg Shop', category: 'transport' });
+
+    const query = reviewEvidenceQuery();
+    const read = await query;
+
+    expect(query.toSQL().sql.toLowerCase()).toMatch(NOT_AROUND_THE_THREE_ARMS);
+    expect(read.filter((row) => row.description === 'Neg Shop')).toEqual([
+      { description: 'Neg Shop', categoryKey: 'transport', rowCount: 1 },
+    ]);
+    expect(read.filter((row) => ['other', 'ghost', ''].includes(row.categoryKey))).toEqual([]);
+  });
+
+  it('accepting a suggestion writes through applyNameRule and the count matches', async () => {
+    insertRows('silpo-sorted', 3, { description: 'Silpo 0712', category: 'groceries' });
+
+    const group = await groupOf('silpo');
+
+    expect(group.suggestion).toEqual({ category: 'groceries', agreeing: 3, total: 3 });
+
+    const category = group.suggestion?.category;
+    const preview = await previewOf(group.rule, category);
+    const changed = await changedBy(() => applyOf(group.rule, category));
+
+    expect(preview.count).toBe(group.rowCount);
+    expect(changed).toHaveLength(group.rowCount);
+    expect(await listedIdsOf(group)).toEqual([]);
   });
 });

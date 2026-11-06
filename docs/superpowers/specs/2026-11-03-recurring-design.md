@@ -438,7 +438,8 @@ It writes nothing on a transaction, and it predicts nothing.
 | Period | A picker: weekly, monthly, every 3 months, every 6 months, yearly, as the user approved. The last two are a mark's own and detection never returns them | Section 5.1 names both as false misses. They touch only the stopped cutoff (section 7) and the text (section 6). `addMonths` (`interest.ts:41`) already steps any count of months |
 | A mark on a merchant detection also finds | On its chain the mark wins: the user's period, on that chain's charges. Removing a mark clears only that mark, so the series return as detection finds them, unless the key is hidden: the hide stays until "Show again" | One map, one entry per key, which holds a hide flag and marks (section 8). Detection stores nothing (section 11), so nothing is lost |
 | One mark per chain (**the user's answer to Q6: "One per chain"**) | A key holds a list of marks, each its own chain. A pick on a row inside a marked chain rewrites that chain's period in place, on every mark of its piece, and moves no stored amount. A pick on a row of another piece adds that chain's mark at the row's amount, and marks on other chains stay; so a re-mark at a new price adds a chain. A stored amount whose chain the row left stays, as stated above. Two stored amounts that a later row bridges land in one piece: one series, with the period of the lowest stored amount, a tie going to the earlier period in the picker's order, order-free; removing that series removes every mark in the piece | The user's answer. One mark per key would have dropped Apple 99's mark on marking Apple 399, with nothing shown |
-| The form on a row of another chain | The field reads "Not marked". The value is the period of the marked chain whose amounts span the row's stored amount, and a fold cannot change the chain: it keeps at least one row per amount, and the chain reads only the amounts. A pick adds that chain's own mark; "Not marked" there writes nothing | Reading it takes the group's charges: section 9.6 |
+| The form on a detected row (item 13; was: "Not marked") | **USER 2026-11-05 "A: Everywhere".** A row that a shown detected series holds reads "Detected: weekly / monthly / yearly", from every place the form opens. A row of a hidden key, or a row outside the found series, reads "Not marked". The first row of the sheet writes nothing; a period pick adds a mark (the next row) | Section 9.6, "The detected period": one shared pure function with the list, the row's own group only |
+| The form on a row of another chain | The field reads "Not marked", or "Detected: ..." when a shown detected series holds the row (the row above). The value is the period of the marked chain whose amounts span the row's stored amount, and a fold cannot change the chain: it keeps at least one row per amount, and the chain reads only the amounts. A pick adds that chain's own mark; "Not marked" there writes nothing | Reading it takes the group's charges: section 9.6 |
 | Text | Section 6, "A marked series". Stopped and quiet as any series, on section 7's table, on the chain. "Marked" shows only where the charges do not fit the period, the table gives no slot, or the period has no table row. The stored amount is never shown: a line shows an amount only as the last real charge's | `recurrenceLine` is a pure `.exhaustive()` match (plan), so `Recurrence` gains one kind |
 | Mark and hide together | One map, one entry per key, which holds both, and neither touches the other. A hide affects detected series only: a marked chain stays when its key is hidden (section 8.1). Marking a hidden merchant keeps the hide, and the "Hidden" line stays until "Show again". A marked series offers "Remove mark" in place of "Not a recurring charge"; a detected series, also one beside a marked series, offers hide | Section 8's store. `recordReminderOfferDismissal` shows the read-modify-write inside one `write()` |
 | Reversal | "Remove mark" on the series screen, on the "Marked, No Charges" row, and "Not marked" in the form's picker, each for that chain's marks: `removeRecurringMarks(key, marks)`, which compares inside its `write()`, clears only those marks, writes nothing on an entry holding none of them, and drops an entry left with neither marks nor a hide. "Show again" is `showRecurringMerchantAgain(key)`, which clears only the hide, by the same drop. So "Not marked" on a hidden key, whose field reads "Not marked", keeps the hide. A removed mark goes nowhere, and a new mark on any row restores it | As `selectLoanPayment`, where picking "None" on the field is the removal (`transaction-form.screen.tsx:966`). `SelectField` fires `onSelect` on the row already selected (`handleSelect`, `select-field.component.tsx:57-62,120`), so that tap does reach the handler |
@@ -638,8 +639,30 @@ charge of the group. So `useRowMark` adds `recurringLedgerQuery`, `enabled` (`us
 entry holds a mark in the row's currency**. With none, the field reads "Not marked" and a pick adds a mark, with no ledger read, so a
 row under an unmarked name costs what it did. With one, a second whole-ledger read runs while the form shows, and `chargeGroupsOf`
 once on its result, with no rule, because a pick must know whether it rewrites a chain or adds one. Its cost is in section 10.3's
-device check. was: no second ledger read on the form, ever. now: none under an unmarked name, and one under a name marked in that
-currency. The matched-transfer row is still offered and left out rather than read for.
+device check. was: no second ledger read on the form, ever. then (task 4/4): none under an unmarked name, and one under a name
+marked in that currency. The matched-transfer row is still offered and left out rather than read for.
+
+**The detected period (item 13, USER 2026-11-05 "A: Everywhere").** was (task 4/4): "a row under an unmarked name costs what it
+did": no ledger read in the field, and "Not marked" on a row that a detected series holds. now: `useRowMark` enables
+`recurringLedgerQuery` for **every row it offers**, whatever its marks, runs `chargeGroupsOf` once per ledger fire, and then
+`seriesOfGroups` on the row's own `[key, currency]` group alone (`seriesOfGroups` maps each group on its own, so one group gives
+that group's series exactly), the marked pass for that key (`markedSeriesOf`, `detectedBesideMarked`) and the hide. One pure
+function, shared with the list, decides it, so the form and the list agree on every row. A row that a shown detected series
+holds reads "Detected: weekly", "Detected: monthly" or "Detected: yearly" (section 13). A row in a marked chain reads its marked
+period, as before. A row in no shown series reads "Not marked", and so does a row of a hidden key or a row outside the found
+series (an outlier amount). The same from every place the form opens (8.2, "The two form paths"). A pick on the first row of the
+sheet (which reads "Detected: ..." on a detected row) writes nothing, as "Not marked" writes nothing. A period pick adds a mark
+through today's add path, and the overlap rule then drops the detected series.
+**Cost:** each offered debit now pays for two whole-ledger reads while the form shows: the funding caption's `listAllQuery`, as
+before, and this one. Before, only a debit under a marked name paid for both. On the Mac (section 10.2; node with JIT, under
+load): the narrow read takes 15.0 to 16.0 ms at 10,000 rows, 68.0 ms at 50,000 and 133.0 to 148.0 ms at 100,000. The whole
+reference detection, an upper bound of `chargeGroupsOf` plus one group, takes 160.0 to 198.1 ms, 881.6 to 920.5 ms and 1823.5 to
+2113.3 ms at the same sizes. `chargeGroupsOf`'s own share is not measured. **iPhone not measured**, nor Hermes. The form must
+render, take input and save while the read and the detection are still to come: the field states no value and stays
+`disabled` until then (its one wait, below), and nothing else on the form waits for it. The device measure and its stall
+trigger are in the plan (task 3/3). A stall falls back to option C (coordinator 2026-11-05: the series screen passes the
+period through the route; the field reads nothing; Home and account ledgers show "Not marked"), which then goes to the user.
+Option B (reuse the funding caption's rows) is rejected: it removes only the read, not the detection's own CPU.
 
 **The field's one wait.** `useRowMark` is ready when the settings read neither loads nor holds an `error` and, while the ledger read
 is enabled, the same of that read. Until then, and through a pick's write (`isSubmitting` of `useSubmitOnce`), the field states no
@@ -746,6 +769,9 @@ keyed on the local day, detects nothing.
 opening the list to the list showing; the time from opening a series to the series showing; and, from task 4/4, the time from
 opening a transaction under a marked name to its mark field enabling (section 9.6). No pass line is set here, since no device figure
 exists to set one from. The numbers go in the coordinator's report with the user's own read of whether it stalls.
+was: the field-enable time under a marked name only. now (item 13): under any name the field offers, on the user's real
+ledger on the Duo (base build against task 3/3's, median of 3; no restore, no second install), with the stall trigger of plan
+task 3/3. 10,000 rows run on a simulator Release build as an indicator only.
 
 ### 10.4 Pins, and the fix if one fails
 
@@ -830,18 +856,19 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `recurringCharges.title` | Recurring Charges | Регулярні платежі |
 | `recurringCharges.emptyTitle` | No recurring charges yet | Регулярних платежів ще немає |
 | `recurringCharges.emptyMessage` | Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring. | Кіко шукає у ваших транзакціях платежі, що повторюються, як-от підписки й оренда, і показує ті, що вже відбулися. Щомісячний платіж зʼявиться після третього списання, а імпорт виписки може додати попередні. Також можна відкрити транзакцію й позначити її як регулярну. |
-| `recurringCharges.monthlyOnDay` | Charged monthly, on day {{day}} | Списувалося щомісяця, {{day}} числа |
-| `recurringCharges.monthlyAroundDay` | Charged monthly, around day {{day}} | Списувалося щомісяця, близько {{day}} числа |
-| `recurringCharges.monthlyLastDay` | Charged monthly, on the last day | Списувалося щомісяця, в останній день |
-| `recurringCharges.monthly` | Charged monthly | Списувалося щомісяця |
-| `recurringCharges.weekly` | Charged weekly | Списувалося щотижня |
-| `recurringCharges.weeklyOn.monday` ... `.sunday` | Charged weekly, on Mondays ... | Списувалося щотижня, у понеділок / у вівторок / у середу / у четвер / у пʼятницю / у суботу / у неділю |
-| `recurringCharges.yearly` | Charged yearly | Списувалося щороку |
-| `recurringCharges.yearlyOn` | Charged yearly, on {{date}} | Списувалося щороку, {{date}} |
+| `recurringCharges.monthlyOnDay` | Monthly, on day {{day}} | Щомісяця, {{day}} числа |
+| `recurringCharges.monthlyAroundDay` | Monthly, around day {{day}} | Щомісяця, близько {{day}} числа |
+| `recurringCharges.monthlyLastDay` | Monthly, on the last day | Щомісяця, в останній день |
+| `recurringCharges.monthly` | Monthly | Щомісяця |
+| `recurringCharges.weekly` | Weekly | Щотижня |
+| `recurringCharges.weeklyOn.monday` ... `.sunday` | Weekly, on Mondays ... | Щотижня, у понеділок / у вівторок / у середу / у четвер / у пʼятницю / у суботу / у неділю |
+| `recurringCharges.yearly` | Yearly | Щороку |
+| `recurringCharges.yearlyOn` | Yearly, on {{date}} | Щороку, {{date}} |
+| `recurringCharges.paidSoFar` (visual round 1) | All paid so far | Усього сплачено |
 | `recurringCharges.lastCharge` | Last charge {{date}} | Останнє списання {{date}} |
 | `recurringCharges.noChargeSince` | No charge since {{date}} | Немає списань з {{date}} |
 | `recurringCharges.holdingQuietSince` | {{holding}}: no newer transactions since {{date}} | «{{holding}}»: немає новіших транзакцій за {{date}} |
-| `recurringCharges.stoppedHeading` | No Recent Charge | Без нових списань |
+| `recurringCharges.stoppedHeading` (removed, 17.3) | was: No Recent Charge | was: Без нових списань |
 | `recurringCharges.chargeCount_*` | {{count}} charge / charges | `_one`, `_few`, `_other`: {{count}} списання; `_many`: {{count}} списань |
 | `recurringCharges.listChangedTitle` | This list has changed | Цей список змінився |
 | `recurringCharges.listChangedMessage` | Go back to see your recurring charges as they are now. | Поверніться назад, щоб побачити регулярні платежі в поточному вигляді. |
@@ -859,6 +886,9 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `forms.transaction.markRecurring` | Mark as recurring | Позначити як регулярний |
 | `forms.transaction.markRecurringSheetTitle` | Mark as Recurring | Позначити як регулярний |
 | `forms.transaction.notMarkedRecurring` | Not marked | Не позначено |
+| `forms.transaction.detectedRecurring.weekly` (item 13) | Detected: weekly | Виявлено: щотижня |
+| `forms.transaction.detectedRecurring.monthly` (item 13) | Detected: monthly | Виявлено: щомісяця |
+| `forms.transaction.detectedRecurring.yearly` (item 13) | Detected: yearly | Виявлено: щороку |
 
 `forms.transaction.markRecurringSheetTitle` and `recurringCharges.markedEmptyHeading` are
 `TITLE_KEYS` members (read `src/i18n/locales/title-keys.ts`), so their wording is title case.
@@ -868,7 +898,9 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 `recurringCharges.title` and the section headings join `title-keys.ts`. Removed or renamed keys: none; no key here has shipped.
 A sheet title and a field label are two keys, per kiko-translator's casing by role, though uk reads the same.
 
-The uk recurrence lines are a past frame, since «Списання щомісяця, 15 числа» has no tense and reads as a schedule, which defeats
+The recurrence rows above are the visual round 1 texts (section 17.8, "Texts lgtm" 2026-11-05); the item 13 rows have the
+user's "Texts lgtm" of 2026-11-05. The detected texts are sentence case, so they are not `TITLE_KEYS` members. The next
+paragraph is the task 1/4 reasoning and no longer holds (17.8). was: The uk recurrence lines are a past frame, since «Списання щомісяця, 15 числа» has no tense and reads as a schedule, which defeats
 the reason for ruling Q1. They are drafts: `kiko-translator` rules decide them in the step that adds them. `{{holding}}:` opens its line so uk needs
 no case form of a stored name.
 
@@ -888,7 +920,7 @@ What's New draft, per the release skill's format: "Recurring charges: see what r
 
 | Constraint | Enforced by |
 |---|---|
-| No future date, no forecast, no total | A property pin: no date in the output has a local day later than today; the output type has no sum; stopped steps back only; review |
+| No future date, no forecast, no total (the total: reversed by section 17.1) | A property pin: no date in the output has a local day later than today; the output type has no sum; stopped steps back only; review |
 | One name definition | Import from `@kiko/transactions/merchant-name`; review. No local normalizing |
 | One eligibility definition | `recurringExcludedIds` only calls the existing functions; one world per rule |
 | Never sums across currencies | The group key holds the currency; no sum exists anywhere |
@@ -935,3 +967,178 @@ row dated two or more days from its bank row. A price rise over 25 percent cuts 
 **The orchestrator's calls after the review of 41be4a687, recorded the same way, not user rulings; each changes the design:** a marked route finds the piece spanning its amount, else the neutral text, with no detected fallback (9.3); a pick inside a chain rewrites its period and moves no stored amount, and a re-mark at a new price adds a chain (8.2); one entry holds a hide flag and marks, a hide affects detected series only, and each reversal clears only its own part (8.1, 8.2); a stored amount can bridge what its row did not join (8.2); the parser dedupes marks and sorts them, with a period tie-break (8.2); the settings read also gates the field, and a rejected read holds it disabled with no value (9.6); the field takes the screen's holdings and accounts as props, and its currency from the stored row's holding (9.6). The consequence for two subscriptions inside one chain is the planner's, stated at the head of this spec and told to the user through the coordinator.
 
 **Where the measured reference moved a call:** step 2's condition was called as "every pair fits". On that form a seasonal bill with one moved day went back to the reported fault (two stopped rows or one short stopped row, in 7 of 9 placements of the moved day). So it reads "passes as monthly, no two charges in a slot": all 9 give one series, and the sweep below 5.3 shows no new false match. Step 6 runs when nothing stands, not only when nothing was found. The fold, coverage exception and exact-cut calls hold as called.
+
+## 17. Visual round 1 (2026-11-05)
+
+The user's device reading of task 4/4, relayed by the coordinator: items 1 to 12 and 14 (HANDOFF "Item 1"). The answers to the round's questions A to L
+are binding, with answer F's no-category group replaced by ruling P1 (17.9); words in quotes are the user's. A total states money already paid, never a forecast (A: "show total", "show
+total of all recurring charges"; B, C: "Total = sum of all charges"; J: "All paid so far"). This section overrides sections
+9.2, 9.3, 9.5, 13 and 15 where they differ. Detection, marks, the store, the routes and the help topic do not change.
+
+### 17.1 What this reverses
+
+| Rule | was: | now |
+|---|---|---|
+| A total (15, row 1; plan Global Constraints) | "no total", "the output type has no sum" | A display-only sum of past charges on both screens (17.4). Detection's output type still has no sum: the totals live outside `src/recurring/detection`. No forecast, no date after today |
+| Sums across currencies (15, row 4) | "no sum exists anywhere" | A series sums only its own currency. List totals convert each series sum to the base currency (17.4); the detail total stays in the series currency. No raw sum of minor units across currencies: every base sum adds `Money` in the base currency |
+| Purpose (15, last row) | "No balance, net worth, category or statistic reads this" | The list reads categories and rates for display. It still changes no balance, net worth, category or statistic |
+| Recurrence line (13; Q1 "Charged monthly, on day 15") | "Charged monthly, on day 15" / «Списувалося щомісяця, 15 числа» | "Monthly, on day 15" / «Щомісяця, 15 числа»; every recurrence key drops "Charged" (17.8). The "Marked:" lines and "Last charge" keep their text |
+| List sections (9.2) | active, "No Recent Charge", "Marked, No Charges", "Hidden" | one group per category (17.2), then "Marked, No Charges", then "Hidden". The "No Recent Charge" heading and its key go (17.3) |
+| Row layout (9.2) | name; recurrence line; last-charge line; amount beside the lines | line 1: name, amount; line 2: recurrence line, last-charge line under the amount (17.2) |
+| Series screen button (9.3) | in `ListFooterComponent`, variant `secondary` | the `Screen` footer, as other detail screens (17.5) |
+| Transaction form, "Convert to exchange" (9.6 placement) | a `small` inline button in `ModeAndActions`, between the loan field and the mark field | the form's `Screen` footer (17.6) |
+| Transaction form, Type and Amount (item 14) | Type full width under the Holding field, Amount full width under it | one row, as `DateTimeRow`; in Exchange mode Type shares a row with "Value Out"; stacked at accessibility text sizes (17.6) |
+
+### 17.2 The list
+
+Order of items: the total of all; the category groups; "Marked, No Charges"; "Hidden". A `Divider` (`spacing={2}`, as the
+Accounts screen puts before a section) stands before every group and section that follows another item (item 10: "Hidden"
+gets it as the other groups do). With no series, the empty state as today and no total row.
+
+- **A series' category** (F) is the stored `category` of its newest charge: the first id of `chargeIds` (newest first) found
+  in the charges read (17.5). It resolves through `resolveCategoryKey` (`src/categories/category-display/`) with
+  `settings.defaultCategoryKey`, so a null, empty, unknown or deleted category folds into the **default category's group**,
+  as everywhere (kiko-domain, the one category fold; P1, 17.9). A series none of whose rows is in the read takes the same
+  fold (a null category). The heading's title and icon come from `resolveCategoryDisplay` with the same default key, its
+  color from `resolveCategoryColor(<display color>, <resolved key>)`. There is no "Uncategorized" group: the list and the series screen
+  name a charge with no category the same way.
+- **Group order** (G): the Categories screen's order, `categoriesRepo.allQuery()` (`sortOrder`, then `key`). If the
+  default key is not in the categories read (before the seed runs), its group goes last with `neutralCategory()`'s title
+  and icon, as `resolveCategoryDisplay` resolves it. A group shows only when it holds a shown series.
+- **Inside a group** (E, the planner's proposal, the smallest change): the active series by today's order
+  (`newestChargeFirst`), then the group's stopped series in the same order. A stopped row keeps its "No charge since" or quiet
+  line, which tells it apart; the "No Recent Charge" heading goes. Stopped series count in the totals ("their charges were
+  paid"). P2 ruled A (17.9).
+- **Which series:** today's shown set: detected series not hidden, plus every marked series with charges (`itemsOf`).
+  "Marked, No Charges" and "Hidden" stay their own sections with no totals (I).
+- **Group heading** (items 2, 3): the Accounts section heading's composition, built from the shared parts:
+  `EntityIconTile` (`compact`) with the category's icon and color, the title as `Text variant="heading"`, the group total as
+  `MoneyText` opposite it, in a row of `justifyContent: 'space-between'`, `alignItems: 'center'`, the title box `flex: 1`,
+  the total box `flexShrink: 0` (`implicit-account-heading.styles.ts`, `accounts.styles.ts` `sectionHeadingRow`/`rowAmount`).
+  It is not pressable and has no chevron: nothing opens a category here. `ImplicitAccountHeading` and `AccountTotal` are not
+  imported: both live in `src/screens/accounts/` (`check:screen-imports`), the first takes an `AccountRow` and the second
+  carries a converted caption a base total does not have. So the list gets one local component,
+  `recurring-group-heading`, of shared parts only (kiko-design-system: no shared component fits).
+- **The total of all** (item 6): a row above the first group, `t('recurringCharges.paidSoFar')` as `Text variant="body"` and
+  the total as `MoneyText`, laid out as the group heading's row.
+- **Row** (items 4, 5): line 1 holds the name (`flex: 1`) and the last charge's amount (`flexShrink: 0`); line 2 holds the
+  recurrence line (`flex: 1`) and `lastChargeLine` right-aligned under the amount, allowed to wrap (the quiet line is long).
+  The amount stays the last real charge's, in its own currency.
+- testIDs: `recurring-charges-total`, `recurring-charges-group-<resolved key>`, each total
+  `recurring-charges-group-total-<resolved key>`, each divider `recurring-charges-divider-<item key>`. A group is keyed by the
+  resolved category key alone, so one category never shows as two groups.
+
+### 17.3 Removed key
+
+`recurringCharges.stoppedHeading` goes with its heading, from `en.ts`, `uk.ts` and `title-keys.ts`, in the step that removes
+the heading; its two test reads (`recurring-charges.screen.test.tsx`, `recurring-charges.screen.marked.test.tsx`) and the
+`recurring-charges-heading-stopped` testID change in the same step. No help topic, skill or e2e file names it (grep at
+14f997ad7; re-grep on the base). It has not shipped.
+
+### 17.4 Totals and the conversion rule
+
+- **A series' own sum:** the sum of `-amountMinorUnits` over its charge rows in the read, as `Money` in `series.currency`
+  (each charge is a debit; `chargeIds` holds no folded twin and no refund, section 4). Every row of a series has its
+  currency (the group key holds it); a row of another currency is skipped, never added.
+- **List totals, base currency (D):** the rule `buildCategoryBreakdown` (`src/statistics/category-breakdown/`) applies to past
+  rows: the CURRENT rate table, `buildRateTable(rates)` (`src/rates/net-worth-view/`, the fiat seed under the live
+  `currency_rates` rows), `canConvert` as the guard, `convert` (`src/rates/conversion/`) for the value. One `convert` per
+  series sum, not per row: the table is the same for every row, so the two differ only in rounding, and one conversion per
+  series keeps a group total equal to the sum of what it holds. A group total adds its series' base `Money`; the total of all
+  adds the group totals, so it equals the sum of the shown group totals. Charges are fiat cash rows (section 4's account-kind
+  allow-list) and the seed covers every fiat currency, so `canConvert` fails only with no seed and no live row; such a series
+  is left out of the base totals, as Statistics leaves the row out, and its own row still shows its amount. No price book:
+  no charge is a priced holding.
+- **Detail total (J, K):** "All paid so far" = the series' own sum over the rows the screen already lists (`charges`), in the
+  series currency, no rates. Shown once the rows read has landed, beside the charge count.
+- A total is display only: no write, no route and no form reads it.
+
+### 17.5 Reads and their cost
+
+The list screen adds one hook, `useRecurringGroups` (`src/recurring/use-recurring-groups/`), beside `useRecurringSeries`. The
+series screen adds no read.
+
+| Read | Tables | When it runs | Cost |
+|---|---|---|---|
+| `transactionsRepo.listWithContextByIdsQuery(ids)`, `ids` = every `chargeIds` of the hook's `series` and `markedSeries` (unfiltered by a hide), unique and sorted | `transactions`, `holdings`, `accounts` | mount; a write to those tables (the whole-ledger read re-runs on `transactions` anyway); a change of the id set (a mark write, a detection change). **Not on a hide**: a hide changes no `series` id, so the sql and params are equal and `useLiveQuery` reads nothing (its key is `sql::params`) | rows by primary key, one bound parameter (`json_each`), joined to holdings and accounts by key; N = the charges of all series. Not a whole-ledger read |
+| `categoriesRepo.allQuery()` | `categories` | mount, a category write | the categories table |
+| `ratesRepo.allQuery()` | `currency_rates` | mount, a rates refresh | about 107 fiat rows plus one per coin |
+| `settingsRepo.getQuery()` (base currency, default category) | `settings` | mount, every settings write, a hide or a mark included | one row |
+
+All four `paused: !useIsScreenVisible()`, not `cached` (9.5). A hide or mark still runs no detection and no whole-ledger read
+(9.5, plan S13): it adds one one-row settings read, and a mark adds one by-ids read. The list's `isLoading` is the hook's or
+the groups' loading; a re-keyed by-ids read shows the loading state until it lands, never a group built on rows of another
+id set.
+
+### 17.6 The series screen and the transaction form
+
+- **Series screen (items 7, 8, 9, L):** the recurrence line loses "Charged" (17.8). The header gains a row:
+  `t('recurringCharges.paidSoFar')` and the total as `MoneyText`. The button by kind ("Not a recurring charge", "Remove mark")
+  moves from `ListFooterComponent` to `Screen`'s `footer` with `floatingFooter`, as `holding-detail.screen.tsx`
+  (`holdingDetailFooterAction`), `category-form.screen.tsx` and the Edit template footer do; variant `secondaryTonal`, regular
+  size, full width: the lone secondary footer action (kiko-design-system "Form Save and Cancel", the Edit template ruling of
+  2026-10-11), never a primary. Its `loading`, `useSubmitOnce`, testIDs (`recurring-series-hide`,
+  `recurring-series-remove-mark`) and the `removedSeries` hold across a Remove mark write stay as they are. Under a floating
+  footer the list's bottom padding is `useFloatingFooterEnd()`, read in a child of `Screen` (as `LedgerList` in
+  `holding-detail.screen.tsx`), so the last charge stops at the footer's top edge.
+- **Mark field's empty value (item 11):** the loan payment field shows "None" in the placeholder tone:
+  `PaymentHoldingField` passes `valueTone={selected ? 'textPrimary' : 'textSecondary'}` to `FieldTrigger`. `SelectField`
+  sets `textPrimary` for any selected option, so "Not marked" reads as a value. `SelectField` gains an optional
+  `emptyOption` prop: when the selected option equals it, `valueTone` is `textSecondary`; with no prop nothing changes.
+  `RecurringMarkField` passes `emptyOption="none"`. The loan field's `NONE_ICON` is not copied: the mark field has no icons.
+- **"Convert to exchange" (item 12):** leaves `ModeAndActions` (its `convertEligible` and `onPressConvert` props go) and becomes
+  the transaction form's `Screen` footer: `editTemplateId`'s "Create transaction" when set, else this button when
+  `convertView.eligible && !converting`, else none. `convertView.eligible` needs `isEditing` and a stored row, so the two
+  never meet; a pin holds it. Variant `secondaryTonal`, regular size, full width, icon `arrow.left.arrow.right`, label
+  unchanged: a footer button is regular (the Edit template footer).
+- **Type and Amount in one row (item 14, USER: "Display 'Type' and 'Amount' in a single row of a transaction form"):** the
+  income/expense branch of `FieldGroup` lays the Type field (`typeSelectField`, the `ModeSelectField` the screen builds) and
+  the Amount `TextField` side by side, as `DateTimeRow` lays Date and Time: `Box direction="row" gap={3}`, each field in a
+  `View` with `flex: 1`. The screen passes `typeSelectField` to `FieldGroup` instead of rendering it above. In Exchange mode
+  Type pairs with "Value Out" the same way (P3 ruled B), so Type never moves on a mode switch: `ExchangeFields`
+  (`src/screens/forms/exchange-fields/`, its component and props files) gains an optional leading slot, laid out in the same
+  row as "Value Out" and stacked by the same fallback. Convert has no Type (`visible={!converting}`), so Amount stays alone.
+  **Fallback:** at an accessibility text size (`useWindowDimensions().fontScale` at or above a named constant for iOS's
+  first accessibility size, AX1; the developer reads the value on the device and names its source) the two stack full width
+  in today's order. The Duo folded window (386pt wide in Device Hub, finding `20261018T0952-kiko-duo-adaptive/1`) leaves each
+  field about 170pt at the content margin, which holds the Type trigger with its icon and an amount with its currency
+  suffix; the device call checks it and the largest non-accessibility size. Reading order, refs (`amountFieldRef`, the
+  scroll to the first invalid field) and testIDs do not change. Nothing else on the form moves.
+
+### 17.7 Guideline 2.5.19 and compliance
+
+No flag and no condition on any new element: the totals, headings and footer buttons show whenever their data exists, and
+the empty state explains the screen with none. Nothing new is stored, sent or logged.
+
+### 17.8 i18n
+
+Draft rows; the user reviews them in both languages before the developer copies them (`.superpowers/sdd/1.4-recurring/texts-visual-1.md`).
+These replace the matching rows of section 13.
+
+| Key | en | uk |
+|---|---|---|
+| `recurringCharges.monthlyOnDay` | Monthly, on day {{day}} | Щомісяця, {{day}} числа |
+| `recurringCharges.monthlyAroundDay` | Monthly, around day {{day}} | Щомісяця, близько {{day}} числа |
+| `recurringCharges.monthlyLastDay` | Monthly, on the last day | Щомісяця, в останній день |
+| `recurringCharges.monthly` | Monthly | Щомісяця |
+| `recurringCharges.weekly` | Weekly | Щотижня |
+| `recurringCharges.weeklyOn.monday` ... `.sunday` | Weekly, on Mondays ... | Щотижня, у понеділок / у вівторок / у середу / у четвер / у пʼятницю / у суботу / у неділю |
+| `recurringCharges.yearly` | Yearly | Щороку |
+| `recurringCharges.yearlyOn` | Yearly, on {{date}} | Щороку, {{date}} |
+| `recurringCharges.paidSoFar` (new) | All paid so far | Усього сплачено |
+| `recurringCharges.stoppedHeading` (removed) | was: No Recent Charge | was: Без нових списань |
+
+Section 13's note on the uk past frame no longer holds: with "Charged" gone, the uk lines drop «Списувалося» as en drops the
+verb. No key is added for a charge with no category: it folds into the default category's group (17.2).
+
+### 17.9 Rulings on the open points (USER 2026-11-05, on plan de3d659b0)
+
+| Point | was: (de3d659b0) | now (ruling) |
+|---|---|---|
+| P1, a series with no category | answer F: an "Uncategorized" group, last, from `neutralCategory()` | "A: Default category": it folds into the default category's group through `resolveCategoryKey` / `resolveCategoryDisplay` (`settings.defaultCategoryKey`), as kiko-domain says; no "Uncategorized" group and no kiko-domain exception (17.2) |
+| P2, stopped series | proposal A: in their group, after the active ones | "A: In their group", as proposed; `recurringCharges.stoppedHeading` goes (17.3) |
+| P3, Type in Exchange mode | proposal A: Type full width above "Value Out" | "B: Pair with Value Out": Type shares a row with "Value Out"; AX1 and above stack (17.6) |
+
+Texts: "Texts lgtm" for `.superpowers/sdd/1.4-recurring/texts-visual-1.md` (2026-11-05), so 17.8's rows are approved.
+Item 13 ("Not marked" on a detected row): USER 2026-11-05 "A: Everywhere", with "Texts lgtm" for its three keys. The rule
+is in section 9.6 ("The detected period"), 8.2 and 13. Detection itself does not change: the form calls the same functions.

@@ -30,9 +30,9 @@ import {
   rankedNames,
 } from '@kiko/categories/category-rules';
 import { tidiedNameOf } from '@kiko/transactions/merchant-name';
-import { and, asc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { ruleDescriptionOf } from '@kiko/transactions/row-description';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, not, sql } from 'drizzle-orm';
 
 const REWRITE_PAGE_SIZE = 2000;
 
@@ -527,6 +527,34 @@ export const categoryRulesRepo = {
       .from(transactions)
       .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
       .where(and(ne(transactions.description, ''), noRealCategorySql)),
+  /**
+   * The votes a suggestion is read from, as a reactive Drizzle builder: the rows with a real
+   * category, counted per stored description and lowercased category key. A balance-setting,
+   * split-change or exchange row and a blank description are left out; the hand-set, rule-set and
+   * code-set rows all stay in, as each is one row the user has accepted. The negated fragment
+   * keeps its own parentheses, so `not` covers all three of its arms. Nothing here is indexed:
+   * the plan scans the table once and groups with a temporary B-tree.
+   */
+  reviewEvidenceQuery: () =>
+    database
+      .select({
+        description: transactions.description,
+        categoryKey: sql<string>`lower(${transactions.category})`,
+        rowCount: sql<number>`count(*)`,
+      })
+      .from(transactions)
+      .where(
+        and(
+          ne(transactions.description, ''),
+          isNotNull(transactions.category),
+          not(noRealCategorySql),
+          eq(transactions.setsBalance, false),
+          isNull(transactions.changeGroupId),
+          isNull(transactions.exchangeCounterpartHoldingId),
+          isNull(transactions.untrackedCounterpart),
+        ),
+      )
+      .groupBy(transactions.description, sql`lower(${transactions.category})`),
   /**
    * How many rules a category delete takes with it. Every stored rule counts, a rule that can no
    * longer be read included, and the key matches case-insensitively, exactly as the delete does,

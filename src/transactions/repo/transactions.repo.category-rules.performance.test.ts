@@ -22,6 +22,7 @@ jest.mock('@kiko/transactions/merchant-name', () => {
 import {
   type CategoryRuleMatcher,
   type ReviewCandidate,
+  type ReviewEvidence,
   hasNoRealCategory,
   isRewriteEligible,
   matchesRule,
@@ -416,14 +417,14 @@ describe('listing the review groups of 50 000 rows', () => {
       const known = knownCategoryKeys();
       const statements = spyOnStatements();
       const read = await categoryRulesRepo.reviewCandidateRowsQuery();
-      const groups = planReviewGroups(prepared, read, known);
+      const groups = planReviewGroups(prepared, read, known, []);
 
       expect(countOf(statements, /^select .* from "transactions"/i)).toBe(1);
       expect(countOf(statements, /^(insert|update|delete)/i)).toBe(0);
       expect(read.length).toBeGreaterThan(0);
       expect(read.length).toBeLessThan(rows.length);
       expect(groups.length).toBeGreaterThan(0);
-      expect(groups).toEqual(planReviewGroups(prepared, candidateRows, known));
+      expect(groups).toEqual(planReviewGroups(prepared, candidateRows, known, []));
     },
     TEST_TIMEOUT,
   );
@@ -441,7 +442,7 @@ describe('listing the review groups of 50 000 rows', () => {
         keptByKey.set(key, (keptByKey.get(key) ?? 0) + 1);
       }
 
-      const groups = planReviewGroups(prepared, candidateRows, known);
+      const groups = planReviewGroups(prepared, candidateRows, known, []);
 
       expect(kept.length).toBeGreaterThan(0);
       expect(kept.length).toBeLessThan(rows.length);
@@ -454,7 +455,7 @@ describe('listing the review groups of 50 000 rows', () => {
     'calls merchantNameOf once per distinct description',
     () => {
       jest.mocked(merchantNameOf).mockClear();
-      planReviewGroups(prepared, candidateRows, knownCategoryKeys());
+      planReviewGroups(prepared, candidateRows, knownCategoryKeys(), []);
 
       const described = jest.mocked(merchantNameOf).mock.calls.map(([name]) => name);
 
@@ -463,6 +464,39 @@ describe('listing the review groups of 50 000 rows', () => {
       expect(described.length).toBeLessThanOrEqual(
         new Set(rows.map((row) => row.description)).size,
       );
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'calls merchantNameOf once per distinct name across the rows and the evidence',
+    () => {
+      const known = knownCategoryKeys();
+      const merchantNameCalls = jest.mocked(merchantNameOf);
+
+      merchantNameCalls.mockClear();
+      planReviewGroups(prepared, candidateRows, known, []);
+
+      const namesOfRows = new Set(merchantNameCalls.mock.calls.map(([name]) => name));
+      const namesOfEvidenceOnly = Array.from({ length: 5 }, (_, index) => `Evidence Only ${index}`);
+      // Each name the rows describe is filed under two categories, the way the evidence read
+      // returns it, so the same name reaches the plan from the rows and from two evidence rows.
+      const evidence: ReviewEvidence[] = [...namesOfRows, ...namesOfEvidenceOnly].flatMap(
+        (description) => [
+          { description, categoryKey: 'groceries', rowCount: 2 },
+          { description, categoryKey: 'dining', rowCount: 1 },
+        ],
+      );
+
+      merchantNameCalls.mockClear();
+      planReviewGroups(prepared, candidateRows, known, evidence);
+
+      const described = merchantNameCalls.mock.calls.map(([name]) => name);
+
+      expect(namesOfRows.size).toBeGreaterThan(0);
+      expect(evidence.length).toBeGreaterThan(namesOfRows.size);
+      expect(described).toHaveLength(namesOfRows.size + namesOfEvidenceOnly.length);
+      expect(new Set(described)).toEqual(new Set([...namesOfRows, ...namesOfEvidenceOnly]));
     },
     TEST_TIMEOUT,
   );
@@ -478,4 +512,43 @@ describe('listing the review groups of 50 000 rows', () => {
     expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
     expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
   });
+
+  it(
+    'reviewEvidenceQuery scans with a temp B-tree for the group, and returns one row per pair',
+    async () => {
+      seedLedger();
+
+      const known = knownCategoryKeys();
+      const query = categoryRulesRepo.reviewEvidenceQuery();
+      const { sql: statement, params } = query.toSQL();
+      const plan = (
+        mockDatabase
+          .prepare(`EXPLAIN QUERY PLAN ${statement}`)
+          .all(...(params as (string | number)[])) as { detail: string }[]
+      ).map((step) => step.detail);
+      const expected = new Map<string, number>();
+
+      for (const row of candidateRows) {
+        if (row.description !== '' && row.category !== null && !hasNoRealCategory(row, known)) {
+          const pair = JSON.stringify([row.description, row.category.toLowerCase()]);
+
+          expected.set(pair, (expected.get(pair) ?? 0) + 1);
+        }
+      }
+
+      const read = await query;
+
+      expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
+      expect(plan.join('\n')).toMatch(/USE TEMP B-TREE FOR GROUP BY/);
+      expect(expected.size).toBeGreaterThan(0);
+      expect(expected.size).toBeLessThan(rows.length);
+      expect(read).toHaveLength(expected.size);
+      expect(
+        new Map(
+          read.map((row) => [JSON.stringify([row.description, row.categoryKey]), row.rowCount]),
+        ),
+      ).toEqual(expected);
+    },
+    TEST_TIMEOUT,
+  );
 });

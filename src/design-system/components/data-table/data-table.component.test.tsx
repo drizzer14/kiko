@@ -895,8 +895,9 @@ describe('DataTable', () => {
   });
 
   describe('palette independence', () => {
-    // The render below runs under the one theme the Jest setup registers, so a row here only picks
-    // the token set to compare against. A second palette also needs the render to switch theme.
+    // Dark only: the store registers two themes, but the jest unistyles mock paints the first
+    // registered one (dark), so a light row would fail on the mock rather than on the table. A
+    // second palette also needs the render to switch theme, not only a row here.
     const themes = { dark: darkTheme };
     const tokenColors = (theme: typeof darkTheme) => new Set<unknown>(Object.values(theme.colors));
     const colorsIn = (element: { props: { style?: unknown } }) =>
