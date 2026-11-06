@@ -1,7 +1,14 @@
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
 
-import { averageCellOf, cellOf, columnsOf, openingColumnIndexOf, type Spoken } from '.';
+import {
+  averageCellOf,
+  cellOf,
+  columnsOf,
+  monthColumnsOf,
+  openingColumnIndexOf,
+  type Spoken,
+} from '.';
 
 const spoken: Spoken = { baseCurrency: 'UAH', locale: 'en', t: i18n.t };
 
@@ -79,6 +86,20 @@ describe('the columns', () => {
       'Total',
       'Average',
     ]);
+  });
+
+  it('of the months alone carry no sum, and the other columns follow them', () => {
+    expect(monthColumnsOf(months, i18n.t).map((column) => column.header)).toEqual([
+      'Jan 2025',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+    ]);
+    expect(monthColumnsOf(months, i18n.t).some((column) => column.isSum === true)).toBe(false);
+    expect(columnsOf(months, i18n.t).slice(0, months.length)).toEqual(
+      monthColumnsOf(months, i18n.t),
+    );
   });
 
   it('open at the third month from the end, or the first column of a short period', () => {

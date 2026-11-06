@@ -54,12 +54,16 @@ export const averageCellOf = (
     ? dashCellOf(label, spoken.t('tables.noCompleteMonth'))
     : cellOf(Math.round(average), label, spoken);
 
-/** A column per month, then the two sums. */
-export const columnsOf = (months: readonly CalendarMonth[], t: TFunction): DataTableColumn[] => [
-  ...months.map((month, index) => ({
+/** A column per month. */
+export const monthColumnsOf = (months: readonly CalendarMonth[], t: TFunction): DataTableColumn[] =>
+  months.map((month, index) => ({
     key: `month-${month.start}`,
     header: monthColumnLabel(month, index === 0, t),
-  })),
+  }));
+
+/** A column per month, then the two sums. */
+export const columnsOf = (months: readonly CalendarMonth[], t: TFunction): DataTableColumn[] => [
+  ...monthColumnsOf(months, t),
   { key: 'total', header: t('tables.total'), isSum: true },
   { key: 'average', header: t('tables.average'), isSum: true },
 ];

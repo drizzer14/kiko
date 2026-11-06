@@ -32,6 +32,7 @@ import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics
 import { styles } from './tables.styles';
 import CategoryTable from './category-table';
 import CashFlowTable from './cash-flow-table';
+import NetWorthTable from './net-worth-table';
 import TablePeriodField from './table-period-field';
 
 // This screen is registered in the Home and the Statistics stacks (the Statistics screen that
@@ -47,6 +48,7 @@ type TablesScreenProps = {
 const HAS_CATEGORY_FILTER: Record<TablesView, boolean> = {
   categories: true,
   cashFlow: false,
+  netWorth: false,
 };
 
 /**
@@ -85,6 +87,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     rateTable,
     categoryByKey,
     filtered,
+    priceBook,
     spanStart,
     transactionsFresh,
     historyRows,
@@ -93,7 +96,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
 
   // A screen opened before Statistics has no run to read, so it starts the one that fills the
   // rate history; one opened after a run that covers its span starts nothing and shares that run.
-  useRateHistoryBackfill({
+  const backfillStatus = useRateHistoryBackfill({
     transactions,
     holdings,
     historyRows,
@@ -173,6 +176,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const viewLabels: Record<TablesView, string> = {
     categories: t('tables.view.categories'),
     cashFlow: t('tables.view.cashFlow'),
+    netWorth: t('tables.view.netWorth'),
   };
 
   // They go into the table's scroll, so at a large type size they scroll away with the caption
@@ -251,6 +255,21 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               rateTable={rateTable}
               baseCurrency={baseCurrency}
               defaultCategoryKey={defaultCategoryKey}
+              topContent={controls}
+            />
+          ))
+          .with('netWorth', () => (
+            <NetWorthTable
+              accounts={filtered.filteredAccounts}
+              holdings={filtered.netWorthHoldings}
+              transactions={transactions}
+              historyRows={historyRows}
+              months={months}
+              now={now}
+              rateTable={rateTable}
+              priceBook={priceBook}
+              baseCurrency={baseCurrency}
+              backfillState={backfillStatus.state}
               topContent={controls}
             />
           ))

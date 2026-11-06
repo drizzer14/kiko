@@ -162,7 +162,7 @@ describe('help topic registry', () => {
     ['useTemplates', 4],
     ['manageCategories', 5],
     ['categoryRules', 6],
-    ['viewStatistics', 10],
+    ['viewStatistics', 11],
     ['viewRecurringCharges', 5],
     ['backupData', 4],
     ['restoreData', 4],
@@ -547,6 +547,62 @@ describe('the choices a help step names', () => {
     );
     expect(step).toContain('на ваш банківський рахунок');
   });
+
+  // The control has three parts, so step 10 may not say it switches between two tables.
+  it.each([
+    ['en', enValues, 'switch between the two tables', 'switch between the three tables'],
+    ['uk', ukValues, 'перемикати «Категорії» та «Рух коштів».', 'і «Капітал».'],
+  ] as const)(
+    'says in %s that the control at the top of Tables switches between three tables',
+    (_language, values, falseClaim, trueClaim) => {
+      const step = stepOf(values, 'viewStatistics', 10);
+
+      expect(step).not.toContain(falseClaim);
+      expect(step).toContain(trueClaim);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      enValues,
+      /"([^"]*)"/g,
+      [
+        en.tables.view.netWorth,
+        en.tables.all,
+        en.statistics.netWorthOverTime,
+        en.tables.netWorth.change,
+      ],
+      ['an archived account is not counted', "A currency with no history uses today's rate"],
+      'has no category filter',
+    ],
+    [
+      'uk',
+      ukValues,
+      /«([^»]*)»/g,
+      [
+        uk.tables.view.netWorth,
+        uk.tables.all,
+        uk.statistics.netWorthOverTime,
+        uk.tables.netWorth.change,
+      ],
+      ['архівований рахунок не враховується', 'Валюта без історії береться за сьогоднішнім курсом'],
+      'немає фільтра за категоріями',
+    ],
+  ] as const)(
+    'names in %s the labels of the net worth table, its rate rule and that it has no category filter',
+    (_language, values, quote, labels, claims, noCategoryFilter) => {
+      const step = stepOf(values, 'viewStatistics', 11);
+
+      expect(quotedSpans(step, quote)).toEqual(expect.arrayContaining([...labels]));
+
+      for (const claim of claims) {
+        expect(step).toContain(claim);
+      }
+
+      expect(step).toContain(noCategoryFilter);
+    },
+  );
 
   it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],

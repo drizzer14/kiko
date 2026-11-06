@@ -1,9 +1,13 @@
 import { toMajor } from '@kiko/currency/money';
 import { calendarMonthsBetween } from '@kiko/dates';
+import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
 import { buildFilterScope } from '@kiko/statistics/statistics-filter-scope';
-import type { AccountRow, CurrencyRateHistoryRow, HoldingRow } from '@kiko/db';
+import {
+  accountRow,
+  holdingRow,
+} from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
 
 import { buildNetWorthSeries } from '../net-worth-series';
 import type { SeriesTransaction } from '../holding-value-at';
@@ -15,40 +19,6 @@ type NetWorthByAccountInput = Parameters<typeof buildNetWorthByAccount>[0];
 
 const at = (year: number, monthIndex: number, day: number, hour = 12): number =>
   new Date(year, monthIndex, day, hour).getTime();
-
-const accountRow = (
-  overrides: Partial<AccountRow> & Pick<AccountRow, 'id' | 'kind'>,
-): AccountRow => ({
-  name: overrides.id,
-  institution: null,
-  currency: 'UAH',
-  bankId: null,
-  icon: null,
-  color: null,
-  sortOrder: 0,
-  archivedAt: null,
-  createdAt: 0,
-  ...overrides,
-});
-
-const holdingRow = (
-  overrides: Partial<HoldingRow> & Pick<HoldingRow, 'id' | 'accountId'>,
-): HoldingRow => ({
-  name: overrides.id,
-  type: 'cash',
-  currency: 'UAH',
-  icon: null,
-  color: null,
-  balanceMinorUnits: 0,
-  syncedBalanceMinorUnits: null,
-  balanceSetAt: null,
-  balanceSetRowId: null,
-  metadata: null,
-  sortOrder: 0,
-  closedAt: null,
-  createdAt: 0,
-  ...overrides,
-});
 
 const NOW = at(2026, 5, 15);
 // January to June 2026; June is the month that is still running.
