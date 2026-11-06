@@ -109,14 +109,14 @@ export const recurringGroupsOf = ({
     }
 
     const display = resolveCategoryDisplay(key, displayByKey, defaultCategoryKey);
-    // One conversion per series sum, never per row, so a group total equals the sum of what it
-    // holds. A currency with no rate is left out of the totals and its series stays listed.
+    // One conversion per series, so a group total equals the sum of what it holds. A currency
+    // with no rate is left out of the totals and its series stays listed.
     const total = series.reduce(
       (sum, entry) => {
-        const paid = paidFromRowsById(entry, rowById);
+        const last = Money.of(entry.currency, entry.lastChargeAmountMinorUnits);
 
-        return canConvert(paid.currency, baseCurrency, rateTable)
-          ? sum.add(convert(paid, baseCurrency, rateTable))
+        return canConvert(last.currency, baseCurrency, rateTable)
+          ? sum.add(convert(last, baseCurrency, rateTable))
           : sum;
       },
       Money.of(baseCurrency, 0),

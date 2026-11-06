@@ -1477,6 +1477,7 @@ export const uk: typeof en = {
     hiddenHeading: 'Приховані',
     holdingQuietSince: '«{{holding}}»: немає новіших транзакцій за {{date}}',
     lastCharge: 'Останнє списання {{date}}',
+    lastChargesTotal: 'Сума останніх списань',
     listChangedMessage: 'Поверніться назад, щоб побачити регулярні платежі в поточному вигляді.',
     listChangedTitle: 'Цей список змінився',
     marked: {

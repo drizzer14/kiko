@@ -216,7 +216,7 @@ const RecurringChargesScreen: FC<RecurringChargesScreenProps> = () => {
             .with({ kind: 'total' }, ({ total: paid }) => (
               <Box direction="row" testID="recurring-charges-total" style={styles.totalRow}>
                 <Box style={styles.totalLabel}>
-                  <Text variant="body">{t('recurringCharges.paidSoFar')}</Text>
+                  <Text variant="body">{t('recurringCharges.lastChargesTotal')}</Text>
                 </Box>
 
                 <Box style={styles.totalAmount}>

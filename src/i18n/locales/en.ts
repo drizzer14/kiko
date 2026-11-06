@@ -1779,6 +1779,7 @@ export const en = {
     hiddenHeading: 'Hidden',
     holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
+    lastChargesTotal: 'Sum of last charges',
     listChangedMessage: 'Go back to see your recurring charges as they are now.',
     listChangedTitle: 'This list has changed',
     marked: {
