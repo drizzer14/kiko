@@ -4,6 +4,7 @@ import {
   type ParamListBase,
 } from '@react-navigation/native';
 import { act, render, screen } from '@testing-library/react-native';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { transactionFormDataLayer as mockDataLayer } from '@kiko/test-support/transaction-form-data-layer';
 
@@ -83,23 +84,9 @@ jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 
 const navigationRef = createNavigationContainerRef<ParamListBase>();
 
-type RenderedNode = {
-  type: string;
-  props: Record<string, unknown>;
-  children: (RenderedNode | string)[] | null;
-};
-
-const headerConfigs = (node: RenderedNode | string | null): Record<string, unknown>[] =>
-  node === null || typeof node === 'string'
-    ? []
-    : [
-        ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props] : []),
-        ...(node.children ?? []).flatMap(headerConfigs),
-      ];
-
 // What the native bars on screen are set to: the header configs that are not hidden.
 const visibleBars = () =>
-  headerConfigs(screen.toJSON() as unknown as RenderedNode)
+  headerConfigsIn(screen.toJSON())
     .filter((config) => config.hidden !== true)
     .map(({ title, largeTitle }) => ({ title, largeTitle }));
 

@@ -4,6 +4,7 @@ import {
   type ParamListBase,
 } from '@react-navigation/native';
 import { act, render, screen } from '@testing-library/react-native';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 
 import '@kiko/design-system/unistyles';
@@ -65,21 +66,7 @@ type HeaderConfig = {
   largeTitleHideShadow?: boolean;
 };
 
-type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
-
-const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfig[] =>
-  node === null || typeof node === 'string'
-    ? []
-    : [
-        ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as HeaderConfig] : []),
-        ...(node.children ?? []).flatMap(headerConfigsOf),
-      ];
-
-const headerConfigs = (): HeaderConfig[] => {
-  const tree = screen.toJSON() as RenderedNode | RenderedNode[] | null;
-
-  return [tree].flat().flatMap(headerConfigsOf);
-};
+const headerConfigs = (): HeaderConfig[] => headerConfigsIn<HeaderConfig>(screen.toJSON());
 
 // The layer's root is the one page whose title is empty: every other page, the panes' too, is
 // named by its title or, with none, by its route name.
