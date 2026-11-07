@@ -1228,6 +1228,112 @@ Merge of next 851db0d18 at 2545ea4eb carried `scheme: 'dark'` into marked-series
   line per currency; a name paid in two currencies at the same time stays two rows. The overnight defaults of spec 19.8 go to
   the user with the device call.
 
+### 1.4-recurring-visual-2 task 9/9: keep the tapped row
+
+**Spec:** 8.2 "Store" (the optional `transactionId`), 8.3 key 0, "The tapped row", the key 0 table, section 11's two new rows.
+**User ruling 2026-11-07:** "Keep tapped row" (was: the overnight default "a marked series can drop the tapped row"); the
+16-day monthly floor, the disabled "Not marked" on a dropped row and the four currency-merge defaults KEEP. **Base:** the
+branch tip holding `docs(recurring): keep the tapped row in a marked chain` (re-grep every symbol below on it; no line numbers
+here). **Run-log gaps:** closes none, leaves all open; none names the marked chain. **Files (floor 13; mutable floor 4:
+`detection.ts`, `marked-series.ts`, `recurring-merchant-choices.ts`, `recurring-mark-field.ts`):** those four,
+`detection.types.d.ts`, `detection.one-per-slot.test.ts`, `marked-series.test.ts` (or its world tables in
+`src/test-support/marked-series-chain-worlds.ts` / `marked-series-worlds.ts`), `settings.repo.test.ts`,
+`restore-recurring-merchant-choices.test.ts`, `recurring-mark-field.component.test.tsx`,
+`transaction-form.recurring-mark.test.tsx`, `use-row-mark.test.tsx`, kiko-domain's mark rules (drift step), and any other
+suite whose `markRecurringCharge` call expectation names the mark (grep `markRecurringCharge).toHaveBeenCalledWith` first; the
+count is a floor). `settings.repo.ts`, `use-row-mark.ts` and `recurring-mark-field.component.tsx` need no code edit
+(`setRecurringChainPeriod` spreads the stored mark, so it keeps the id; `markRecurringCharge` stores the mark it is given;
+`removeRecurringMarks` matches by `isSameChain`; the component passes `existing`, which holds `id`): the developer confirms
+each by reading, and a doc comment may change. No migration, no column, no text key, no seed, no `EXPORT_VERSION` change: no
+1.2-upgrade world is touched (the column is JSON, and a mark without the id reads as today). **Not "existing suites green
+unchanged":** each edit below is named with its `was`; any other edited expectation is reported, not made.
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection, detection.types.d.ts
+export type RecurringMark = {
+  currency: Currency;
+  amountMinorUnits: number;
+  period: RecurringPeriod;
+  // The row the mark was tapped on (spec 8.3 key 0); absent on every mark written before. Never part of the
+  // mark's identity: `isSameChain`, the dedupe, `compareMarks` and the removal ignore it.
+  transactionId?: string;
+};
+
+// @kiko/recurring/detection: was (charges, period, storedAmounts)
+export const onePerSlotOf: (
+  charges: readonly Charge[],
+  period: RecurringPeriod,
+  storedAmounts: readonly number[],
+  tappedIds?: ReadonlySet<string>, // default: an empty set, so every id-less caller and pin reads as today
+) => { kept: Charge[]; dropped: Charge[] };
+
+// recurring-mark-field.ts: was row: { amountMinorUnits: number; description: string }
+type MarkWrite = { row: { id: string; amountMinorUnits: number; description: string }; /* rest unchanged */ };
+```
+
+- `onePerSlotOf`: `RunScore` gains a first key, the negated count of kept charges whose id is in `tappedIds` (5 keys, was 4);
+  the seed run and the predecessor step add `-Number(tappedIds.has(id))` the same way `near` is added. `compareScores`,
+  `predecessorIndexesOf` and the `<=` ties are unchanged (spec 8.3 "The computation": the window stays exact under key 0).
+  Update its doc comment ("Of all such runs the kept one holds the most tapped rows, then ...").
+- `marked-series.ts` `chainsOfCharges`: pass `new Set(piece.marks.flatMap(({ transactionId }) => transactionId === undefined ?
+  [] : [transactionId]))` as the fourth argument. One builder still serves `chainsOfEntry` and `markedChainOfAmount`
+  (fix-divergent-twins), so the series and the form's `holdsRow` agree.
+- `recurring-merchant-choices.ts` `markOf`: keep `transactionId` when it is a non-empty string, else build the mark without it
+  (the mark is never dropped for it). `marksOf` dedupes by `currency:amount` as now and keeps the kept mark's id; `isSameChain`
+  is unchanged (its doc comment says the id is ignored). `recurringChoiceOf` unchanged.
+- `writeMark`: the new mark adds `transactionId: row.id`; the period rewrite and the removal paths unchanged.
+
+**Named edits, each with its `was` line in the qa commit body** (the qa walks every cell by spec 8.3's key 0 table and
+reports any disagreement, never edits to green):
+
+| Pin | was | now |
+|---|---|---|
+| `markRecurringCharge` call expectations in `recurring-mark-field.component.test.tsx` and `transaction-form.recurring-mark.test.tsx` (floor 6 sites) | `{ currency, amountMinorUnits, period }` | the same plus `transactionId: <the tapped row's id>` |
+| `detection.one-per-slot.test.ts` table rows, `marked-series` matrix rows and `markedChainOfAmount` cases | marks without an id | unchanged: they are the id-less case of spec 8.3 (world A at 102 keeps `holdsRow: false` on 12 Oct) |
+| New `onePerSlotOf` rows (a `tappedIds` column, empty on the old rows) | none | spec 8.3's key 0 table, each row with its kept and dropped ids |
+| New `marked-series` rows with a `transactionId` on the mark | none | world A at 102 tapped 12 Oct: x6, last charge 12 Oct at 102, `markedChainOfAmount` `holdsRow: true` on 12 Oct and `false` on 5 Oct; the FX world tapped 21 Jun; the key-2 world |
+| `settings.repo.test.ts` parser and writes | no id field | a mark with an id round-trips; a bad id (number, `''`, object) reads the mark without it; two stored marks of one chain with two ids read as one mark (the earlier period's, with its id); `setRecurringChainPeriod` keeps the id; `removeRecurringMarks` with an id-less chain removes an id-holding mark; `markRecurringCharge` on a stored chain with another id leaves one mark |
+| `restore-recurring-merchant-choices.test.ts` | marks without an id | a mark with an id restores with it; a file mark with a bad id restores without it |
+
+- [ ] **step 1/6 (kiko:qa): red pins.** The named edits and new rows above, in the existing tables and describes (no new
+  file, no new helper copy). Properties in `marked-series.test.ts` with `sweep` and `seededRandom` (no new helper): on random
+  ledgers, one mark tapped on a random charge of its piece keeps that charge; deep-equal for any input order with ids; a mark
+  without an id gives the same result as the same mark with an id that matches no charge. Each red shown failing on the base
+  for the stated reason (counts in the report); `was` values copied from a base run, never typed. Commit
+  `test(recurring): keep the tapped row in a marked chain`. **Check:** `bash scripts/wait-load.sh 15`, then `npx jest
+  src/recurring/detection/detection.one-per-slot src/recurring/marked-series src/recurring/use-row-mark src/settings
+  src/data-transfer/snapshot/restore-recurring-merchant-choices src/screens/forms/transaction-form/recurring-mark-field
+  src/screens/forms/transaction-form/transaction-form.recurring-mark --maxWorkers=2`, output in a file; reds only where
+  named. **`check:dup` (at AC):** rows in existing tables; read the touched tests' rows in `scripts/checks/dup-ceilings.tsv`;
+  a ceiling never rises.
+- [ ] **step 2/6 (kiko:developer): key 0 and the id.** The interfaces above, in `detection.types.d.ts`, `detection.ts`,
+  `marked-series.ts`, `recurring-merchant-choices.ts`, `recurring-mark-field.ts`. No pin edited; no text added. Commit
+  `feat(recurring): keep the tapped row in a marked chain`. **Checks:** fast tier on write; `bash scripts/wait-load.sh 15`,
+  then `npx jest src/recurring src/settings src/data-transfer/snapshot/restore-recurring-merchant-choices
+  src/screens/forms/transaction-form/recurring-mark-field src/screens/forms/transaction-form/transaction-form.recurring-mark
+  src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2` (includes
+  `detection.performance.test.ts`; its bound is not raised), output in a file; `make jest-affected BASE=<step 1/6 commit>`
+  (at AC; exit 3: say so, the named set stands); `npm run check:knip` (at AC).
+- [ ] **step 3/6 Review (kiko:reviewer).** Diff from the set base. Top questions: does key 0 reach both `chainsOfEntry` and
+  `markedChainOfAmount` through the one builder? Is the predecessor window still exact with key 0 (spec 8.3 "The
+  computation"; a brute force over small random worlds with tapped ids, as the step 6/9 review of task 6/6 did)? Can an id
+  ever split or duplicate a mark (parser dedupe, `isSameChain`, the three writes)? Does a bad or stale id ever drop a mark or
+  throw? Are the test edits only the named ones?
+- [ ] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's mark rules: "A mark stores the absolute
+  stored amount and the currency ..." gains the optional tapped-row id (never part of the mark's identity); "A marked chain
+  keeps charges more than half a step apart ..." gains "the mark's tapped row first". `make doc-suites` (at AC). Report the
+  sha or "no drift found".
+- [ ] **step 5/6 Verify (coordinator, at AC).** The coordinator queues `bash scripts/job-queue.sh verify <worktree>
+  1.4-recurring-visual-2-task-9` once at the end, on the charger, rerun until green. No agent runs `make verify`, `check:all`
+  or full jest. Mutation gates are paused by the user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own
+  base.
+- [ ] **step 6/6 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-9`. Device (next build):
+  mark a row that has a near-amount charge less than half a month from it: that row stays in the series and the other reads
+  "Not marked", disabled. The user's existing marks hold no id and read as before; to apply key 0 to one, "Remove mark" and
+  mark the row again (say so in the device call).
+
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
 
 | Task | Floor |
@@ -1246,6 +1352,7 @@ Merge of next 851db0d18 at 2545ea4eb carried `scheme: 'dark'` into marked-series
 | visual-2 task 5/5 | the fix set's own files, measured |
 | visual-2 task 6/6 | 4 (listed in its Files) |
 | visual-2 task 8/8 | 4 (listed in its Files; `recurring-series.styles.ts` may make it 5: `make mutable` decides) |
+| visual-2 task 9/9 | 4 (listed in its Files) |
 
 Mutation gates are paused by the user; this table is for a lift.
 
