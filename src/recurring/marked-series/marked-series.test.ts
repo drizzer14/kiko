@@ -10,12 +10,15 @@ import {
   detectRecurringSeries,
 } from '@kiko/recurring/detection';
 import { DAY_MS } from '@kiko/dates';
+import { minOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import {
   at,
   nowOf,
   timesOf,
+  rangeOf,
   ledgerOf,
+  chargeOf,
   dayKeyOf,
   shuffled,
   randomLedgerOf,
@@ -37,12 +40,13 @@ import {
   ONE_AMOUNT_WORLDS,
   type MarkedWorld,
 } from '@kiko/test-support/marked-series-worlds';
+import { daysBetween } from '@kiko/holdings/interest';
 import { sweep } from '@kiko/test-support/property-sweep';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import type { RecurringMerchantChoice } from '@kiko/settings';
-import { seededRandom } from '@kiko/test-support/seeded-random';
 import { rowRecurrenceOf } from '@kiko/recurring/row-recurrence';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
+import { type Random, seededRandom } from '@kiko/test-support/seeded-random';
 import { withDeviceZoneOffset } from '@kiko/test-support/device-zone-offset';
 import { paidSoFarOf, recurringGroupsOf } from '@kiko/recurring/recurring-groups';
 import { AMOUNT_CHAIN_WORLDS } from '@kiko/test-support/marked-series-chain-worlds';
@@ -60,6 +64,16 @@ const STEP_REACH_DAYS: Record<RecurringPeriod, number> = {
   everyThreeMonths: 93,
   everySixMonths: 185,
   yearly: 367,
+};
+
+// Two kept charges sit more than half a step apart, in whole local days: half of 7, 30.44, 91.31,
+// 182.62 and 365.24 days, rounded up.
+const MIN_GAP_DAYS: Record<RecurringPeriod, number> = {
+  weekly: 4,
+  monthly: 16,
+  everyThreeMonths: 46,
+  everySixMonths: 92,
+  yearly: 183,
 };
 
 const WORLDS: readonly MarkedWorld[] = [
@@ -281,9 +295,6 @@ describe('the order of the chains without a charge', () => {
 const timeOfRow = (ledger: Ledger, rowId: string): number =>
   ledger.rows.find(({ id }) => id === rowId)?.time ?? 0;
 
-const surplusOnOneDay = (times: readonly number[]): number =>
-  times.length - new Set(times.map(dayKeyOf)).size;
-
 // The charges of a series' piece after the twin fold: the ones it keeps and the ones it drops.
 const pieceChargesOf = (ledger: Ledger, series: RecurringSeries): Charge[] => {
   const { lowest, highest } = series.markedSpan ?? { lowest: 0, highest: 0 };
@@ -500,19 +511,143 @@ describe('markedSeriesOf over random ledgers and marks', () => {
     expect(droppedCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
   });
 
-  it('never holds two charges on one local day, which share a slot whatever the period', () => {
-    const marked = outcomes().flatMap(({ ledger, outcome }) =>
-      outcome.marked.map((series) => ({
-        keptSurplus: surplusOnOneDay(series.chargeIds.map((id) => timeOfRow(ledger, id))),
-        pieceSurplus: surplusOnOneDay(pieceChargesOf(ledger, series).map(({ time }) => time)),
-      })),
+  const PERIODS: readonly RecurringPeriod[] = [
+    'weekly',
+    'monthly',
+    'everyThreeMonths',
+    'everySixMonths',
+    'yearly',
+  ];
+  const DENSE_AMOUNTS = [98, 100, 102, 120];
+  const DENSE_MIN_ROWS = 20;
+  const DENSE_EXTRA_ROWS = 21;
+  const DENSE_SPAN_DAYS = 600;
+
+  // One merchant, rows on random days at four amounts of one amount cut, one random mark: the
+  // charges often sit a few days apart at a near or a far amount, which is what the keys decide.
+  const denseWorlds = SEEDS.map((seed) => {
+    const random = seededRandom(seed * SEED_SPREAD);
+    const amountOf = (): number =>
+      DENSE_AMOUNTS.at(Math.floor(random() * DENSE_AMOUNTS.length)) ?? DENSE_AMOUNTS[0] ?? 0;
+    const period = PERIODS.at(Math.floor(random() * PERIODS.length)) ?? 'monthly';
+    const rows = Array.from(
+      { length: DENSE_MIN_ROWS + Math.floor(random() * DENSE_EXTRA_ROWS) },
+      (_unused, index) =>
+        chargeOf(
+          `dense-${index}`,
+          at(2025, 1, 1 + Math.floor(random() * DENSE_SPAN_DAYS)),
+          amountOf(),
+        ),
     );
 
-    expect(marked.filter(({ keptSurplus }) => keptSurplus > 0)).toEqual([]);
-    expect(marked.filter(({ pieceSurplus }) => pieceSurplus > 0).length).toBeGreaterThanOrEqual(
-      MIN_PER_RUN,
-    );
+    return {
+      seed,
+      ledger: ledgerOf(rows),
+      entries: [entryOf(DEFAULT_NAME, [[period, amountOf()]])],
+    };
   });
+  const denseOutcomes = () =>
+    denseWorlds.map((world) => ({
+      ...world,
+      outcome: outcomeOf(world.ledger, world.entries, nowOf()),
+    }));
+
+  it('never keeps two charges half a step or less apart', () => {
+    let closePairCount = 0;
+
+    for (const { ledger, outcome } of [...outcomes(), ...denseOutcomes()]) {
+      for (const series of outcome.marked) {
+        const keptDays = series.chargeIds.map((id) => timeOfRow(ledger, id)).sort(ascending);
+        const pieceDays = pieceChargesOf(ledger, series)
+          .map(({ time }) => time)
+          .sort(ascending);
+
+        for (const [index, time] of keptDays.slice(1).entries()) {
+          expect(daysBetween(keptDays[index] ?? 0, time)).toBeGreaterThanOrEqual(
+            MIN_GAP_DAYS[series.period],
+          );
+        }
+
+        closePairCount += pieceDays
+          .slice(1)
+          .filter(
+            (time, index) => daysBetween(pieceDays[index] ?? 0, time) < MIN_GAP_DAYS[series.period],
+          ).length;
+      }
+    }
+
+    expect(closePairCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
+  });
+
+  it('gives a deep-equal result for any input order of a dense ledger', () => {
+    for (const { seed, ledger, entries, outcome } of denseOutcomes()) {
+      for (const rows of [
+        [...ledger.rows].reverse(),
+        shuffled(ledger.rows, seededRandom(seed * SEED_SPREAD)),
+      ]) {
+        expect(outcomeOf({ ...ledger, rows }, entries, nowOf())).toEqual(outcome);
+      }
+    }
+
+    expect(
+      denseOutcomes().filter(
+        ({ ledger, outcome }) => idsOf(outcome.marked).length < ledger.rows.length,
+      ),
+    ).not.toHaveLength(0);
+  });
+
+  const MONTHLY_JITTER_DAYS = 6;
+  const WEEKLY_JITTER_DAYS = 1;
+  const MONTHLY_SLOTS = 24;
+  const WEEKLY_SLOTS = 40;
+  const MONTHLY_DAY_RANGE = 28;
+  const SKIPPED_SHARE = 0.2;
+  const WEEK_DAYS = 7;
+  // A world must reach gaps near the floor, or the property would also pass a floor that is too
+  // high: 16 days monthly and 4 weekly.
+  const NARROW_GAP_DAYS = { monthly: 20, weekly: 6 };
+
+  const jitteredRowsOf = (period: 'monthly' | 'weekly', random: Random) => {
+    const jitter = period === 'monthly' ? MONTHLY_JITTER_DAYS : WEEKLY_JITTER_DAYS;
+    const day = 1 + Math.floor(random() * MONTHLY_DAY_RANGE);
+    const slots = period === 'monthly' ? MONTHLY_SLOTS : WEEKLY_SLOTS;
+
+    return rangeOf(0, slots)
+      .filter(() => random() >= SKIPPED_SHARE)
+      .map((index) => {
+        const shift = Math.floor(random() * (2 * jitter + 1)) - jitter;
+        const time =
+          period === 'monthly'
+            ? at(2024, 10 + index, day + shift)
+            : at(2025, 1, 1 + WEEK_DAYS * index + shift);
+
+        return chargeOf(`${period}-${index}`, time, 100);
+      });
+  };
+
+  it.each(['monthly', 'weekly'] as const)(
+    'keeps every charge of a jittered %s rhythm',
+    (period) => {
+      const gaps: number[] = [];
+
+      for (const seed of SEEDS) {
+        const rows = jitteredRowsOf(period, seededRandom(seed * SEED_SPREAD));
+        const { marked } = outcomeOf(
+          ledgerOf(rows),
+          [entryOf(DEFAULT_NAME, [[period, 100]])],
+          nowOf(),
+        );
+        const times = rows.map(({ time }) => time).sort(ascending);
+
+        expect(marked.map(({ chargeIds }) => [...chargeIds].sort())).toEqual([
+          rows.map(({ id }) => id).sort(),
+        ]);
+        gaps.push(...times.slice(1).map((time, index) => daysBetween(times[index] ?? 0, time)));
+      }
+
+      expect(minOf(gaps)).toBeLessThan(NARROW_GAP_DAYS[period]);
+    },
+  );
 
   it('answers holdsRow false for exactly the charges of the piece its series leaves out', () => {
     let checkedCount = 0;

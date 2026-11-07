@@ -57,9 +57,9 @@ const GROCERY_MCC = 5411;
 const ARCHIVED_AT = 1_700_000_000_000;
 const EXCLUSION_AMOUNT = 250;
 const DAILY_ROWS = 500;
-// The daily rows run from 22 Jun 2025 to 3 Nov 2026, and the newest row is the stored amount's own,
-// so the rhythm sits on the 3rd: one charge for each of the 17 thirds from 3 Jul 2025.
-const DAILY_SLOTS = 17;
+// The daily rows run from 22 Jun 2025 to 3 Nov 2026. A shop marked monthly keeps a charge about
+// every 16 days, the floor of the rule, with the rows near the stored amount first.
+const DAILY_SLOTS = 28;
 
 export const MARKED_LINE: RecurrenceView = { kind: 'marked' };
 

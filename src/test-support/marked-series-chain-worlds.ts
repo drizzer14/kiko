@@ -497,6 +497,25 @@ export const AMOUNT_CHAIN_WORLDS: readonly MarkedWorld[] = [
     dropped: { rowIds: ['extra-aug', 'extra-oct'], reads: { kind: 'none' }, paidSoFar: 600 },
   },
   {
+    title: 'a 98 and a 102 in a month of a marked 102: the tapped row drops',
+    ledger: () =>
+      ledgerOf([
+        ...monthly(6, 5, 100),
+        chargeOf('extra-aug', at(2026, 8, 20), 98),
+        chargeOf('extra-oct', at(2026, 10, 12), 102),
+      ]),
+    marks: [['monthly', 102]],
+    noEntry: [series('monthly', 6, onDay(5), { from: 'charge' })],
+    shown: [
+      marked('monthly', 6, onDay(5), {
+        from: 'charge',
+        lastCharge: at(2026, 10, 5),
+        lastAmount: 100,
+      }),
+    ],
+    dropped: { rowIds: ['extra-aug', 'extra-oct'], reads: { kind: 'none' }, paidSoFar: 600 },
+  },
+  {
     title: 'twelve marked 100 and a 98 in one of their months',
     ledger: () => ledgerOf([...monthly(12, 5, 100), chargeOf('extra-aug', at(2026, 8, 20), 98)]),
     marks: [['monthly', 100]],
@@ -551,5 +570,79 @@ export const AMOUNT_CHAIN_WORLDS: readonly MarkedWorld[] = [
     marks: [['monthly', 100]],
     noEntry: [series('monthly', 5)],
     shown: [marked('monthly', 5, MARKED_LINE, { lastCharge: at(2026, 10, 31) })],
+  },
+  {
+    title: 'a billing day moved from the 5th to the 20th keeps every charge',
+    ledger: () =>
+      ledgerOf([
+        ...monthly(6, 5, 100, { prefix: 'early', newest: [2026, 4] }),
+        ...monthly(6, 20, 100, { prefix: 'late' }),
+      ]),
+    marks: [['monthly', 100]],
+    noEntry: [series('monthly', 12)],
+    shown: [
+      marked('monthly', 12, onDay(20), {
+        lastCharge: at(2026, 10, 20),
+        lastAmount: 100,
+      }),
+    ],
+  },
+  {
+    title: 'a billing day moved from the 20th to the 5th drops the 20th 15 days before it',
+    ledger: () =>
+      ledgerOf([
+        ...monthly(6, 20, 100, { prefix: 'early', newest: [2026, 4] }),
+        ...monthly(6, 5, 100, { prefix: 'late' }),
+      ]),
+    marks: [['monthly', 100]],
+    noEntry: [series('monthly', 12)],
+    shown: [
+      marked('monthly', 11, onDay(5), {
+        lastCharge: at(2026, 10, 5),
+        lastAmount: 100,
+      }),
+    ],
+    dropped: { rowIds: ['early-0'], reads: { kind: 'none' }, paidSoFar: 1100 },
+  },
+  ...[1150, 1385, 1099].map(
+    (tapped): MarkedWorld => ({
+      title: `seven bills 17 days apart and more all stay, marked at ${tapped}`,
+      ledger: () =>
+        ledgerOf(
+          chargesAt('bill', [
+            [2026, 4, 3, 1210],
+            [2026, 5, 10, 1385],
+            [2026, 6, 3, 1302],
+            [2026, 7, 25, 1150],
+            [2026, 8, 12, 1099],
+            [2026, 9, 2, 1240],
+            [2026, 10, 20, 1330],
+          ]),
+        ),
+      marks: [['monthly', tapped]],
+      noEntry: [],
+      shown: [
+        marked('monthly', 7, MARKED_LINE, { lastCharge: at(2026, 10, 20), lastAmount: 1330 }),
+      ],
+    }),
+  ),
+  {
+    title: 'an FX series: the tapped charge 16 days late drops beside the next one on its day',
+    ledger: () =>
+      ledgerOf(
+        chargesAt('fx', [
+          [2026, 4, 5, 412],
+          [2026, 5, 5, 415],
+          [2026, 6, 6, 410],
+          [2026, 7, 5, 417],
+          [2026, 8, 5, 413],
+          [2026, 9, 21, 414],
+          [2026, 10, 5, 415],
+        ]),
+      ),
+    marks: [['monthly', 414]],
+    noEntry: [],
+    shown: [marked('monthly', 6, onDay(5), { lastCharge: at(2026, 10, 5), lastAmount: 415 })],
+    dropped: { rowIds: ['fx-5'], reads: { kind: 'none' }, paidSoFar: 2482 },
   },
 ];
