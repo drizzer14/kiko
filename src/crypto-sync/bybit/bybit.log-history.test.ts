@@ -10,6 +10,7 @@ import {
   sumsByHolding,
 } from './bybit.log-test-fixtures';
 import { NOW } from './bybit.client-test-fixtures';
+import { BybitHoldingMissingError } from './bybit.walk-run';
 import { ACCOUNT_ID, served } from './bybit.capital-test-fixtures';
 import { NEVER_READ, SPOT_TRADE_ID, spotLogRow, withoutField } from './bybit.history-test-fixtures';
 
@@ -638,14 +639,16 @@ describe('the log walk: what each row is', () => {
     });
   });
 
-  it('holds the cursor when a holding cannot be found for a leg', async () => {
+  it('rejects the run and moves no mark when a holding cannot be found for a leg', async () => {
     const walk = newWalk({ overrides: { ensureHoldings: jest.fn(async () => undefined) } });
     walk.world.log = [spotAt(AT)];
 
-    await walk.run();
+    const run = walk.run();
 
+    await expect(run).rejects.toThrow(BybitHoldingMissingError);
+    await expect(run).rejects.toHaveProperty('code', 'log-holding-missing');
     expect(walk.keys()).toEqual([]);
     expect(walk.marks().cursor).toBe(CURSOR);
-    expect(warned.codes()).toContain('log-holding-missing');
+    expect(walk.marks().pending).toBeUndefined();
   });
 });

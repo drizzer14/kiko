@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import {
+  BinanceWalkStop,
   type ExchangeStateDeps,
   exchangeStateDepsOf,
   isPoint,
@@ -128,6 +129,47 @@ export const placeBybitRows = <
     ensureHoldings: context.deps.ensureHoldings,
     missingCode,
   });
+
+/**
+ * A wallet holding that a walk the re-scan reads again cannot find, even after it created the
+ * missing ones (`placeBybitWindowRows`). The code is the walk's fixed tag, so a log names it
+ * and nothing of a row.
+ */
+export class BybitHoldingMissingError extends Error {
+  constructor(public readonly code: string) {
+    super('Bybit holding missing');
+    this.name = 'BybitHoldingMissingError';
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
+    // `instanceof` relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, BybitHoldingMissingError.prototype);
+  }
+}
+
+/**
+ * `placeBybitRows` for a walk whose windows the re-scan reads again (`BYBIT_RESCAN_WINDOWS_MS`).
+ * A holding that cannot be found rejects the run instead of stopping the span: such a stop owes
+ * the span in every series, and inside the re-scan window the pending caption skips that range
+ * (`isBybitRescannedRange`) while its rows are missing. Rejected, nothing of the span commits
+ * and no mark moves, so the next run reads it again. Only an account that stops being a Bybit
+ * account, or a holding the user deletes, during the run gets here.
+ */
+export const placeBybitWindowRows = async <
+  Planned extends { wallet: string; counterpartWallet?: string; externalId: string },
+>(
+  context: Pick<BybitWalkContext<BybitRowWalkDeps<never>>, 'accountId' | 'deps'>,
+  planned: Planned[],
+  missingCode: string,
+) => {
+  try {
+    return await placeBybitRows(context, planned, missingCode);
+  } catch (error) {
+    if (error instanceof BinanceWalkStop) {
+      throw new BybitHoldingMissingError(error.code);
+    }
+
+    throw error;
+  }
+};
 
 /**
  * Bybit compares these windows at the second, so a record just before a span's start can be in it:

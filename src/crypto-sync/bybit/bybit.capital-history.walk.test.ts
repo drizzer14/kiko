@@ -12,6 +12,7 @@ import {
 import { BybitRefusalError } from './bybit.client';
 import { NOW } from './bybit.client-test-fixtures';
 import { isBybitCoolingDown } from './bybit.cooldown';
+import { BybitHoldingMissingError } from './bybit.walk-run';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
 import { BybitHistoryParseError, fetchInternalDepositPage } from './bybit.history-client';
 import { depositRow, internalDepositRow, withdrawalRow } from './bybit.history-test-fixtures';
@@ -312,15 +313,17 @@ describe('the capital walk: windows, pages and marks', () => {
       expect(loggedCodes(warn)).toContain('bybit-page-drift');
     });
 
-    it('holds the cursor when a holding cannot be found for a row', async () => {
+    it('rejects the run and moves no mark when a holding cannot be found for a row', async () => {
       const walk = newWalk({ overrides: { ensureHoldings: jest.fn(async () => undefined) } });
       walk.world.deposit = [depositAt(AT)];
 
-      await walk.run();
+      const run = walk.run();
 
+      await expect(run).rejects.toThrow(BybitHoldingMissingError);
+      await expect(run).rejects.toHaveProperty('code', 'capital-holding-missing');
       expect(walk.keys()).toEqual([]);
       expect(walk.marks().cursor).toBe(CURSOR);
-      expect(loggedCodes(warn)).toContain('capital-holding-missing');
+      expect(walk.marks().pending).toBeUndefined();
     });
   });
 

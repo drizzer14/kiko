@@ -4,6 +4,8 @@ import { walkStateFake } from '@kiko/test-support/walk-marks';
 import { NOW } from './bybit.client-test-fixtures';
 import { BybitRefusalError } from './bybit.client';
 import { isBybitCoolingDown } from './bybit.cooldown';
+import { BybitHoldingMissingError } from './bybit.walk-run';
+import { isBybitRescannedRange } from './bybit.rescan-window';
 import { BybitHistoryParseError } from './bybit.history-client';
 import { transferAt, transferWalkOf } from './bybit.transfer-test-fixtures';
 import { ACCOUNT_ID, CURSOR_PREFIX, readsOf, served } from './bybit.capital-test-fixtures';
@@ -240,15 +242,51 @@ describe('the transfer walk: windows, pages and marks', () => {
       ]);
     });
 
-    it('holds the cursor when a holding cannot be found for a leg', async () => {
+    it('rejects the run and moves no mark when a holding cannot be found for a leg', async () => {
       const walk = newWalk({ overrides: { ensureHoldings: jest.fn(async () => undefined) } });
       walk.world.transfer = [transferAt(AT)];
 
-      await walk.run();
+      const run = walk.run();
 
+      await expect(run).rejects.toThrow(BybitHoldingMissingError);
+      await expect(run).rejects.toHaveProperty('code', 'transfer-holding-missing');
       expect(walk.keys()).toEqual([]);
       expect(walk.marks().cursor).toBe(CURSOR);
-      expect(loggedCodes(warn)).toContain('transfer-holding-missing');
+      expect(walk.marks().pending).toBeUndefined();
+    });
+
+    it('rejects a re-scan that cannot find a holding, and stores no range the caption skips', async () => {
+      const walk = newWalk(
+        { overrides: { ensureHoldings: jest.fn(async () => undefined) } },
+        ACCOUNT_ID,
+        { cursor: NOW, cursorReadAt: NOW },
+      );
+      walk.world.transfer = [transferAt(AT)];
+
+      await expect(walk.run()).rejects.toThrow(BybitHoldingMissingError);
+
+      expect(readsOf(walk.reads, 'transfer').map((read) => read.startTime)).toContain(
+        NOW - WINDOW_MS,
+      );
+      expect(walk.keys()).toEqual([]);
+      const stored = (walk.marks().pending ?? []) as Parameters<typeof isBybitRescannedRange>[1][];
+
+      expect(
+        stored.filter((ground) => isBybitRescannedRange('transfer', ground, NOW, NOW)),
+      ).toEqual([]);
+    });
+
+    it('a failure that is not a missing holding rejects as it is', async () => {
+      const walk = newWalk({
+        overrides: {
+          listHoldings: jest.fn(async () => {
+            throw new Error('database is locked');
+          }),
+        },
+      });
+      walk.world.transfer = [transferAt(AT)];
+
+      await expect(walk.run()).rejects.toThrow('database is locked');
     });
   });
 
