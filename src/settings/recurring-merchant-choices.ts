@@ -63,8 +63,9 @@ const markOf = (stored: unknown): RecurringMark[] => {
 
 /**
  * Keeps one mark per currency and amount, the earlier period of the picker's order with its own
- * tapped row, and sorts by amount, that order and currency, so no stored order changes what is
- * read.
+ * tapped row, and sorts by amount, that order and currency. The stored order changes nothing but
+ * which tapped row is read when two marks of one chain at the same period hold different ones
+ * (the first stored wins; only a hand-edited backup holds that).
  */
 const marksOf = (stored: unknown): RecurringMark[] => {
   const chains = new Map<string, RecurringMark>();
