@@ -1122,6 +1122,110 @@ A marked series, or one with no day, shows the plain period line ("Weekly", "Mon
 - Done: minors 7125ce3b4.
 - Done: docs (the `docs(recurring): plain period lines without "Marked:" in the spec` commit).
 
+---
+
+### 1.4-recurring-visual-2 task 8/8: one row for a card switch between currencies
+
+**M is 8 since 2026-11-07** (was 7). **Spec:** section 19 (USER 2026-11-07, option B; 19.1 the `was` table, 19.2 the date
+test, 19.3 the joined row, 19.4 route, Back and hide, 19.5 totals, 19.6 the page, 19.7 the matrix, 19.8 the overnight
+defaults), and the pointers in 4, 5.4, 8.1, 9.3, 18.2, 18.3. **Base:** the branch tip holding the commit `docs(recurring): one
+row for a card switch between currencies`; re-grep every symbol below on it (no line numbers here). **Run-log gaps:** closes
+none, leaves all open; none names the recurring list. **Texts:** none. The "All paid so far" lines are stacked `MoneyText`s
+under the existing `recurringCharges.paidSoFar`, with no separator and no new key (spec 19.6); the developer adds no text.
+**Files (floor 12; mutable floor 4: `card-switch.ts`, `use-recurring-series.ts`, `recurring-groups.ts`,
+`recurring-series.screen.tsx`):** new `src/recurring/card-switch/{card-switch.ts,index.ts,card-switch.test.ts}`,
+`src/recurring/detection/detection.types.d.ts`, `use-recurring-series.ts` and `use-recurring-series.test.tsx`,
+`recurring-groups.ts` and `recurring-groups.test.ts`, `recurring-series.screen.tsx`, `recurring-series.styles.ts`,
+`recurring-series.screen.summary.test.tsx`, `recurring-series.screen.test.tsx`, `recurring-charges.screen.groups.test.tsx`, and
+kiko-domain's recurring rules (drift step). No migration, column, seed or text key: no 1.2-upgrade world is touched.
+**Not "existing suites green unchanged":** no expectation is known to change at 688d0349d (the two-currency worlds found, the
+marks navigator's "Apple" UAH and USD in `recurring-charges.screen.marked-flows.test.tsx` and the series screen's
+`netflix-9` USD fixture, run at the same time or through a mocked hook); the qa greps every `USD`/`EUR` world of the hook,
+list and series screen suites and of `src/test-support/marked-series*`, and any that now joins is a named edit with its `was`
+line; any other edited expectation is reported, not made. `detection.test.ts`, `detection.one-per-slot.test.ts` and
+`marked-series.test.ts` stay unedited (detection and marks do not change).
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection (detection.types.d.ts)
+export type SeriesPart = { id: string; currency: Currency; chargeIds: readonly string[] };
+// RecurringSeries gains, optional:
+//   parts?: readonly SeriesPart[]; // set only on a joined row, newest part first
+
+// @kiko/recurring/card-switch: spec 19.2 and 19.3
+export const cardSwitchesJoinedOf: (
+  detected: readonly RecurringSeries[], // the shown detected series; none is marked
+  chargeGroups: ChargeGroups, // reads each series' first charge time (the charge with id series.id)
+) => RecurringSeries[]; // sorted byNewestCharge
+
+// @kiko/recurring/recurring-groups: spec 19.6; paidSoFarOf is unchanged
+export const paidSoFarByCurrencyOf: (
+  series: RecurringSeries,
+  rows: readonly ChargeRow[],
+) => Money[]; // one per part, newest first; one for a series with no parts
+```
+
+`cardSwitchesJoinedOf` groups by `[merchantKey, period]`, and joins a group only when it has two or more series, no two share a
+currency, and, sorted by first charge time then id, each `startOfLocalDay(lastChargeTime)` is below the next one's
+`startOfLocalDay(first charge time)`; else the group's series pass through as they are. The joined row's fields exactly as spec
+19.3's table. `paidFromRowsById` takes `{ currency, chargeIds }` so `paidSoFarOf` and `paidSoFarByCurrencyOf` share it (one sum
+rule). In `useRecurringSeries` the detection memo also computes `cardSwitchesJoinedOf(detected, groups)`, and with nothing marked
+`series` is that array itself (a hide still hands the screens the array it handed them before); with marks, `series` is
+`cardSwitchesJoinedOf(detectedBesideMarked(detected, marked.series), groups)`. Update the hook's doc comment. In
+`seriesOfRoute`, `isOfRoute` also matches when any of `candidate.parts` holds the route's currency (spec 19.4); update its
+comment. The "All paid so far" value renders one `MoneyText` per `paidSoFarByCurrencyOf` entry in a right-aligned column (a new
+`recurring-series.styles.ts` key). `recurringGroupsOf`, `openSeries`, the list row and the hide writes are not edited.
+
+**Named edits:** none known at 688d0349d; the qa's grep above decides, each with `was` / `now` in its commit body.
+
+| Pin (new unless named) | was | now |
+|---|---|---|
+| `card-switch.test.ts`, one `it.each` table over spec 19.2's worlds (a card switch; a one-day gap; the same local day; an overlap; three currencies; an overlap in a chain of three; two series in one currency; two periods), each row's shown ids and parts | n/a (no join) | spec 19.2's result column |
+| Property in `card-switch.test.ts`: deep-equal output for any input order (`sweep`, `seededRandom`; no new helper) | n/a | holds |
+| Property: no charge id is in two shown series, and the shown ids are exactly the input's (nothing dropped) | n/a | holds |
+| Hook: a card-switch ledger gives one `series`; a marked UAH chain beside a later USD series gives the marked one and the USD one apart | two `series` | one; two |
+| Hook: a hide hands the same `series` array (the existing referential pin, if any, re-read on a joined world) | same array | same array |
+| `recurring-groups.test.ts`: a joined row counts once in its group and "Sum of last charges" (spec 19.5's 415 UAH, not 815) | 815 UAH over two rows | 415 UAH, one row |
+| `recurring-groups.test.ts`: `paidSoFarByCurrencyOf` gives `[50.00 USD, 2 000.00 UAH]` for the example, one `Money` for a plain series | n/a | as stated |
+| `recurring-charges.screen.groups.test.tsx`: the card-switch ledger shows one row (10.00 USD, the newest part's category group) and the total once | two rows, total of both | one row, total once |
+| `recurring-series.screen.summary.test.tsx`: the joined page lists both currencies' charges newest first, count = all, `recurring-series-summary-paid` holds "50.00 USD" and "2 000.00 UAH", in that order | n/a | as stated |
+| `recurring-series.screen.test.tsx`: the joined route opens by its id; a route on the old part's currency finds the joined row; after an overlap splits it, the route's fallback finds the one USD series; two candidates still give the neutral text | n/a | spec 19.4 |
+| A hide on a joined row (footer, with confirm) leaves no row of the key | two rows leave | one row leaves |
+
+- [ ] **step 1/6 (kiko:qa): red pins.** The new rows above, in existing suites and world builders
+  (`src/test-support/recurring-ledger.ts`'s `monthly`), one new file only (`card-switch.test.ts`); it imports
+  `@kiko/recurring/card-switch`, so the qa commits a stub module exporting `cardSwitchesJoinedOf` as the identity
+  (memory: qa-no-red-commit-importing-missing-modules) and `paidSoFarByCurrencyOf` as `[paidSoFarOf(...)]`, both marked for
+  the developer. Each red shown failing on the base for the stated reason (counts in the report); guards (the overlap, the same
+  local day, the marked world, two in one currency) green on the base and each shown failing once by a scratch mutant (join
+  without the day test; join marked series). `was` values from a base run, never typed. Commit `test(recurring): one row for a
+  card switch between currencies`. **Check:** `npx jest src/recurring/card-switch src/recurring/use-recurring-series
+  src/recurring/recurring-groups src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2`,
+  output in a file; reds only where named. **`check:dup`:** rows in existing tables; read the touched tests' rows in
+  `scripts/checks/dup-ceilings.tsv`; a ceiling never rises.
+- [ ] **step 2/6 (kiko:developer): the join.** The interfaces above, in `detection.types.d.ts`, `card-switch.ts`,
+  `use-recurring-series.ts`, `recurring-groups.ts`, `recurring-series.screen.tsx`, `recurring-series.styles.ts`. No pin
+  edited; no text added. Commit `feat(recurring): one row for a card switch between currencies`. **Checks:** fast tier on write;
+  `npx jest src/recurring src/screens/settings/recurring-charges src/screens/settings/recurring-series
+  src/screens/forms/transaction-form/recurring-mark-field src/navigation/settings-stack --maxWorkers=2` (includes
+  `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<step 1/6 commit>` (exit 3: say so, the named
+  set stands); `npm run check:knip` reads the stub gone and `paidSoFarOf` still used.
+- [ ] **step 3/6 Review (kiko:reviewer).** Diff from the set base. Top questions: does any reader still count or sum an older
+  part (totals, group, category, stopped line, row amount)? Is the join order independent and all or nothing exactly as
+  spec 19.2 (the local-day test, distinct currencies, the first charge read from `ChargeGroups`)? Can a marked series or a
+  series a marked chain took ever join? Does the hook still hand the same `series` array after a hide? Is `seriesOfRoute`'s
+  parts match unable to pick another merchant's series? Are the test edits only the named ones?
+- [ ] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring rules: a series is one key and
+  currency in detection; the screens join a card switch (spec 19). Report the sha or "no drift found".
+- [ ] **step 5/6 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree>
+  1.4-recurring-visual-2-task-8` once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest.
+  Mutation gates are paused by the user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own base.
+- [ ] **step 6/6 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-8`. Device (next build): a
+  name paid from a UAH card then a USD card shows one row with the USD amount; its page lists both, "All paid so far" shows one
+  line per currency; a name paid in two currencies at the same time stays two rows. The overnight defaults of spec 19.8 go to
+  the user with the device call.
+
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
 
 | Task | Floor |
@@ -1139,6 +1243,7 @@ A marked series, or one with no day, shows the plain period line ("Weekly", "Mon
 | visual-2 task 4/5 | VOID (merged into 2/5) |
 | visual-2 task 5/5 | the fix set's own files, measured |
 | visual-2 task 6/6 | 4 (listed in its Files) |
+| visual-2 task 8/8 | 4 (listed in its Files; `recurring-series.styles.ts` may make it 5: `make mutable` decides) |
 
 Mutation gates are paused by the user; this table is for a lift.
 

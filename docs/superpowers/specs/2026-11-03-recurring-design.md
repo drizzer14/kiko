@@ -154,7 +154,9 @@ linked. Netting would need a sum, which this feature does not have.
 **A series crosses holdings, never currencies.** A row has no currency of its own; it comes from its holding.
 The group key is `[merchantNameOf(description).key, holding.currency]`. A card change within a currency keeps
 the series. A move from a UAH card to a USD card starts a second series: a false split, accepted, because no
-amount here may mix currencies.
+amount here may mix currencies. **Detection keeps this key; the screens join a card switch (section 19, USER
+2026-11-07, B):** two detected series of one name and period in two currencies, where one stopped before the other
+began, show as one row. Two that run at the same time stay two rows.
 
 ## 5. The detection rule
 
@@ -249,7 +251,7 @@ one-off reference run, outside the track, passes every row; it is no pin on the 
 | Foreign charge billed in hryvnia | one monthly | drifting amount |
 | The 31st against February | monthly, "on the last day" | clamp |
 | User changes card, same currency | one monthly across two holdings | crossing |
-| Same name in two currencies | two monthly, never summed | currency |
+| Same name in two currencies | two monthly, never summed (detection's output; the list joins a card switch into one row, section 19) | currency |
 | Imported row with its synced twin | one monthly, each charge counted once | twin fold |
 | Two charges only | none | minimum |
 | Subscription among rarer one-off purchases | monthly | coverage |
@@ -390,7 +392,8 @@ drift with each new row. It writes nothing on a transaction.
 It is visible and reversible: the list ends with a "Hidden" section naming each hidden merchant with "Show again",
 even when it has no rows now. No confirm is needed: no row changes and the undo is on the screen it returns to. **A hide stays per
 key and never touches a mark.** It affects detected series only: on a key that holds marks (a detected series beside a marked one,
-section 8.2), every marked chain stays, and "Show again" clears only the hide, so nothing the user marked is lost.
+section 8.2), every marked chain stays, and "Show again" clears only the hide, so nothing the user marked is lost. A joined
+row (section 19) is one key, so a hide removes it whole, in every currency; the write does not change.
 
 **Store: one nullable JSON column on `settings`**, `recurringMerchantChoices: Record<key, RecurringMerchantChoice>`, where `RecurringMerchantChoice` is
 `{ name, hidden: true }` and, from task 4/4, `{ name, hidden?: true, marks?: RecurringMark[] }`, and each mark is
@@ -671,6 +674,9 @@ longer pick one. Remove mark on this screen holds the last resolved series until
 away; a pin, as the hide's.
 
 **The button by kind:** a detected series offers "Not a recurring charge", a marked one "Remove mark". Both close back to the list.
+
+**A joined row (section 19.4):** its route holds the joined row's id and its newest part's currency, and the route's currency
+also matches a joined row when any of its parts holds it. The route type does not change.
 
 ### 9.4 iPad and Duo
 
@@ -1263,7 +1269,8 @@ back. Its texts are PENDING USER REVIEW (texts-visual-2.md, "Final Q5 ruling tex
   feed a list total.
 - **Currency:** a series has one currency (its group key holds it), so its last charge is in the series currency. It converts
   as 17.4 says, unchanged: the current `buildRateTable(rates)`, `canConvert` as the guard, one `convert` per series; a series
-  `canConvert` rejects is left out of the totals and its row still shows its amount.
+  `canConvert` rejects is left out of the totals and its row still shows its amount. A joined row (section 19) counts its
+  newest part's last charge only, in that part's currency: the amount the row shows (19.5).
 - **Stopped series:** counted with their last charge, as today (`recurringGroupsOf` reduces over every series of a group,
   stopped included; P2). USER 2026-11-06 (Q2): "If "stopped" means recurring in the past, but not anymore, then it can count".
 - **Hidden series:** not listed, so not counted (Q2: "If by "stopped" you mean hidden, then no"; final Q5 ruling, 18.4).
@@ -1288,7 +1295,7 @@ The table replaces the four header lines, in this order, inside `recurring-serie
 | Last charge | `summary.lastCharge` | `formatDate(series.lastChargeTime)` | always |
 | Status | `summary.status` | quiet: the `holdingQuietSince` text, `wraps`; stopped, not quiet: `summary.stopped` | stopped series only |
 | Number of charges | `summary.chargeCount` | `series.chargeIds.length` as a number | always |
-| All paid so far | `paidSoFar` | `MoneyText` of `paidSoFarOf(series, charges)` | once the rows read has landed (as today) |
+| All paid so far | `paidSoFar` | `MoneyText` of `paidSoFarOf(series, charges)`; a joined row: one `MoneyText` line per currency (19.6) | once the rows read has landed (as today) |
 
 Value testIDs: `recurring-series-summary-repeats`, `-last-charge`, `-status`, `-charge-count`, `-paid`. No title row. The
 `chargeCount` plural key goes (18.7).
@@ -1432,3 +1439,133 @@ list. The series screen's footer has one button by kind (`recurring-series.scree
 - B (a stored per-series removal) and C (a "Show stopped charges" switch) were not picked.
 - **Open question (closed by the final ruling, 18.5: a marked row gets the item, and the write clears its marks):** a marked stopped series gets no menu item, since a hide never hides a marked series and its
   way out is "Remove mark" on the series screen. If the user wants a long press there too, it would be a "Remove mark" item.
+
+## 19. One row for a card switch between currencies (USER 2026-11-07, B)
+
+**USER ruling (relayed by the coordinator), option "B: card switch":** join two series into one shown row ONLY when they have
+the same merchant name and the same period and one currency's series stopped before the other began (no overlap). Two series
+that run at the same time stay two rows. Agreed with it (`.superpowers/sdd/1.4-recurring/merge-currencies-answer.md`): a display
+join, detection stays per currency; the total counts only the newest last charge of a joined row; the series page lists both
+currencies' charges, the count counts all, "All paid so far" is one line per currency with no converted sum; marks stay per
+currency and a marked series is never joined; "Not a recurring charge" hides the name in every currency, unchanged. Option A
+(join any two) and "not now" were not picked. Every fact here was read at 688d0349d: re-grep each symbol on the base.
+
+### 19.1 What this reverses
+
+| Rule | was: | now |
+|---|---|---|
+| Same name in two currencies on the list (4, 5.4) | two rows, each its own amount, currency and total entry | two rows when they overlap; one joined row for a card switch (19.2) |
+| The total of a card switch (18.2) | each row's last charge, converted: both parts counted | the newest part's last charge only, converted (19.5) |
+| "All paid so far" (17.4, 18.3) | one `Money` in the series currency; a row of another currency skipped | per part: one line per currency, newest part first, no converted sum (19.6) |
+| A series' currency (18.2: "a series has one currency") | one | a joined row shows one, its newest part's; each older part keeps its own (`parts`) |
+| The route's currency match (9.3) | `candidate.currency === route.currency` | the same, or any part of a joined row holds it (19.4) |
+
+Detection (`seriesOfGroups`, `groupKeyOf`), marks (`markedSeriesOf`, `markedChainOfAmount`), the form's mark field
+(`useRowMark`), `rowRecurrenceOf`, the store, the hide write, the help topic and every text do not change.
+
+### 19.2 When series join
+
+**Candidates:** the detected series the list shows beside the marked ones (`detectedBesideMarked`'s output, or `detected` with
+nothing marked), before the hide filter. A marked series is never a candidate and never blocks one. They are grouped by
+`merchantKey` and `period`.
+
+**The test, all or nothing per name and period:** the series of one `[merchantKey, period]` join into one row when (a) there
+are two or more, (b) no two share a currency, and (c) sorted by first charge time (then id), each one's last charge falls on an
+earlier LOCAL day than the next one's first charge (`startOfLocalDay(older.lastChargeTime) < startOfLocalDay(<newer's first
+charge time>)`). A series' first charge is the charge whose id is `series.id` (9.3: the id is the earliest charge's), read from
+its `[key, currency]` group in `ChargeGroups`. Any failure keeps every series of that name and period its own row. There is no
+margin and no maximum gap: a gap of one local day joins, the same local day does not.
+
+| World (monthly, "Netflix") | Result |
+|---|---|
+| UAH 15 Jan to 15 May; USD 15 Jun to 15 Oct | one row: the UAH part stopped (15 May) before the USD part began (15 Jun) |
+| UAH last 15 May; USD first 16 May | one row: a gap of one local day |
+| UAH last 15 May 09:00; USD first 15 May 18:00 | two rows: the same local day counts as an overlap |
+| UAH 15 Jan to 15 Jul; USD 15 Jun to 15 Oct | two rows: they ran at the same time in June and July |
+| UAH 2024, USD 2025, EUR from Mar 2026, each after the last | one row of three parts, newest (EUR) first |
+| UAH 2024, USD 2025, EUR starting before USD's last charge | three rows: one overlap keeps all three apart |
+| UAH at 100 to May, UAH at 300 to Aug (two detected series), USD from Sep | three rows: two series share a currency |
+| UAH monthly to May; USD yearly from Jun | two rows: periods differ |
+| UAH marked monthly to May; USD detected from Jun | two rows: a marked series is never joined |
+| UAH to May, USD from Jun, the key hidden | no row: the hide removes both (8.1, 18.4), joined or not |
+
+An old part that left the list (24 months, `hasLeft`) is not among the detected series, so it joins nothing.
+
+### 19.3 The joined row
+
+`RecurringSeries` gains one optional field, `parts?: readonly SeriesPart[]`, where `SeriesPart` is `{ id; currency; chargeIds }`
+of one joined series, newest part first. It is set only on a joined row; a plain or marked series has none, so no other reader
+or fixture changes.
+
+| Field | Value | Example (UAH 400 from 15 Jan to 15 May, USD 10 from 15 Jun, today 20 Oct) |
+|---|---|---|
+| `id` | the oldest part's `id` (the joined row's earliest charge, as 9.3) | the 15 Jan UAH charge's id |
+| `merchantKey`, `period` | shared | `netflix`, monthly |
+| `name`, `currency`, `recurrence` | the newest part's | "Netflix", USD, "Monthly, on day 15" |
+| `chargeIds` | the parts' `chargeIds` joined, newest part first (newest first overall, since parts do not overlap) | the USD ids, then the UAH ids |
+| `lastChargeTime`, `lastChargeAmountMinorUnits`, `lastChargeHoldingId` | the newest part's | 15 Oct, 10.00 USD, the USD card |
+| `isStopped`, `quiet` | the newest part's | active; the row reads "Last charge 15.10.2026" |
+| `marks`, `markedSpan` | absent | |
+| `parts` | one per series, newest first | `[USD part, UAH part]` |
+
+**Its group** (17.2): the category of its newest charge, the first id of `chargeIds` found in the rows (`recurringGroupsOf`'s
+`categoryKeyOf`, unchanged), so the newest part's. **Its order in a group:** `newestChargeFirst` on the fields above, unchanged.
+**The join** returns the shown detected series sorted by `byNewestCharge`, so its output does not depend on input order.
+
+### 19.4 The series route, Back and the hide
+
+- **Open:** `openSeries` is unchanged: the route holds `seriesId` = the joined id, `currency` = the newest part's, the shared
+  key and period, no `markedAmountMinorUnits`. The example opens `{ seriesId: <15 Jan UAH id>, currency: 'USD', period:
+  'monthly' }`.
+- **Lookup (`seriesOfRoute`):** `isOfRoute` matches the route's key and EITHER `candidate.currency` OR the currency of any of
+  `candidate.parts`. The order stays: marked, the id hit, the one series of the key, currency and period. So the example route
+  finds the joined row by its id; a route opened earlier on the plain UAH series (`currency: 'UAH'`, whose id becomes the joined
+  id) still finds it when a USD charge joins it while the screen is open. When a later UAH charge overlaps the USD part, the row
+  splits: the example route's id now belongs to the UAH series (currency UAH, no match), and its fallback finds the one USD
+  monthly series. With two candidates, the neutral text, as today.
+- **Back:** unchanged; the list re-reads and shows the row joined or split by the data.
+- **Hide:** a joined row is detected, so its footer offers "Not a recurring charge", and the long press offers it with no marks
+  (`marks ?? []`). `hideRecurringMerchant(merchantKey, name)` hides the key in every currency, so the whole row leaves; the
+  screen holds its series until `goBack`, as 9.3. No new write.
+
+### 19.5 Totals
+
+`recurringGroupsOf` already counts `Money.of(series.currency, series.lastChargeAmountMinorUnits)` per shown series, converted
+at today's rates (18.2), so a joined row counts its newest part's last charge once with no code change there. Example: base
+UAH, today 1 USD = 41.50 UAH. was: 400 UAH (the stopped UAH row) + 415 UAH (10 USD) = 815 UAH in "Sum of last charges" and in
+its group. now: 415 UAH. Like any foreign charge, it moves with the rates. When `canConvert` rejects the newest part's
+currency, the row is left out of the totals, as today; the older part is never counted instead.
+
+### 19.6 The series page
+
+- **Charges:** every id of `chargeIds`, newest first, each in its own currency (`Money.of(row.currency, ...)`, unchanged).
+- **Number of charges:** `chargeIds.length`, all parts.
+- **Repeats, Last charge, Status:** the newest part's (19.3).
+- **All paid so far:** `paidSoFarByCurrencyOf(series, charges)`: one `Money` per part, newest part first, each the sum of that
+  part's listed rows in its currency (17.4's rule per part; a row of another currency skipped); a plain or marked series gives
+  one, the figure `paidSoFarOf` gives. The value cell stacks one `MoneyText` per line, right-aligned. Example: "50.00 USD"
+  over "2 000.00 UAH". No converted sum: an old charge at today's rate is a made-up number. **No new text:** the label is
+  `recurringCharges.paidSoFar`, each line is a `MoneyText`, and there is no separator.
+
+### 19.7 Scenario matrix
+
+| World | was: | now |
+|---|---|---|
+| UAH series stopped 15 May, USD series from 15 Jun, monthly | two rows; total 400 UAH + 10 USD | one row "Netflix" 10.00 USD; total 10 USD only |
+| Same, the input in the reverse order | two rows | one row, deep-equal to the line above |
+| UAH and USD monthly overlapping one month | two rows | two rows (unchanged) |
+| UAH last and USD first on one local day | two rows | two rows (unchanged) |
+| UAH last 15 May, USD first 16 May | two rows | one row |
+| UAH marked, USD detected after it | two rows | two rows (unchanged) |
+| Three currencies in a row, no overlap | three rows | one row, three parts |
+| A joined row's page | two pages | one page: both currencies' charges, count of all, paid "50.00 USD" over "2 000.00 UAH" |
+| "Not a recurring charge" on a joined row | both rows leave | the one row leaves |
+| The form's mark field on a UAH charge of a joined row | its UAH series' period | unchanged (per currency) |
+
+### 19.8 Overnight defaults (not user rulings; each easy to undo)
+
+- No maximum gap between parts (a re-subscription years later in another currency joins). Undo: a gap limit in 19.2's test.
+- All or nothing per name and period (a second series in one currency, or any overlap, keeps every series of that name and
+  period apart). Undo: join the non-overlapping chain pairwise.
+- The joined row's name, currency, recurrence and stopped state are the newest part's; its id is the oldest part's.
+- "All paid so far" lines newest part first, stacked, no separator and no new text. Undo: a `·` join on one line.
