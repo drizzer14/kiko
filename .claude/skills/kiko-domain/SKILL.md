@@ -1084,12 +1084,14 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
 `src/recurring/row-recurrence/` (the row's detected or marked period) and
 `src/settings/recurring-merchant-choices.ts` (the one map). The rules, in words:
 - A mark stores the absolute stored amount and the currency of the marked row's holding, under the
-  merchant key. It covers one currency: the same amount in another currency never compares.
+  merchant key. It covers one currency: the same amount in another currency never compares. It
+  also stores the optional `transactionId` of the row it was tapped on (absent on older marks);
+  `onePerSlotOf` key 0 keeps that row (spec 8.2, 8.3).
 - A mark's chain is the amount chain that holds its stored amount, cut by the same 1.25 step as
   detection. The chain's charges are the series, with the mark's period; the stored amount joins
   the cut like a charge, so it can bridge two charges. Pieces share no row, and a detected series
   that shares a row with a marked one leaves whole.
-- A marked chain keeps charges more than half a step apart, near amounts first, no anchor:
+- A marked chain keeps charges more than half a step apart, a tapped row first (key 0), near amounts next, no anchor:
   `onePerSlotOf` in `src/recurring/detection/detection.ts` (spec 8.3; read it for the keys). A
   row it drops reads 'Not marked' (or its detected text) and its mark field is disabled;
   `markedChainOfAmount` in `src/recurring/marked-series/marked-series.ts` returns `holdsRow`.

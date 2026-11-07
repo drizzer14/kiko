@@ -1297,7 +1297,7 @@ reports any disagreement, never edits to green):
 | `settings.repo.test.ts` parser and writes | no id field | a mark with an id round-trips; a bad id (number, `''`, object) reads the mark without it; two stored marks of one chain with two ids read as one mark (the earlier period's, with its id); `setRecurringChainPeriod` keeps the id; `removeRecurringMarks` with an id-less chain removes an id-holding mark; `markRecurringCharge` on a stored chain with another id leaves one mark |
 | `restore-recurring-merchant-choices.test.ts` | marks without an id | a mark with an id restores with it; a file mark with a bad id restores without it |
 
-- [ ] **step 1/6 (kiko:qa): red pins.** The named edits and new rows above, in the existing tables and describes (no new
+- [x] **step 1/6 (kiko:qa): red pins.** Done: ce59e4583. The named edits and new rows above, in the existing tables and describes (no new
   file, no new helper copy). Properties in `marked-series.test.ts` with `sweep` and `seededRandom` (no new helper): on random
   ledgers, one mark tapped on a random charge of its piece keeps that charge; deep-equal for any input order with ids; a mark
   without an id gives the same result as the same mark with an id that matches no charge. Each red shown failing on the base
@@ -1308,7 +1308,7 @@ reports any disagreement, never edits to green):
   src/screens/forms/transaction-form/transaction-form.recurring-mark --maxWorkers=2`, output in a file; reds only where
   named. **`check:dup` (at AC):** rows in existing tables; read the touched tests' rows in `scripts/checks/dup-ceilings.tsv`;
   a ceiling never rises.
-- [ ] **step 2/6 (kiko:developer): key 0 and the id.** The interfaces above, in `detection.types.d.ts`, `detection.ts`,
+- [x] **step 2/6 (kiko:developer): key 0 and the id.** Done: 74361f27b. The interfaces above, in `detection.types.d.ts`, `detection.ts`,
   `marked-series.ts`, `recurring-merchant-choices.ts`, `recurring-mark-field.ts`. No pin edited; no text added. Commit
   `feat(recurring): keep the tapped row in a marked chain`. **Checks:** fast tier on write; `bash scripts/wait-load.sh 15`,
   then `npx jest src/recurring src/settings src/data-transfer/snapshot/restore-recurring-merchant-choices
@@ -1316,12 +1316,12 @@ reports any disagreement, never edits to green):
   src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2` (includes
   `detection.performance.test.ts`; its bound is not raised), output in a file; `make jest-affected BASE=<step 1/6 commit>`
   (at AC; exit 3: say so, the named set stands); `npm run check:knip` (at AC).
-- [ ] **step 3/6 Review (kiko:reviewer).** Diff from the set base. Top questions: does key 0 reach both `chainsOfEntry` and
+- [x] **step 3/6 Review (kiko:reviewer).** Done: APPROVE at 74361f27b; comment 127e6890f. Diff from the set base. Top questions: does key 0 reach both `chainsOfEntry` and
   `markedChainOfAmount` through the one builder? Is the predecessor window still exact with key 0 (spec 8.3 "The
   computation"; a brute force over small random worlds with tapped ids, as the step 6/9 review of task 6/6 did)? Can an id
   ever split or duplicate a mark (parser dedupe, `isSameChain`, the three writes)? Does a bad or stale id ever drop a mark or
   throw? Are the test edits only the named ones?
-- [ ] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's mark rules: "A mark stores the absolute
+- [x] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the tapped row in the skill, spec and plan` commit. kiko-domain's mark rules: "A mark stores the absolute
   stored amount and the currency ..." gains the optional tapped-row id (never part of the mark's identity); "A marked chain
   keeps charges more than half a step apart ..." gains "the mark's tapped row first". `make doc-suites` (at AC). Report the
   sha or "no drift found".
