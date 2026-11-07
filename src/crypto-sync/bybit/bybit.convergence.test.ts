@@ -247,14 +247,16 @@ const burstSlots = (count: number, from = BURST_FROM): RowSlot[] =>
 // The measured calls of the walks below, 2026-11-07: a catch-up run reads ground long after its
 // time, so it owes no overlap day and the calls are the windows alone. Was 84 and 110: each run
 // before the last read that day too.
+// The table's calls are the windows (26 x 3 and 105): a catch-up run whose cursor trails its clock
+// by more than a window owes no overlap day.
 const SMALL_CAPITAL: WalkBound = {
-  table: { runs: 3, calls: 81 },
+  table: { runs: 3, calls: 78 },
   tableRuns: 'ceiling',
   measured: { runs: 3, calls: 78 },
 };
 
 const ONE_PAGE_TRANSFER: WalkBound = {
-  table: { runs: 6, calls: 106 },
+  table: { runs: 6, calls: 105 },
   tableRuns: 'ceiling',
   measured: { runs: 6, calls: 105 },
 };
@@ -292,8 +294,9 @@ const NAMED_SEEDS: NamedSeed[] = [
     }),
     rows: { capital: 15_000, transfer: 10_000 },
     bounds: {
+      // 25 windows of 199 rows at 4 pages and a last window of 4 days at 1 page, in 3 series.
       capital: {
-        table: { runs: 13, calls: 315 },
+        table: { runs: 13, calls: 303 },
         tableRuns: 'floor',
         measured: { runs: 13, calls: 363 },
       },
@@ -312,7 +315,7 @@ const NAMED_SEEDS: NamedSeed[] = [
     bounds: {
       capital: SMALL_CAPITAL,
       transfer: {
-        table: { runs: 8, calls: 106 },
+        table: { runs: 8, calls: 105 },
         tableRuns: 'floor',
         measured: { runs: 16, calls: 311 },
       },
@@ -644,7 +647,7 @@ type LogAndConvertSeed = {
 
 // Was 110 calls, for the reason of `SMALL_CAPITAL`.
 const ONE_PAGE_LOG: WalkBound = {
-  table: { runs: 6, calls: 106 },
+  table: { runs: 6, calls: 105 },
   tableRuns: 'ceiling',
   measured: { runs: 6, calls: 105 },
 };
@@ -681,8 +684,10 @@ const LOG_AND_CONVERT_SEEDS: LogAndConvertSeed[] = [
     // MEASURED, 2026-11-07: the walk is complete when its forward pass ends, at run 53, with 1,051
     // calls at gap 0, 1,048 at 1 hour and 1,049 at 1 day: no catch-up run re-reads the overlap day.
     // Was 129 runs and 2,570 calls at gap 0, 217 and 4,333 at 1 hour, 166 and 3,313 at 1 day.
+    // 104 windows of 480 rows at 10 pages and a last window of 1 day at 2 pages; a split never
+    // lowers the pages.
     log: {
-      table: { runs: 53, calls: 1_050 },
+      table: { runs: 53, calls: 1_042 },
       tableRuns: 'floor',
       measured: { runs: 53, calls: 1_051 },
     },
