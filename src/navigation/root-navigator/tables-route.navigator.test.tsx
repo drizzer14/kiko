@@ -1,21 +1,20 @@
-import {
-  createNavigationContainerRef,
-  NavigationContainer,
-  type ParamListBase,
-} from '@react-navigation/native';
-import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
-import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
 import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
-import { SETTLE_DELAY_MS } from '../pane-stack';
-
-import RootNavigator from './root.navigator';
+import {
+  goToTab,
+  navigationRef,
+  pickThisQuarter,
+  renderRoot,
+  setLayout,
+  THIS_QUARTER,
+} from './__fixtures__/tables-navigator-world';
+import { layout } from './__fixtures__/mock-layout';
 
 /**
  * The Statistics screen's button opens the Tables screen on the real RootNavigator, in the Home
@@ -23,35 +22,13 @@ import RootNavigator from './root.navigator';
  * fold or an unfold, which remounts the screen, keeps it, and a new push opens on the default.
  */
 
-const mockLayout = { mode: 'single' as 'single' | 'columns', listeners: new Set<() => void>() };
+jest.mock('@kiko/display-regions', () =>
+  require('./__fixtures__/mock-layout').displayRegionsModule(),
+);
 
-jest.mock('@kiko/display-regions', () => {
-  const { useSyncExternalStore } = require('react');
-
-  return {
-    ...jest.requireActual('@kiko/display-regions'),
-    useLayoutMode: () =>
-      useSyncExternalStore(
-        (listener: () => void) => {
-          mockLayout.listeners.add(listener);
-
-          return () => mockLayout.listeners.delete(listener);
-        },
-        () => mockLayout.mode,
-      ),
-    useFoldRegion: () => null,
-  };
-});
-
-// A tab mounts on its first focus and stays mounted, as the native bottom tabs do.
-jest.mock('@bottom-tabs/react-navigation', () => {
-  const native = jest.requireActual('@react-navigation/native');
-  const LazyTabs = jest.requireActual('@kiko/test-support/lazy-tabs').default;
-
-  return { createNativeBottomTabNavigator: native.createNavigatorFactory(LazyTabs) };
-});
-
-const navigationRef = createNavigationContainerRef<ParamListBase>();
+jest.mock('@bottom-tabs/react-navigation', () =>
+  require('./__fixtures__/mock-layout').bottomTabsModule(),
+);
 
 type StackRoute = {
   name: string;
@@ -59,38 +36,6 @@ type StackRoute = {
 };
 
 const BUTTON = 'statistics-open-tables';
-
-const renderRoot = async () => {
-  const rendered = await render(
-    <NavigationContainer ref={navigationRef}>
-      <RootNavigator />
-    </NavigationContainer>,
-    { wrapper: GestureRootWrapper },
-  );
-
-  await waitFor(() => expect(navigationRef.isReady()).toBe(true));
-
-  return rendered;
-};
-
-const goToTab = async (tab: string): Promise<void> => {
-  await act(async () => {
-    navigationRef.navigate(tab);
-  });
-};
-
-const setLayout = async (mode: 'single' | 'columns'): Promise<void> => {
-  await act(async () => {
-    mockLayout.mode = mode;
-
-    for (const listener of mockLayout.listeners) {
-      listener();
-    }
-  });
-  await act(async () => {
-    jest.advanceTimersByTime(SETTLE_DELAY_MS);
-  });
-};
 
 const routesOf = (tab: string): StackRoute[] => {
   const state = navigationRef.getRootState()?.routes.find(({ name }) => name === tab)?.state;
@@ -101,20 +46,10 @@ const routesOf = (tab: string): StackRoute[] => {
 const tablesRouteOf = (tab: string): StackRoute | undefined =>
   routesOf(tab).find(({ name }) => name === 'Tables');
 
-// This quarter is on offer for any data, and it is not the period a new push opens on.
-const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
-
-const pickThisQuarter = async (rendered: Awaited<ReturnType<typeof renderRoot>>) => {
-  await fireEvent.press(rendered.getByTestId('tables-period'));
-  await fireEvent.press(
-    rendered.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
-  );
-};
-
 describe('the Tables route on the real RootNavigator', () => {
   beforeEach(() => {
     jest.useFakeTimers({ now: FILTER_DATA_CLOCK });
-    mockLayout.mode = 'single';
+    layout.mode = 'single';
     mockUseLiveQuery.mockImplementation(answerFilterData);
   });
 
@@ -136,7 +71,7 @@ describe('the Tables route on the real RootNavigator', () => {
   });
 
   it('opens from the button on the Statistics screen that is the Home companion', async () => {
-    mockLayout.mode = 'columns';
+    layout.mode = 'columns';
     const rendered = await renderRoot();
 
     await fireEvent.press(rendered.getByTestId(BUTTON));

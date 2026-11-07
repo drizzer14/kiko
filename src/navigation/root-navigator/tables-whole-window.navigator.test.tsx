@@ -1,24 +1,23 @@
-import {
-  createNavigationContainerRef,
-  NavigationContainer,
-  type ParamListBase,
-} from '@react-navigation/native';
 import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { reportWindow } from '@kiko/test-support/window-size';
-import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
-import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
 import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
-import { SETTLE_DELAY_MS } from '../pane-stack';
-
-import RootNavigator from './root.navigator';
+import {
+  goToTab,
+  navigationRef,
+  pickThisQuarter,
+  renderRoot,
+  setLayout,
+  THIS_QUARTER,
+} from './__fixtures__/tables-navigator-world';
+import { layout } from './__fixtures__/mock-layout';
 
 /**
  * The Tables screen is in a layer over both panes: on the real RootNavigator, the panes keep their
@@ -33,35 +32,13 @@ jest.mock('@kiko/screens/forms/transaction-form', () => {
   return { __esModule: true, default: () => <View testID="transaction-form-stub" /> };
 });
 
-const mockLayout = { mode: 'columns' as 'single' | 'columns', listeners: new Set<() => void>() };
+jest.mock('@kiko/display-regions', () =>
+  require('./__fixtures__/mock-layout').displayRegionsModule(),
+);
 
-jest.mock('@kiko/display-regions', () => {
-  const { useSyncExternalStore } = require('react');
-
-  return {
-    ...jest.requireActual('@kiko/display-regions'),
-    useLayoutMode: () =>
-      useSyncExternalStore(
-        (listener: () => void) => {
-          mockLayout.listeners.add(listener);
-
-          return () => mockLayout.listeners.delete(listener);
-        },
-        () => mockLayout.mode,
-      ),
-    useFoldRegion: () => null,
-  };
-});
-
-// A tab mounts on its first focus and stays mounted, as the native bottom tabs do.
-jest.mock('@bottom-tabs/react-navigation', () => {
-  const native = jest.requireActual('@react-navigation/native');
-  const LazyTabs = jest.requireActual('@kiko/test-support/lazy-tabs').default;
-
-  return { createNativeBottomTabNavigator: native.createNavigatorFactory(LazyTabs) };
-});
-
-const navigationRef = createNavigationContainerRef<ParamListBase>();
+jest.mock('@bottom-tabs/react-navigation', () =>
+  require('./__fixtures__/mock-layout').bottomTabsModule(),
+);
 
 type StackRoute = {
   key: string;
@@ -83,39 +60,7 @@ const WINDOW = { width: 951, height: 669 };
 // shown layer is a modal view, which hides the panes beside it.
 const WITH_HIDDEN = { includeHiddenElements: true } as const;
 
-const renderRoot = async () => {
-  const rendered = await render(
-    <NavigationContainer ref={navigationRef}>
-      <RootNavigator />
-    </NavigationContainer>,
-    { wrapper: GestureRootWrapper },
-  );
-
-  await waitFor(() => expect(navigationRef.isReady()).toBe(true));
-
-  return rendered;
-};
-
 type Rendered = Awaited<ReturnType<typeof renderRoot>>;
-
-const goToTab = async (tab: string): Promise<void> => {
-  await act(async () => {
-    navigationRef.navigate(tab);
-  });
-};
-
-const setLayout = async (mode: 'single' | 'columns'): Promise<void> => {
-  await act(async () => {
-    mockLayout.mode = mode;
-
-    for (const listener of mockLayout.listeners) {
-      listener();
-    }
-  });
-  await act(async () => {
-    jest.advanceTimersByTime(SETTLE_DELAY_MS);
-  });
-};
 
 const stackOf = (tab: string): StackState =>
   navigationRef.getRootState()?.routes.find(({ name }) => name === tab)?.state as StackState;
@@ -228,16 +173,6 @@ const pressTables = async (rendered: Rendered): Promise<void> => {
   await fireEvent.press(rendered.getByTestId(BUTTON));
 };
 
-// This quarter is on offer for any data, and it is not the period a new push opens on.
-const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
-
-const pickThisQuarter = async (rendered: Rendered): Promise<void> => {
-  await fireEvent.press(rendered.getByTestId(TABLES));
-  await fireEvent.press(
-    rendered.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
-  );
-};
-
 // What the native stack sends when the user's Back or swipe has finished: the screen's own
 // dismissal, which the stack turns into a pop that names the screen it came from.
 const dismissNatively = async (instance: Instance): Promise<void> => {
@@ -259,7 +194,7 @@ const goBack = async (): Promise<void> => {
 describe('Tables is in a layer over both panes', () => {
   beforeEach(() => {
     jest.useFakeTimers({ now: FILTER_DATA_CLOCK });
-    mockLayout.mode = 'columns';
+    layout.mode = 'columns';
     reportWindow('regular', WINDOW.width, WINDOW.height);
     mockUseLiveQuery.mockImplementation(answerFilterData);
   });
@@ -386,7 +321,7 @@ describe('Tables is in a layer over both panes', () => {
     });
 
     it('opens Tables over a Statistics route that is there, which keeps its pane', async () => {
-      mockLayout.mode = 'single';
+      layout.mode = 'single';
       const rendered = await renderRoot();
 
       await act(async () => {
@@ -581,7 +516,7 @@ describe('Tables is in a layer over both panes', () => {
 
   describe('with one pane', () => {
     it('has no panes and no layer, and Tables is not capped at the pane max width on a regular window', async () => {
-      mockLayout.mode = 'single';
+      layout.mode = 'single';
       reportWindow('regular', 669, 951);
       const rendered = await renderRoot();
 
@@ -599,7 +534,7 @@ describe('Tables is in a layer over both panes', () => {
     });
 
     it('shows Home and Statistics as they were, with no panes', async () => {
-      mockLayout.mode = 'single';
+      layout.mode = 'single';
       const rendered = await renderRoot();
 
       await goToTab('StatisticsTab');
