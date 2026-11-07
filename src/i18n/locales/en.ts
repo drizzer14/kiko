@@ -1347,7 +1347,7 @@ export const en = {
           '1': 'Open the "Settings" tab and tap "Recurring charges".',
           '2': 'Kiko finds charges that repeat in your transactions and shows the day they were charged and the last charge. It shows only what already happened, never a future charge.',
           '3': 'Tap a charge to see each of its past transactions, then tap one to open it.',
-          '4': 'If a name doesn\'t really repeat, tap "Not a recurring charge". You can bring it back from "Hidden" at the end of the list.',
+          '4': 'If a name doesn\'t really repeat, touch and hold it or open it, then tap "Not a recurring charge". It leaves the list and the totals in every currency, and new charges won\'t bring it back. Only a mark on one of its transactions brings it back.',
           '5': 'If Kiko missed one, open one of its transactions and choose how often it\'s charged under "Mark as recurring". The mark covers charges close to that transaction\'s amount, so after a big price change, mark a newer charge too. You can remove a mark from the same field or from the charge.',
         },
         title: 'View Recurring Charges',
@@ -1364,6 +1364,8 @@ export const en = {
           '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category. A transaction that sets an account\'s balance, such as its initial value, does not count as spending either.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
           '9': 'Above the filters, "Monthly tables" opens your spending by category for each month, in whole units of your base currency at today\'s rate, so an earlier month changes when the rate does. "Period" chooses the last 12 months or one calendar year. The average is the mean of the cells for the months it counts: it leaves out the first month with data and the month that is not over yet. A return that falls in a different month from its payment lowers the "Total" or "All" figure, but not the cell of the payment\'s month.',
+          '10': 'On the "Tables" screen, "Categories", "Cash flow" and "Net worth" at the top switch between the three tables. "Cash flow" shows, for each month, "Income", "Expenses", "Net" (income minus expenses) and "Savings rate" (net divided by income, a dash in a month with no income). "Expenses" count every category: a category you pick with "Categories" narrows the category table only. "Income" is every credit that none of the spending rules leaves out, so it can be wrong. A refund that arrives as a separate credit counts as income, while a return you add to the payment itself does not. A transfer between two accounts that Kiko tracks counts as income when its two sides are more than 2 minutes apart or only one side was synced. So does money that reaches your bank from an account Kiko does not track, money you withdraw or sell from Binance to your bank, and a loan you receive. A credit described as a deposit or bonds, or one that your bank codes as a cash withdrawal, a card top-up or a transfer from one of your Monobank cards that Kiko syncs or synced, does not count, even when it is an interest or coupon payout. "Net" is not the change in your net worth, which also moves with exchange rates and with the revaluation of what you hold.',
+          '11': '"Net worth" shows, for each month, what each of your accounts is worth at the end of it, in whole units of your base currency. The month that is not over yet shows today\'s value. "All" is your net worth at the end of each month, counted as "Net Worth Over Time" counts it. A loan or a card in debit lowers the account it belongs to. An account with no holding has no row, and an archived account is not counted. "Change" is the last month\'s value less the value at the end of the month before the first column. A month uses the exchange rate of its last day, or the earliest rate Kiko has stored for a month before that currency\'s history starts. A currency with no history uses today\'s rate, so its earlier months change when the rate does. "Net worth" has no category filter.',
         },
         title: 'Read Your Statistics',
       },
@@ -1423,6 +1425,20 @@ export const en = {
   tables: {
     all: 'All',
     average: 'Average',
+    cashFlow: {
+      caption: "Cash flow in {{currency}}, in whole units, at today's rate.",
+      empty: {
+        title: 'No income or spending in this period',
+        message: 'Pick another period, or other accounts, to see a table.',
+      },
+      expenses: 'Expenses',
+      income: 'Income',
+      net: 'Net',
+      partialMonth: 'The latest month is not over yet, so the average leaves it out.',
+      savingsRate: 'Savings rate',
+      // Spoken for a savings rate cell that shows a dash.
+      savingsRateUnknown: 'No income, so no savings rate',
+    },
     category: {
       caption: "Spending by category in {{currency}}, in whole units, at today's rate.",
       partialMonth: 'The latest month is not over yet, so the average leaves it out.',
@@ -1430,6 +1446,17 @@ export const en = {
     empty: {
       title: 'No spending in this period',
       message: 'Pick another period, or other accounts or categories, to see a table.',
+    },
+    netWorth: {
+      caption:
+        "Net worth by account in {{currency}}, in whole units, at the rate of each month's end. A month before a currency's rate history starts uses its earliest stored rate, and a currency with no history uses today's rate.",
+      change: 'Change',
+      empty: {
+        title: 'No net worth to show',
+        message:
+          'Pick other accounts to see a table. Other currencies need exchange rates, which load online.',
+      },
+      partialMonth: "The latest month shows today's value.",
     },
     // Spoken for an average cell that shows a dash.
     noCompleteMonth: 'No complete month yet',
@@ -1440,6 +1467,12 @@ export const en = {
     },
     title: 'Tables',
     total: 'Total',
+    view: {
+      cashFlow: 'Cash flow',
+      categories: 'Categories',
+      label: 'Table',
+      netWorth: 'Net worth',
+    },
   },
   // The Home and Holding-detail rows both render the same fallback label
   // (src/transactions/default-description/default-description.ts) for a transaction with no
@@ -1769,16 +1802,12 @@ export const en = {
       'Old .xls files are not supported. Save the file as .xlsx or CSV and try again.',
   },
   recurringCharges: {
-    chargeCount_one: '{{count}} charge',
-    chargeCount_few: '{{count}} charges',
-    chargeCount_many: '{{count}} charges',
-    chargeCount_other: '{{count}} charges',
     emptyMessage:
       'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring.',
     emptyTitle: 'No recurring charges yet',
-    hiddenHeading: 'Hidden',
-    holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
+    holdingQuietSince: '"{{holding}}": no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
+    lastChargesTotal: 'Sum of last charges',
     listChangedMessage: 'Go back to see your recurring charges as they are now.',
     listChangedTitle: 'This list has changed',
     marked: {
@@ -1797,9 +1826,18 @@ export const en = {
     monthlyOnDay: 'Monthly, on day {{day}}',
     noChargeSince: 'No charge since {{date}}',
     notRecurring: 'Not a recurring charge',
+    notRecurringConfirmMessage:
+      '"{{name}}" leaves recurring charges and their totals in every currency, and new charges won\'t bring it back. To bring it back, mark one of its transactions as recurring.',
+    notRecurringConfirmTitle: 'Not a Recurring Charge?',
     paidSoFar: 'All paid so far',
     removeMark: 'Remove mark',
-    showAgain: 'Show again',
+    summary: {
+      chargeCount: 'Number of charges',
+      lastCharge: 'Last charge',
+      repeats: 'Repeats',
+      status: 'Status',
+      stopped: 'No recent charge',
+    },
     title: 'Recurring Charges',
     weekly: 'Weekly',
     weeklyOn: {

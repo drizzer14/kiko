@@ -1,3 +1,4 @@
+import { sumOf } from '@kiko/numbers';
 import type { CalendarMonth } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import type { RateTable } from '@kiko/rates/conversion';
@@ -23,8 +24,6 @@ type CategoryByMonth = {
   allCells: number[];
   allTotal: number;
 };
-
-const sumOf = (values: readonly number[]): number => values.reduce((sum, value) => sum + value, 0);
 
 /** Largest total first; equal totals by key, so the order never moves between renders. */
 const byTotalThenKey = (left: CategoryByMonthRow, right: CategoryByMonthRow): number => {

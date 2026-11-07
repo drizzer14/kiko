@@ -4,6 +4,10 @@ import type { useRecurringGroups as useActualRecurringGroups } from '@kiko/recur
 
 const DEFAULT_CATEGORY = { key: 'other', title: 'Other', icon: 'tag.fill', color: null };
 
+// The testIDs of the removed hidden-merchants UI (the "Hidden" heading, each hidden line and its
+// "Show again" button): a screen suite counts none of them in the list.
+export const REMOVED_PARTS = /^recurring-charges-(heading-hidden|hidden-|show-again-)/;
+
 /**
  * A stand-in for `useRecurringGroups` in a suite that does not test the groups: the real
  * grouping over no charge rows, so every shown series lands in the one default category group,

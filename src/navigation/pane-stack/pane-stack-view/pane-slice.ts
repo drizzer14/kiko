@@ -99,15 +99,33 @@ const LAYER_ROOT_OPTIONS: NativeStackNavigationOptions = {
   contentStyle: { backgroundColor: 'transparent' },
 };
 
-// A header that is there and shows nothing. Root and the page over it share one navigation bar, so
+// A header that is there and shows no title. Root and the page over it share one navigation bar, so
 // a root with no header hides the page's own bar when a swipe back starts; a root with this one
 // keeps it, and the swipe can be cancelled with the bar in place.
 const LAYER_ROOT_HEADER: NativeStackNavigationOptions = {
   headerShown: true,
-  headerTransparent: true,
   headerTitle: '',
-  headerShadowVisible: false,
 };
+
+// The options that decide how a bar's background is drawn: its fill, blur, shadow, custom
+// background and large-title ground. UIKit moves the shared bar from one page's bar look to the
+// other's during the swipe, so a root that differs in any of them fades the bar's background away.
+// The page over the root has them from its stack's `screenOptions` or its own, and the root, which
+// is described apart from both, takes them from that page. Its title, back button and items stay
+// its own, and so does `headerLargeTitle`: it also shapes the bar's background, but the root never
+// takes a large title, a deliberate exception (the root's bar is the plain one the swipe ends on).
+const BAR_APPEARANCE_OPTIONS = [
+  'headerBackground',
+  'headerBlurEffect',
+  'headerLargeStyle',
+  'headerLargeTitleShadowVisible',
+  'headerShadowVisible',
+  'headerStyle',
+  'headerTransparent',
+] as const satisfies readonly (keyof NativeStackNavigationOptions)[];
+
+const barAppearanceOf = (options: NativeStackNavigationOptions): NativeStackNavigationOptions =>
+  Object.fromEntries(BAR_APPEARANCE_OPTIONS.map((name) => [name, options[name]]));
 
 // The page under Tables in this stack is the untitled placeholder root, so a Back label or a menu
 // of earlier titles would list nothing: the button is the chevron alone.
@@ -137,6 +155,8 @@ export const layerSlice = (
 
   const routes = layerRoutesOf(state.routes, config);
   const root: PaneStackRoute = { key: LAYER_ROOT_KEY, name: first.name };
+  // The root's bar is shared with the layer's first page: a swipe back from it ends on the root.
+  const page = routes.at(0);
   const overlaid = Object.fromEntries(
     routes
       .filter(({ key, name }) => listed.includes(name) && key in descriptors)
@@ -157,7 +177,10 @@ export const layerSlice = (
         render: () => createElement(Fragment),
         options: {
           ...LAYER_ROOT_OPTIONS,
-          ...(routes.length > 0 ? LAYER_ROOT_HEADER : { headerShown: false }),
+          ...(foldMap(maybe(page), (shown) => ({
+            ...barAppearanceOf(descriptors[shown.key]?.options ?? {}),
+            ...LAYER_ROOT_HEADER,
+          })) ?? { headerShown: false }),
         },
       },
       ...overlaid,

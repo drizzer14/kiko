@@ -21,6 +21,7 @@ import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 import { implicitParityFixture } from '@kiko/test-support/implicit-total-parity';
 import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
+import { accountSectionOrder, type ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import AccountsScreen from './accounts.screen';
@@ -1693,6 +1694,26 @@ describe('AccountsScreen', () => {
         expect(within(getByTestId('accounts-debts-heading')).getByText(debt)).toBeTruthy();
       },
     );
+
+    it('lists the sections in the order accountSectionOrder names', async () => {
+      const headingTestIds: Record<ImplicitAccountKind, string> = {
+        property: 'accounts-property-heading',
+        debt: 'accounts-debts-heading',
+      };
+      bothSections();
+
+      const { getAllByTestId } = await renderAccounts();
+
+      expect(
+        getAllByTestId(/^accounts-(property|debts)-heading$/).map(
+          (heading) => heading.props.testID,
+        ),
+      ).toEqual(
+        accountSectionOrder.flatMap((section) =>
+          section === 'main' ? [] : [headingTestIds[section]],
+        ),
+      );
+    });
 
     it('never shows the old fixed Property or Debts text', async () => {
       bothSections();

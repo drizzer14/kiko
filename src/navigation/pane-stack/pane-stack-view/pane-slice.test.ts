@@ -241,8 +241,10 @@ describe('layerSlice', () => {
   // The whole options object is compared: the root takes nothing from the route it is named after,
   // whose own options (a large title, for one) would show in a bar that is meant to be empty.
   // Root and Tables share one navigation bar. A root with no header hides that bar when a swipe
-  // back starts, so while Tables is in the layer the root keeps a header of its own, clear and
-  // empty; at rest the layer shows no header at all.
+  // back starts, so while Tables is in the layer the root keeps a header of its own, one that
+  // is drawn as Tables' bar is (it takes the appearance options from Tables) and shows no title;
+  // at rest the layer shows no header at all. Jest proves the props only, never the UIKit
+  // transition between the two bars or the bar's hide at the end of a pop.
   it('gives the root a title-less page on a clear ground and no header while it holds only the root', () => {
     expect(rootOf(atRest()).options).toEqual({
       title: '',
@@ -251,14 +253,72 @@ describe('layerSlice', () => {
     });
   });
 
-  it('gives the root a title-less page on a clear ground and a shown, clear, empty header with Tables in it', () => {
+  it('gives the root a title-less page on a clear ground and a shown, empty header with Tables in it', () => {
     expect(rootOf(onTables()).options).toEqual({
       title: '',
       contentStyle: { backgroundColor: 'transparent' },
       headerShown: true,
-      headerTransparent: true,
       headerTitle: '',
-      headerShadowVisible: false,
+    });
+  });
+
+  describe('with appearance options on the pages of the layer', () => {
+    const headerStyle = { backgroundColor: 'black' };
+    const headerLargeStyle = { backgroundColor: 'transparent' };
+    const headerBackground = () => null;
+
+    const sliceWith = (
+      tables: NativeStackNavigationOptions,
+      form: NativeStackNavigationOptions,
+    ): ReturnType<typeof layerSlice> =>
+      layerSlice(
+        stackState([route('home', 'Home'), route('tables', 'Tables'), route('form', 'Form')]),
+        WHOLE_HOME,
+        {
+          ...layerDescriptors,
+          tables: { id: 'tables-descriptor', options: tables },
+          form: { id: 'form-descriptor', options: form },
+        } as never as NativeStackViewProps['descriptors'],
+        describeRoute,
+      );
+
+    it('takes the appearance options from Tables and nothing else, so the bar is drawn as its own', () => {
+      const slice = sliceWith(
+        {
+          title: 'Tables',
+          headerBackTitle: 'Back',
+          headerLargeTitle: true,
+          headerBackground,
+          headerBlurEffect: 'systemChromeMaterialDark',
+          headerLargeStyle,
+          headerLargeTitleShadowVisible: false,
+          headerShadowVisible: true,
+          headerStyle,
+          headerTransparent: true,
+        },
+        {},
+      );
+
+      expect(rootOf(slice).options).toEqual({
+        title: '',
+        contentStyle: { backgroundColor: 'transparent' },
+        headerShown: true,
+        headerTitle: '',
+        headerBackground,
+        headerBlurEffect: 'systemChromeMaterialDark',
+        headerLargeStyle,
+        headerLargeTitleShadowVisible: false,
+        headerShadowVisible: true,
+        headerStyle,
+        headerTransparent: true,
+      });
+    });
+
+    it('takes them from the first page of the layer, the one the root is shared with', () => {
+      const { options } = rootOf(sliceWith({ headerBlurEffect: 'dark' }, { headerStyle }));
+
+      expect(options.headerBlurEffect).toBe('dark');
+      expect(options.headerStyle).toBeUndefined();
     });
   });
 

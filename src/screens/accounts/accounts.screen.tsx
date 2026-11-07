@@ -1,8 +1,9 @@
+import { match } from 'ts-pattern';
 import { type FC, useMemo } from 'react';
 import {
   accountDisplayName,
+  accountSectionOf,
   hasNoAccounts,
-  isImplicitAccount,
   type ImplicitAccountKind,
 } from '@kiko/holdings/implicit-account';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -172,11 +173,14 @@ const AccountsScreen: FC<AccountsScreenProps> = ({ navigation }) => {
     const byKind: Partial<Record<ImplicitAccountKind, AccountRow>> = {};
 
     for (const account of activeAccounts) {
-      if (isImplicitAccount(account)) {
-        byKind[account.kind] = account;
-      } else {
-        main.push(account);
-      }
+      match(accountSectionOf(account))
+        .with('main', () => {
+          main.push(account);
+        })
+        .with('property', 'debt', (kind) => {
+          byKind[kind] = account;
+        })
+        .exhaustive();
     }
 
     return { mainAccounts: main, implicitAccountByKind: byKind };

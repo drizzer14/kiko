@@ -2,66 +2,43 @@ import type { ComponentProps } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
-import {
-  asNavigationProp,
-  asRouteProp,
-  navigationSpy,
-  paramsAfter,
-} from '@kiko/test-support/navigation-props';
 import { calendarMonthOf } from '@kiko/dates';
 import {
   registerLightThemeFirst,
   restoreThemeOrder,
 } from '@kiko/test-support/light-theme-registered';
+import {
+  answerFilterData,
+  pressFilterOption,
+  transactionRowOf,
+} from '@kiko/test-support/statistics-filter-data';
 import { darkTheme } from '@kiko/design-system/theme';
 import Screen from '@kiko/design-system/components/screen';
 import { reportWindow } from '@kiko/test-support/window-size';
+import { paramsAfter } from '@kiko/test-support/navigation-props';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
-import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { act, fireEvent, render, renderHook, within } from '@testing-library/react-native';
-import { answerFilterData, pressFilterOption } from '@kiko/test-support/statistics-filter-data';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
-import TablesScreen from './tables.screen';
+import {
+  answerWith,
+  renderTables,
+  screenElement,
+  SPENT_AT,
+  SPENT_IN,
+  spokenValue,
+} from './__fixtures__/tables-screen-world';
+import type TablesScreen from './tables.screen';
 import { monthTitle } from './month-column-label';
 
 jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
 
 type Props = ComponentProps<typeof TablesScreen>;
-
-const SPENT_AT = localDaysFrom(Date.now(), -2);
-const SPENT_IN = monthTitle(calendarMonthOf(SPENT_AT), i18n.t);
-
-const answerWith =
-  (override: (tables: string[], answer: ReturnType<typeof answerFilterData>) => unknown) =>
-  (query: { kind?: string }, tables: string[]) => {
-    const answer = answerFilterData(query, tables);
-
-    return { ...answer, data: override(tables, answer) ?? answer.data };
-  };
-
-const screenElement = (params: Props['route']['params'], navigation = navigationSpy()) => (
-  <TablesScreen
-    route={asRouteProp<Props['route']>('Tables', params)}
-    navigation={asNavigationProp<Props['navigation']>(navigation)}
-  />
-);
-
-const renderTables = async (params: Props['route']['params'] = undefined) => {
-  const navigation = navigationSpy();
-  const rendered = await render(screenElement(params, navigation), {
-    wrapper: GestureRootWrapper,
-  });
-
-  return { navigation, ...rendered };
-};
-
-const spokenValue = (node: { props: { accessibilityValue?: { text?: string } } }) =>
-  node.props.accessibilityValue?.text;
 
 describe('TablesScreen', () => {
   beforeEach(() => {
@@ -94,17 +71,14 @@ describe('TablesScreen', () => {
           tables[0] === 'transactions'
             ? [
                 ...(answer.data as object[]),
-                {
+                transactionRowOf({
                   id: 'opening',
                   holdingId: 'h1',
                   time: SPENT_AT,
                   amountMinorUnits: -999_00,
                   category: 'groceries',
                   setsBalance: true,
-                  exchangeCounterpartHoldingId: null,
-                  untrackedCounterpart: null,
-                  loanHoldingId: null,
-                },
+                }),
               ]
             : undefined,
         ),
@@ -113,6 +87,44 @@ describe('TablesScreen', () => {
       const { getByLabelText } = await renderTables();
 
       expect(spokenValue(getByLabelText(`Groceries, ${SPENT_IN}`))).toBe('300.00 ₴');
+    });
+
+    describe('beside a credit of the amount of a real debit on another holding', () => {
+      const creditOf = (setsBalance: boolean) =>
+        transactionRowOf({
+          id: 'credit',
+          holdingId: 'h1',
+          time: SPENT_AT + 1_000,
+          amountMinorUnits: 100_00,
+          category: 'groceries',
+          setsBalance,
+        });
+      const seedCredit = (setsBalance: boolean) =>
+        mockUseLiveQuery.mockImplementation(
+          answerWith((tables, answer) =>
+            tables[0] === 'transactions'
+              ? [...(answer.data as object[]), creditOf(setsBalance)]
+              : undefined,
+          ),
+        );
+
+      it('counts the debit when the credit sets a balance, as the donut does', async () => {
+        seedCredit(true);
+
+        const { getByLabelText } = await renderTables();
+
+        expect(spokenValue(getByLabelText(`Transport, ${SPENT_IN}`))).toBe('100.00 ₴');
+        expect(spokenValue(getByLabelText(`All, ${SPENT_IN}`))).toBe('400.00 ₴');
+      });
+
+      it('leaves the debit out when the two rows are a pair of own holdings', async () => {
+        seedCredit(false);
+
+        const { getByLabelText, queryByLabelText } = await renderTables();
+
+        expect(queryByLabelText(`Transport, ${SPENT_IN}`)).toBeNull();
+        expect(spokenValue(getByLabelText(`All, ${SPENT_IN}`))).toBe('300.00 ₴');
+      });
     });
   });
 
@@ -388,13 +400,6 @@ describe('TablesScreen', () => {
     describe('a category that a month spends on and the period nets out', () => {
       const PAID_AT = calendarMonthOf(calendarMonthOf(SPENT_AT).start - 1).start + 1_000;
       const PAID_IN = monthTitle(calendarMonthOf(PAID_AT), i18n.t);
-      const NO_MARKERS = {
-        setsBalance: false,
-        exchangeCounterpartHoldingId: null,
-        untrackedCounterpart: null,
-        loanHoldingId: null,
-        changeGroupId: 'refund-group',
-      };
       const withNettedOutCategory = answerWith((tables, answer) => {
         if (tables[0] === 'categories') {
           return [
@@ -406,22 +411,21 @@ describe('TablesScreen', () => {
         if (tables[0] === 'transactions') {
           return [
             ...(answer.data as object[]),
-            {
-              ...NO_MARKERS,
+            transactionRowOf({
               id: 'paid',
               holdingId: 'h1',
               time: PAID_AT,
               amountMinorUnits: -200_00,
               category: 'refunded',
-            },
-            {
-              ...NO_MARKERS,
+              changeGroupId: 'refund-group',
+            }),
+            transactionRowOf({
               id: 'returned',
               holdingId: 'h1',
               time: SPENT_AT,
               amountMinorUnits: 250_00,
-              category: null,
-            },
+              changeGroupId: 'refund-group',
+            }),
           ];
         }
 
@@ -510,6 +514,38 @@ describe('TablesScreen', () => {
     });
   });
 
+  describe('the view', () => {
+    it('opens on the category table when the route carries no view', async () => {
+      const { getByTestId, queryByTestId } = await renderTables();
+
+      expect(getByTestId('category-table')).toBeTruthy();
+      expect(queryByTestId('cash-flow-table')).toBeNull();
+      expect(getByTestId('tables-view-selected')).toBeTruthy();
+    });
+
+    it('shows the cash flow table when the route carries it', async () => {
+      const { getByTestId, queryByTestId } = await renderTables({ view: 'cashFlow' });
+
+      expect(getByTestId('cash-flow-table')).toBeTruthy();
+      expect(queryByTestId('category-table')).toBeNull();
+    });
+
+    it('writes a pick to the route params, either way', async () => {
+      const first = await renderTables();
+
+      await fireEvent.press(first.getByTestId('tables-view-option-cashFlow'));
+
+      expect(first.navigation.setParams).toHaveBeenCalledWith({ view: 'cashFlow' });
+      await first.unmount();
+
+      const second = await renderTables({ view: 'cashFlow' });
+
+      await fireEvent.press(second.getByTestId('tables-view-option-categories'));
+
+      expect(second.navigation.setParams).toHaveBeenCalledWith({ view: 'categories' });
+    });
+  });
+
   describe('a switch of language while the table shows', () => {
     let rendered: Awaited<ReturnType<typeof renderTables>>;
 
@@ -560,6 +596,35 @@ describe('TablesScreen', () => {
 
       expect(getByTestId('category-table-caption')).toHaveTextContent('in USD', { exact: false });
       expect(spokenValue(getByLabelText(`Groceries, ${SPENT_IN}`))).toBe('$7.50');
+    });
+  });
+
+  describe('the rate-history backfill', () => {
+    // The data-layer helper already stubs `runBackfill` with a run that never ends, and its mock
+    // is the one the store calls; the spy only counts the calls and settles one.
+    const backfillModule = jest.requireMock('@kiko/rates/history-backfill') as {
+      runBackfill: () => Promise<BackfillStatus>;
+    };
+    const runBackfillSpy = jest.spyOn(backfillModule, 'runBackfill');
+
+    afterAll(() => {
+      runBackfillSpy.mockRestore();
+    });
+
+    it('starts the run when Tables is the first screen to open', async () => {
+      await renderTables();
+
+      expect(runBackfillSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts no run when it is pushed after a settled run', async () => {
+      runBackfillSpy.mockResolvedValueOnce({ state: 'complete', lastDay: Date.now() });
+
+      await renderTables();
+      await act(async () => {});
+      await renderTables();
+
+      expect(runBackfillSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

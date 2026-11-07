@@ -192,12 +192,9 @@ const setLanguage = (language: 'en' | 'uk') =>
 const idsOfCount = (count: number): string[] =>
   Array.from({ length: count }, (_, index) => `netflix-${count - index}`);
 
-const COUNT_CASES = [
-  { count: 1, english: '1 charge', ukrainian: '1 списання' },
-  { count: 2, english: '2 charges', ukrainian: '2 списання' },
-  { count: 5, english: '5 charges', ukrainian: '5 списань' },
-  { count: 21, english: '21 charges', ukrainian: '21 списання' },
-];
+const COUNT_CASES = [1, 2, 5, 21];
+
+const CHARGE_COUNT = 'recurring-series-summary-charge-count';
 
 const headerWithCount = async (count: number) => {
   const series = seriesWith({ chargeIds: idsOfCount(count) });
@@ -225,31 +222,37 @@ describe('RecurringSeriesScreen — header', () => {
       paramsOf(series),
     );
 
-    expect(getByTestId(HEADER)).toHaveTextContent('Monthly, on day 15', { exact: false });
-    expect(getByTestId(HEADER)).toHaveTextContent(
-      `Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`,
-      { exact: false },
+    expect(getByTestId('recurring-series-summary-repeats')).toHaveTextContent(
+      'Monthly, on day 15',
+      { exact: true },
     );
-    expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+    expect(getByTestId('recurring-series-summary-last-charge')).toHaveTextContent(
+      formatDate(FIFTEENTH_OF_OCTOBER),
+      { exact: true },
+    );
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
   });
 
-  it('shows the no-charge-since line of a stopped series', async () => {
+  it('shows the status and the last charge date of a stopped series', async () => {
     const series = seriesWith({ isStopped: true, lastChargeTime: FIRST_OF_MAY });
     const { getByTestId } = await renderScreen(
       { series: [series], isLoading: false },
       paramsOf(series),
     );
 
-    expect(getByTestId(HEADER)).toHaveTextContent(`No charge since ${formatDate(FIRST_OF_MAY)}`, {
-      exact: false,
+    expect(getByTestId('recurring-series-summary-status')).toHaveTextContent('No recent charge', {
+      exact: true,
     });
+    expect(getByTestId('recurring-series-summary-last-charge')).toHaveTextContent(
+      formatDate(FIRST_OF_MAY),
+      { exact: true },
+    );
   });
 
-  it.each(COUNT_CASES)('reads $count charges as "$english"', async ({ count, english }) => {
+  it.each(COUNT_CASES)('reads %s charges as the bare number', async (count) => {
     const { getByTestId } = await headerWithCount(count);
 
-    expect(i18n.t('recurringCharges.chargeCount', { count })).toBe(english);
-    expect(getByTestId(HEADER)).toHaveTextContent(english, { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent(String(count), { exact: true });
   });
 });
 
@@ -258,11 +261,10 @@ describe('RecurringSeriesScreen — header in Ukrainian', () => {
     await setLanguage('uk');
   });
 
-  it.each(COUNT_CASES)('reads $count charges as "$ukrainian"', async ({ count, ukrainian }) => {
+  it.each(COUNT_CASES)('reads %s charges as the bare number', async (count) => {
     const { getByTestId } = await headerWithCount(count);
 
-    expect(i18n.t('recurringCharges.chargeCount', { count })).toBe(ukrainian);
-    expect(getByTestId(HEADER)).toHaveTextContent(ukrainian, { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent(String(count), { exact: true });
   });
 
   it('states the neutral list text literally', () => {
@@ -348,7 +350,7 @@ describe('RecurringSeriesScreen — charges', () => {
       chargeTestId('netflix-3'),
       chargeTestId('netflix-1'),
     ]);
-    expect(screen.getByTestId(HEADER)).toHaveTextContent('2 charges', { exact: false });
+    expect(screen.getByTestId(CHARGE_COUNT)).toHaveTextContent('2', { exact: true });
   });
 });
 
@@ -426,7 +428,7 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
       MOVED_LEDGER,
     );
 
-    expect(getByTestId(HEADER)).toHaveTextContent('2 charges', { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('2', { exact: true });
     expect(shownChargeIds(getAllByTestId)).toEqual([
       chargeTestId('netflix-3'),
       chargeTestId('netflix-2'),
@@ -549,7 +551,7 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
         chargeTestId('netflix-3'),
         chargeTestId('netflix-2'),
       ]);
-      expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+      expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
       expect(queryByTestId(chargeTestId('spotify-2'))).toBeNull();
       expect(queryByTestId(chargeTestId('netflix-1'))).toBeNull();
       expect(queryByTestId(EMPTY)).toBeNull();
@@ -584,7 +586,7 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
         chargeTestId('netflix-3'),
         chargeTestId('netflix-1'),
       ]);
-      expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+      expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
     });
   });
 
@@ -703,55 +705,98 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     });
   });
 
-  it('hides the merchant key with its name on a tap, and goes back only after the write', async () => {
-    const { getByTestId, navigation } = await renderNetflix();
+  const CONFIRM_SHEET = 'confirm-sheet';
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+  type NetflixView = Awaited<ReturnType<typeof renderNetflix>>;
+
+  const confirmButtonOf = (view: NetflixView) =>
+    within(view.getByTestId(CONFIRM_SHEET)).getByText('Not a recurring charge');
+
+  const openConfirm = async (view: NetflixView) => {
+    await fireEvent.press(view.getByTestId(HIDE_BUTTON));
+  };
+
+  const confirmHide = async (view: NetflixView) => {
+    await openConfirm(view);
+    await fireEvent.press(confirmButtonOf(view));
+  };
+
+  it('opens the confirm on a tap, and writes nothing and goes back nowhere', async () => {
+    const view = await renderNetflix();
+
+    expect(view.queryByTestId(CONFIRM_SHEET)).toBeNull();
+
+    await openConfirm(view);
+
+    expect(view.getByTestId(CONFIRM_SHEET)).toBeTruthy();
+    expect(hideSpy).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing and stays on the series when the confirm is cancelled', async () => {
+    const view = await renderNetflix();
+
+    await openConfirm(view);
+    await fireEvent.press(within(view.getByTestId(CONFIRM_SHEET)).getByText('Cancel'));
+
+    expect(hideSpy).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+    expect(view.getByTestId(HEADER)).toBeTruthy();
+  });
+
+  it('hides the merchant key with its name on the confirm, and goes back only after the write', async () => {
+    const view = await renderNetflix();
+
+    await confirmHide(view);
 
     expect(hideSpy).toHaveBeenCalledTimes(1);
     expect(hideSpy).toHaveBeenCalledWith('netflix', 'Netflix');
-    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
 
     await act(async () => {
       settleWrite.resolve();
     });
 
-    expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
   });
 
   it('does not go back when another screen was opened over it before the write landed', async () => {
-    const { getByTestId, navigation } = await renderNetflix();
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
-    navigation.isFocused.mockReturnValue(false);
+    await confirmHide(view);
+    view.navigation.isFocused.mockReturnValue(false);
     await act(async () => {
       settleWrite.resolve();
     });
 
     expect(hideSpy).toHaveBeenCalledTimes(1);
-    expect(navigation.goBack).not.toHaveBeenCalled();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
   });
 
-  it('blocks a second tap while the write is in flight, and takes one again once it settled', async () => {
-    const { getByTestId } = await renderNetflix();
+  it('blocks a second confirm while the write is in flight, and takes one again once it settled', async () => {
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await openConfirm(view);
+
+    const confirm = confirmButtonOf(view);
+
+    await fireEvent.press(confirm);
+    await fireEvent.press(confirm);
 
     expect(hideSpy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       settleWrite.resolve();
     });
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
 
     expect(hideSpy).toHaveBeenCalledTimes(2);
   });
 
   it('shows the save alert and stays on a rejected write, then lets the user try again', async () => {
-    const { getByTestId, navigation } = await renderNetflix();
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
     await act(async () => {
       settleWrite.reject(new Error('disk full'));
     });
@@ -760,18 +805,18 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
       expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
     );
     expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(navigation.goBack).not.toHaveBeenCalled();
-    expect(getByTestId(HEADER)).toBeTruthy();
+    expect(view.navigation.goBack).not.toHaveBeenCalled();
+    expect(view.getByTestId(HEADER)).toBeTruthy();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
 
     expect(hideSpy).toHaveBeenCalledTimes(2);
   });
 
   it('shows no save alert when the write succeeds', async () => {
-    const { getByTestId } = await renderNetflix();
+    const view = await renderNetflix();
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
     await act(async () => {
       settleWrite.resolve();
     });
@@ -780,10 +825,10 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
   });
 
   it('keeps its series, never the neutral text, once the hide has fired and before it goes back', async () => {
-    const { getAllByTestId, getByTestId, queryByTestId, rerender, navigation } =
-      await renderNetflix();
+    const view = await renderNetflix();
+    const { getAllByTestId, getByTestId, queryByTestId, rerender, navigation } = view;
 
-    await fireEvent.press(getByTestId(HIDE_BUTTON));
+    await confirmHide(view);
 
     // The settings read has landed the hide; the hook still hands over the unfiltered series.
     mockResult = {
@@ -793,7 +838,7 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     };
     await rerender(hideScreen(navigation));
 
-    expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
     expect(shownChargeIds(getAllByTestId)).toHaveLength(3);
     expect(queryByTestId(EMPTY)).toBeNull();
     expect(navigation.goBack).not.toHaveBeenCalled();

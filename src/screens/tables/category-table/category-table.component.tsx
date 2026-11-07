@@ -1,23 +1,25 @@
-import { minOf } from '@kiko/numbers';
 import { type FC, useMemo } from 'react';
-import type { TFunction } from 'i18next';
-import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
 import DataTable, {
-  type DataTableCell,
   type DataTableColumn,
   type DataTableRow,
 } from '@kiko/design-system/components/data-table';
-import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import { activeLocale } from '@kiko/i18n/active-locale';
-import type { Currency } from '@kiko/currency/currency';
 import type { ColorScheme } from '@kiko/design-system/palette';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { buildCategoryByMonth } from '@kiko/statistics/category-by-month';
 import { averageOverComplete, firstCompleteMonthIndex } from '@kiko/statistics/table-period';
 
-import { monthColumnLabel, monthTitle } from '../month-column-label';
+import {
+  cellOf,
+  columnsOf,
+  firstRowTimeOf,
+  averageCellOf,
+  openingColumnIndexOf,
+  type Spoken,
+} from '../table-cells';
+import { monthTitle } from '../month-column-label';
 
 import { styles } from './category-table.styles';
 import type { CategoryTableProps } from './category-table.props';
@@ -25,11 +27,6 @@ import type { CategoryTableProps } from './category-table.props';
 // The table keeps a row's key, title and amounts, never a slice color, so the scheme the breakdown
 // resolves colors in cannot show here; the category menu's own slices take the active one.
 const TABLE_SCHEME: ColorScheme = 'dark';
-const NO_VALUE = '–';
-const WHOLE_UNITS = { fractionDigits: 0, symbol: false } as const;
-// The table opens with this many month columns showing, the next column peeking in as the hint
-// that it scrolls.
-const OPENING_MONTHS_SHOWN = 3;
 
 type Amounts = {
   key: string;
@@ -40,31 +37,6 @@ type Amounts = {
   total: number;
   /** Null when no month is complete yet. */
   average: number | null;
-};
-
-type Spoken = { baseCurrency: Currency; locale: string; t: TFunction };
-
-const cellOf = (amount: number, label: string, spoken: Spoken): DataTableCell => {
-  const money = Money.of(spoken.baseCurrency, amount);
-
-  return {
-    text: formatMoney(money, spoken.locale, WHOLE_UNITS),
-    accessibilityLabel: label,
-    // The cell shows whole units; the spoken value is the full amount.
-    accessibilityValue: formatMoney(money, spoken.locale),
-  };
-};
-
-const averageCellOf = (average: number | null, label: string, spoken: Spoken): DataTableCell => {
-  if (average === null) {
-    return {
-      text: NO_VALUE,
-      accessibilityLabel: label,
-      accessibilityValue: spoken.t('tables.noCompleteMonth'),
-    };
-  }
-
-  return cellOf(Math.round(average), label, spoken);
 };
 
 const rowOf = (
@@ -120,22 +92,9 @@ const CategoryTable: FC<CategoryTableProps> = ({
       excludedCategories,
     ],
   );
-  const firstRowTime = useMemo(
-    () => (ledger.shownRows.length === 0 ? null : minOf(ledger.shownRows.map((row) => row.time))),
-    [ledger.shownRows],
-  );
+  const firstRowTime = useMemo(() => firstRowTimeOf(ledger), [ledger]);
 
-  const columns = useMemo<DataTableColumn[]>(
-    () => [
-      ...months.map((month, index) => ({
-        key: `month-${month.start}`,
-        header: monthColumnLabel(month, index === 0, t),
-      })),
-      { key: 'total', header: t('tables.total'), isSum: true },
-      { key: 'average', header: t('tables.average'), isSum: true },
-    ],
-    [months, t],
-  );
+  const columns = useMemo<DataTableColumn[]>(() => columnsOf(months, t), [months, t]);
 
   const rows = useMemo<DataTableRow[]>(() => {
     const spoken = { baseCurrency, locale, t };
@@ -194,7 +153,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
       caption={currentIsPartial ? `${caption} ${t('tables.category.partialMonth')}` : caption}
       topContent={topContent}
       emptyContent={emptyContent}
-      initialColumnIndex={Math.max(months.length - OPENING_MONTHS_SHOWN, 0)}
+      initialColumnIndex={openingColumnIndexOf(months)}
       testID="category-table"
     />
   );
