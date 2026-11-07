@@ -249,6 +249,13 @@ scheme beside it, and no file switches the Unistyles theme by hand. Three pre-wr
 The tab bar's `tabBarStyle`, `tabBarActiveTintColor` and `tabBarInactiveTintColor` stay as props
 read from `useUnistyles`: they carry token colors, not a scheme, and are outside all three rules.
 
+A third-party native view (`SafeAreaView` in
+`src/design-system/components/screen/screen.component.tsx` and
+`src/auth/lock-gate/lock-gate.component.tsx`) takes its theme color by an inline prop from
+`useUnistyles`, because a stylesheet color does not repaint on a scheme change.
+`react-native-calendars` builds its stylesheet once per mount, so `KikoCalendar`
+(`src/calendar/kiko-calendar/`) remounts per scheme with `key={theme.colorScheme}`.
+
 ## Locked decisions (user-approved)
 
 Each entry is a visual the user approved. Never change or revert one —
@@ -709,7 +716,8 @@ reads which unit a given field shows in a test.
 
 ## Calendar week start
 
-`KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the
+`KikoCalendar` (`src/calendar/kiko-calendar/`) remounts per scheme: see "Native chrome follows
+the window". It starts its week on the
 DEVICE REGION's first weekday, like a native iOS calendar app — NOT
 the app language. `weekStartFor(region)`
 (`src/calendar/week-start/`) maps a 2-letter region code to `0`
