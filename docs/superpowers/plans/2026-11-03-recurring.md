@@ -1110,6 +1110,18 @@ disagreement, never edits to green):
 
 ---
 
+### 1.4-recurring-visual-2 task 7/7: plain period lines without "Marked:"
+
+A marked series, or one with no day, shows the plain period line ("Weekly", "Monthly", "Yearly",
+"Every 3 months", "Every 6 months"); `recurringCharges.marked.*` is removed and
+`recurringCharges.markedEmptyHeading` stays. Texts: `.superpowers/sdd/1.4-recurring/texts-no-marked-prefix.md`.
+
+- Done: pins 9a5c67d38.
+- Done: code 3dcc36ccf.
+- Done: review APPROVE.
+- Done: minors 7125ce3b4.
+- Done: docs (the `docs(recurring): plain period lines without "Marked:" in the spec` commit).
+
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
 
 | Task | Floor |
