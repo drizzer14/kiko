@@ -538,7 +538,11 @@ describe('the dense line of a Bybit account', () => {
   const DENSE_START = Date.UTC(2024, 0, 20, 12);
   const DENSE_LINE =
     'Bybit lists too many records within one second on 20.01.2024. Kiko cannot read past them, so later trades or Funding moves stay out, and the past of your net worth can be off by those amounts.';
-  const DENSE_LINE_OF_KEY = i18n.t('accountDetail.bybitHistoryDense', { date: '20.01.2024' });
+  // The line up to its date, so an absence assert holds for a dense line of any date.
+  const DENSE_LINE_START = i18n
+    .t('accountDetail.bybitHistoryDense', { date: '<date>' })
+    .split('<date>')[0]
+    .trim();
 
   it('replaces the pending caption while a mark stands, with the date of the mark', async () => {
     const { getByText, queryByText } = await renderState('bybit', {
@@ -554,7 +558,7 @@ describe('the dense line of a Bybit account', () => {
     const { getByText, queryByText } = await renderState('bybit', { walks: {}, denseSpans: {} });
 
     expect(getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
-    expect(queryByText(DENSE_LINE_OF_KEY)).toBeNull();
+    expect(queryByText(DENSE_LINE_START, { exact: false })).toBeNull();
   });
 
   it('shows once, with the earliest date, for a mark of each series', async () => {
@@ -597,7 +601,7 @@ describe('the dense line of a Bybit account', () => {
       <CryptoSyncSection account={accountOf('bybit')} holdings={[holdingOf('bybit')]} />,
     );
 
-    expect(queryByText(DENSE_LINE_OF_KEY)).toBeNull();
+    expect(queryByText(DENSE_LINE_START, { exact: false })).toBeNull();
   });
 
   it('keeps the Binance pending caption word for word', async () => {

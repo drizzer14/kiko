@@ -1,4 +1,3 @@
-import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import type { BinancePendingRange, WalkId } from '@kiko/crypto-sync/exchange/walk-state';
 
@@ -12,10 +11,15 @@ export const BYBIT_RESCAN_WINDOWS_MS = {
   log: 7 * DAY_MS,
 } as const;
 
-const windowOf = (walkId: WalkId): number | undefined =>
-  match(walkId)
-    .with('capital', 'transfer', 'log', (id) => BYBIT_RESCAN_WINDOWS_MS[id])
-    .otherwise(() => undefined);
+const WINDOW_OF: Record<WalkId, number | undefined> = {
+  ...BYBIT_RESCAN_WINDOWS_MS,
+  pay: undefined,
+  earn: undefined,
+  convert: undefined,
+  p2p: undefined,
+  fiatOrders: undefined,
+  fiatPayments: undefined,
+};
 
 /**
  * Whether a range lies in ground the forward pass read whole and the re-scan reads again by
@@ -29,7 +33,7 @@ export const isBybitRescannedRange = (
   cursor: number | null,
   syncedAt: number | null,
 ): boolean => {
-  const windowMs = windowOf(walkId);
+  const windowMs = WINDOW_OF[walkId];
 
   return (
     ground.kind !== 'point' &&

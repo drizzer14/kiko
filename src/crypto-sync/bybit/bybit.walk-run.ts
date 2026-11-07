@@ -283,7 +283,7 @@ export const runBybitWalk = async <Deps extends BybitWalkDeps, Page>(input: {
   });
 
   // The cursor is written before this clock, so a cut between the two leaves the older clock, which
-  // owes the day: that is the safe side.
+  // owes the day at least as often as the true clock: that is the safe side.
   if (context.marks.cursor !== cursor) {
     await write([{ field: 'cursorReadAt', value: now }]);
   }

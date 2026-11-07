@@ -191,8 +191,9 @@ const rowsOf = (walk: SettlingWalk) =>
 const ROTATION_MARKS = ['pointCursor', 'rangeCursor', 'backfillCursor', 'backfillTurn'];
 
 // The clock of the run that last moved the cursor. A run killed between the cursor and this write
-// leaves the older clock, which owes the overlap day (the safe side), so it differs from an
-// uninterrupted run's clock while the ground, the rows and the owed ground are the same.
+// leaves the older clock, which owes the overlap day at least as often as the true clock (the safe
+// side), so it differs from an uninterrupted run's clock while the ground, the rows and the owed
+// ground are the same.
 const CLOCK_MARKS = ['cursorReadAt'];
 
 // A restart can leave the hint lists stored empty where an uninterrupted run left none: both hold
@@ -245,11 +246,8 @@ const BURST_ROWS = 5_000;
 const burstSlots = (count: number, from = BURST_FROM): RowSlot[] =>
   evenSlots(count, from + HOUR_MS, from + WINDOW_MS - HOUR_MS);
 
-// The measured calls of the walks below, 2026-11-07: a catch-up run reads ground long after its
-// time, so it owes no overlap day and the calls are the windows alone. Was 84 and 110: each run
-// before the last read that day too.
 // The table's calls are the windows (26 x 3 and 105): a catch-up run whose cursor trails its clock
-// by more than a window owes no overlap day.
+// by more than a window owes no overlap day, so the measured calls are the windows alone.
 const SMALL_CAPITAL: WalkBound = {
   table: { runs: 3, calls: 78 },
   tableRuns: 'ceiling',
@@ -646,7 +644,7 @@ type LogAndConvertSeed = {
   convert: { runs: number; calls: number; steadyCalls: number };
 };
 
-// Was 110 calls, for the reason of `SMALL_CAPITAL`.
+// The calls are the windows alone, for the reason of `SMALL_CAPITAL`.
 const ONE_PAGE_LOG: WalkBound = {
   table: { runs: 6, calls: 105 },
   tableRuns: 'ceiling',
@@ -684,7 +682,6 @@ const LOG_AND_CONVERT_SEEDS: LogAndConvertSeed[] = [
     rows: { log: 50_000, convert: 0 },
     // MEASURED, 2026-11-07: the walk is complete when its forward pass ends, at run 53, with 1,051
     // calls at gap 0, 1,048 at 1 hour and 1,049 at 1 day: no catch-up run re-reads the overlap day.
-    // Was 129 runs and 2,570 calls at gap 0, 217 and 4,333 at 1 hour, 166 and 3,313 at 1 day.
     // 104 windows of 480 rows at 10 pages and a last window of 1 day at 2 pages; a split never
     // lowers the pages.
     log: {
@@ -1058,9 +1055,9 @@ describe('Bybit convergence of the log and the convert walk', () => {
       120_000,
     );
 
-    // The forward pass imports a burst that a span edge splits, and the ground it then leaves owed
-    // behind the cursor is read again outside the forward pass, which splits a span down to 1 ms:
-    // the split reaches a span that fits, so the owed ground ends with no mark.
+    // The forward pass imports a burst that a span edge splits. With `cursorReadAt`, a burst this
+    // old owes no overlap day, so the forward pass alone ends the walk: no read outside it happens.
+    // The 3-day test below is the pin of the split down to 1 ms outside the forward pass.
     it('a burst of 1,001 rows in 300 ms ends its owed ground, or its mark stands', async () => {
       const account = newLogAndConvertAccount();
 
