@@ -184,6 +184,16 @@ export const RISING_CHAIN = [
   chargeRowOf('third', 0, -14_400),
 ];
 
+// Three monthly 100 on the 15th and a 98 a week after the September one: a marked monthly chain at
+// 100 keeps the 100 of September, and the 98 shares its month.
+export const MONTHLY_AT_100 = netflixSettingsOf({ marks: [markOf('monthly', 10_000)] });
+export const WITH_EXTRA_IN_MONTH = [
+  chargeRowOf('monthly-2', 2, -10_000),
+  chargeRowOf('monthly-1', 1, -10_000),
+  chargeRowOf('monthly-0', 0, -10_000),
+  chargeRowOf('extra', 1, -9_800, { time: new Date(2026, 8, 22, 10, 30).getTime() }),
+];
+
 // A 99 and a 399, each twice: two chains under one name.
 export const TWO_CHAINS = [
   chargeRowOf('cheap-first', 2, -9_900),

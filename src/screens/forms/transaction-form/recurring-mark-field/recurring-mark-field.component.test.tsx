@@ -10,6 +10,8 @@ import {
   STORED_AT_99,
   STORED_AT_100,
   TWO_CHAINS,
+  MONTHLY_AT_100,
+  WITH_EXTRA_IN_MONTH,
   chargeRowOf,
   createMarkLiveQueries,
   markOf,
@@ -123,7 +125,14 @@ const DETECTED_WORLDS: [string, string, World][] = [
   ],
 ];
 const DETECTED_BUT_HIDDEN: World = { ...DETECTED, settingsRows: HIDDEN_KEY };
-const DETECTED_BUT_MARKED: World = { ...DETECTED, settingsRows: STORED_AT_100 };
+// The chain keeps one charge per slot, the 100: the stored amount is the nearest. The 144 row is
+// dropped, so the marked row is the first.
+const DETECTED_BUT_MARKED: World = {
+  ...DETECTED,
+  settingsRows: STORED_AT_100,
+  rowId: 'first',
+  amount: -10_000,
+};
 // A 900 beside the chain is a row of the group outside the found series.
 const OUTSIDE_THE_SERIES: World = {
   ...UNMARKED,
@@ -131,6 +140,15 @@ const OUTSIDE_THE_SERIES: World = {
   amount: -90_000,
   rowId: 'stray',
 };
+
+// The 98 sits in the month of a 100 that the chain keeps; that 100 is the kept row.
+const DROPPED_ROW: World = {
+  settingsRows: MONTHLY_AT_100,
+  ledger: WITH_EXTRA_IN_MONTH,
+  amount: -9800,
+  rowId: 'extra',
+};
+const KEPT_ROW: World = { ...DROPPED_ROW, amount: -10_000, rowId: 'monthly-1' };
 
 const fieldOf = ({
   amount,
@@ -385,6 +403,27 @@ describe('RecurringMarkField', () => {
 
       expect(rendered.getByText(PERIOD_LABELS.yearly).props.tone).toBe('textPrimary');
       expect(rendered.queryByText(/^Detected/)).toBeNull();
+    });
+  });
+
+  describe('a row its marked series leaves out of a month that holds a nearer charge', () => {
+    it('reads "Not marked", disabled, and a press opens nothing and writes nothing', async () => {
+      const rendered = await showField(DROPPED_ROW);
+
+      expect(rendered.getByText(NOT_MARKED)).toBeTruthy();
+      expect(isDisabled(rendered)).toBe(true);
+
+      await fireEvent.press(rendered.getByLabelText(FIELD_LABEL));
+
+      expect(rendered.queryByText('Mark as Recurring')).toBeNull();
+      expect(mockWrites.every.flatMap((write) => write.mock.calls)).toEqual([]);
+    });
+
+    it('reads the period, enabled, on the kept row of that month', async () => {
+      const rendered = await showField(KEPT_ROW);
+
+      expect(rendered.getByText(PERIOD_LABELS.monthly)).toBeTruthy();
+      expect(isDisabled(rendered)).toBe(false);
     });
   });
 

@@ -46,6 +46,7 @@ describe('property sweep sites', () => {
       'src/crypto-sync/binance/binance.walks.multi-coin.properties.test.ts',
       'src/currency/currency-group/currency-group.test.ts',
       'src/design-system/entity-tint/entity-tint.test.ts',
+      'src/recurring/card-switch/card-switch.test.ts',
       'src/recurring/detection/detection.test.ts',
       'src/recurring/eligibility/eligibility.test.ts',
       'src/recurring/marked-series/marked-series.test.ts',

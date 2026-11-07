@@ -9,7 +9,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { ColorScheme } from '@kiko/design-system/palette';
 import { type RateTable, convert } from '@kiko/rates/conversion';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { compareText, type RecurringSeries } from '@kiko/recurring/detection';
+import { compareText, type RecurringSeries, type SeriesPart } from '@kiko/recurring/detection';
 
 type ChargeRow = {
   id: string;
@@ -46,18 +46,32 @@ const newestChargeFirst = (left: RecurringSeries, right: RecurringSeries): numbe
 
 // The charges are debits, so a series has paid the negation of their sum. A row of another
 // currency is skipped: the group key of a series holds its currency, so none should be there.
-const paidFromRowsById = (series: RecurringSeries, rowById: ReadonlyMap<string, ChargeRow>) => {
-  const minorUnits = series.chargeIds.reduce((sum, chargeId) => {
+const paidFromRowsById = (
+  { currency, chargeIds }: Omit<SeriesPart, 'id'>,
+  rowById: ReadonlyMap<string, ChargeRow>,
+) => {
+  const minorUnits = chargeIds.reduce((sum, chargeId) => {
     const row = rowById.get(chargeId);
 
-    return row?.currency === series.currency ? sum - row.amountMinorUnits : sum;
+    return row?.currency === currency ? sum - row.amountMinorUnits : sum;
   }, 0);
 
-  return Money.of(series.currency, minorUnits);
+  return Money.of(currency, minorUnits);
 };
 
 export const paidSoFarOf = (series: RecurringSeries, rows: readonly ChargeRow[]): Money =>
   paidFromRowsById(series, new Map(rows.map((row) => [row.id, row])));
+
+// One figure per part of a joined row, newest part first, never summed across currencies; a series
+// with no parts gives the one figure `paidSoFarOf` gives.
+export const paidSoFarByCurrencyOf = (
+  series: RecurringSeries,
+  rows: readonly ChargeRow[],
+): Money[] => {
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+
+  return (series.parts ?? [series]).map((part) => paidFromRowsById(part, rowById));
+};
 
 export const recurringGroupsOf = ({
   shown,

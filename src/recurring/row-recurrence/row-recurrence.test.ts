@@ -84,6 +84,14 @@ const recurrenceOf = (
     today: NOW,
   });
 
+// A yearly mark keeps charges more than 182.6 days apart. Six monthly charges and the five 100s
+// of RISE span under that, so the amounts tie and the newest stays; ten Apple 99s span 273 days,
+// so the oldest and the newest both stay.
+const KEPT_YEARLY_ROW = 'charge-0';
+const DROPPED_YEARLY_ROW = 'charge-2';
+const APPLE_KEPT_YEARLY_ROW = 'cheap-0';
+const RISE_KEPT_YEARLY_ROW = 'rise-3';
+
 const MONTHLY = ledgerOf(monthly(6, 15, 9.99));
 const WEEKLY = ledgerOf(weekly(8, [2026, 10, 30], 150, { description: 'Gym' }));
 const YEARLY = ledgerOf([
@@ -153,7 +161,7 @@ describe('rowRecurrenceOf on a hidden key', () => {
   it('still gives the marked period to a row in a marked chain: a hide affects detected series only', () => {
     const choices = choicesOf({ netflix: { ...NETFLIX_HIDDEN, marks: [['yearly', 9.99]] } });
 
-    expect(recurrenceOf(MONTHLY, 'charge-0', choices)).toEqual({
+    expect(recurrenceOf(MONTHLY, KEPT_YEARLY_ROW, choices)).toEqual({
       kind: 'marked',
       period: 'yearly',
       marks: [YEARLY_MARK_AT_999],
@@ -166,7 +174,9 @@ describe('rowRecurrenceOf on a hidden key', () => {
     });
     const apple = { key: 'apple' };
 
-    expect(recurrenceOf(APPLE_TWO_PRICES, 'cheap-0', choices, apple).kind).toBe('marked');
+    expect(recurrenceOf(APPLE_TWO_PRICES, APPLE_KEPT_YEARLY_ROW, choices, apple).kind).toBe(
+      'marked',
+    );
     expect(recurrenceOf(APPLE_TWO_PRICES, 'dear-0', choices, apple)).toEqual({ kind: 'none' });
   });
 });
@@ -175,17 +185,23 @@ describe('rowRecurrenceOf on a marked chain', () => {
   it('gives the marked period, with the marks of the chain, to a row it holds', () => {
     const choices = choicesOf({ netflix: { name: 'Netflix', marks: [['yearly', 9.99]] } });
 
-    expect(recurrenceOf(MONTHLY, 'charge-2', choices)).toEqual({
+    expect(recurrenceOf(MONTHLY, KEPT_YEARLY_ROW, choices)).toEqual({
       kind: 'marked',
       period: 'yearly',
       marks: [YEARLY_MARK_AT_999],
     });
   });
 
+  it('gives none to a row its chain drops: one charge per period slot', () => {
+    const choices = choicesOf({ netflix: { name: 'Netflix', marks: [['yearly', 9.99]] } });
+
+    expect(recurrenceOf(MONTHLY, DROPPED_YEARLY_ROW, choices)).toEqual({ kind: 'none' });
+  });
+
   it('gives the marked period on the shared row and none on the other rows of the detected series it removes', () => {
     const choices = choicesOf({ netflix: { name: 'Netflix', marks: [['yearly', 100]] } });
 
-    expect(recurrenceOf(RISE, 'rise-4', choices)).toMatchObject({
+    expect(recurrenceOf(RISE, RISE_KEPT_YEARLY_ROW, choices)).toMatchObject({
       kind: 'marked',
       period: 'yearly',
     });
@@ -201,7 +217,7 @@ describe('rowRecurrenceOf on a marked chain', () => {
       kind: 'detected',
       period: 'monthly',
     });
-    expect(recurrenceOf(APPLE_TWO_PRICES, 'cheap-3', choices, apple)).toMatchObject({
+    expect(recurrenceOf(APPLE_TWO_PRICES, APPLE_KEPT_YEARLY_ROW, choices, apple)).toMatchObject({
       kind: 'marked',
       period: 'yearly',
     });
