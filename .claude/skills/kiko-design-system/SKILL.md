@@ -9,7 +9,7 @@ Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Design system (started here)" section) and the token module itself,
 `src/design-system/theme/theme.ts`, which ships `darkTheme` and `lightTheme` (spacing,
 radii, typography, `colors`) plus its own entity/chart palette
-(`palette.ts`). Users see dark only until the flip of change set 6. This skill states the method and
+(`palette.ts`). Users pick System, Light or Dark in Settings. This skill states the method and
 token categories; read `theme.ts`/`palette.ts` directly for the
 current values rather than trusting a copy of them here.
 
@@ -39,7 +39,7 @@ file before you edit the component it describes.
   `FieldError`, `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`,
   `EntryDateHeader`, `PairedFieldsRow`, the field and filter helpers (`deriveFieldTestID`,
   `toggleFilterValue`),
-  `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `DayOfMonthGrid`,
+  `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `AppearanceSwitch`, `DayOfMonthGrid`,
   `SegmentedControl` with the tabs-vs-chips rule, the chart components (`BarChart`, `PieChart`,
   `NetWorthLine`), `ColorPicker`, `TransactionCard`, and the form header) and the rules
   "No imports across screen folders", "Scroll to the first invalid field" and
@@ -75,18 +75,28 @@ The ranked, file-grounded audit of the app against these axes lives at
 `docs/design/2026-09-10-ios-hig-audit.md`. Read it before a design task
 to see the open findings; do not restate its findings here.
 
-## Dark-only theme
+## Light and dark themes
 
-Kiko is dark-only for users: there is no appearance toggle and no runtime scheme
-switching. A `light` theme is registered and no user can reach it, until the flip of change
-set 6. `src/design-system/unistyles/unistyles.ts` registers
-`{ dark: darkTheme, light: lightTheme }` with `initialTheme: 'dark'`, so
-`adaptiveThemes` is not used either.
-`UIUserInterfaceStyle = Dark` is pinned in `ios/Kiko/Info.plist`, which
-is what keeps native chrome (bottom tab bar, stack headers/large-title
-blur, system controls, the native date picker) on the dark appearance
-regardless of the device's own OS setting — there is no
-`Appearance.setColorScheme` call anywhere driving it live. React
+Kiko has two themes and a user setting that picks between them: System (follows the device),
+Light or Dark. The status is live: the Settings system screen carries the appearance control
+(`AppearanceSwitch`), so light is reachable. `src/design-system/unistyles/unistyles.ts`
+registers `{ dark: darkTheme, light: lightTheme }` (dark first: the Unistyles jest mock reads
+the first registered theme) with `settings: { adaptiveThemes: true }` and no `initialTheme`, so
+Unistyles follows the window's scheme. `ios/Kiko/Info.plist` pins no `UIUserInterfaceStyle`, so
+native chrome (bottom tab bar, stack headers/large-title blur, system controls, the native date
+picker) inherits the window's trait. The one source of the mode is the `settings.appearance`
+row; `src/appearance/` holds the units (read each unit's source for the exact behavior):
+
+- `appearance-mode`: the `AppearanceMode` values, `parseAppearanceMode` (a value outside the
+  enum reads as `system`) and `windowOverrideOf`.
+- `appearance-mirror`: a UserDefaults copy of the mode, readable before the database opens.
+- `apply-launch-appearance`: runs as a statement before `StyleSheet.configure`; a saved light
+  or dark mode goes on the window, `system` makes no call.
+- `use-sync-appearance-with-settings`: mounted in `AppRoot`; on a row change it writes the
+  mirror and sets the window override.
+
+`AppearanceSwitch` only writes the row (`settingsRepo.setAppearance`) and calls no `Appearance`
+API. No file calls `UnistylesRuntime.setTheme`. React
 Navigation's own chrome colors come from one theme per scheme,
 `navigationDarkTheme` and `navigationLightTheme`
 (`src/navigation/navigation-theme/navigation-theme.ts`), each sourcing its `colors` from the
@@ -95,14 +105,9 @@ design-system token values of its scheme rather than an OS-trait-resolving `Plat
 active theme's `colorScheme`, and `App.tsx` hands it to `NavigationContainer`. Read the source
 file directly for the exact field mapping rather than restating it here.
 
-`settings.appearance` (`src/db/schema.ts`) still exists as a schema
-column — migrations here are additive-only, so a removed feature's
-harmless column is retained rather than dropped — but it has no reader
-or writer anywhere in `src/` any more; it is pinned as a documented
-dead column in `src/db/settings-columns.test.ts`'s
-`DOCUMENTED_READERLESS_COLUMNS` list, the same treatment as
-`settings.lockGraceSeconds` (see `kiko-domain`'s "App lock / security
-settings").
+`settings.appearance` (`src/db/schema.ts`) is the stored mode. A restore keeps this device's
+value (`KEPT_FROM_LIVE_ON_RESTORE`, `src/db/kept-from-live-on-restore.ts`); see
+`docs/security/README.md`.
 
 The dark theme itself follows the Habr method
 (https://habr.com/ru/articles/499202/) for an OLED-friendly dark
@@ -206,12 +211,12 @@ then one of these call sites, rather than reinventing the check.
 ## Styling layer: react-native-unistyles v3
 
 `react-native-unistyles` (3.6.0) is the styling layer. A single
-Unistyles v3 theme object — the OLED `darkTheme` above, beside the unreachable `lightTheme` —
+Unistyles v3 theme object per scheme — the OLED `darkTheme` above, beside `lightTheme` —
 is registered in `src/design-system/unistyles/unistyles.ts` as
 `themes = { dark: darkTheme, light: lightTheme }`,
-with `settings: { initialTheme: 'dark' }`. Nothing switches themes, so there is no
-`adaptiveThemes` and no runtime
-`UnistylesRuntime.setTheme` call anywhere. Style components against
+with `settings: { adaptiveThemes: true }` and no `initialTheme`. The window's scheme picks the
+theme, and no runtime
+`UnistylesRuntime.setTheme` call exists anywhere. Style components against
 the theme's tokens, not literal values, so the token keys stay the one
 contract every component styles against, whichever theme supplies values.
 The token values live in `theme.ts` (`darkTheme`, `lightTheme`) and
@@ -225,7 +230,9 @@ block fails it.
 ## Native chrome follows the window
 
 The window's interface style decides the scheme of every native view. The only allowed switch is
-`Appearance.setColorScheme`, and only the set 6 appearance control calls it. No file pins a
+`Appearance.setColorScheme`, and only the appearance setting's code calls it
+(`applyLaunchAppearance` and `useSyncAppearanceWithSettings`; the control writes only the
+row). No file pins a
 scheme beside it, and no file switches the Unistyles theme by hand. Three pre-write guard rules in
 `rules/semgrep-prewrite.yml` keep it so; each has a fixture pair under `rules/fixtures/`.
 
@@ -240,7 +247,7 @@ scheme beside it, and no file switches the Unistyles theme by hand. Three pre-wr
   none takes the window's style), and no `headerBlurEffect` whose string ends in `Dark` or
   `Light` in any case, as an object field (`systemChromeMaterial` has no scheme in its name, so
   the bar's own style picks it; `large-title-screen-options.ts` uses it). A pinned value keeps
-  the view in the old scheme when the window changes, and the dark-only app hid that.
+  the view in the old scheme when the window changes, which a user switching mode exposes.
 - `kiko-no-nested-text`: no `Text` or `MoneyText` inside a `Text`. Unistyles 3.6.0 (issue #1329)
   leaves a nested `Text` on its old color under a Reanimated view when the theme changes; the fix
   (PR #1353) ships in 3.8.0, so the nested form waits for that version. The tree has no nested
