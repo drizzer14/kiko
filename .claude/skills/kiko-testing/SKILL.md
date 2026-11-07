@@ -189,6 +189,11 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - Before adding a prop to a hand-written `__mocks__` module, check the real library's own type in
   `node_modules` first. A mock that accepts a prop the real component discards lets a test pass
   while the real UI is silently broken: forward only the props the real library consumes.
+- A raw SQL seed in a test names every column that has a clock default (`created_at`,
+  `updated_at`; `unixepoch() * 1000` has 1 s resolution) with a fixed literal. Rows compared
+  across two seeds or two databases otherwise differ by a whole second when a second boundary
+  falls between the seeds (`src/data-transfer/snapshot/restore-new-matchers.two-path.test.ts`,
+  fixed in 2acce8200).
 
 ## Acceptance pins, fix rounds and red proofs
 
