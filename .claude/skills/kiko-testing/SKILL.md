@@ -346,8 +346,8 @@ test from being decorative.
 - Maestro: `text:` is a full-match regex against the element's accessibility text. An element
   whose accessibilityLabel has a prefix needs `.*` on both sides (a label starting with
   "scratch-flip" never matched a bare "rn:light.*").
-- Maestro: on iOS the hide-keyboard command taps the screen and can open the field under the tap (it opened
-  the Account Kind sheet). Tap the input-accessory "Done" pill instead.
+- Maestro: on iOS the hide-keyboard command taps the screen and can open the field under the tap (it
+  opened the Account Kind sheet). Tap the input-accessory "Done" pill instead.
 - Maestro: a screenshot on a fixed wait after a delayed action can land before the action fires.
   Wait on an on-screen readout where one is visible, else take frames from the recording
   (the video file; ffmpeg is not installed here, a Swift script with the AVFoundation image
