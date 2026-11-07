@@ -271,6 +271,15 @@ describe('the transfer walk: windows, pages and marks', () => {
       expect(walk.marks().pending).toBeUndefined();
     });
 
+    it('a missing holding is a named error with a fixed message and the walk code', () => {
+      const failure = new BybitHoldingMissingError('transfer-holding-missing');
+
+      expect(failure.name).toBe('BybitHoldingMissingError');
+      expect(failure.message).toBe('Bybit holding missing');
+      expect(failure).toMatchObject({ code: 'transfer-holding-missing' });
+      expect(failure).toBeInstanceOf(Error);
+    });
+
     it('a failure that is not a missing holding rejects as it is', async () => {
       const walk = newWalk({
         overrides: {
