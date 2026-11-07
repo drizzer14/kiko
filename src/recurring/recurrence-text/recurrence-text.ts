@@ -19,17 +19,8 @@ const periodLine = (period: RecurringPeriod, t: TFunction): string =>
     .with('weekly', () => t('recurringCharges.weekly'))
     .with('monthly', () => t('recurringCharges.monthly'))
     .with('yearly', () => t('recurringCharges.yearly'))
-    .with('everyThreeMonths', () => t('recurringCharges.marked.everyThreeMonths'))
-    .with('everySixMonths', () => t('recurringCharges.marked.everySixMonths'))
-    .exhaustive();
-
-const markedLine = (period: RecurringPeriod, t: TFunction): string =>
-  match(period)
-    .with('weekly', () => t('recurringCharges.marked.weekly'))
-    .with('monthly', () => t('recurringCharges.marked.monthly'))
-    .with('everyThreeMonths', () => t('recurringCharges.marked.everyThreeMonths'))
-    .with('everySixMonths', () => t('recurringCharges.marked.everySixMonths'))
-    .with('yearly', () => t('recurringCharges.marked.yearly'))
+    .with('everyThreeMonths', () => t('recurringCharges.everyThreeMonths'))
+    .with('everySixMonths', () => t('recurringCharges.everySixMonths'))
     .exhaustive();
 
 export const recurrenceLine = (
@@ -45,8 +36,7 @@ export const recurrenceLine = (
     .with({ kind: 'onDate' }, ({ time }) =>
       t('recurringCharges.yearlyOn', { date: formatDayMonth(time) }),
     )
-    .with({ kind: 'marked' }, () => markedLine(period, t))
-    .with({ kind: 'none' }, () => periodLine(period, t))
+    .with({ kind: 'marked' }, { kind: 'none' }, () => periodLine(period, t))
     .exhaustive();
 
 export const lastChargeLine = (series: RecurringSeries, t: TFunction): string => {

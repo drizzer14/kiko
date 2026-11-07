@@ -187,6 +187,21 @@ export const ledgerOf = (rows: readonly LedgerRow[], extras: LedgerExtras = {}):
   accounts: [bankAccountOf('bank-account'), ...(extras.accounts ?? [])],
 });
 
+export const CARD_SWITCH_EXTRAS: Required<LedgerExtras> = {
+  holdings: [holdingOf('usd', 'USD'), holdingOf('eur', 'EUR')],
+  accounts: [],
+};
+
+/** "Netflix" paid from the UAH card at 400 from January to May, then from the USD card at 10. */
+export const cardSwitchLedger = (): Ledger =>
+  ledgerOf(
+    [
+      ...monthly(5, 15, 400, { newest: [2026, 5], prefix: 'uah' }),
+      ...monthly(5, 15, 10, { newest: [2026, 10], prefix: 'usd', holdingId: 'usd' }),
+    ],
+    CARD_SWITCH_EXTRAS,
+  );
+
 export const CRYPTO_EXTRAS: Required<LedgerExtras> = {
   holdings: [holdingOf('usdt', 'USDT', 'crypto-account')],
   accounts: [{ id: 'crypto-account', kind: 'crypto', archivedAt: null }],

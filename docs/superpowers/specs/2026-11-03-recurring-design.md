@@ -32,8 +32,11 @@ Answers of 2026-11-03, relayed by the coordinator; words in quotes are the user'
   over 25 percent drops later charges and shows a false "No charge since". That is the user's accepted behavior (section 8.2).
   **A second consequence, found by the planner and told to the user through the coordinator:** two subscriptions under one name
   within 25 percent of each other, or at one price, sit in one chain. m(10, 5, 99) + m(10, 20, 119), detected monthly x10 twice: a
-  mark at 99 joins them (119/99 = 1.20) into one x20, "Marked: monthly", no pair fits, and both detected series leave. A mark at 119
+  mark at 99 joins them (119/99 = 1.20) into one x20, "Monthly", no pair fits, and both detected series leave. A mark at 119
   selects the same piece and only sets its period, so the two can never separate. The same holds at equal price.
+  **Was, until 2026-11-06.** Section 8.3 (user bug, DEPLOY 4) keeps one charge per period (kept charges more than half a step apart): a mark at 99 now gives the
+  marked 99 x10 beside the detected 119 x10, and a mark at 119 the reverse; at equal price one x10 is marked and the other shows
+  as detected.
 - Q6: "One per chain", relayed by the coordinator: a key holds a list of marks, each its own chain (section 8.2).
 - Approval: "Approve as planned". The mark offers weekly, monthly, every 3 months, every 6 months and yearly.
 
@@ -151,7 +154,9 @@ linked. Netting would need a sum, which this feature does not have.
 **A series crosses holdings, never currencies.** A row has no currency of its own; it comes from its holding.
 The group key is `[merchantNameOf(description).key, holding.currency]`. A card change within a currency keeps
 the series. A move from a UAH card to a USD card starts a second series: a false split, accepted, because no
-amount here may mix currencies.
+amount here may mix currencies. **Detection keeps this key; the screens join a card switch (section 19, USER
+2026-11-07, B):** two detected series of one name and period in two currencies, where one stopped before the other
+began, show as one row. Two that run at the same time stay two rows.
 
 ## 5. The detection rule
 
@@ -246,7 +251,7 @@ one-off reference run, outside the track, passes every row; it is no pin on the 
 | Foreign charge billed in hryvnia | one monthly | drifting amount |
 | The 31st against February | monthly, "on the last day" | clamp |
 | User changes card, same currency | one monthly across two holdings | crossing |
-| Same name in two currencies | two monthly, never summed | currency |
+| Same name in two currencies | two monthly, never summed (detection's output; the list joins a card switch into one row, section 19) | currency |
 | Imported row with its synced twin | one monthly, each charge counted once | twin fold |
 | Two charges only | none | minimum |
 | Subscription among rarer one-off purchases | monthly | coverage |
@@ -320,14 +325,15 @@ charges, with the marked period's row of section 5.1: the minimum count, `fits /
 its amounts. All charges, not the table's last 3: the line is a claim about the series.
 
 When they fit and the table gives a day, weekday or date, the series reads as any other: "Charged monthly, on day 15". Otherwise,
-when they do not fit or the table gives no slot, the line says only what the user said, which no row can contradict: "Marked:
-monthly". So one charge, two charges, or a marked shop on random days read "Marked: monthly". 12 Jan, Apr, Jul marked monthly reads
-"Marked: monthly": each pair fits at 3 slots, but `3 / 7` is under 0.75. 20 Dec 2025 and 15 Jan 2026 marked yearly reads "Marked:
-yearly": the pair is 0 slots. Twelve monthly charges marked yearly read the same.
+when they do not fit or the table gives no slot, the line is the plain period, which no row can contradict: "Monthly" or
+"Yearly". So one charge, two charges, or a marked shop on random days read "Monthly". 12 Jan, Apr, Jul marked monthly reads
+"Monthly": each pair fits at 3 slots, but `3 / 7` is under 0.75. 20 Dec 2025 and 15 Jan 2026 marked yearly reads "Yearly":
+the pair is 0 slots. Twelve monthly charges marked yearly read the same.
 
-"Marked: every 3 months" and "Marked: every 6 months" always read so. Section 5.1 has no row for those periods, so section 5.2's rule
+Every 3 and every 6 months read "Every 3 months" and "Every 6 months" (`recurringCharges.everyThreeMonths` and
+`recurringCharges.everySixMonths`). Section 5.1 has no row for those periods, so section 5.2's rule
 cannot run on them, and section 6's table has no line for them, so no test is needed. The last-charge line below carries the fact, as
-everywhere. The word "Marked" appears only where the charges do not fit the period, the table gives no slot, or the period has no table row. It holds no date, so
+everywhere. The plain line holds no date, so
 section 7's property pin is untouched.
 
 ## 7. Stopped
@@ -386,7 +392,8 @@ drift with each new row. It writes nothing on a transaction.
 It is visible and reversible: the list ends with a "Hidden" section naming each hidden merchant with "Show again",
 even when it has no rows now. No confirm is needed: no row changes and the undo is on the screen it returns to. **A hide stays per
 key and never touches a mark.** It affects detected series only: on a key that holds marks (a detected series beside a marked one,
-section 8.2), every marked chain stays, and "Show again" clears only the hide, so nothing the user marked is lost.
+section 8.2), every marked chain stays, and "Show again" clears only the hide, so nothing the user marked is lost. A joined
+row (section 19) is one key, so a hide removes it whole, in every currency; the write does not change.
 
 **Store: one nullable JSON column on `settings`**, `recurringMerchantChoices: Record<key, RecurringMerchantChoice>`, where `RecurringMerchantChoice` is
 `{ name, hidden: true }` and, from task 4/4, `{ name, hidden?: true, marks?: RecurringMark[] }`, and each mark is
@@ -429,12 +436,12 @@ It writes nothing on a transaction, and it predicts nothing.
 
 | Point | Answer | The code fact it rests on |
 |---|---|---|
-| What a mark covers | **The user's answer to Q5.** The merchant key of the row's stored description, the holding's currency, and section 5.3 step 3's amount chain holding the stored amount. No day test. Past and later charges in the chain join by themselves; a charge outside it does not. Section 6's fit test, the last charge and section 7's stopped read only the chain | The series group is `[key, currency]` (section 4), and `merchantNameOf` cuts only a trailing number (spec of `1.4-category-automation`, section 4), so a name holding the month gives one row per key and a mark links that row alone |
+| What a mark covers | **The user's answer to Q5.** The merchant key of the row's stored description, the holding's currency, and section 5.3 step 3's amount chain holding the stored amount. No day test (was, until 2026-11-06; now section 8.3: kept charges more than half a step apart). Past and later charges in the chain join by themselves; a charge outside it does not. Section 6's fit test, the last charge and section 7's stopped read only the chain | The series group is `[key, currency]` (section 4), and `merchantNameOf` cuts only a trailing number (spec of `1.4-category-automation`, section 4), so a name holding the month gives one row per key and a mark links that row alone |
 | Which chain a stored amount selects | Inside one `[key, currency]` group: take the magnitudes of the group's charges after the twin fold, add every stored amount of that key and currency as one more amount, sort, and cut where the next exceeds the previous by more than 1.25, with step 3's own function. **Each piece holding a stored amount is a marked chain.** Its charges are the series. So there is no nearest and no tie: one amount is in exactly one piece, and pieces share no row. While a charge at the stored amount exists, this is simply the chain holding that charge. A stored amount sits in the cut like a charge, with or without its row, so it can bridge. A stored amount alone in its piece selects nothing: "Marked, No Charges". The cut reads a multiset, so no output depends on row order, and a new row between two others re-forms the chain by the data alone: 100, 115, 130 is one chain, and removing an unmarked 115 splits it again. Where the 115 is the marked row, its stored amount stays: 99 and 130 with a stored 115 whose row was deleted stay one series until the mark is removed, and 80, 120, 500 with a stored 100 whose row was edited to 500 read one x2 over 80 and 120 | Step 3 sorts and cuts, and adds nothing else (section 5.3), so one function serves both. A stored amount stays in the cut when its row goes, since a mark stores no row id and the row a user taps is often a `hold`, whose amount the settled re-fetch can change (section 4): a marked hold at 835 that settles at 838 keeps its chain. An exact-only match would turn that series into "Marked, No Charges" |
 | The marked row edited or deleted | Nothing is written and the mark does not follow the row. The stored amount stays in the cut: its chain stands if other charges reach it; a row edited out of reach leaves the chain; with none in reach, "Marked, No Charges" | A mark writes nothing on a transaction, and a transaction's write touches no setting |
 | Currency | **A mark covers one currency.** It stores the code of the marked row's holding beside the amount, from the holding, and reads only the group of that key and currency. So 400 UAH and 400 USD never compare, and a USD charge under a name marked in UAH stays as detection finds it. A holding moved to another currency leaves the mark's group: "Marked, No Charges" | Minor units have no meaning without a currency (kiko-domain, "Currencies"; `currencyScale`). A row has no currency of its own, it comes from its holding (section 4). The JSON holds an integer and a code, never a `Money` |
 | Amount and sign | The absolute minor units of the debit, the stored row's, never the draft's. A mark is offered only on a debit, and section 4's charges are debits only, so a credit or refund is neither stored nor in a chain, whatever its amount, and it cancels nothing | Section 4, "Refunds"; `isRecurringCandidate` |
-| The other chains under a marked name | Detection still runs on the whole group and its input does not change. **A detected series stands beside a marked one unless it shares a row with it; one that does leaves whole.** So Apple 399 stays detected beside a marked Apple 99. A detected x8 over 100 and 130, with 100 marked, leaves whole, and the 130 rows sit in no series: no second detection runs on what is left, and that is the accepted behavior below. Two detected series inside one chain join: m(10, 5, 99) + m(10, 20, 119), a mark at 99 gives one x20, "Marked: monthly", both detected leave, and a mark at 119 only sets the period, so they can never separate; the same at equal price (the head of this spec). **No row is in two shown series**: pieces share no row, and overlap removes the detected series (a property pin) | `seriesOfGroups` and its memo stay as they are (section 9.5), so a mark runs no detection |
+| The other chains under a marked name | Detection still runs on the whole group and its input does not change. **A detected series stands beside a marked one unless it shares a row with it; one that does leaves whole.** So Apple 399 stays detected beside a marked Apple 99. A detected x8 over 100 and 130, with 100 marked, leaves whole, and the 130 rows sit in no series: no second detection runs on what is left, and that is the accepted behavior below. Two detected series inside one chain join: m(10, 5, 99) + m(10, 20, 119), a mark at 99 gives one x20, "Monthly", both detected leave, and a mark at 119 only sets the period, so they can never separate; the same at equal price (the head of this spec). **No row is in two shown series**: pieces share no row, and overlap removes the detected series (a property pin) | `seriesOfGroups` and its memo stay as they are (section 9.5), so a mark runs no detection |
 | Period | A picker: weekly, monthly, every 3 months, every 6 months, yearly, as the user approved. The last two are a mark's own and detection never returns them | Section 5.1 names both as false misses. They touch only the stopped cutoff (section 7) and the text (section 6). `addMonths` (`interest.ts:41`) already steps any count of months |
 | A mark on a merchant detection also finds | On its chain the mark wins: the user's period, on that chain's charges. Removing a mark clears only that mark, so the series return as detection finds them, unless the key is hidden: the hide stays until "Show again" | One map, one entry per key, which holds a hide flag and marks (section 8). Detection stores nothing (section 11), so nothing is lost |
 | One mark per chain (**the user's answer to Q6: "One per chain"**) | A key holds a list of marks, each its own chain. A pick on a row inside a marked chain rewrites that chain's period in place, on every mark of its piece, and moves no stored amount. A pick on a row of another piece adds that chain's mark at the row's amount, and marks on other chains stay; so a re-mark at a new price adds a chain. A stored amount whose chain the row left stays, as stated above. Two stored amounts that a later row bridges land in one piece: one series, with the period of the lowest stored amount, a tie going to the earlier period in the picker's order, order-free; removing that series removes every mark in the piece | The user's answer. One mark per key would have dropped Apple 99's mark on marking Apple 399, with nothing shown |
@@ -459,9 +466,9 @@ Results the review of 35861c22b changed. `was` is that draft.
 
 | World | was | now |
 |---|---|---|
-| Quarterly, 12 Jan, Apr, Jul, marked monthly | "Charged monthly, on day 12" | "Marked: monthly" |
-| 20 Dec 2025 and 15 Jan 2026, marked yearly | "Charged yearly, on 15.01" | "Marked: yearly" |
-| Twelve monthly charges, marked yearly | no line pinned, so "Charged yearly, on 03.10" | "Marked: yearly" |
+| Quarterly, 12 Jan, Apr, Jul, marked monthly | "Charged monthly, on day 12" | "Monthly" |
+| 20 Dec 2025 and 15 Jan 2026, marked yearly | "Charged yearly, on 15.01" | "Yearly" |
+| Twelve monthly charges, marked yearly | no line pinned, so "Charged yearly, on 03.10" | "Yearly" |
 | Hidden, then "Not marked" tapped in the form | the hide dropped, no notice | still hidden, nothing written |
 | Apple 99 marked monthly beside detected 399, opened by link on the marked series, removed in the form, Back | whichever detected series holds the earliest charge | the neutral text |
 | Marked yearly over a detected monthly, opened by link, removed in the form, Back | the monthly series, ignoring the period | the neutral text |
@@ -471,13 +478,13 @@ Results the user's answer to Q5 changed. `was` is the draft written on assumed a
 
 | World | was | now |
 |---|---|---|
-| Apple 99 and 399, both detected, marked monthly | one series x20, "Marked: monthly" | marked x10 and the detected 399 x10 |
-| Apple x12 on day 14 with one-offs at 4,500, 1,200 and 7,000, marked at 99 | one x15, mixed, "Marked: monthly" | one x12, "on day 14": the one-offs stay out |
+| Apple 99 and 399, both detected, marked monthly | one series x20, "Monthly" | marked x10 and the detected 399 x10 |
+| Apple x12 on day 14 with one-offs at 4,500, 1,200 and 7,000, marked at 99 | one x15, mixed, "Monthly" | one x12, "on day 14": the one-offs stay out |
 | The same, plus 1 Nov at 4,500 | last charge 1 Nov at 4,500 | last charge 14 Oct at 99 |
 | Apple 99 ended 14 Jun, purchases 28 and 30 Oct at 4,500 and 7,000, marked at 99 | one x10, never stopped, last charge 30 Oct at 7,000 | one x8, stopped, not quiet, "No charge since 14.06.2026" |
-| Apple x12 with purchases at 89, 109, 119, 399, 29, marked at 99 | one x27 | one x21, "Marked: monthly", last charge 5 Oct: those in the chain link, 399 and 29 do not |
+| Apple x12 with purchases at 89, 109, 119, 399, 29, marked at 99 | one x27 | one x21, "Monthly", last charge 5 Oct: those in the chain link, 399 and 29 do not |
 | 100 x5 then 130 x3, marked | one x8, active | one x5, stopped: the user's accepted behavior |
-| Monthly at 100, 300, 900, marked at 900 | one x3, "on day 15" | one x1, "Marked: monthly" |
+| Monthly at 100, 300, 900, marked at 900 | one x3, "on day 15" | one x1, "Monthly" |
 | One key in UAH and USD, one row marked | two series | one series, in that row's currency |
 
 Results the review of 41be4a687 changed, with Q6's answer. `was` is that draft.
@@ -493,6 +500,91 @@ Results the review of 41be4a687 changed, with Q6's answer. `was` is that draft.
 | 99 x10, one 119, a detected 399 x10, marked at 99, opened by link, a yearly pick on the 119 row, Back | the store moved to 119, the route's 99 missed, the detected 399 by the fallback | the marked x11, yearly: the store still holds 99, and the route's amount lies in the piece's span |
 | 99 and 130, a stored 115 whose row was deleted | "the stored amount never joins what its own row did not join": no world pinned | one x2 until the mark is removed |
 | 80, 120, 500, a stored 100 whose row was edited to 500 | the same | one x2 over 80 and 120 |
+
+### 8.3 One charge per period in a marked chain (user bug, DEPLOY 4, 2026-11-06)
+
+The user's words: "I manually marked a transaction that repeats monthly as a recurring monthly payment, but the matcher did
+match other transactions of the same vendor with similar amounts that occurred during the same month, counting more
+transactions in this recurring payment as a result." Expected, relayed by the coordinator: a monthly series takes at most one
+charge per period; extra same-vendor, similar-amount charges in the same period stay out. This reverses 8.2's "No day test"
+(`was:` there). Cause (kiko:debugger, a real jest run): `chainsOfEntry` in `marked-series.ts` takes every charge of the piece,
+and `markedChainOfAmount` repeats the piece. One cause feeds the series count, its charge list, "All paid so far", the list row's
+last charge and amount (`seriesOfCharges`), the group totals, the stopped read, the date line (an extra breaks `passes` in
+`markedRecurrenceOf`, so "on day 5" falls back to the plain period line, "Monthly") and the form's mark field on the extra row.
+
+**The rule (redesigned 2026-11-07, no anchor).** The amount cut of 8.2 still chooses the piece, its span and its marks. Then,
+inside the piece, the charges after the twin fold, sorted by time and then id, keep the best run by the order below; the rest
+are **dropped**. The rule holds for every marked period. It reads times, amounts, ids and the stored amounts only: no anchor
+row, so neither the row order nor which charge sets a rhythm can change it.
+
+| Point | Answer | Why, and the code it reuses |
+|---|---|---|
+| The step and the floor | The step as before: weekly 7 days (`weekStepOf`); monthly 1 month; every 3 months 3; every 6 months 6; yearly 12 (`addMonths`, which clamps the day). Two kept charges sit MORE than half a step apart, `daysBetween > slotDays / 2`: weekly 4 days or more, monthly 16, every 3 months 46, every 6 months 92, yearly 183 | The user's same-month extra sits 15 days from the real charge (5th and 20th): it can never stay beside it. Utility bills 17 days apart stay. A month holds at most 31 days, so a mid-month extra cannot sit 16 days from both real charges |
+| A near amount | Within 5 percent of a stored amount of the chain, in minor units: `abs(amount - stored) * 20 <= stored` | A price twin (98 beside 100) and FX drift are near; Apple's in-app purchases at 89, 109 and 119 beside a 99 subscription are not |
+| The order, compared key by key | 1. the most kept charges at a near amount; 2. the most kept charges; 3. the least gap cost, summed over consecutive kept pairs: the days from the later charge to the nearest step k >= 1 of the earlier (`stepForward`, least `dayGapOf`, as `slotPairOf` does with k >= 1); 4. the least sum of each kept amount's distance to its nearest stored amount; 5. a full tie keeps the later charge (by time, then id) | 1 keeps every Apple 99 against purchases that would add one to the count. 2 keeps every real charge of an irregular or jittered rhythm (bills, a day change, weekend shifts). 3 picks, of two charges too close to both stay, the one on the rhythm; k >= 1 makes a paused month cost 0 and a month-end drift 1 day per gap. 4 hands a rhythm tie to the stored amount (world D, the tapped row). 5 keeps the newest, so the last charge and the stopped read stay current |
+| The computation | A dynamic program over the sorted charges: for each charge, the best key tuple of a kept run ending there, from the predecessors more than half a step earlier. Each charge scans the past-floor predecessors within half a step of the LATEST past-floor one (`predecessorIndexesOf`); a predecessor more than half a step before it loses on keys 1 and 2 (a 15,000-case brute force in the step 6/9 review found 0 mismatches), so each charge scans the piece's charges within one step, O(n x w), w that count. No cap | Same signature `onePerSlotOf(charges, period, storedAmounts)`; `anchorOf`, `signedSlotPairOf` and `ANCHOR_CANDIDATES` go when nothing else reads them |
+| What it changes | Only which charges of the piece form the series. The piece, its span (`markedSpan`, the route's lookup key), its marks and its period are as in 8.2 | Every reader above reads the series' charges, so one place fixes all of them |
+| A gap | Nothing: a skipped month is a gap, as before, at cost 0 | |
+| Accepted limits (OVERNIGHT DEFAULT, pending the user) | A billing day moved 15 or more days EARLIER loses one charge at the switch (20th to 5th: 20 Jun and 5 Jul sit 15 days apart; 5 Jul stays). Of a charge 16 or more days late and the next charge on its own day, one stays. A shop visited more than twice a period, marked monthly, keeps a charge about every 16 days. Two charges one day apart (31 Oct and 1 Nov) keep one | A 15-day day change and the user's 5th-and-20th extra look the same to any floor; the user's bug is the binding one. Undo: a floor of 15 days monthly keeps the day change and brings the user's extras back; reverting `onePerSlotOf` to a430a2b41 brings the anchor faults back |
+
+**`was:` the anchor rule (a430a2b41, 2026-11-06).** Slots half a step each side around one anchor charge, chosen among the
+charges nearest a stored amount; one kept per slot, the nearest amount first. Reversed because kiko:reviewer measured: a billing
+day change dropped real charges (x10 of 12 for the 5th then the 20th, x11 the reverse); a tapped row with an amount of its own
+anchored alone (bills x5 of 7; an FX series dropped its newest charge, so "No charge since" could fire); a mark on an extra
+dropped real charges (world A at 102 dropped 5 Oct; at 98, three 100s).
+
+**The tapped row.** Its amount is a stored amount, so it wins any tie of keys 1 to 3 (key 4). It still drops when a near-amount
+charge sits half a step or less from it and fits the rhythm better: a mark on world A's 102 (12 Oct, 7 days after the real
+5 Oct) or on the FX world's 16-days-late charge. Then the form reads the row as dropped at once (below): the accepted cost of
+"every real charge stays".
+
+Keys 1 and 2 can also drop the tapped row: accepted behaviour (overnight default by the
+orchestrator, 2026-11-07, pending the user). Key 1: monthly, marked 103 on 15 Mar, 100s on 1 Mar
+and 30 Mar and a monthly rhythm: 15 Mar drops. Key 2: marked 100 on 15 Mar, 101 on 1 Mar, 120 on
+30 Mar: {1 Mar, 30 Mar} kept, the 120 becomes the last charge. The dropped tapped row reads "Not
+marked" with its mark field disabled.
+
+**A dropped charge.** It is in no marked series. Detection is untouched: a detected series shows beside the marked one when
+it shares no row with it (8.2, `detectedBesideMarked`), and the user's "Not a recurring charge" removes it as any detected
+series. So a dropped run that repeats on its own rhythm (a second subscription at a near price, world D) shows as its own
+detected series: that is a true row, and the Q5 consequence at the head of this spec no longer holds. Sporadic dropped charges
+(worlds A to C) form no series and show nowhere.
+
+**The form on a dropped row.** The mark field reads the row as the series does: on a dropped row it shows its "none" option
+(the detected text when a detected series holds the row, else "Not marked") and is disabled, so no pick writes. A pick there
+could not help: a mark at its amount lands in the same piece, and key 3 keeps the other charge. A folded twin and a row the
+ledger read does not hold read as before (the chain's period). No caption is added; a caption explaining why would be new
+user text: PENDING, not built unless the user asks.
+
+Results this section changes. `was` is the result at 5ef73606a; `was: anchor` is the anchor rule at a430a2b41 (the reviewer's
+measure where given, else its spec walk); `now` is the redesigned rule, walked by the planner in a scratch model of it (dates at
+10:30 local). The qa pins `now` from a real run and reports any cell that differs, never edits to green.
+
+| World | was | was: anchor | now |
+|---|---|---|---|
+| A: 6 x 100 on the 5th, May to Oct 2026, plus 98 on 20 Aug and 102 on 12 Oct, marked monthly at 100 | one x8, "Monthly", last charge 12 Oct at 102 (the qa copies the exact `was` from the debugger's base run) | one x6, last charge 5 Oct | one x6, `onDay` 5, last charge 5 Oct at 100; no other row; the field on the 98 and 102 rows: "Not marked", disabled |
+| A, marked at 98 | one x8 | three real 100s dropped (reviewer) | one x6, the six 100s; 98 and 102 dropped, the tapped 98 among them |
+| A, marked at 102 | one x8 | 5 Oct 100 dropped, 12 Oct 102 kept (reviewer) | one x6, the six 100s; 12 Oct, the tapped row, dropped (7 days after 5 Oct; key 3) |
+| B: 12 x 100 on the 5th, plus 98 on 20 Aug | one x13 | one x12 | one x12, `onDay` 5 |
+| C: 100 on 5 Aug, 5 Sep, 5 Oct, plus 100 on 20 Oct | one x4, last charge 20 Oct | one x3, last charge 5 Oct | one x3, `onDay` 5, last charge 5 Oct: 20 Oct sits 15 days after it, and 5 Oct lies on the rhythm |
+| D: 12 x 100 on the 5th, plus 12 x 98 on the 20th | one x24 | marked x12 at 100 | marked x12 at 100, `onDay` 5 (key 4 over the 20ths), and detected monthly x12 at 98, `onDay` 20 |
+| Month-end drift: 100 on 30 Jun, 31 Jul, 1 Sep, 30 Sep, 31 Oct, marked monthly | one x5 | one x5 | one x5 (a guard: calendar months would drop one) |
+| Reviewer 1: 12 x 100, the 5th Jan to Jun, then the 20th Jul to Dec | one x12 | x10 (5 Feb and 5 May dropped) | one x12 |
+| Reviewer 1 reversed: the 20th Jan to Jun, then the 5th Jul to Dec | one x12 | x11 | x11: 20 Jun dropped (15 days before 5 Jul): the accepted limit |
+| Reviewer 2: bills 3 Jan 1210, 10 Feb 1385, 3 Mar 1302, 25 Apr 1150, 12 May 1099, 2 Jun 1240, 20 Jul 1330, marked at 1150 (or at 1385, or 1099) | one x7 | x5 | one x7, whichever row is tapped |
+| Reviewer 2, FX: the 5th (6 Mar) Jan to May, 21 Jun 41400 (tapped), 5 Jul 41450 | one x7 | 5 Jul dropped, last charge 21 Jun | x6: 21 Jun dropped (14 days before 5 Jul, off the rhythm), last charge 5 Jul: the accepted limit, and the tapped row drops |
+| 12 x 100 on the last day of each month | one x12 | not measured | one x12 |
+| Weekend shifts: 30 Jan, 2 Mar, 31 Mar, 30 Apr, 1 Jun, 30 Jun | one x6 | not measured | one x6 |
+| A paused month: the 10th of Jan, Feb, Mar, May, Jun, Jul | one x6 | not measured | one x6 (the 61-day gap costs 0 at k = 2) |
+| Weekly: 5, 12, 20, 26 Jan and 2 Feb | one x5 | not measured | one x5 (gaps of 6 to 8 days, all over 3.5) |
+| m(10, 5, 99) + m(10, 20, 119), marked at 99 | one x20, "Monthly", both detected leave | marked x10 at 99 | marked x10 at 99, `onDay` 5, and detected 119 x10, `onDay` 20; marked at 119, the reverse |
+| m(10, 5, 99) + m(10, 20, 99), marked at 99 | one x20 | the anchor's walk | marked x10 on the 20th (key 5: the later run) and detected x10 on the 5th |
+| Apple x12 with purchases at 89, 109, 119, 399, 29, marked at 99 | one x21 | x12 plus purchases in empty slots | marked x12, every Apple 99, last charge 5 Oct at 99; every in-piece purchase dropped (key 1: a purchase run would add one charge and drop two Apple 99s) |
+| Twelve monthly charges, m(12, 3, 199), marked yearly | one yearly x12, "Yearly" | x1 or x2 | x2: 3 Nov 2025 and 3 Oct 2026 (the only pair over 182.6 days apart with the least cost, 31 days), "Yearly" unless the kept charges fit yearly |
+| The same twelve, marked every 6 months | not recorded | not measured | x4 (gaps of 92 days or more) |
+| 20 Dec 2025 and 15 Jan 2026 at 400, marked yearly | one x2, "Yearly" | one x1, 15 Jan 2026 | one x1, 15 Jan 2026 (key 5), "Yearly" |
+| The daily shop, marked monthly at its first row's amount | one of all rows | one per month (x17) | about one every 16 days: x28 in a real run (`DAILY_SLOTS` in `src/test-support/marked-series-worlds.ts`). The accepted limit |
+| Two marks in two pieces without the bridging row: every 3 months on 7 Aug, 7 Sep, 7 Oct | x3 | x2 | x2: 7 Aug and 7 Oct (61 days apart; 7 Sep sits 31 days from each); the `marked-series.test.ts` matrix row of that name |
 
 ## 9. Screens, entry and links
 
@@ -535,7 +627,7 @@ currency, then lowest stored amount, which is never shown. Never by amount other
 with charges sits in active or "No recent charge" like any other. A hidden key lists its "Hidden" line and no detected series. A key
 with marks lists its marked series, its "Marked, No Charges" rows, and, unless hidden, each detected series sharing no row with a
 marked series (section 8.2). A "Marked,
-No Charges" row shows the name and the "Marked:" line of its period, with no amount, since no real charge stands behind one.
+No Charges" row shows the name and the plain period line ("Monthly"), with no amount, since no real charge stands behind one.
 
 A row (shared `Card`, `Text`, `MoneyText`): the name; the recurrence line; "Last charge 15.10.2026", or the stopped or
 quiet line; beside either line, the last charge's amount in its own currency. A stopped row shows it too: two stopped
@@ -582,6 +674,9 @@ longer pick one. Remove mark on this screen holds the last resolved series until
 away; a pin, as the hide's.
 
 **The button by kind:** a detected series offers "Not a recurring charge", a marked one "Remove mark". Both close back to the list.
+
+**A joined row (section 19.4):** its route holds the joined row's id and its newest part's currency, and the route's currency
+also matches a joined row when any of its parts holds it. The route type does not change.
 
 ### 9.4 iPad and Duo
 
@@ -875,11 +970,8 @@ fractional form. A uk apostrophe is U+02BC. uk says «Кіко» and «нати�
 | `recurringCharges.notRecurring` | Not a recurring charge | Це не регулярний платіж |
 | `recurringCharges.hiddenHeading` | Hidden | Приховані |
 | `recurringCharges.showAgain` | Show again | Показати знову |
-| `recurringCharges.marked.weekly` (task 4/4) | Marked: weekly | Позначено: щотижня |
-| `recurringCharges.marked.monthly` | Marked: monthly | Позначено: щомісяця |
-| `recurringCharges.marked.everyThreeMonths` | Marked: every 3 months | Позначено: раз на 3 місяці |
-| `recurringCharges.marked.everySixMonths` | Marked: every 6 months | Позначено: раз на 6 місяців |
-| `recurringCharges.marked.yearly` | Marked: yearly | Позначено: щороку |
+| `recurringCharges.everyThreeMonths` (2026-11-06) | Every 3 months | Раз на 3 місяці |
+| `recurringCharges.everySixMonths` (2026-11-06) | Every 6 months | Раз на 6 місяців |
 | `recurringCharges.removeMark` | Remove mark | Зняти позначку |
 | `recurringCharges.markedEmptyHeading` | Marked, No Charges | Позначені, без списань |
 | `recurringCharges.markedEmptyMessage` | No transactions near the amount you marked count here now. Transfers, exchanges and loan payments are left out. | Зараз тут немає транзакцій, близьких до позначеної суми, які враховуються. Перекази, обміни й платежі за кредитом не враховуються. |
@@ -982,7 +1074,7 @@ total of all recurring charges"; B, C: "Total = sum of all charges"; J: "All pai
 | A total (15, row 1; plan Global Constraints) | "no total", "the output type has no sum" | A display-only sum of past charges on both screens (17.4). Detection's output type still has no sum: the totals live outside `src/recurring/detection`. No forecast, no date after today |
 | Sums across currencies (15, row 4) | "no sum exists anywhere" | A series sums only its own currency. List totals convert each series sum to the base currency (17.4); the detail total stays in the series currency. No raw sum of minor units across currencies: every base sum adds `Money` in the base currency |
 | Purpose (15, last row) | "No balance, net worth, category or statistic reads this" | The list reads categories and rates for display. It still changes no balance, net worth, category or statistic |
-| Recurrence line (13; Q1 "Charged monthly, on day 15") | "Charged monthly, on day 15" / «Списувалося щомісяця, 15 числа» | "Monthly, on day 15" / «Щомісяця, 15 числа»; every recurrence key drops "Charged" (17.8). The "Marked:" lines and "Last charge" keep their text |
+| Recurrence line (13; Q1 "Charged monthly, on day 15") | "Charged monthly, on day 15" / «Списувалося щомісяця, 15 числа» | "Monthly, on day 15" / «Щомісяця, 15 числа»; every recurrence key drops "Charged" (17.8). "Last charge" keeps its text; the marked lines are gone (17.8 history stays) |
 | List sections (9.2) | active, "No Recent Charge", "Marked, No Charges", "Hidden" | one group per category (17.2), then "Marked, No Charges", then "Hidden". The "No Recent Charge" heading and its key go (17.3) |
 | Row layout (9.2) | name; recurrence line; last-charge line; amount beside the lines | line 1: name, amount; line 2: recurrence line, last-charge line under the amount (17.2) |
 | Series screen button (9.3) | in `ListFooterComponent`, variant `secondary` | the `Screen` footer, as other detail screens (17.5) |
@@ -1177,7 +1269,8 @@ back. Its texts are PENDING USER REVIEW (texts-visual-2.md, "Final Q5 ruling tex
   feed a list total.
 - **Currency:** a series has one currency (its group key holds it), so its last charge is in the series currency. It converts
   as 17.4 says, unchanged: the current `buildRateTable(rates)`, `canConvert` as the guard, one `convert` per series; a series
-  `canConvert` rejects is left out of the totals and its row still shows its amount.
+  `canConvert` rejects is left out of the totals and its row still shows its amount. A joined row (section 19) counts its
+  newest part's last charge only, in that part's currency: the amount the row shows (19.5).
 - **Stopped series:** counted with their last charge, as today (`recurringGroupsOf` reduces over every series of a group,
   stopped included; P2). USER 2026-11-06 (Q2): "If "stopped" means recurring in the past, but not anymore, then it can count".
 - **Hidden series:** not listed, so not counted (Q2: "If by "stopped" you mean hidden, then no"; final Q5 ruling, 18.4).
@@ -1202,7 +1295,7 @@ The table replaces the four header lines, in this order, inside `recurring-serie
 | Last charge | `summary.lastCharge` | `formatDate(series.lastChargeTime)` | always |
 | Status | `summary.status` | quiet: the `holdingQuietSince` text, `wraps`; stopped, not quiet: `summary.stopped` | stopped series only |
 | Number of charges | `summary.chargeCount` | `series.chargeIds.length` as a number | always |
-| All paid so far | `paidSoFar` | `MoneyText` of `paidSoFarOf(series, charges)` | once the rows read has landed (as today) |
+| All paid so far | `paidSoFar` | `MoneyText` of `paidSoFarOf(series, charges)`; a joined row: one `MoneyText` line per currency (19.6) | once the rows read has landed (as today) |
 
 Value testIDs: `recurring-series-summary-repeats`, `-last-charge`, `-status`, `-charge-count`, `-paid`. No title row. The
 `chargeCount` plural key goes (18.7).
@@ -1346,3 +1439,133 @@ list. The series screen's footer has one button by kind (`recurring-series.scree
 - B (a stored per-series removal) and C (a "Show stopped charges" switch) were not picked.
 - **Open question (closed by the final ruling, 18.5: a marked row gets the item, and the write clears its marks):** a marked stopped series gets no menu item, since a hide never hides a marked series and its
   way out is "Remove mark" on the series screen. If the user wants a long press there too, it would be a "Remove mark" item.
+
+## 19. One row for a card switch between currencies (USER 2026-11-07, B)
+
+**USER ruling (relayed by the coordinator), option "B: card switch":** join two series into one shown row ONLY when they have
+the same merchant name and the same period and one currency's series stopped before the other began (no overlap). Two series
+that run at the same time stay two rows. Agreed with it (`.superpowers/sdd/1.4-recurring/merge-currencies-answer.md`): a display
+join, detection stays per currency; the total counts only the newest last charge of a joined row; the series page lists both
+currencies' charges, the count counts all, "All paid so far" is one line per currency with no converted sum; marks stay per
+currency and a marked series is never joined; "Not a recurring charge" hides the name in every currency, unchanged. Option A
+(join any two) and "not now" were not picked. Every fact here was read at 688d0349d: re-grep each symbol on the base.
+
+### 19.1 What this reverses
+
+| Rule | was: | now |
+|---|---|---|
+| Same name in two currencies on the list (4, 5.4) | two rows, each its own amount, currency and total entry | two rows when they overlap; one joined row for a card switch (19.2) |
+| The total of a card switch (18.2) | each row's last charge, converted: both parts counted | the newest part's last charge only, converted (19.5) |
+| "All paid so far" (17.4, 18.3) | one `Money` in the series currency; a row of another currency skipped | per part: one line per currency, newest part first, no converted sum (19.6) |
+| A series' currency (18.2: "a series has one currency") | one | a joined row shows one, its newest part's; each older part keeps its own (`parts`) |
+| The route's currency match (9.3) | `candidate.currency === route.currency` | the same, or any part of a joined row holds it (19.4) |
+
+Detection (`seriesOfGroups`, `groupKeyOf`), marks (`markedSeriesOf`, `markedChainOfAmount`), the form's mark field
+(`useRowMark`), `rowRecurrenceOf`, the store, the hide write, the help topic and every text do not change.
+
+### 19.2 When series join
+
+**Candidates:** the detected series the list shows beside the marked ones (`detectedBesideMarked`'s output, or `detected` with
+nothing marked), before the hide filter. A marked series is never a candidate and never blocks one. They are grouped by
+`merchantKey` and `period`.
+
+**The test, all or nothing per name and period:** the series of one `[merchantKey, period]` join into one row when (a) there
+are two or more, (b) no two share a currency, and (c) sorted by first charge time (then id), each one's last charge falls on an
+earlier LOCAL day than the next one's first charge (`startOfLocalDay(older.lastChargeTime) < startOfLocalDay(<newer's first
+charge time>)`). A series' first charge is the charge whose id is `series.id` (9.3: the id is the earliest charge's), read from
+its `[key, currency]` group in `ChargeGroups`. Any failure keeps every series of that name and period its own row. There is no
+margin and no maximum gap: a gap of one local day joins, the same local day does not.
+
+| World (monthly, "Netflix") | Result |
+|---|---|
+| UAH 15 Jan to 15 May; USD 15 Jun to 15 Oct | one row: the UAH part stopped (15 May) before the USD part began (15 Jun) |
+| UAH last 15 May; USD first 16 May | one row: a gap of one local day |
+| UAH last 15 May 09:00; USD first 15 May 18:00 | two rows: the same local day counts as an overlap |
+| UAH 15 Jan to 15 Jul; USD 15 Jun to 15 Oct | two rows: they ran at the same time in June and July |
+| UAH 2024, USD 2025, EUR from Mar 2026, each after the last | one row of three parts, newest (EUR) first |
+| UAH 2024, USD 2025, EUR starting before USD's last charge | three rows: one overlap keeps all three apart |
+| UAH at 100 to May, UAH at 300 to Aug (two detected series), USD from Sep | three rows: two series share a currency |
+| UAH monthly to May; USD yearly from Jun | two rows: periods differ |
+| UAH marked monthly to May; USD detected from Jun | two rows: a marked series is never joined |
+| UAH to May, USD from Jun, the key hidden | no row: the hide removes both (8.1, 18.4), joined or not |
+
+An old part that left the list (24 months, `hasLeft`) is not among the detected series, so it joins nothing.
+
+### 19.3 The joined row
+
+`RecurringSeries` gains one optional field, `parts?: readonly SeriesPart[]`, where `SeriesPart` is `{ id; currency; chargeIds }`
+of one joined series, newest part first. It is set only on a joined row; a plain or marked series has none, so no other reader
+or fixture changes.
+
+| Field | Value | Example (UAH 400 from 15 Jan to 15 May, USD 10 from 15 Jun, today 20 Oct) |
+|---|---|---|
+| `id` | the oldest part's `id` (the joined row's earliest charge, as 9.3) | the 15 Jan UAH charge's id |
+| `merchantKey`, `period` | shared | `netflix`, monthly |
+| `name`, `currency`, `recurrence` | the newest part's | "Netflix", USD, "Monthly, on day 15" |
+| `chargeIds` | the parts' `chargeIds` joined, newest part first (newest first overall, since parts do not overlap) | the USD ids, then the UAH ids |
+| `lastChargeTime`, `lastChargeAmountMinorUnits`, `lastChargeHoldingId` | the newest part's | 15 Oct, 10.00 USD, the USD card |
+| `isStopped`, `quiet` | the newest part's | active; the row reads "Last charge 15.10.2026" |
+| `marks`, `markedSpan` | absent | |
+| `parts` | one per series, newest first | `[USD part, UAH part]` |
+
+**Its group** (17.2): the category of its newest charge, the first id of `chargeIds` found in the rows (`recurringGroupsOf`'s
+`categoryKeyOf`, unchanged), so the newest part's. **Its order in a group:** `newestChargeFirst` on the fields above, unchanged.
+**The join** returns the shown detected series sorted by `byNewestCharge`, so its output does not depend on input order.
+
+### 19.4 The series route, Back and the hide
+
+- **Open:** `openSeries` is unchanged: the route holds `seriesId` = the joined id, `currency` = the newest part's, the shared
+  key and period, no `markedAmountMinorUnits`. The example opens `{ seriesId: <15 Jan UAH id>, currency: 'USD', period:
+  'monthly' }`.
+- **Lookup (`seriesOfRoute`):** `isOfRoute` matches the route's key and EITHER `candidate.currency` OR the currency of any of
+  `candidate.parts`. The order stays: marked, the id hit, the one series of the key, currency and period. So the example route
+  finds the joined row by its id; a route opened earlier on the plain UAH series (`currency: 'UAH'`, whose id becomes the joined
+  id) still finds it when a USD charge joins it while the screen is open. When a later UAH charge overlaps the USD part, the row
+  splits: the example route's id now belongs to the UAH series (currency UAH, no match), and its fallback finds the one USD
+  monthly series. With two candidates, the neutral text, as today.
+- **Back:** unchanged; the list re-reads and shows the row joined or split by the data.
+- **Hide:** a joined row is detected, so its footer offers "Not a recurring charge", and the long press offers it with no marks
+  (`marks ?? []`). `hideRecurringMerchant(merchantKey, name)` hides the key in every currency, so the whole row leaves; the
+  screen holds its series until `goBack`, as 9.3. No new write.
+
+### 19.5 Totals
+
+`recurringGroupsOf` already counts `Money.of(series.currency, series.lastChargeAmountMinorUnits)` per shown series, converted
+at today's rates (18.2), so a joined row counts its newest part's last charge once with no code change there. Example: base
+UAH, today 1 USD = 41.50 UAH. was: 400 UAH (the stopped UAH row) + 415 UAH (10 USD) = 815 UAH in "Sum of last charges" and in
+its group. now: 415 UAH. Like any foreign charge, it moves with the rates. When `canConvert` rejects the newest part's
+currency, the row is left out of the totals, as today; the older part is never counted instead.
+
+### 19.6 The series page
+
+- **Charges:** every id of `chargeIds`, newest first, each in its own currency (`Money.of(row.currency, ...)`, unchanged).
+- **Number of charges:** `chargeIds.length`, all parts.
+- **Repeats, Last charge, Status:** the newest part's (19.3).
+- **All paid so far:** `paidSoFarByCurrencyOf(series, charges)`: one `Money` per part, newest part first, each the sum of that
+  part's listed rows in its currency (17.4's rule per part; a row of another currency skipped); a plain or marked series gives
+  one, the figure `paidSoFarOf` gives. The value cell stacks one `MoneyText` per line, right-aligned. Example: "50.00 USD"
+  over "2 000.00 UAH". No converted sum: an old charge at today's rate is a made-up number. **No new text:** the label is
+  `recurringCharges.paidSoFar`, each line is a `MoneyText`, and there is no separator.
+
+### 19.7 Scenario matrix
+
+| World | was: | now |
+|---|---|---|
+| UAH series stopped 15 May, USD series from 15 Jun, monthly | two rows; total 400 UAH + 10 USD | one row "Netflix" 10.00 USD; total 10 USD only |
+| Same, the input in the reverse order | two rows | one row, deep-equal to the line above |
+| UAH and USD monthly overlapping one month | two rows | two rows (unchanged) |
+| UAH last and USD first on one local day | two rows | two rows (unchanged) |
+| UAH last 15 May, USD first 16 May | two rows | one row |
+| UAH marked, USD detected after it | two rows | two rows (unchanged) |
+| Three currencies in a row, no overlap | three rows | one row, three parts |
+| A joined row's page | two pages | one page: both currencies' charges, count of all, paid "50.00 USD" over "2 000.00 UAH" |
+| "Not a recurring charge" on a joined row | both rows leave | the one row leaves |
+| The form's mark field on a UAH charge of a joined row | its UAH series' period | unchanged (per currency) |
+
+### 19.8 Overnight defaults (not user rulings; each easy to undo)
+
+- No maximum gap between parts (a re-subscription years later in another currency joins). Undo: a gap limit in 19.2's test.
+- All or nothing per name and period (a second series in one currency, or any overlap, keeps every series of that name and
+  period apart). Undo: join the non-overlapping chain pairwise.
+- The joined row's name, currency, recurrence and stopped state are the newest part's; its id is the oldest part's.
+- "All paid so far" lines newest part first, stacked, no separator and no new text. Undo: a `·` join on one line.

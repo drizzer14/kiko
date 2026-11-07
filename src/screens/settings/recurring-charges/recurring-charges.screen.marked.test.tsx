@@ -138,7 +138,8 @@ describe('RecurringChargesScreen — marked series', () => {
     const [series] = state.markedSeries;
     const row = within(getByTestId(rowTestId(series.id)));
 
-    expect(getByText(i18n.t('recurringCharges.marked.monthly'))).toBeTruthy();
+    expect(getByText('Monthly')).toBeTruthy();
+    expect(queryByText(/^Marked:/)).toBeNull();
     expect(
       getByText(i18n.t('recurringCharges.lastCharge', { date: formatDate(series.lastChargeTime) })),
     ).toBeTruthy();

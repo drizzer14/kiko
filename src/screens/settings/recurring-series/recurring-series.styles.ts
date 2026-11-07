@@ -26,6 +26,10 @@ export const styles = StyleSheet.create((theme) => ({
   wrappedValue: {
     textAlign: 'right',
   },
+  // One line per currency of a joined row, each at the right edge as the other values are.
+  paidLines: {
+    alignItems: 'flex-end',
+  },
   // The gap below each card, so the charges read as a stack of cards, as Home's rows do.
   chargeCard: {
     marginBottom: theme.spacing(2),

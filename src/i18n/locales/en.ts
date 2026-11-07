@@ -1805,18 +1805,13 @@ export const en = {
     emptyMessage:
       'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring.',
     emptyTitle: 'No recurring charges yet',
+    everySixMonths: 'Every 6 months',
+    everyThreeMonths: 'Every 3 months',
     holdingQuietSince: '"{{holding}}": no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
     lastChargesTotal: 'Sum of last charges',
     listChangedMessage: 'Go back to see your recurring charges as they are now.',
     listChangedTitle: 'This list has changed',
-    marked: {
-      everySixMonths: 'Marked: every 6 months',
-      everyThreeMonths: 'Marked: every 3 months',
-      monthly: 'Marked: monthly',
-      weekly: 'Marked: weekly',
-      yearly: 'Marked: yearly',
-    },
     markedEmptyHeading: 'Marked, No Charges',
     markedEmptyMessage:
       'No transactions near the amount you marked count here now. Transfers, exchanges and loan payments are left out.',

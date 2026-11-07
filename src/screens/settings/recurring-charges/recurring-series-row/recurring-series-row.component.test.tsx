@@ -171,7 +171,8 @@ describe('RecurringSeriesRow', () => {
         <RecurringSeriesRow series={MARKED} onPress={jest.fn()} />,
       );
 
-      expect(getByText('Marked: monthly')).toBeTruthy();
+      expect(getByText('Monthly')).toBeTruthy();
+      expect(queryByText(/^Marked:/)).toBeNull();
       expect(getByText(`Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`)).toBeTruthy();
       expect(getByText(formatMoney(Money.of('UAH', 26000)))).toBeTruthy();
       expect(queryByText(formatMoney(Money.of('UAH', 25000)))).toBeNull();
