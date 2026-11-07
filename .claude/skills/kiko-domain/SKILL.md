@@ -1067,7 +1067,9 @@ credits (amount > 0) that are not in `excludedTransactionIds`, have `changeGroup
 change return is already netted from expenses) and are not `setsBalance`. The exclusion rules
 were written for spending and some ignore sign. A refund counts as income. A coupon payout
 described as a deposit does not. A new exclusion rule therefore changes income too; read
-`cash-flow.ts`, do not restate its rules.
+`cash-flow.ts`, do not restate its rules. `incomeAmountOf` (same file) is the one per-row income
+helper: `incomeCellsOf` folds it and `incomeRowsOf` (`src/statistics/cell-rows/`) maps it. A
+cell's rows follow the same union as the cell, so a new exclusion rule changes the cell rows too.
 
 A NEW exclusion rule also goes in `recurringExcludedIds`
 (`src/recurring/eligibility/eligibility.ts`), so a recurring series never counts the row.
@@ -1133,7 +1135,10 @@ exchange row, so the matcher adds an augmenting-path pass (`addAugmentingPairs` 
 (`maximumMatchingSize`): a change to the matcher keeps both. The transaction form reads its
 `excludedIds` through `useExchangeFundingCaption`
 (`src/statistics/exchange-funding-match/use-exchange-funding-caption/`). The loan-payment
-exclusion runs over the account-filtered rows.
+exclusion runs over the account-filtered rows. `spendingContributionsOf`
+(`src/statistics/category-breakdown/category-breakdown.ts`) is the shared per-row spending
+calculation of the donut and the cell rows (`expenseRowsOf`); keep the exclusion pipeline there,
+never fork it.
 
 A linked loan payment ("interest-only
 spending") is excluded the same way, but REPLACED rather than simply
