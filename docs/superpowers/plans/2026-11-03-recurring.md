@@ -1193,7 +1193,9 @@ comment. The "All paid so far" value renders one `MoneyText` per `paidSoFarByCur
 | `recurring-series.screen.test.tsx`: the joined route opens by its id; a route on the old part's currency finds the joined row; after an overlap splits it, the route's fallback finds the one USD series; two candidates still give the neutral text | n/a | spec 19.4 |
 | A hide on a joined row (footer, with confirm) leaves no row of the key | two rows leave | one row leaves |
 
-- [ ] **step 1/6 (kiko:qa): red pins.** The new rows above, in existing suites and world builders
+Merge of next 851db0d18 at 2545ea4eb carried `scheme: 'dark'` into marked-series.test.ts:227.
+
+- [x] **step 1/6 (kiko:qa): red pins.** Done: 09a5e5332. The new rows above, in existing suites and world builders
   (`src/test-support/recurring-ledger.ts`'s `monthly`), one new file only (`card-switch.test.ts`); it imports
   `@kiko/recurring/card-switch`, so the qa commits a stub module exporting `cardSwitchesJoinedOf` as the identity
   (memory: qa-no-red-commit-importing-missing-modules) and `paidSoFarByCurrencyOf` as `[paidSoFarOf(...)]`, both marked for
@@ -1204,19 +1206,19 @@ comment. The "All paid so far" value renders one `MoneyText` per `paidSoFarByCur
   src/recurring/recurring-groups src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2`,
   output in a file; reds only where named. **`check:dup`:** rows in existing tables; read the touched tests' rows in
   `scripts/checks/dup-ceilings.tsv`; a ceiling never rises.
-- [ ] **step 2/6 (kiko:developer): the join.** The interfaces above, in `detection.types.d.ts`, `card-switch.ts`,
+- [x] **step 2/6 (kiko:developer): the join.** Done: 076a5132a, registry 5043ae350. The interfaces above, in `detection.types.d.ts`, `card-switch.ts`,
   `use-recurring-series.ts`, `recurring-groups.ts`, `recurring-series.screen.tsx`, `recurring-series.styles.ts`. No pin
   edited; no text added. Commit `feat(recurring): one row for a card switch between currencies`. **Checks:** fast tier on write;
   `npx jest src/recurring src/screens/settings/recurring-charges src/screens/settings/recurring-series
   src/screens/forms/transaction-form/recurring-mark-field src/navigation/settings-stack --maxWorkers=2` (includes
   `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<step 1/6 commit>` (exit 3: say so, the named
   set stands); `npm run check:knip` reads the stub gone and `paidSoFarOf` still used.
-- [ ] **step 3/6 Review (kiko:reviewer).** Diff from the set base. Top questions: does any reader still count or sum an older
+- [x] **step 3/6 Review (kiko:reviewer).** Done: APPROVE at 5043ae350; pin gaps 152e55b3c, nits ac8c3f4ec. Diff from the set base. Top questions: does any reader still count or sum an older
   part (totals, group, category, stopped line, row amount)? Is the join order independent and all or nothing exactly as
   spec 19.2 (the local-day test, distinct currencies, the first charge read from `ChargeGroups`)? Can a marked series or a
   series a marked chain took ever join? Does the hook still hand the same `series` array after a hide? Is `seriesOfRoute`'s
   parts match unable to pick another merchant's series? Are the test edits only the named ones?
-- [ ] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring rules: a series is one key and
+- [x] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the card switch join in the skill and plan` commit. kiko-domain's recurring rules: a series is one key and
   currency in detection; the screens join a card switch (spec 19). Report the sha or "no drift found".
 - [ ] **step 5/6 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree>
   1.4-recurring-visual-2-task-8` once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest.
