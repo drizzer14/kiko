@@ -75,6 +75,7 @@ export const en = {
         unavailable: 'Biometric hardware is unavailable on this device.',
       },
     },
+    appearance: 'Appearance',
     baseCurrency: 'Base currency',
     baseCurrencySheetTitle: 'Base Currency',
     categories: 'Categories',
@@ -140,6 +141,11 @@ export const en = {
   language: {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
+  },
+  appearance: {
+    system: 'System',
+    light: 'Light',
+    dark: 'Dark',
   },
   calendar: {
     month: {
@@ -1299,14 +1305,15 @@ export const en = {
         title: 'Set Up a Reminder',
       },
       systemSettings: {
-        rowLabel: 'Change the language or lock the app',
+        rowLabel: 'Change the language or appearance, or lock the app',
         steps: {
           '1': 'Open the "Settings" tab, then tap "System".',
           '2': 'Under "Language", choose your language.',
-          '3': 'Turn on "Require Face ID or passcode" to lock Kiko. Each time you launch it, it asks for Face ID or your device passcode.',
-          '4': 'To turn the lock off, Kiko first asks you to confirm it is you.',
+          '3': 'Under "Appearance", choose "System", "Light", or "Dark". "System" follows your device.',
+          '4': 'Turn on "Require Face ID or passcode" to lock Kiko. Each time you launch it, it asks for Face ID or your device passcode.',
+          '5': 'To turn the lock off, Kiko first asks you to confirm it is you.',
         },
-        title: 'Language and App Lock',
+        title: 'Language, Appearance, and App Lock',
       },
       trackLoan: {
         rowLabel: 'Track a loan',
@@ -1821,18 +1828,13 @@ export const en = {
     emptyMessage:
       'Kiko looks through your transactions for charges that repeat, such as subscriptions and rent, and shows the ones that already happened. A monthly charge appears after its third payment; importing a statement can bring in earlier ones. You can also open a transaction and mark it as recurring.',
     emptyTitle: 'No recurring charges yet',
-    holdingQuietSince: '{{holding}}: no newer transactions since {{date}}',
+    everySixMonths: 'Every 6 months',
+    everyThreeMonths: 'Every 3 months',
+    holdingQuietSince: '"{{holding}}": no newer transactions since {{date}}',
     lastCharge: 'Last charge {{date}}',
     lastChargesTotal: 'Sum of last charges',
     listChangedMessage: 'Go back to see your recurring charges as they are now.',
     listChangedTitle: 'This list has changed',
-    marked: {
-      everySixMonths: 'Marked: every 6 months',
-      everyThreeMonths: 'Marked: every 3 months',
-      monthly: 'Marked: monthly',
-      weekly: 'Marked: weekly',
-      yearly: 'Marked: yearly',
-    },
     markedEmptyHeading: 'Marked, No Charges',
     markedEmptyMessage:
       'No transactions near the amount you marked count here now. Transfers, exchanges and loan payments are left out.',

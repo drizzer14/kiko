@@ -179,12 +179,9 @@ const goBack = async (): Promise<void> => {
 const seriesParams = (): object | undefined =>
   navigationRef.getRootState()?.routes.find(({ name }) => name === 'RecurringSeries')?.params;
 
-const markedLine = (period: RecurringPeriod): string =>
-  i18next.t(`recurringCharges.marked.${period}`);
-
 // A marked series: Remove mark in place of "Not a recurring charge", its charge count and, where
-// charges do not fit their period, the "Marked:" line. A series whose charges all fit keeps the
-// detected wording, so `line` is stated only where the world makes it a "Marked:" one.
+// charges do not fit their period, the plain period line. A series whose charges all fit keeps the
+// detected wording, so `line` is stated only where the world replaces it with the period line.
 const expectMarkedSeries = async (
   view: View,
   { line, count }: { line?: string; count: number },
@@ -316,27 +313,25 @@ describe.each<[string, LayoutMode]>([
     },
   );
 
-  it('shows the marked x11, yearly, and never the 399, after a yearly pick on the 119 row', async () => {
+  it('shows the marked x10, with neither the 119 row in the month of a 99 nor the 399', async () => {
     await arrange([...cheap(10), risen, ...dear], [APPLE_AT_99]);
 
     const view = await renderSettings(mode);
 
     await openSeries(view, 'cheap-9');
-    await expectMarkedSeries(view, { count: 11 });
-    await openCharge(view, 'rise');
-    await fieldReads(view, periodLabel('monthly'));
-    await pick(view, periodLabel('yearly'));
-    await goBack();
-    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 11 });
+    await expectMarkedSeries(view, { count: 10 });
 
-    expect(view.getByTestId('recurring-series-charge-rise')).toBeTruthy();
+    expect(view.queryByTestId('recurring-series-charge-rise')).toBeNull();
     expect(view.queryByTestId('recurring-series-charge-dear-0')).toBeNull();
   });
 });
 
 describe('Settings stack: a fold with a marked series and its form open', () => {
-  it('keeps the route and its stored amount, and Back shows the marked x11, yearly', async () => {
-    await arrange([...cheap(10), risen, ...dear], [APPLE_AT_99]);
+  it('keeps the route and its stored amount, and Back shows the marked x2, yearly', async () => {
+    // The 119 stands alone in August, a month with no 99, so the monthly series holds its row.
+    const withoutAugust = cheap(10).filter(({ id }) => id !== 'cheap-2');
+
+    await arrange([...withoutAugust, risen, ...dear], [APPLE_AT_99]);
 
     const view = await renderSettings('columns');
 
@@ -352,14 +347,25 @@ describe('Settings stack: a fold with a marked series and its form open', () => 
     expect(seriesParams()).toEqual(routeBefore);
 
     await fieldReads(view, periodLabel('monthly'));
-    await pick(view, periodLabel('yearly'));
+    await fireEvent.press(view.getByLabelText(FIELD_LABEL));
+    await fireEvent.press(view.getByLabelText(periodLabel('yearly')));
+    // Under yearly the one kept charge is another, so the picked row is dropped and reads so.
+    await waitFor(() => {
+      const field = view.getByLabelText(FIELD_LABEL);
+
+      expect(within(field).queryByText(NOT_MARKED)).not.toBeNull();
+      expect(field.props.accessibilityState.disabled).toBe(true);
+    });
     await changeLayout('columns');
 
     expect(seriesParams()).toEqual(routeBefore);
 
     await goBack();
-    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 11 });
+    await expectMarkedSeries(view, { line: 'Yearly', count: 2 });
 
+    expect(view.getByTestId('recurring-series-charge-cheap-0')).toBeTruthy();
+    expect(view.getByTestId('recurring-series-charge-cheap-9')).toBeTruthy();
+    expect(view.queryByTestId('recurring-series-charge-rise')).toBeNull();
     expect(view.queryByTestId('recurring-series-charge-dear-0')).toBeNull();
   });
 });
@@ -377,6 +383,20 @@ describe('The mark field reads the same state from Home and from a series link',
 
     await act(async () => navigationRef.navigate('TransactionForm', { transactionId: chargeId }));
     await fieldReads(view, label);
+  });
+
+  it('opened from Home: the 119 row in the month of a 99 reads "Not marked", disabled', async () => {
+    await arrange([...cheap(10), risen, ...dear], [APPLE_AT_99]);
+
+    const view = await renderStackInContainer(navigationRef, HomeStack, GestureRootWrapper);
+
+    await act(async () => navigationRef.navigate('TransactionForm', { transactionId: 'rise' }));
+    await waitFor(() => {
+      const field = view.getByLabelText(FIELD_LABEL);
+
+      expect(within(field).queryByText(NOT_MARKED)).not.toBeNull();
+      expect(field.props.accessibilityState.disabled).toBe(true);
+    });
   });
 
   it.each(FIELD_BY_ROW)(

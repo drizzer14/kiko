@@ -495,9 +495,15 @@
   design-system component may never import from `src/screens/**`
   (`kiko-no-import-screens-outside-ui`), `ChipRow` lives in
   `design-system/components/` since a design-system component
-  (`LanguageSwitch`) renders one — the SAME reason `FieldTrigger` lives
+  (`LanguageSwitch`, `AppearanceSwitch`) renders one — the SAME reason `FieldTrigger` lives
   there too; a screen-level consumer imports it from there like any
   other design-system component.
+- **AppearanceSwitch** (`src/design-system/components/appearance-switch/`)
+  — the System / Light / Dark control of the Settings system screen: a
+  `ChipRow` over `appearanceModes` with a label per mode from
+  `appearance.*` (the active UI language, as a mode name is a word, not an
+  endonym). It only reports the chosen mode; the screen writes the row
+  (see "Light and dark themes" in SKILL.md).
 - **DayOfMonthGrid** (`src/design-system/components/day-of-month-grid/`)
   — single-select day of month, 1 to 31, as a 7-column calendar-shaped
   grid (days 29-31 on a short last row), replacing a 31-row select sheet
@@ -558,7 +564,8 @@
   holding N equal-width segments, with the SELECTED segment a lighter
   raised thumb (`theme.colors.segmentSelected`) under a `textPrimary`
   semibold label. The track is translucent, so the thumb's WCAG 1.4.11
-  3:1 non-text contrast is checked against the track composited over
+  3:1 non-text contrast (a dark-theme rule; the light thumb is the
+  user's accepted exception, P2) is checked against the track composited over
   BOTH backdrops the control sits on (true-black `background` and
   `surface`, which a card or the glass sheet composites to); that is
   why the thumb is lighter than iOS's own `#636366`, which only reaches

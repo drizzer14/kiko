@@ -107,6 +107,7 @@ const NO_LIVE_DEVICE_SETTINGS = {
   lockEnabled: false,
   notificationsDeliverableSince: null,
   historyBackfillState: null,
+  appearance: 'system',
 };
 
 // A transaction handle that records the order of deletes and inserts and every inserted row.

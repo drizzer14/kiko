@@ -1233,11 +1233,13 @@ the kind of thing that can still change:
   "Preparing database…" text/background itself) render in the user's
   chosen language on a cold launch, not the device language.
   `useSyncLanguageWithSettings` (mounted from `AppRoot`, after both
-  gates) only covers a LIVE switch from the Settings screen. The app is
-  dark-only — `UIUserInterfaceStyle = Dark` is pinned in
-  `ios/Kiko/Info.plist`, so there is no appearance to apply here at
-  all; `settings.appearance` is a retained-but-dead schema column (see
-  `kiko-domain`'s "App lock / security settings").
+  gates) only covers a LIVE switch from the Settings screen. The appearance mode
+  is the same shape, with a first-frame difference: `applyLaunchAppearance` runs in
+  `src/design-system/unistyles/unistyles.ts` before `StyleSheet.configure`, reading the
+  UserDefaults mirror (`src/appearance/appearance-mirror`) because the database is not
+  open yet; `useSyncAppearanceWithSettings` (mounted beside the language hook) follows
+  the `settings.appearance` row afterwards (see `kiko-design-system`'s "Light and dark
+  themes").
 
 ## Spending-exclusion pipeline
 
@@ -1619,7 +1621,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   value; accepted, since a bump would make an older build refuse every new file.
   Any migration that changes the snapshot shape (a new table, a column on any
   table, a changed default) must, in the same commit: regenerate the demo
-  `.kiko` (see kiko-compliance's demo fixture section for the command), add a
+  `.kiko` (see kiko-compliance's demo fixture section for the command; also the category check
+  file, with `KIKO_REGEN_CATEGORY_CHECK=1`, or its decrypt-and-compare case fails), add a
   `VERSION_DECISIONS` comment and bump `migrationCount` in
   `src/data-transfer/crypto/envelope.test.ts`; the scoped jest run must include
   `e2e/screenshot` and `src/data-transfer/crypto`.

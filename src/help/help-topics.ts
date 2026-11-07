@@ -294,6 +294,7 @@ const topicsById = {
       'help.topics.systemSettings.steps.2',
       'help.topics.systemSettings.steps.3',
       'help.topics.systemSettings.steps.4',
+      'help.topics.systemSettings.steps.5',
     ],
     action: 'openSystem',
   },

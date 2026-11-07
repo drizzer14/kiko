@@ -193,6 +193,11 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - Before adding a prop to a hand-written `__mocks__` module, check the real library's own type in
   `node_modules` first. A mock that accepts a prop the real component discards lets a test pass
   while the real UI is silently broken: forward only the props the real library consumes.
+- A raw SQL seed in a test names every column that has a clock default (`created_at`,
+  `updated_at`; `unixepoch() * 1000` has 1 s resolution) with a fixed literal. Rows compared
+  across two seeds or two databases otherwise differ by a whole second when a second boundary
+  falls between the seeds (`src/data-transfer/snapshot/restore-new-matchers.two-path.test.ts`,
+  fixed in 2acce8200).
 
 ## Acceptance pins, fix rounds and red proofs
 
@@ -343,7 +348,19 @@ test from being decorative.
 - Maestro: an assertion one iOS version cannot pass (the on-screen keyboard on an iOS 26.5
   simulator) aborts the flow and skips every later step. Mark it `optional: true`; Maestro then
   prints `(Optional)` in the line and a warned status (not a failed one) on failure, so a script
-  that greps the result must match that form.
+  that greps the result must match that form. Set the simulator hardware keyboard with
+  `defaults write com.apple.iphonesimulator ...` while the device is shut down (a PlistBuddy
+  edit is lost to cfprefsd). Even then the iOS 26.5 simulator showed no software keyboard
+  (2026-11-07), so keyboard proof there needs a device.
+- Maestro: `text:` is a full-match regex against the element's accessibility text. An element
+  whose accessibilityLabel has a prefix needs `.*` on both sides (a label starting with
+  "scratch-flip" never matched a bare "rn:light.*").
+- Maestro: on iOS the hide-keyboard command taps the screen and can open the field under the tap (it
+  opened the Account Kind sheet). Tap the input-accessory "Done" pill instead.
+- Maestro: a screenshot on a fixed wait after a delayed action can land before the action fires.
+  Wait on an on-screen readout where one is visible, else take frames from the recording
+  (the video file; ffmpeg is not installed here, a Swift script with the AVFoundation image
+  generator works).
 - Maestro: a `tapOn` by `id` taps the element centre. A full-screen backdrop behind a raised sheet
   put the tap on a list row and changed data for later steps; close a sheet by a named control.
 

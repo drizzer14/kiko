@@ -32,10 +32,10 @@ const Tabs = createNativeBottomTabNavigator<TabParamList>();
  * (react-native-bottom-tabs `TabAppearModifier` → `configureStandardAppearance`).
  * With no `tabBarStyle` that rebuild calls `configureWithDefaultBackground()`,
  * whose glass material re-resolves against the ambient `userInterfaceStyle`.
- * The app is dark-only and pins `UIUserInterfaceStyle = Dark` in Info.plist,
- * so that ambient style is always dark; setting `tabBarStyle.backgroundColor`
- * additionally forces the bar's background to the concrete dark background
- * token on every rebuild, so the bar holds one consistent dark scheme.
+ * Setting `tabBarStyle.backgroundColor` forces the bar's background to the active theme's
+ * background token on every rebuild, so the bar holds the scheme of the theme in force instead of
+ * the one the glass material happens to resolve. The bar colors are props read from the theme,
+ * and the library re-applies them when a prop changes.
  *
  * On a large window the Statistics charts are the companion of the Home tab, so the Statistics
  * tab leaves the bar (`tabBarItemHidden`). The native view still shows a hidden tab while it is
@@ -56,9 +56,8 @@ const RootNavigator: FC = () => {
       // spread (TabView.tsx:477), so the native view received `undefined` and
       // `configureWithDefaultBackground()` re-resolved the bar's glass against
       // the ambient userInterfaceStyle on every tab's `onAppear` — the bar
-      // flipped light/dark between pages. The app is dark-only and pins
-      // `UIUserInterfaceStyle = Dark` in Info.plist, so the ambient native style
-      // is always dark. This concrete backgroundColor still pins the exact token.
+      // flipped light/dark between pages. This concrete backgroundColor pins the exact token of
+      // the theme in force.
       tabBarStyle={{ backgroundColor: theme.colors.background }}
       tabBarActiveTintColor={theme.colors.accent}
       tabBarInactiveTintColor={theme.colors.textSecondary}

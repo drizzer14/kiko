@@ -15,6 +15,8 @@ import LoadingState from '@kiko/design-system/components/loading-state';
 import LanguageSwitch from '@kiko/design-system/components/language-switch';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type AppLanguage, deviceLanguage } from '@kiko/i18n/device-language';
+import AppearanceSwitch from '@kiko/design-system/components/appearance-switch';
+import { type AppearanceMode, parseAppearanceMode } from '@kiko/appearance/appearance-mode';
 
 import AppLockSetting from './app-lock-setting/app-lock-setting.component';
 
@@ -24,7 +26,7 @@ type SystemScreenProps = NativeStackScreenProps<SettingsStackParamList, 'System'
 // finance settings that live on the main Settings screen. A pushed screen (not a
 // tab root), so — like the Categories sub-screen — it uses `<Screen scroll>`
 // without the active-tab re-tap scroll-to-top hook (that is only for a tab's
-// root screen). Order: Language, then Face ID (App Lock).
+// root screen). Order: Language, then Appearance, then Face ID (App Lock).
 const SystemScreen: FC<SystemScreenProps> = () => {
   const { t } = useTranslation();
 
@@ -32,13 +34,18 @@ const SystemScreen: FC<SystemScreenProps> = () => {
     cached: true,
   });
   const settings = data.at(0);
-  // The App Lock toggle and the selected language must never render their
-  // own defaults (off, device-default) while settings is still on its own
-  // first load (kiko-architecture's useLiveQuery consumer rule).
+  // The App Lock toggle, the selected language and the selected appearance must
+  // never render their own defaults (off, device-default, System) while settings
+  // is still on its own first load (kiko-architecture's useLiveQuery consumer rule).
   const isReady = useDataReady(isLoading);
 
   const handleSelectLanguage = (language: AppLanguage): void => {
     settingsRepo.setLanguage(language);
+  };
+
+  // Writes the row only; `useSyncAppearanceWithSettings` applies the mode to the window.
+  const handleSelectAppearance = (mode: AppearanceMode): void => {
+    settingsRepo.setAppearance(mode);
   };
 
   const confirmAndDisable = async (): Promise<void> => {
@@ -79,6 +86,19 @@ const SystemScreen: FC<SystemScreenProps> = () => {
         <Card testID="settings-card-language" padding={3}>
           <SettingsRow testID="settings-row-language" icon="globe" label={t('settings.language')}>
             <LanguageSwitch selected={effectiveLanguage} onSelect={handleSelectLanguage} />
+          </SettingsRow>
+        </Card>
+
+        <Card testID="settings-card-appearance" padding={3}>
+          <SettingsRow
+            testID="settings-row-appearance"
+            icon="circle.lefthalf.filled"
+            label={t('settings.appearance')}
+          >
+            <AppearanceSwitch
+              selected={parseAppearanceMode(settings?.appearance)}
+              onSelect={handleSelectAppearance}
+            />
           </SettingsRow>
         </Card>
 

@@ -1091,6 +1091,10 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   detection. The chain's charges are the series, with the mark's period; the stored amount joins
   the cut like a charge, so it can bridge two charges. Pieces share no row, and a detected series
   that shares a row with a marked one leaves whole.
+- A marked chain keeps charges more than half a step apart, near amounts first, no anchor:
+  `onePerSlotOf` in `src/recurring/detection/detection.ts` (spec 8.3; read it for the keys). A
+  row it drops reads 'Not marked' (or its detected text) and its mark field is disabled;
+  `markedChainOfAmount` in `src/recurring/marked-series/marked-series.ts` returns `holdsRow`.
 - The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
 - The accepted false stop: a subscription that goes on at a price outside the chain shows "No
   charge since" until the user re-marks. This is the user's ruling, not a defect.
@@ -1104,8 +1108,15 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   `convert` per series into the base currency; `canConvert` is the guard, so a currency with no
   rate is left out of the totals and its series stays listed. A stopped series counts. The row
   reads 'Sum of last charges' (`recurringCharges.lastChargesTotal`). The series screen's 'All
-  paid so far' is `paidSoFarOf`, the sum of every charge in the series' own currency; it covers
-  only the series screen, never a list total.
+  paid so far' is `paidSoFarByCurrencyOf` in `src/recurring/recurring-groups/recurring-groups.ts`:
+  one `Money` line per part, newest part first, no converted sum. A plain or marked series gives
+  one line, the `paidSoFarOf` figure. It covers only the series screen, never a list total.
+- A card switch (spec 19, `docs/superpowers/specs/2026-11-03-recurring-design.md`): a detected
+  series of one name and period joins into one row when the currencies differ and each part
+  stopped on an earlier LOCAL day than the next began (`src/recurring/card-switch/card-switch.ts`,
+  spec 19.2). All or nothing per name and period. The row carries `parts?: SeriesPart[]`
+  (`src/recurring/detection/detection.types.d.ts`), takes its fields from the newest part and
+  counts once in the totals. A marked series never joins.
 - One choice map holds every key's hide flag and its list of marks, one entry per key; removing
   a mark clears only that mark. 'Not a recurring charge' (the series-row hold or the series
   footer, one `ConfirmSheet`) calls `settingsRepo.hideRecurringMerchant(key, name, chain = [])`,
@@ -1297,11 +1308,10 @@ re-locks, so a resident backgrounded process resumes without a prompt. That is
 an accepted, recorded risk — see `docs/security/README.md`. `lockGraceSeconds`
 is one of the documented reader-less `settings` columns pinned by
 `src/db/settings-columns.test.ts`'s `DOCUMENTED_READERLESS_COLUMNS` list —
-the other is `appearance` (the removed light/dark color-scheme feature; the
-app is now dark-only, see `kiko-design-system`'s "Dark-only theme"); wiring
-either back up means removing it from that test's list, which is the
-deliberate decision gate. Read the list itself for the exact current set
-rather than assuming only these two.
+`appearance` left that list when the appearance setting shipped (it stores the System,
+Light or Dark mode; see `kiko-design-system`'s "Light and dark themes"). Wiring a
+listed column up means removing it from that test's list, which is the
+deliberate decision gate. Read the list itself for the exact current set.
 
 ## Dates
 

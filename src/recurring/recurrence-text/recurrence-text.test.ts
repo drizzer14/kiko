@@ -68,23 +68,10 @@ const MARKED_PERIODS: readonly RecurringPeriod[] = [
   'everySixMonths',
   'yearly',
 ];
-const MARKED_ONLY_PERIODS: readonly RecurringPeriod[] = ['everyThreeMonths', 'everySixMonths'];
 
-const MARKED_LINES_EN = [
-  'Marked: weekly',
-  'Marked: monthly',
-  'Marked: every 3 months',
-  'Marked: every 6 months',
-  'Marked: yearly',
-];
+const MARKED_LINES_EN = ['Weekly', 'Monthly', 'Every 3 months', 'Every 6 months', 'Yearly'];
 
-const MARKED_LINES_UK = [
-  'Позначено: щотижня',
-  'Позначено: щомісяця',
-  'Позначено: раз на 3 місяці',
-  'Позначено: раз на 6 місяців',
-  'Позначено: щороку',
-];
+const MARKED_LINES_UK = ['Щотижня', 'Щомісяця', 'Раз на 3 місяці', 'Раз на 6 місяців', 'Щороку'];
 
 type MarkedExpectations = {
   lines: readonly string[];
@@ -100,19 +87,35 @@ type MarkedExpectations = {
 const markedCases = (expected: MarkedExpectations): void => {
   describe('marked text', () => {
     it.each(MARKED_PERIODS.map((period, index) => [period, expected.lines[index]] as const))(
-      'reads a marked %s series as its marked line',
+      'reads a marked %s series as its plain period line',
       (period, line) => {
         expect(recurrenceLineOf(period, MARKED)).toBe(line);
       },
     );
 
-    it.each(MARKED_ONLY_PERIODS.map((period) => [period, MARKED_PERIODS.indexOf(period)] as const))(
-      'reads a %s period with no pattern as its marked line',
-      (period, index) => {
-        expect(recurrenceLineOf(period, { kind: 'none' })).toBe(expected.lines[index]);
+    it.each(MARKED_PERIODS.map((period, index) => [period, expected.lines[index]] as const))(
+      'reads a %s period with no pattern as its plain period line',
+      (period, line) => {
+        expect(recurrenceLineOf(period, { kind: 'none' })).toBe(line);
         expect(recurrenceLineOf('monthly', { kind: 'none' })).toBe(expected.monthly);
       },
     );
+
+    it('never prefixes a period line with the marked word', () => {
+      const lines = MARKED_PERIODS.flatMap((period) => [
+        recurrenceLineOf(period, MARKED),
+        recurrenceLineOf(period, { kind: 'none' }),
+      ]);
+
+      expect(lines).toHaveLength(10);
+      expect(lines.some((line) => /^(Marked|Позначено)/.test(line))).toBe(false);
+    });
+
+    it('keeps no marked-line keys in the catalogue', () => {
+      expect(
+        i18n.getResource(i18n.language, 'translation', 'recurringCharges.marked'),
+      ).toBeUndefined();
+    });
 
     it('reads a marked monthly day as any series', () => {
       const line = recurrenceLineOf('monthly', { kind: 'onDay', day: 15 });
@@ -183,7 +186,7 @@ describe('recurrence text in English', () => {
       'No transactions near the amount you marked count here now. ' +
       'Transfers, exchanges and loan payments are left out.',
     lastCharge: 'Last charge 15.08.2026',
-    quiet: 'Netflix: no newer transactions since 20.08.2026',
+    quiet: '"Netflix": no newer transactions since 20.08.2026',
   });
 
   describe('recurrenceLine', () => {
@@ -254,7 +257,7 @@ describe('recurrence text in English', () => {
             quiet: { since: QUIET_SINCE, holdingName: 'Monobank black' },
           }),
         ),
-      ).toBe('Monobank black: no newer transactions since 20.08.2026');
+      ).toBe('"Monobank black": no newer transactions since 20.08.2026');
     });
 
     it('reads the quiet date, never the charge date', () => {
@@ -262,7 +265,7 @@ describe('recurrence text in English', () => {
         seriesWith({ isStopped: true, quiet: { since: QUIET_SINCE, holdingName: '*1234' } }),
       );
 
-      expect(line).toBe('*1234: no newer transactions since 20.08.2026');
+      expect(line).toBe('"*1234": no newer transactions since 20.08.2026');
       expect(line).not.toContain('15.08.2026');
     });
   });
@@ -370,6 +373,15 @@ describe('recurrence text in Ukrainian', () => {
           }),
         ),
       ).toBe('«Monobank black»: немає новіших транзакцій за 20.08.2026');
+    });
+
+    it('keeps the guillemets around the quiet holding name, never straight quotes', () => {
+      const line = lastChargeLineOf(
+        seriesWith({ isStopped: true, quiet: { since: QUIET_SINCE, holdingName: 'Wallet' } }),
+      );
+
+      expect(line.startsWith('«Wallet»: ')).toBe(true);
+      expect(line).not.toContain('"');
     });
   });
 });

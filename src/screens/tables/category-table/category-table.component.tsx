@@ -7,6 +7,7 @@ import DataTable, {
 import Box from '@kiko/design-system/components/box';
 import { type FC, useCallback, useMemo } from 'react';
 import { activeLocale } from '@kiko/i18n/active-locale';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { buildCategoryByMonth } from '@kiko/statistics/category-by-month';
 import { type CellRange, expenseRowsOf } from '@kiko/statistics/cell-rows';
@@ -29,7 +30,7 @@ import type { CategoryTableProps } from './category-table.props';
 
 // The table keeps a row's key, title and amounts, never a slice color, so the scheme the breakdown
 // resolves colors in cannot show here; the category menu's own slices take the active one.
-const TABLE_SCHEME = 'dark';
+const TABLE_SCHEME: ColorScheme = 'dark';
 
 /** Which rows a cell opens: a category's, or the All row's, which a held pick narrows. */
 type CellSelector = { kind: 'category'; key: string } | { kind: 'all' };

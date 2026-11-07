@@ -289,7 +289,7 @@ describe('layerSlice', () => {
           headerBackTitle: 'Back',
           headerLargeTitle: true,
           headerBackground,
-          headerBlurEffect: 'systemChromeMaterialDark',
+          headerBlurEffect: 'systemChromeMaterial',
           headerLargeStyle,
           headerLargeTitleShadowVisible: false,
           headerShadowVisible: true,
@@ -305,7 +305,7 @@ describe('layerSlice', () => {
         headerShown: true,
         headerTitle: '',
         headerBackground,
-        headerBlurEffect: 'systemChromeMaterialDark',
+        headerBlurEffect: 'systemChromeMaterial',
         headerLargeStyle,
         headerLargeTitleShadowVisible: false,
         headerShadowVisible: true,
@@ -315,9 +315,9 @@ describe('layerSlice', () => {
     });
 
     it('takes them from the first page of the layer, the one the root is shared with', () => {
-      const { options } = rootOf(sliceWith({ headerBlurEffect: 'dark' }, { headerStyle }));
+      const { options } = rootOf(sliceWith({ headerBlurEffect: 'regular' }, { headerStyle }));
 
-      expect(options.headerBlurEffect).toBe('dark');
+      expect(options.headerBlurEffect).toBe('regular');
       expect(options.headerStyle).toBeUndefined();
     });
   });

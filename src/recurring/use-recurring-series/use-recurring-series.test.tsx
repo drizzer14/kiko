@@ -53,6 +53,13 @@ import type {
 } from '@kiko/recurring/detection';
 import { startOfLocalDay } from '@kiko/dates';
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import {
+  type Ledger,
+  cardSwitchLedger,
+  holdingOf,
+  ledgerOf,
+  monthly,
+} from '@kiko/test-support/recurring-ledger';
 
 import { useRecurringSeries } from './use-recurring-series';
 
@@ -734,5 +741,83 @@ describe('useRecurringSeries — the marks', () => {
       expect(mockSeriesOfGroups).toHaveBeenCalledTimes(2);
       expect(names(result.current.markedSeries)).toEqual(['Netflix']);
     });
+  });
+});
+
+describe('useRecurringSeries — a card switch between currencies', () => {
+  const UAH_MARK: RecurringMark = { currency: 'UAH', amountMinorUnits: 40_000, period: 'monthly' };
+  const MARKED_UAH = [
+    { recurringMerchantChoices: { netflix: { name: 'Netflix', marks: [UAH_MARK] } } },
+  ];
+  const HIDDEN_NETFLIX = [
+    { recurringMerchantChoices: { netflix: { name: 'Netflix', hidden: true } } },
+  ];
+
+  const worldOfLedger = ({ rows, holdings, accounts }: Ledger): World => ({
+    transactions: rows,
+    holdings,
+    accounts,
+  });
+
+  const currenciesOf = (series: { currency: string }[]): string[] =>
+    series.map(({ currency }) => currency);
+
+  beforeEach(() => {
+    committed = worldOfLedger(cardSwitchLedger());
+  });
+
+  it('hands over one row for a UAH name that went on in USD, its parts newest first', async () => {
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect(currenciesOf(result.current.series)).toEqual(['USD']);
+    expect(result.current.series[0]?.parts?.map(({ currency }) => currency)).toEqual([
+      'USD',
+      'UAH',
+    ]);
+    expect(result.current.markedSeries).toEqual([]);
+  });
+
+  it('keeps a marked UAH chain beside the later USD series, never joined to it', async () => {
+    settingsRows = MARKED_UAH;
+
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect(currenciesOf(result.current.series)).toEqual(['USD']);
+    expect(currenciesOf(result.current.markedSeries)).toEqual(['UAH']);
+    expect(result.current.series[0]?.parts).toBeUndefined();
+    expect(result.current.markedSeries[0]?.parts).toBeUndefined();
+  });
+
+  it('joins the detected series that are left beside a marked one', async () => {
+    committed = worldOfLedger(
+      ledgerOf(
+        [
+          ...monthly(5, 15, 400, { newest: [2026, 5], prefix: 'uah' }),
+          ...monthly(3, 15, 10, { newest: [2026, 7], prefix: 'usd', holdingId: 'usd' }),
+          ...monthly(3, 15, 9, { newest: [2026, 10], prefix: 'eur', holdingId: 'eur' }),
+        ],
+        { holdings: [holdingOf('usd', 'USD'), holdingOf('eur', 'EUR')] },
+      ),
+    );
+    settingsRows = MARKED_UAH;
+
+    const { result } = await renderHook(() => useRecurringSeries());
+
+    expect(currenciesOf(result.current.series)).toEqual(['EUR']);
+    expect(result.current.series[0]?.parts?.map(({ currency }) => currency)).toEqual([
+      'EUR',
+      'USD',
+    ]);
+    expect(currenciesOf(result.current.markedSeries)).toEqual(['UAH']);
+  });
+
+  it('hands the same series over for a hide, which marks nothing', async () => {
+    const { result, rerender } = await renderHook(() => useRecurringSeries());
+    const seriesBefore = result.current.series;
+
+    pendingSettingsRows = HIDDEN_NETFLIX;
+    await setVisible(rerender, true);
+
+    expect(result.current.series).toBe(seriesBefore);
   });
 });

@@ -84,14 +84,12 @@ export const useRowMark = (
   const chain = useMemo(
     () =>
       markedChainOfAmount(
-        (detection?.chargeGroups.groups.get(groupKeyOf(key, currency))?.charges ?? []).map(
-          ({ amount }) => ({ amountMinorUnits: amount }),
-        ),
+        detection?.chargeGroups.groups.get(groupKeyOf(key, currency))?.charges ?? [],
         marks,
-        Math.abs(row.amountMinorUnits),
+        { id: row.id, amountMinorUnits: Math.abs(row.amountMinorUnits) },
         currency,
       ),
-    [detection, key, currency, marks, row.amountMinorUnits],
+    [detection, key, currency, marks, row.id, row.amountMinorUnits],
   );
   const detectedPeriod = useMemo(
     () =>

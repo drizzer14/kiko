@@ -166,7 +166,7 @@ describe('help topic registry', () => {
     ['viewRecurringCharges', 5],
     ['backupData', 4],
     ['restoreData', 4],
-    ['systemSettings', 4],
+    ['systemSettings', 5],
   ] as const)('gives the %s topic %i steps', (topicId, count) => {
     expect(helpTopicById(topicId).stepKeys).toHaveLength(count);
   });
@@ -710,7 +710,7 @@ describe('the Ukrainian wording of the help topics', () => {
     ['viewRecurringCharges', 'Перегляд регулярних платежів'],
     ['backupData', 'Резервна копія даних'],
     ['restoreData', 'Відновлення з резервної копії'],
-    ['systemSettings', 'Мова й блокування застосунку'],
+    ['systemSettings', 'Мова, вигляд і блокування застосунку'],
   ] as const;
 
   it('asks for most taps in the steps with the verb "натиснути"', () => {
@@ -734,6 +734,7 @@ describe('the Ukrainian wording of the help topics', () => {
   it.each([
     ['importStatement', 5, 'рядок із назвами'],
     ['categoryRules', 1, 'натисніть «Категорії», а потім потрібну категорію'],
+    ['systemSettings', 3, 'У розділі «Вигляд» оберіть «Системний», «Світлий» або «Темний»'],
   ] as const)('words the %s topic step %i with «%s»', (topicId, step, wording) => {
     expect(ukValues.get(`help.topics.${topicId}.steps.${step}`)).toContain(wording);
   });

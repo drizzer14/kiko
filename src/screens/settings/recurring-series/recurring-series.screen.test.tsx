@@ -139,6 +139,15 @@ const NETFLIX_LEDGER = [
   chargeRow('netflix-3', FIFTEENTH_OF_OCTOBER, 'Netflix'),
 ];
 
+// A card switch: the UAH part began the row (its id), the USD part is the newest.
+const JOINED = seriesWith({
+  currency: 'USD',
+  parts: [
+    { id: 'netflix-2', currency: 'USD', chargeIds: ['netflix-3', 'netflix-2'] },
+    { id: 'netflix-1', currency: 'UAH', chargeIds: ['netflix-1'] },
+  ],
+});
+
 const paramsOf = (series: RecurringSeries): RouteParams => ({
   seriesId: series.id,
   merchantKey: series.merchantKey,
@@ -598,6 +607,53 @@ describe('RecurringSeriesScreen — an id that no longer resolves', () => {
   });
 });
 
+describe('RecurringSeriesScreen — the route of a joined row', () => {
+  const UAH_PARAMS = { ...paramsOf(JOINED), currency: 'UAH' as const };
+
+  it('opens by the joined id, in the newest part`s currency', async () => {
+    const { getByTestId } = await renderScreen(
+      { series: [JOINED], isLoading: false },
+      paramsOf(JOINED),
+    );
+
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
+  });
+
+  it('is found by the currency of an older part, where the route was opened on that currency', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen(
+      { series: [JOINED], isLoading: false },
+      UAH_PARAMS,
+    );
+
+    expect(queryByTestId(EMPTY)).toBeNull();
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
+  });
+
+  it('finds the one USD series once an overlap has split the row', async () => {
+    const split = [
+      seriesWith({ chargeIds: ['netflix-1'] }),
+      seriesWith({ id: 'netflix-2', currency: 'USD', chargeIds: ['netflix-3', 'netflix-2'] }),
+    ];
+    const { getByTestId } = await renderScreen(
+      { series: split, isLoading: false },
+      paramsOf(JOINED),
+    );
+
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('2', { exact: true });
+  });
+
+  it('shows the neutral text when two series hold the route`s currency and neither has its id', async () => {
+    const other = seriesWith({ id: 'netflix-8', chargeIds: ['netflix-8'] });
+    const { getByTestId, queryByTestId } = await renderScreen(
+      { series: [JOINED, other], isLoading: false },
+      { ...UAH_PARAMS, seriesId: 'netflix-stale' },
+    );
+
+    expect(getByTestId(EMPTY)).toBeTruthy();
+    expect(queryByTestId(HEADER)).toBeNull();
+  });
+});
+
 describe('RecurringSeriesScreen — hiding a false match', () => {
   const HIDE_BUTTON = 'recurring-series-hide';
 
@@ -614,20 +670,20 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
 
   const NETFLIX = seriesWith({});
 
-  const hideScreen = (navigation: ReturnType<typeof navigationSpy>) => (
+  const hideScreen = (navigation: ReturnType<typeof navigationSpy>, shown = NETFLIX) => (
     <RecurringSeriesScreen
       navigation={asNavigationProp<ScreenProps['navigation']>(navigation)}
-      route={asRouteProp<ScreenProps['route']>('RecurringSeries', paramsOf(NETFLIX))}
+      route={asRouteProp<ScreenProps['route']>('RecurringSeries', paramsOf(shown))}
     />
   );
 
-  const renderNetflix = async () => {
+  const renderNetflix = async (shown = NETFLIX) => {
     const navigation = navigationSpy();
 
-    mockResult = { series: [NETFLIX], isLoading: false };
+    mockResult = { series: [shown], isLoading: false };
     mockLedger = NETFLIX_LEDGER;
 
-    const tree = await render(hideScreen(navigation));
+    const tree = await render(hideScreen(navigation, shown));
 
     return { ...tree, navigation };
   };
@@ -758,6 +814,15 @@ describe('RecurringSeriesScreen — hiding a false match', () => {
     });
 
     expect(view.navigation.goBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the key of a joined row, which leaves no currency of the name', async () => {
+    const view = await renderNetflix(JOINED);
+
+    await confirmHide(view);
+
+    expect(hideSpy).toHaveBeenCalledTimes(1);
+    expect(hideSpy).toHaveBeenCalledWith('netflix', 'Netflix');
   });
 
   it('does not go back when another screen was opened over it before the write landed', async () => {

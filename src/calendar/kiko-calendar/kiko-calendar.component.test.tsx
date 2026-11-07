@@ -1,4 +1,8 @@
 import { View } from 'react-native';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { render } from '@testing-library/react-native';
 import Calendar from 'react-native-calendars/src/calendar';
 import '@kiko/design-system/unistyles';
@@ -75,5 +79,36 @@ describe('KikoCalendar', () => {
     const { getByTestId } = await render(<KikoCalendar testID="cal" onDayPress={jest.fn()} />);
 
     expect(getByTestId('cal').props.firstDay).toBe(1);
+  });
+
+  describe('on a scheme change', () => {
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    // The library builds its stylesheet once per mount (a ref), so a host node that survives the
+    // re-render would keep the old scheme's colors.
+    it('remounts the library calendar on a scheme change', async () => {
+      const { getByTestId, rerender } = await render(
+        <KikoCalendar testID="cal" onDayPress={jest.fn()} />,
+      );
+      const before = getByTestId('cal');
+
+      registerLightThemeFirst();
+      await rerender(<KikoCalendar testID="cal" onDayPress={jest.fn()} />);
+
+      expect(getByTestId('cal')).not.toBe(before);
+    });
+
+    it('keeps the library calendar mounted while the scheme stays the same', async () => {
+      const { getByTestId, rerender } = await render(
+        <KikoCalendar testID="cal" onDayPress={jest.fn()} />,
+      );
+      const before = getByTestId('cal');
+
+      await rerender(<KikoCalendar testID="cal" onDayPress={jest.fn()} />);
+
+      expect(getByTestId('cal')).toBe(before);
+    });
   });
 });

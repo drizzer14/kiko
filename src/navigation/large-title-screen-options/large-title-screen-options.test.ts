@@ -20,7 +20,7 @@ describe('largeTitleScreenOptions', () => {
   it('blurs the scrolled bar and keeps the large title transparent below iOS 26', () => {
     expect(loadLargeTitleScreenOptions(false)).toEqual({
       headerLargeTitle: true,
-      headerBlurEffect: 'systemChromeMaterialDark',
+      headerBlurEffect: 'systemChromeMaterial',
       headerLargeStyle: { backgroundColor: 'transparent' },
     });
   });

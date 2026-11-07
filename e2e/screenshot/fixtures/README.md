@@ -32,7 +32,9 @@ argument (Guideline 2.5.19):
 | `kiko-demo-uk.kiko` | AES-256-GCM `ExportEnvelope` JSON (`src/data-transfer/crypto/envelope.ts`), Ukrainian dataset |
 | `kiko-demo-en.kiko` | Same, English dataset |
 | `kiko-demo-en-1.1.kiko` | A frozen copy of the English file as release 1.1 wrote it (export version 1, none of 1.2's settings columns); never regenerated or edited, read only by `src/data-transfer/import-data.back-compat.test.ts` |
+| `kiko-category-check-en.kiko` | The English demo plus the rows that check the category automation on a simulator ("The category check file"); not for the reviewer or the screenshots |
 | `kiko-demo.key` | The base64 AES-256 key, **shared by all the files** |
+| `build-category-check-snapshot.ts` | Pure mapper: the English demo snapshot plus the check rows, one category and the 1.3 settings mark |
 | `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (every logical table, the transaction templates included) |
 | `generate-demo-kiko.ts` | Pure encoder: `DataSnapshot` + key + anchor -> the `.kiko` file's JSON, via the app's real `encryptEnvelope` |
 | `demo-anchor.ts` | Picks the regen anchor: `KIKO_DEMO_ANCHOR` or the local day |
@@ -150,6 +152,42 @@ earlier. The even months and month 0, the newest, never move. So a shop or the t
 spending that comes and goes, not as a subscription. The amount stays and the row stays in its
 30-day month, so each month's total is unchanged.
 `build-demo-snapshot.recurring.test.ts` pins the five on every anchor it tries.
+
+## The category check file
+
+`kiko-category-check-en.kiko` is a third file, for a person who checks the category automation on a
+simulator. It is `kiko-demo-en.kiko` plus extras, built by `build-category-check-snapshot.ts` from
+the same builder, and it is encrypted with the same `kiko-demo.key`. It never goes to the reviewer
+or into a screenshot, and the demo files do not hold its rows. It has its own regeneration, so a
+demo regeneration leaves it and it leaves the demo files:
+
+```bash
+KIKO_REGEN_CATEGORY_CHECK=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts
+```
+
+(`KIKO_DEMO_ANCHOR=YYYY-MM-DD` works as above; the file thins out the same way, so regenerate it on
+the day of a check.) `build-category-check-snapshot.test.ts` pins what moves, what stays, the chip
+and the confirm case.
+
+Import it as in "Importing on a device", then open Settings, then Categories. The file reads as one
+a 1.3 install wrote (`mccCategoriesBackfilled: false`), so the one-time move runs during the import.
+Nothing else is needed to see it.
+
+- **The one-time move.** The Travel tile holds four rows: `Hotel Dnipro` (code 7011, 6,200.00),
+  `Ryanair` (4511, 4,100.00), `Wizz Air` (3100, an airline code in 3000-3299, 2,850.00) and
+  `Sunrise Travel Agency` (4722, 11,500.00), 24,650.00 in all. `Bistro Zamok` (5811, 640.00) moves
+  to Dining. `Spa Hotel Carpathia` (7011, 8,900.00) was picked by hand in Entertainment and stays
+  there. Before the move the five other rows sat in Other.
+- **The chip.** Sort transactions without a category lists 15 lines. The `Bud Depot` line (one row,
+  `Other`, 1,420.00) shows the chip `Home renovation and garden supplies, 2 of 2`: two other
+  `Bud Depot` rows are filed under that category, which is a user-made one with a long title.
+- **The confirm sheet.** The `Podil Bakery` line lists 2 transactions (84.00 and 96.00). Select
+  Dining for it: the Move Transactions sheet opens, because the rule for the name also moves a
+  third `Podil Bakery` row (78.00) that is already in Groceries by its code and that the line does
+  not show: "3 transactions move to "Dining"". Select Groceries for it instead and the two rows
+  move at once, with no sheet.
+- **Unchanged.** `Mokko Coffee` shows `Dining, 3 of 3`, `Varus` holds 3 rows with no chip, `KFC`
+  holds 4.
 
 ## Importing on a device
 

@@ -230,6 +230,9 @@ removeRecurringMarks: (key: string, marks: readonly RecurringMark[]) => Promise<
 
 ## The marked matrix (the contract of task 4/4 step 3)
 
+Rows that `1.4-recurring-visual-2 task 6/6` (one charge per period, spec 8.3) changes are listed with their `was` in that
+task's table; that table wins over a cell below.
+
 The same conventions; each row adds a stored entry for the world's name. A Mark names its period and, where the world holds more than one amount or none at that value, its stored amount; with none named, it stores the amount of the world's rows in their holding's currency (UAH unless the row says). Each table's No entry column is the result with no entry; every row also runs with no entry, and that result must hold. Hide, link and user-text-key flows are in "Marked flows" below. Line is the recurrence line. "marked" means `marks` is set; a detected series beside it has none. A world's rows outside the Expected series are in no series unless it says so. Stopped uses the monthly cutoff of 26 Sep 2026 unless the period differs.
 
 Amount chain worlds. Each cell is hand-walked by spec 5.2, 5.3, 6, 7 and 8.2; the developer re-reads any cell a pin disagrees with and reports it, never edits to green.
@@ -749,6 +752,9 @@ previous one's tip in that order. Task 5/5 is the track's design consistency rev
 floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base. Scope is the three items, the
 final Q5 ruling and the review only.
 
+**M is 6 since 2026-11-06** (was 5): task 6/6 is the user bug of DEPLOY 4 (spec 8.3). Tasks 1/5, 2/5, 3/5 and 5/5 merged
+under those names and keep them; read them as N/6.
+
 **Run-log gaps:** these sets close none and leave all open; none names the recurring screens. Nearest, left open:
 `20261103T2049-kiko-1-4-light-scheme-2/1` and `20261104T1734-kiko-1-4-light-scheme/1` (dark look owed on a device; this
 round's device call can cover the recurring screens in dark).
@@ -966,7 +972,261 @@ topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its 
 - [ ] **step 3/3 Ready.** The track's final READY FOR VERIFY, label `1.4-recurring-visual-2-task-5`, names
   `.superpowers/sdd/1.4-recurring/design-review-1.4-recurring.md` and the fix set's sha (or "no finding").
 
+### 1.4-recurring-visual-2 task 6/6: one charge per period in a marked chain (user bug, DEPLOY 4)
+
+**Spec:** 8.3 (the rule, the anchor, the dropped charge, the form, the `was` table). **Base:** 5ef73606a, or the branch tip
+when the set starts (re-grep every symbol below on it; no line numbers here). **Run-log gaps:** closes none, leaves all open;
+none names the marked chain. **Files (floor 12; mutable floor 4: `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
+`recurring-mark-field.component.tsx`):** those four, `marked-series.test.ts`, `src/test-support/marked-series-chain-worlds.ts`,
+`src/test-support/marked-series-worlds.ts`, `use-row-mark.test.tsx`, `recurring-mark-field.component.test.tsx`,
+`row-recurrence.test.ts`, the suite that pins the Marked flows' "99 x10, one 119 ... yearly pick on the 119 row" (grep
+`recurring-series.screen.marked.test.tsx` first), and kiko-domain's mark rules (drift step). No migration, no column, no text
+key, no seed: no 1.2-upgrade world is touched. **Not "existing suites green unchanged":** each edit below is named with its
+`was`; any other edited expectation is reported, not made. `detection.test.ts` and its matrix stay unedited (detection's
+output does not change).
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection: one definition of the slot rule (spec 8.3)
+export const onePerSlotOf: (
+  charges: readonly Charge[], // folded, oldest first
+  period: RecurringPeriod,
+  storedAmounts: readonly number[],
+) => { kept: Charge[]; dropped: Charge[] }; // kept oldest first
+
+// @kiko/recurring/marked-series: was (charges: { amountMinorUnits }[], marks, amountMinorUnits, currency)
+export const markedChainOfAmount: (
+  charges: readonly Charge[], // one group's charges, unfolded; the function folds
+  marks: readonly RecurringMark[],
+  row: { id: string; amountMinorUnits: number }, // absolute
+  currency: Currency,
+) => { period: RecurringPeriod; marks: readonly RecurringMark[]; holdsRow: boolean } | null;
+```
+
+`onePerSlotOf` lives in `detection.ts` beside `slotPairOf`, with a step table `Record<RecurringPeriod, { slotDays;
+stepForward }>` whose weekly, monthly and yearly entries are `WEEKLY`'s, `MONTHLY`'s and `YEARLY`'s own fields, and every 3 / 6
+months `addMonths(time, 3 * n)` / `6 * n` with 3 / 6 times `AVERAGE_MONTH_DAYS`. A signed nearest-step helper (the
+`slotPairOf` candidates n - 1, n, n + 1 around the rounded signed day count, least `dayGapOf`, tie to the lower n) serves both
+the anchor's cost and each charge's slot; `slotPairOf` itself is not edited. Anchor, slot and tie exactly as spec 8.3's table
+(the newest 12 nearest-amount charges at most, so the anchor costs at most 144 steps). **Superseded 2026-11-07 by step 5/9:**
+no anchor; the floor, the near amount and the five keys of spec 8.3's redesigned table; the signature stays. In `marked-series.ts` one inner function
+builds a currency's chains: fold, `piecesOf`, the piece's charges, then `onePerSlotOf(pieceCharges, piece.period,
+piece.marks' amounts)`, returning the kept charges and the dropped ids. `chainsOfEntry` maps it (kept charges become the
+chain's `charges`, before `seriesOfChain`, so the count, list, totals, stopped read, date line and last charge all follow);
+`markedChainOfAmount` finds the chain whose span holds `row.amountMinorUnits` and sets `holdsRow` to "the row's id is not in
+the dropped ids" (a folded twin and a row outside the read stay held, as now). It now needs the charges' times and ids:
+`useRowMark` passes the group's `Charge[]` from `detection.chargeGroups` as they are (no `amountMinorUnits` map) and `{ id:
+row.id, amountMinorUnits: Math.abs(row.amountMinorUnits) }`; `row.id` joins that memo's deps. `RecurringMarkField`: when
+`chain?.holdsRow === false`, `selected` is `'none'` and the field is disabled; `writeMark` is unchanged. Update the doc comments
+of `markedSeriesOf` ("no day test") and `markedChainOfAmount` ("the fold is not needed") to the new rule.
+
+**Named edits, each with its `was` line in the qa commit body** (the qa re-walks every cell by spec 8.3 and reports any
+disagreement, never edits to green):
+
+| Pin | was | now |
+|---|---|---|
+| Marked matrix rows of spec 8.3's table (two detected series one chain; the same at one price; purchases in reach; period conflict; a month apart marked yearly; daily shop) in `marked-series-chain-worlds.ts` / `marked-series-worlds.ts` | spec 8.3 `was` column | spec 8.3 `now` column, walked exactly |
+| Property "never lets two consecutive amounts of a marked series differ by more than 1.25" | over the series' charges and marks | over the piece's charges and marks (kept and dropped): a dropped bridge may leave two kept amounts over 1.25 apart, the piece still holds them |
+| Property "equals the piece of amountPiecesOf for one mark on a charge" | the series' amount set equals the piece | the series' amounts are a subset of the piece, and a piece charge is out only when another charge of its slot is in |
+| Property "never leaves fewer charges on a day and amount than the largest count of one source" | kept >= the largest same-source count | no two kept charges of a marked series share a slot (the fold's own guard stays in `detection.test.ts`'s `foldTwins` pins; the qa names them, or reports none) |
+| "gives a deep-equal result for any row order and any mark order", "shares no charge between two shown series", "shows a detected series only when it shares no row with a marked one", spec 8.2's bridging rows | unchanged | unchanged: guards, each shown failing once by a scratch mutant of the tie's last key (drop the id) or of `detectedBesideMarked` |
+| `markedChainOfAmount` describe, its six cases | amount-only charges, an amount argument | `Charge` fixtures and a `row`; each result also states `holdsRow` |
+| Marked flow "99 x10, one 119, a detected 399 x10, marked at 99, a yearly pick on the 119 row" | the marked x11, yearly | as walked: if the 119 shares a slot with a 99, the field on it is disabled and no pick is possible (the flow pins that); else the pick and one per yearly slot |
+
+**M is 9 since 2026-11-07** (was 6): the reviewer measured three faults of the anchor rule (spec 8.3 `was: anchor`), so steps
+4/9 to 6/9 redo the rule without an anchor; the old steps 4/6 to 6/6 are now 7/9 to 9/9. The brief called the new pins "6b".
+
+- [x] **step 1/9 (kiko:qa): red pins.** Done: 0cc0c7adf. New rows, in the existing world tables and describes (no new file, no new helper
+  copy): worlds A, B, C, D from the debugger's scratch (`marked-same-month.scratch.test.ts`, path in the coordinator's brief)
+  as matrix rows with `markedSeriesOf`, `paidSoFarOf` (the "All paid so far" figure) and `rowRecurrenceOf` on the extra row;
+  the month-end drift world as a guard (green on the base; shown failing by a calendar-month mutant of `onePerSlotOf` once it
+  exists, or recorded in the step-3 review); one `markedChainOfAmount` case per world A and D with `holdsRow: false` on the
+  extra; one `recurring-mark-field` case: a dropped row reads "Not marked", is disabled, and a press writes nothing; one
+  property: no marked series holds two charges of one slot (random ledgers). Then the named edits above. Each red shown failing
+  on the base for the stated reason (counts in the report); `was` values copied from a base run, never typed. Commit
+  `test(recurring): one charge per period in a marked chain`. **Check:** `npx jest src/recurring/marked-series
+  src/recurring/row-recurrence src/recurring/use-row-mark src/screens/forms/transaction-form/recurring-mark-field
+  --maxWorkers=2`, output in a file; reds only where named.
+- [x] **step 2/9 (kiko:developer): the rule.** Done: a430a2b41, 4bd873420 (the anchor rule, superseded by step 5/9). The interfaces above, in `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
+  `recurring-mark-field.component.tsx`. No pin edited. Commit `fix(recurring): one charge per period in a marked chain`.
+  **Checks:** fast tier on write; `npx jest src/recurring src/screens/forms/transaction-form/recurring-mark-field
+  src/screens/settings/recurring-charges src/screens/settings/recurring-series src/navigation/settings-stack --maxWorkers=2`
+  (includes `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<set base>` (exit 3: say so, the
+  named set stands). **`check:dup`:** keep test growth small (rows in existing tables, one property); read the
+  `dup-ceilings.tsv` rows of the touched tests; a ceiling never rises; the Stop hook's medium tier runs it.
+- [x] **step 3/9 Review (kiko:reviewer).** Done: three HIGH and MEDIUM faults (spec 8.3 `was: anchor`), a missing direct
+  test of `onePerSlotOf` and a missing jittered-rhythm property; the form question (#4) is ruled in spec 8.3 "The tapped row".
+  Its brief was: diff from the set base. Top questions: is there one slot definition, used by both
+  `chainsOfEntry` and `markedChainOfAmount` (fix-divergent-twins)? Can the anchor sit on an extra (world C) or flip on row
+  order? Does any reader of the marked series still see a dropped charge (totals, stopped, last charge, date line, route)? Are
+  the test edits only the named ones, each with its `was`?
+- [x] **step 4/9 (kiko:qa): pins for the redesigned rule (the brief's "6b").** Done: 5b71f3943, re-pins bcffe67b7 (10 anchor-era pins in row-recurrence, recurring-series.screen.marked and the marks navigator). Base: the branch tip holding the spec commit
+  `docs(recurring): one charge per period without an anchor`. Spec 8.3's redesigned table and its `now` column are the
+  contract; re-grep every symbol. (a) A direct table test of `onePerSlotOf`: new file
+  `src/recurring/detection/detection.one-per-slot.test.ts` (the `detection.performance.test.ts` naming; `detection.test.ts`
+  stays unedited), one `it.each` table over plain `Charge` fixtures with `kept` ids and `dropped` ids per row: worlds A (at 100,
+  98, 102), B, C, D, month-end drift, reviewer 1 and its reverse, reviewer 2 bills (three taps) and FX, the 31st run, weekend
+  shifts, the paused month, weekly, yearly and every 6 months over m(12, 3, 199), 20 Dec and 15 Jan yearly, 7 Aug/7 Sep/7 Oct
+  every 3 months, Apple with purchases, and a near-amount boundary pair (`abs * 20 == stored` near, one minor unit more not).
+  (b) Reviewer worlds 1 to 3 also as `marked-series` matrix rows (count, last charge, `onDay`) in the existing world tables, and
+  world A at 102 with `markedChainOfAmount`'s `holdsRow: false` on the tapped 12 Oct row. (c) Properties in
+  `marked-series.test.ts` with `sweep` and `seededRandom` (no new helper): a jittered rhythm keeps every charge (monthly on a
+  day 1 to 28, each charge moved -6 to +6 days, 24 months, random skipped months, one amount; weekly with -1 to +1 days); the
+  result is deep-equal for any input order; no two kept charges sit half a step or less apart (this replaces step 1/9's "no
+  two kept charges share a slot"). Was values from a base run, never typed. Reds on the anchor rule shown failing for the
+  stated reason; guards green (the drift, bills at 1150). Commit `test(recurring): one charge per period without an anchor`.
+  **Check:** `npx jest src/recurring/detection/detection.one-per-slot src/recurring/marked-series src/recurring/use-row-mark
+  --maxWorkers=2`, output in a file; reds only where named. **`check:dup`:** a new test file over 1000 lines is a dup risk
+  (memory: new-test-file-over-1000-lines-dup-regression): keep it one table.
+- [x] **step 5/9 (kiko:developer): the rule without an anchor.** Done: ee963791b. `onePerSlotOf` in `detection.ts` per spec 8.3's table: sort by
+  time then id; the floor `daysBetween > slotDays / 2`; the near test in minor units; the five keys as one tuple compared key
+  by key; the DP scanning the past-floor predecessors within half a step of the latest one (`predecessorIndexesOf`;
+  spec 8.3 "The computation"); gap cost by `stepForward` and `dayGapOf` with k >= 1. Remove `anchorOf`, `signedSlotPairOf`,
+  `ANCHOR_CANDIDATES` if nothing else reads them (knip). Update the doc comments of `onePerSlotOf` and `markedSeriesOf` (no
+  "slot around one anchor"). Signature, `marked-series.ts`, `use-row-mark.ts` and the form unchanged. No pin edited. Commit
+  `fix(recurring): one charge per period without an anchor`. **Checks:** fast tier on write; `npx jest src/recurring
+  src/screens/forms/transaction-form/recurring-mark-field src/screens/settings/recurring-charges
+  src/screens/settings/recurring-series src/navigation/settings-stack --maxWorkers=2` (includes
+  `detection.performance.test.ts`), output in a file; add one case to the performance suite only if it has none with a dense
+  marked key (the daily shop's 500 rows marked monthly), its bound measured, not typed; `make jest-affected BASE=<step 4/9
+  commit>` (exit 3: say so).
+- [x] **step 6/9 Re-review (kiko:reviewer).** Done: APPROVE at bcffe67b7. Diff from step 3/9's tip. Top questions: does every world of spec 8.3's table
+  hold (the reviewer reruns its probe `p1.test.ts` against the new rule); is the DP's predecessor window exact (the
+  "within half a step of the latest past-floor one" argument; a 15,000-case brute force found 0 mismatches), or can it
+  miss a tie; does any reader still see a dropped charge; is the
+  tapped row dropped only where spec 8.3 "The tapped row" says?
+- [x] **step 7/9 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the no-anchor rule in the skill, spec and plan` commit. kiko-domain's mark rules ("A mark's chain ... The chain's
+  charges are the series"): the bullet a6a7a55aa added says "at most one charge per period slot"; reword it to the
+  redesigned rule (kept charges more than half a step apart, near amounts first, no anchor). Report the sha or "no drift
+  found".
+- [ ] **step 8/9 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-recurring-visual-2-task-6`
+  once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest. Mutation gates are paused by the
+  user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own base.
+- [ ] **step 9/9 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-6`. Device (next build):
+  the user's own marked series shows one charge a month; its count, "All paid so far", last charge and date line agree; the
+  extra rows read "Not marked" (disabled) in the form; a second same-vendor subscription, if the ledger holds one, shows as
+  its own row.
+
 ---
+
+### 1.4-recurring-visual-2 task 7/7: plain period lines without "Marked:"
+
+A marked series, or one with no day, shows the plain period line ("Weekly", "Monthly", "Yearly",
+"Every 3 months", "Every 6 months"); `recurringCharges.marked.*` is removed and
+`recurringCharges.markedEmptyHeading` stays. Texts: `.superpowers/sdd/1.4-recurring/texts-no-marked-prefix.md`.
+
+- Done: pins 9a5c67d38.
+- Done: code 3dcc36ccf.
+- Done: review APPROVE.
+- Done: minors 7125ce3b4.
+- Done: docs (the `docs(recurring): plain period lines without "Marked:" in the spec` commit).
+
+---
+
+### 1.4-recurring-visual-2 task 8/8: one row for a card switch between currencies
+
+**M is 8 since 2026-11-07** (was 7). **Spec:** section 19 (USER 2026-11-07, option B; 19.1 the `was` table, 19.2 the date
+test, 19.3 the joined row, 19.4 route, Back and hide, 19.5 totals, 19.6 the page, 19.7 the matrix, 19.8 the overnight
+defaults), and the pointers in 4, 5.4, 8.1, 9.3, 18.2, 18.3. **Base:** the branch tip holding the commit `docs(recurring): one
+row for a card switch between currencies`; re-grep every symbol below on it (no line numbers here). **Run-log gaps:** closes
+none, leaves all open; none names the recurring list. **Texts:** none. The "All paid so far" lines are stacked `MoneyText`s
+under the existing `recurringCharges.paidSoFar`, with no separator and no new key (spec 19.6); the developer adds no text.
+**Files (floor 12; mutable floor 4: `card-switch.ts`, `use-recurring-series.ts`, `recurring-groups.ts`,
+`recurring-series.screen.tsx`):** new `src/recurring/card-switch/{card-switch.ts,index.ts,card-switch.test.ts}`,
+`src/recurring/detection/detection.types.d.ts`, `use-recurring-series.ts` and `use-recurring-series.test.tsx`,
+`recurring-groups.ts` and `recurring-groups.test.ts`, `recurring-series.screen.tsx`, `recurring-series.styles.ts`,
+`recurring-series.screen.summary.test.tsx`, `recurring-series.screen.test.tsx`, `recurring-charges.screen.groups.test.tsx`, and
+kiko-domain's recurring rules (drift step). No migration, column, seed or text key: no 1.2-upgrade world is touched.
+**Not "existing suites green unchanged":** no expectation is known to change at 688d0349d (the two-currency worlds found, the
+marks navigator's "Apple" UAH and USD in `recurring-charges.screen.marked-flows.test.tsx` and the series screen's
+`netflix-9` USD fixture, run at the same time or through a mocked hook); the qa greps every `USD`/`EUR` world of the hook,
+list and series screen suites and of `src/test-support/marked-series*`, and any that now joins is a named edit with its `was`
+line; any other edited expectation is reported, not made. `detection.test.ts`, `detection.one-per-slot.test.ts` and
+`marked-series.test.ts` stay unedited (detection and marks do not change).
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection (detection.types.d.ts)
+export type SeriesPart = { id: string; currency: Currency; chargeIds: readonly string[] };
+// RecurringSeries gains, optional:
+//   parts?: readonly SeriesPart[]; // set only on a joined row, newest part first
+
+// @kiko/recurring/card-switch: spec 19.2 and 19.3
+export const cardSwitchesJoinedOf: (
+  detected: readonly RecurringSeries[], // the shown detected series; none is marked
+  chargeGroups: ChargeGroups, // reads each series' first charge time (the charge with id series.id)
+) => RecurringSeries[]; // sorted byNewestCharge
+
+// @kiko/recurring/recurring-groups: spec 19.6; paidSoFarOf is unchanged
+export const paidSoFarByCurrencyOf: (
+  series: RecurringSeries,
+  rows: readonly ChargeRow[],
+) => Money[]; // one per part, newest first; one for a series with no parts
+```
+
+`cardSwitchesJoinedOf` groups by `[merchantKey, period]`, and joins a group only when it has two or more series, no two share a
+currency, and, sorted by first charge time then id, each `startOfLocalDay(lastChargeTime)` is below the next one's
+`startOfLocalDay(first charge time)`; else the group's series pass through as they are. The joined row's fields exactly as spec
+19.3's table. `paidFromRowsById` takes `{ currency, chargeIds }` so `paidSoFarOf` and `paidSoFarByCurrencyOf` share it (one sum
+rule). In `useRecurringSeries` the detection memo also computes `cardSwitchesJoinedOf(detected, groups)`, and with nothing marked
+`series` is that array itself (a hide still hands the screens the array it handed them before); with marks, `series` is
+`cardSwitchesJoinedOf(detectedBesideMarked(detected, marked.series), groups)`. Update the hook's doc comment. In
+`seriesOfRoute`, `isOfRoute` also matches when any of `candidate.parts` holds the route's currency (spec 19.4); update its
+comment. The "All paid so far" value renders one `MoneyText` per `paidSoFarByCurrencyOf` entry in a right-aligned column (a new
+`recurring-series.styles.ts` key). `recurringGroupsOf`, `openSeries`, the list row and the hide writes are not edited.
+
+**Named edits:** none known at 688d0349d; the qa's grep above decides, each with `was` / `now` in its commit body.
+
+| Pin (new unless named) | was | now |
+|---|---|---|
+| `card-switch.test.ts`, one `it.each` table over spec 19.2's worlds (a card switch; a one-day gap; the same local day; an overlap; three currencies; an overlap in a chain of three; two series in one currency; two periods), each row's shown ids and parts | n/a (no join) | spec 19.2's result column |
+| Property in `card-switch.test.ts`: deep-equal output for any input order (`sweep`, `seededRandom`; no new helper) | n/a | holds |
+| Property: no charge id is in two shown series, and the shown ids are exactly the input's (nothing dropped) | n/a | holds |
+| Hook: a card-switch ledger gives one `series`; a marked UAH chain beside a later USD series gives the marked one and the USD one apart | two `series` | one; two |
+| Hook: a hide hands the same `series` array (the existing referential pin, if any, re-read on a joined world) | same array | same array |
+| `recurring-groups.test.ts`: a joined row counts once in its group and "Sum of last charges" (spec 19.5's 415 UAH, not 815) | 815 UAH over two rows | 415 UAH, one row |
+| `recurring-groups.test.ts`: `paidSoFarByCurrencyOf` gives `[50.00 USD, 2 000.00 UAH]` for the example, one `Money` for a plain series | n/a | as stated |
+| `recurring-charges.screen.groups.test.tsx`: the card-switch ledger shows one row (10.00 USD, the newest part's category group) and the total once | two rows, total of both | one row, total once |
+| `recurring-series.screen.summary.test.tsx`: the joined page lists both currencies' charges newest first, count = all, `recurring-series-summary-paid` holds "50.00 USD" and "2 000.00 UAH", in that order | n/a | as stated |
+| `recurring-series.screen.test.tsx`: the joined route opens by its id; a route on the old part's currency finds the joined row; after an overlap splits it, the route's fallback finds the one USD series; two candidates still give the neutral text | n/a | spec 19.4 |
+| A hide on a joined row (footer, with confirm) leaves no row of the key | two rows leave | one row leaves |
+
+Merge of next 851db0d18 at 2545ea4eb carried `scheme: 'dark'` into marked-series.test.ts:227.
+
+- [x] **step 1/6 (kiko:qa): red pins.** Done: 09a5e5332. The new rows above, in existing suites and world builders
+  (`src/test-support/recurring-ledger.ts`'s `monthly`), one new file only (`card-switch.test.ts`); it imports
+  `@kiko/recurring/card-switch`, so the qa commits a stub module exporting `cardSwitchesJoinedOf` as the identity
+  (memory: qa-no-red-commit-importing-missing-modules) and `paidSoFarByCurrencyOf` as `[paidSoFarOf(...)]`, both marked for
+  the developer. Each red shown failing on the base for the stated reason (counts in the report); guards (the overlap, the same
+  local day, the marked world, two in one currency) green on the base and each shown failing once by a scratch mutant (join
+  without the day test; join marked series). `was` values from a base run, never typed. Commit `test(recurring): one row for a
+  card switch between currencies`. **Check:** `npx jest src/recurring/card-switch src/recurring/use-recurring-series
+  src/recurring/recurring-groups src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2`,
+  output in a file; reds only where named. **`check:dup`:** rows in existing tables; read the touched tests' rows in
+  `scripts/checks/dup-ceilings.tsv`; a ceiling never rises.
+- [x] **step 2/6 (kiko:developer): the join.** Done: 076a5132a, registry 5043ae350. The interfaces above, in `detection.types.d.ts`, `card-switch.ts`,
+  `use-recurring-series.ts`, `recurring-groups.ts`, `recurring-series.screen.tsx`, `recurring-series.styles.ts`. No pin
+  edited; no text added. Commit `feat(recurring): one row for a card switch between currencies`. **Checks:** fast tier on write;
+  `npx jest src/recurring src/screens/settings/recurring-charges src/screens/settings/recurring-series
+  src/screens/forms/transaction-form/recurring-mark-field src/navigation/settings-stack --maxWorkers=2` (includes
+  `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<step 1/6 commit>` (exit 3: say so, the named
+  set stands); `npm run check:knip` reads the stub gone and `paidSoFarOf` still used.
+- [x] **step 3/6 Review (kiko:reviewer).** Done: APPROVE at 5043ae350; pin gaps 152e55b3c, nits ac8c3f4ec. Diff from the set base. Top questions: does any reader still count or sum an older
+  part (totals, group, category, stopped line, row amount)? Is the join order independent and all or nothing exactly as
+  spec 19.2 (the local-day test, distinct currencies, the first charge read from `ChargeGroups`)? Can a marked series or a
+  series a marked chain took ever join? Does the hook still hand the same `series` array after a hide? Is `seriesOfRoute`'s
+  parts match unable to pick another merchant's series? Are the test edits only the named ones?
+- [x] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the card switch join in the skill and plan` commit. kiko-domain's recurring rules: a series is one key and
+  currency in detection; the screens join a card switch (spec 19). Report the sha or "no drift found".
+- [ ] **step 5/6 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree>
+  1.4-recurring-visual-2-task-8` once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest.
+  Mutation gates are paused by the user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own base.
+- [ ] **step 6/6 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-8`. Device (next build): a
+  name paid from a UAH card then a USD card shows one row with the USD amount; its page lists both, "All paid so far" shows one
+  line per currency; a name paid in two currencies at the same time stays two rows. The overnight defaults of spec 19.8 go to
+  the user with the device call.
 
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
 
@@ -984,6 +1244,8 @@ topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its 
 | visual-2 task 3/5 | 1 (listed in its Files) |
 | visual-2 task 4/5 | VOID (merged into 2/5) |
 | visual-2 task 5/5 | the fix set's own files, measured |
+| visual-2 task 6/6 | 4 (listed in its Files) |
+| visual-2 task 8/8 | 4 (listed in its Files; `recurring-series.styles.ts` may make it 5: `make mutable` decides) |
 
 Mutation gates are paused by the user; this table is for a lift.
 

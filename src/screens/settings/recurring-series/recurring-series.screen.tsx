@@ -28,7 +28,6 @@ import LargeTitleHeading, {
 } from '@kiko/design-system/components/large-title-heading';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import Divider from '@kiko/design-system/components/divider';
-import { paidSoFarOf } from '@kiko/recurring/recurring-groups';
 import { type FC, useCallback, useMemo, useState } from 'react';
 import { recurrenceLine } from '@kiko/recurring/recurrence-text';
 import type { RecurringSeries } from '@kiko/recurring/detection';
@@ -42,6 +41,7 @@ import { FlatList, type FlatListProps, Pressable } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { paidSoFarByCurrencyOf } from '@kiko/recurring/recurring-groups';
 import { useRecurringSeries } from '@kiko/recurring/use-recurring-series';
 import { useFloatingFooterEnd } from '@kiko/design-system/floating-footer';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -69,15 +69,19 @@ const spanHolds = (span: RecurringSeries['markedSpan'], amountMinorUnits: number
 // step would guess. Without one: the marked series holding its `seriesId`; then the detected series
 // by its id, when it also has the route's merchant key and currency (an id can pass to another
 // merchant's series when a charge is renamed); on a miss (an older import moved the earliest
-// charge) the one detected series with the same key, currency and period. With none or several
-// there is no series: a guess could show another merchant's charges.
+// charge) the one detected series with the same key, currency and period. A joined row (a card
+// switch) holds the route's currency in its own or in any of its parts, as the route may have been
+// opened on a part before the join. With none or several there is no series: a guess could show
+// another merchant's charges.
 const seriesOfRoute = (
   detected: readonly RecurringSeries[],
   marked: readonly RecurringSeries[],
   { seriesId, merchantKey, currency, period, markedAmountMinorUnits }: RouteParams,
 ): RecurringSeries | undefined => {
   const isOfRoute = (candidate: RecurringSeries): boolean =>
-    candidate.merchantKey === merchantKey && candidate.currency === currency;
+    candidate.merchantKey === merchantKey &&
+    (candidate.currency === currency ||
+      (candidate.parts ?? []).some((part) => part.currency === currency));
 
   if (markedAmountMinorUnits !== undefined) {
     return marked.find(
@@ -362,7 +366,13 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
                           {
                             key: 'paid',
                             label: t('recurringCharges.paidSoFar'),
-                            value: <MoneyText money={paidSoFarOf(series, charges)} />,
+                            value: (
+                              <Box style={styles.paidLines}>
+                                {paidSoFarByCurrencyOf(series, charges).map((money) => (
+                                  <MoneyText key={money.currency} money={money} />
+                                ))}
+                              </Box>
+                            ),
                             testID: 'recurring-series-summary-paid',
                           },
                         ]),
