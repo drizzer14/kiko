@@ -82,6 +82,27 @@ const WORLDS: { title: string; rows: LedgerRow[]; detected: number; shown: Shown
     ],
   },
   {
+    title: 'the same local day on two UTC days, which counts as an overlap',
+    rows: [
+      ...paid('uah', 'card', 5, [2026, 5], { amount: 400, hour: 2, minute: 0 }),
+      ...paid('usd', 'usd', 5, [2026, 9], { hour: 10, minute: 0 }),
+    ],
+    detected: 2,
+    shown: [
+      { id: 'usd-4', currency: 'USD' },
+      { id: 'uah-4', currency: 'UAH' },
+    ],
+  },
+  {
+    title: 'two local days on one UTC day, which join',
+    rows: [
+      ...paid('uah', 'card', 5, [2026, 5], { amount: 400, hour: 10, minute: 0 }),
+      ...paid('usd', 'usd', 5, [2026, 9], { day: 16, hour: 2, minute: 0 }),
+    ],
+    detected: 2,
+    shown: [{ id: 'uah-4', currency: 'USD', partIds: ['usd-4', 'uah-4'] }],
+  },
+  {
     title: 'an overlap of June and July',
     rows: [
       ...paid('uah', 'card', 7, [2026, 7], { amount: 400 }),
@@ -190,12 +211,33 @@ const HOLDING_OF_PREFIX = [
   ['eur', 'eur'],
 ] as const;
 
-// Two or three currencies of one name, each a run of three to five months ending anywhere between
-// May and October, so a seed gives a card switch, an overlap or a mix of both.
-const randomRowsOf = (random: Random): LedgerRow[] =>
-  HOLDING_OF_PREFIX.slice(0, 2 + Math.floor(random() * 2)).flatMap(([prefix, holdingId]) =>
-    paid(prefix, holdingId, 3 + Math.floor(random() * 3), [2026, 5 + Math.floor(random() * 6)]),
-  );
+const NEWEST_MONTH_INDEX = 2026 * 12 + 9;
+
+const monthOfIndex = (index: number): Month => [Math.floor(index / 12), (index % 12) + 1];
+
+// Two or three currencies of one name, each a run of three to five months, laid end to end from
+// the newest backwards: a part ends a month or two before the next begins (a card switch), or
+// one in four ends in the month the next begins (an overlap), so most seeds join.
+const randomRowsOf = (random: Random): LedgerRow[] => {
+  const currencies = HOLDING_OF_PREFIX.slice(0, 2 + Math.floor(random() * 2));
+  let end = NEWEST_MONTH_INDEX - Math.floor(random() * 3);
+
+  return currencies
+    .map(() => {
+      const count = 3 + Math.floor(random() * 3);
+      const newest = end;
+
+      end = newest - count + 1 - (random() < 0.25 ? -1 : 1 + Math.floor(random() * 2));
+
+      return { count, newest };
+    })
+    .reverse()
+    .flatMap(({ count, newest }, index) => {
+      const [prefix, holdingId] = HOLDING_OF_PREFIX[index];
+
+      return paid(prefix, holdingId, count, monthOfIndex(newest));
+    });
+};
 
 describe('cardSwitchesJoinedOf, over random worlds', () => {
   it.each(sweep(SEEDS))('gives the same rows for any input order (seed %s)', (seed) => {
