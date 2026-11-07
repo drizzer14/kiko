@@ -2507,7 +2507,7 @@ rules:
       window's interface style is the one source of the scheme, and `Appearance.setColorScheme`
       is the only allowed switch — see kiko-design-system's "Native chrome follows the window".
     metadata:
-      fix: "Drop the call and leave the scheme to the window. The only allowed switch is `Appearance.setColorScheme`, called only by the set 6 appearance control."
+      fix: "Drop the call and leave the scheme to the window. The only allowed switch is `Appearance.setColorScheme`, called only by the appearance setting's code."
       skill: "kiko-design-system › Native chrome follows the window"
     pattern-either:
       - pattern: UnistylesRuntime.setTheme(...)
@@ -2553,8 +2553,7 @@ rules:
               regex: "(?i)^[\"'`](dark|light)[\"'`]$"
           - focus-metavariable: $V
       - patterns:
-          - pattern-either:
-              - pattern: "{ ..., headerBlurEffect: $V, ... }"
+          - pattern: "{ ..., headerBlurEffect: $V, ... }"
           - metavariable-regex:
               metavariable: $V
               regex: "(?i)^[\"'`][A-Za-z]*(dark|light)[\"'`]$"
