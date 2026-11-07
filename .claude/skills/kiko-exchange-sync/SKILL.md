@@ -321,7 +321,8 @@ than restated here:
   a Pay, Transfer or Earn row on Spot never moves the capital forward pass, and
   an account with no capital row starts at the floor. The forward pass starts at
   `max(floor, cursor)`. The re-scan covers `[base, forward start)` with
-  `base = max(floor, min(end - window, forward start - RESYNC_OVERLAP_MS))`,
+  `base = max(floor, min(end - window, forward start - overlap))`, where overlap is
+  `RESYNC_OVERLAP_MS` for Binance and `overlapMsOf` for Bybit (see "Bybit balance sync"),
   kept in its own mark (`rescan`, one per walk entry; read `WalkMarks` in
   `exchange/walk-state/walk-state.ts`); it stores the floor
   when finished, and a mark behind the base starts a new pass.
@@ -1048,8 +1049,9 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
 
 ## Bybit balance sync — notes, set-aside coins, cooling
 
-Status: sets 5 and 6 of 1.4-bybit (the capital and transfer walks) are in; later sets extend this
-section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list from here.
+Status: sets 5, 6 and 9 of 1.4-bybit are in (the capital, transfer, log and convert walks); later
+sets extend this section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list
+from here.
 
 - `readCursorSpan` (`bybit.cursor-span.ts`) counts a refused call (`recordBybitFailedCall`) and
   rethrows it. The reader does not sort rows; the walk sorts them by time, then key
@@ -1077,9 +1079,27 @@ section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list
   `src/crypto-sync/exchange/walk/records.ts`). Binance `earn-page-drift` is the opposite: it stops
   the run.
 - Deposit type 50 (`NOT_CREDITED_DEPOSIT_TYPE`) is final and owes nothing.
-- `CAPTION_WALKS` for bybit
-  (`src/screens/account-detail/crypto-sync-section/binance-history-status.ts`) is the capital and
-  transfer walks.
+- The caption's walks per provider are `CAPTION_WALKS` in
+  `src/screens/account-detail/crypto-sync-section/binance-history-status.ts`; read the Bybit list
+  there.
+- The log walk (`bybit.log-history.ts`) rounds a row's amount with `rounded-row`, and writes the
+  patch kinds `logKinds` (the kinds seen) and `denseSpans` (a span too dense to read, with its
+  mark). Its forward pass splits a span down to `LOG_MIN_SPLIT_MS`; a pending, re-scan or point
+  read splits to `LOG_REREAD_MIN_SPLIT_MS` (1 ms), so the re-read of a burst that a forward span
+  edge split ends (PLANNER CALL 123). The convert walk (`bybit.convert-history.ts`) has no
+  window and reads by page index; it also rounds with `rounded-row`.
+- A Bybit walk owes the overlap day behind its forward start only when the cursor was read within
+  one re-scan window of its time: `overlapMsOf` in `src/crypto-sync/bybit/bybit.walk-run.ts`
+  compares the mark `cursorReadAt` (`WalkMarks` in
+  `src/crypto-sync/exchange/walk-state/walk-state.ts`) with the cursor. A missing mark owes the
+  day. Only Binance keeps the fixed `RESYNC_OVERLAP_MS`.
+- The caption skips a Bybit range with no series and no scope that lies inside the re-scan window
+  up to the cursor (`isBybitRescannedRange`, `BYBIT_RESCAN_WINDOWS_MS` in
+  `src/crypto-sync/bybit/bybit.rescan-window.ts`). A stop's range, a range older than the window
+  and every Binance range still show it.
+- A COMPUTED call count in the spec's convergence tables is the windows plus the pages of a short
+  last window, not a full last window and not an overlap read. Derive it from the code before you
+  pin a floor, and pin a MEASURED value only after a run.
 
 - The provider (`bybit.provider.ts`) returns state patches. Patch kind `balanceNotes`
   (`src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`, `withBalanceNotes`): a good read

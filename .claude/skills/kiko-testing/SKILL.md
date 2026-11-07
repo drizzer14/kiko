@@ -209,6 +209,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - After a hook is extracted out of a screen, a green suite on the hook alone does not prove the
   screen wires every one of the hook's outputs to a prop. Add a screen-level integration test (or
   a manual "does every hook field reach a prop" pass) in the SAME change as the extraction.
+- A walk law or call-count table: derive each floor from the code (windows plus the pages of a
+  short last window), never copy it from a measure; pin a MEASURED value only after a run. A fix
+  can hide the red of an earlier fix, so keep a twin test that fails alone beside each fix (see
+  the 3-day twin in `src/crypto-sync/bybit/bybit.convergence.test.ts`).
 
 ## Mutant-aware tests
 
@@ -401,7 +405,11 @@ passes for ever once a reword changes the text it hunts. Derive that text
 from the i18n key (`i18n.t(...)`) or an exported constant, never a typed
 fragment. Add a positive twin that finds the same text in the case where
 it must be there, so the matcher is proven to match. After any reword,
-grep the old fragment across `src/` and the tests.
+grep the old fragment across `src/` and the tests. An absence assert also
+never pins a fixed date or value it does not need: match the key text
+before the `{{date}}` slot with a partial match, so a line with another
+date is still caught (the dense-line key in
+`src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.bybit.test.tsx`).
 
 ## A subset matcher never holds a Set or a Map
 
