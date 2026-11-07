@@ -1,6 +1,6 @@
 import maybe, { foldMap } from 'fnts/maybe';
+import { useCallback, useMemo, useState } from 'react';
 import type { CellRange, CellRow } from '@kiko/statistics/cell-rows';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CellRowsSheetProps } from './cell-rows-sheet.props';
 
@@ -12,6 +12,11 @@ type Opened<Selector> = {
   range: CellRange;
   isOpen: boolean;
 };
+
+// Compared row by row, not by array identity: a caller whose `rowsOf` changes on every render hands
+// a new array each time, and a state set on each of those renders would never settle.
+const sameRows = (first: readonly CellRow[], second: readonly CellRow[]) =>
+  first.length === second.length && first.every((row, index) => row === second[index]);
 
 /**
  * What a table holds to show the rows behind a cell. It holds which cell was opened (its selector
@@ -45,13 +50,13 @@ export const useCellRowsSheet = <Selector>(
     [visible, opened, rowsOf],
   );
 
-  const lastRows = useRef<readonly CellRow[]>([]);
-  useEffect(() => {
-    if (liveRows) {
-      lastRows.current = liveRows;
-    }
-  }, [liveRows]);
-  const rows = liveRows ?? lastRows.current;
+  const [shownRows, setShownRows] = useState<readonly CellRow[]>([]);
+
+  if (liveRows && !sameRows(liveRows, shownRows)) {
+    setShownRows(liveRows);
+  }
+
+  const rows = liveRows ?? shownRows;
 
   const sheet = useMemo<Omit<CellRowsSheetProps, 'baseCurrency'> | undefined>(
     () => foldMap(maybe(opened), ({ title }) => ({ visible, title, rows, onDismiss: dismiss })),

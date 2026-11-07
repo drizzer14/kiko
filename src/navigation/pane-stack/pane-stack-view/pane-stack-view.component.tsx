@@ -22,10 +22,10 @@ type LayerStackProps = Pick<PaneStackViewProps, 'navigation' | 'describe'> & {
   slice: LayerSlice;
 };
 
-// The layer's stack is told no fixed margin in any pose, so the margin write that the
-// react-native-screens patch makes stays inert on it. With the margin the side-bar pose gave it,
-// the layer's bar went see-through across its whole width during a held swipe back on the Duo
-// unfolded in landscape; the panes keep the margin they are told.
+// The pages of the layer over both panes need no fixed content margin, so its stack is told 0 in
+// every pose, which keeps the react-native-screens patch's margin write inert on it. With the
+// margin the side-bar pose gave it, the device showed the layer's bar go see-through during a
+// swipe back on the unfolded Duo in landscape; the panes keep the margin they are told.
 const LayerStack: FC<LayerStackProps> = ({ slice, navigation, describe }) => {
   return (
     <FixedContentMarginContext.Provider value={0}>
