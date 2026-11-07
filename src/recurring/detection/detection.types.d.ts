@@ -16,6 +16,9 @@ export type RecurringMark = {
   currency: Currency;
   amountMinorUnits: number;
   period: RecurringPeriod;
+  // The row the mark was tapped on, kept in its chain; absent on every mark written before. Never
+  // part of the mark's identity: `isSameChain`, the dedupe, `compareMarks` and the removal skip it.
+  transactionId?: string;
 };
 
 export type Recurrence =

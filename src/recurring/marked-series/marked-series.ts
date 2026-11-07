@@ -67,8 +67,12 @@ const piecesOf = (amounts: readonly number[], marks: readonly RecurringMark[]): 
     },
   );
 
+const tappedIdsOf = (marks: readonly RecurringMark[]): Set<string> =>
+  new Set(marks.flatMap(({ transactionId }) => foldMap(maybe(transactionId), (id) => [id]) ?? []));
+
 // The one builder of a currency's chains, for the series and for the form's row read, so both
-// drop the same charges: the amount cut picks the piece, then one charge a period stays.
+// drop the same charges: the amount cut picks the piece, then one charge a period stays, the
+// marks' tapped rows first.
 const chainsOfCharges = (
   groupCharges: readonly Charge[],
   marks: readonly RecurringMark[],
@@ -83,6 +87,7 @@ const chainsOfCharges = (
       charges.filter(({ amount }) => amount >= piece.lowest && amount <= piece.highest),
       piece.period,
       piece.marks.map(({ amountMinorUnits }) => amountMinorUnits),
+      tappedIdsOf(piece.marks),
     );
 
     return { ...piece, charges: kept, droppedIds: dropped.map(({ id }) => id) };
@@ -119,9 +124,9 @@ const seriesOfChain = (
  * The charge chain of every stored amount, one series per chain that holds a charge. A mark reads
  * only the group of its own key and currency, so no amount compares across currencies. A stored
  * amount alone in its piece selects nothing and comes back as a chain without charges. A chain
- * keeps charges more than half a period apart, near amounts first, so a second charge of the
- * same month stays out of the series. The output order does not depend on the order of the rows
- * or of the marks.
+ * keeps charges more than half a period apart, the rows its marks were tapped on first, then
+ * near amounts, so a second charge of the same month stays out of the series. The output order
+ * does not depend on the order of the rows or of the marks.
  */
 export const markedSeriesOf = (
   chargeGroups: ChargeGroups,
