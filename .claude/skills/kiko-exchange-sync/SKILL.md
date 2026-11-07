@@ -1096,7 +1096,12 @@ from here.
 - The caption skips a Bybit range with no series and no scope that lies inside the re-scan window
   up to the cursor (`isBybitRescannedRange`, `BYBIT_RESCAN_WINDOWS_MS` in
   `src/crypto-sync/bybit/bybit.rescan-window.ts`). A stop's range, a range older than the window
-  and every Binance range still show it.
+  and every Binance range still show it. A holding that capital, transfer or log cannot find
+  rejects the run (`placeBybitWindowRows`, `BybitHoldingMissingError` in
+  `src/crypto-sync/bybit/bybit.walk-run.ts`): nothing of the span commits and no mark moves, so
+  it never leaves such a range. Convert keeps `placeBybitRows`, because its `advance` tags the
+  stop. Binance keeps its `capital-holding-missing` and `transfer-holding-missing` stops (the
+  Binance capital and transfer walk bullets).
 - A COMPUTED call count in the spec's convergence tables is the windows plus the pages of a short
   last window, not a full last window and not an overlap read. Derive it from the code before you
   pin a floor, and pin a MEASURED value only after a run.
