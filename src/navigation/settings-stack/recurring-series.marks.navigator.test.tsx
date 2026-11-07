@@ -330,7 +330,7 @@ describe.each<[string, LayoutMode]>([
 });
 
 describe('Settings stack: a fold with a marked series and its form open', () => {
-  it('keeps the route and its stored amount, and Back shows the marked x1, yearly', async () => {
+  it('keeps the route and its stored amount, and Back shows the marked x2, yearly', async () => {
     // The 119 stands alone in August, a month with no 99, so the monthly series holds its row.
     const withoutAugust = cheap(10).filter(({ id }) => id !== 'cheap-2');
 
@@ -364,8 +364,11 @@ describe('Settings stack: a fold with a marked series and its form open', () => 
     expect(seriesParams()).toEqual(routeBefore);
 
     await goBack();
-    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 1 });
+    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 2 });
 
+    expect(view.getByTestId('recurring-series-charge-cheap-0')).toBeTruthy();
+    expect(view.getByTestId('recurring-series-charge-cheap-9')).toBeTruthy();
+    expect(view.queryByTestId('recurring-series-charge-rise')).toBeNull();
     expect(view.queryByTestId('recurring-series-charge-dear-0')).toBeNull();
   });
 });
