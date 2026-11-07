@@ -1,4 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
+import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import {
@@ -61,6 +63,14 @@ const LABELS_IN_UKRAINIAN = [
 ] as const;
 
 describe('TablePeriodField', () => {
+  it('caps the trigger at the select trigger width, so a long label cannot push the layout', async () => {
+    const { getByTestId } = await setup();
+
+    expect(StyleSheet.flatten(getByTestId('period').props.style).maxWidth).toBe(
+      darkTheme.layout.selectTriggerMaxWidth,
+    );
+  });
+
   it('shows this year as the picked period', async () => {
     const { getByTestId, getByText } = await setup();
 

@@ -61,6 +61,7 @@ const TablePeriodField: FC<TablePeriodFieldProps> = ({
       }
       labels={labels}
       placeholder={t('tables.period.label')}
+      capped
       testID={testID}
     />
   );

@@ -36,6 +36,9 @@ export type SelectFieldProps<Option extends string> = {
   placeholder: string;
   required?: boolean;
   disabled?: boolean;
+  // Caps the trigger at the shared select trigger width (`FieldTrigger`'s `capped`), for a field
+  // whose value is a short phrase. Omitted leaves the trigger as wide as its column.
+  capped?: boolean;
   // Same contract as every other field: FieldTrigger renders this under the
   // field (reflow, not reserve) and tints the label negative.
   error?: string;

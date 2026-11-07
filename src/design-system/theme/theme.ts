@@ -77,9 +77,13 @@ const iconSizes = {
 // stretches a form line across the screen; `hairline` is the flat-window divider.
 // `sheetMaxWidth` is the width a BottomSheet card narrows to on a two-pane display: 540 pt is
 // UIKit's default form-sheet width, the width an iPad presents a sheet at.
+// `selectTriggerMaxWidth` is the widest a capped select trigger grows (a field whose label is one
+// short phrase, such as a period): 240 pt holds the longest such label at the default text size on
+// one line, and a larger Dynamic Type size wraps it inside the cap instead of widening the field.
 const layout = {
   paneMaxWidth: 600,
   sheetMaxWidth: 540,
+  selectTriggerMaxWidth: 240,
   hairline: StyleSheet.hairlineWidth,
 } as const;
 

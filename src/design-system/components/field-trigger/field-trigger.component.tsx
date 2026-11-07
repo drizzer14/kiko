@@ -34,12 +34,18 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   hideLabel = false,
   error,
   invalid = false,
+  capped = false,
   testID,
 }) => {
   const { theme } = useUnistyles();
   // A defined, non-empty `error` IS the invalid signal — same contract as
   // TextField's own `hasError` (see text-field.component.tsx).
   const hasError = error !== undefined && error !== '';
+  const valueText = (
+    <Text variant="body" tone={valueTone}>
+      {value}
+    </Text>
+  );
 
   return (
     <Box gap={1}>
@@ -51,6 +57,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}
+        style={capped && styles.fieldCapped}
         testID={testID}
       >
         <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
@@ -74,9 +81,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
             </Text>
           )}
 
-          <Text variant="body" tone={valueTone}>
-            {value}
-          </Text>
+          {capped ? <Box style={styles.valueCapped}>{valueText}</Box> : valueText}
 
           {trailing}
         </Box>
