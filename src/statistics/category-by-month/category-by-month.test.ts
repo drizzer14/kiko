@@ -40,6 +40,7 @@ const byCategory = (
     rateTable: {},
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
+    scheme: 'dark',
     ...overrides,
   });
 
@@ -71,6 +72,7 @@ describe('buildCategoryByMonth', () => {
         baseCurrency: 'UAH',
         defaultCategoryKey: 'other',
         excludedTransactionIds: ledger.excludedTransactionIds,
+        scheme: 'dark',
       });
 
       for (const row of rows) {
@@ -281,6 +283,7 @@ describe('buildCategoryByMonth', () => {
         baseCurrency: 'UAH',
         defaultCategoryKey: 'other',
         excludedTransactionIds: ledger.excludedTransactionIds,
+        scheme: 'dark',
       });
       const { rows, allTotal } = byCategory(ledger);
 
@@ -372,6 +375,7 @@ describe('buildCategoryByMonth', () => {
         rateTable: {},
         baseCurrency: 'UAH',
         defaultCategoryKey: 'other',
+        scheme: 'dark',
       }).map((slice) => slice.key);
 
     it('lists a category that a month spends on and its period nets out', () => {
@@ -385,6 +389,7 @@ describe('buildCategoryByMonth', () => {
           baseCurrency: 'UAH',
           defaultCategoryKey: 'other',
           excludedTransactionIds: ledger.excludedTransactionIds,
+          scheme: 'dark',
         }),
       ).toEqual([]);
       expect(keysOf([payment, returned])).toEqual(['groceries']);
@@ -403,6 +408,7 @@ describe('buildCategoryByMonth', () => {
           rateTable: {},
           baseCurrency: 'UAH',
           defaultCategoryKey: 'other',
+          scheme: 'dark',
         }),
       ).toEqual([]);
     });

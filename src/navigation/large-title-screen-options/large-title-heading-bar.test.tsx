@@ -5,6 +5,7 @@ import {
 } from '@react-navigation/native-stack';
 import { render } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 
 import { largeTitleHeadingOptions, largeTitleRestoredOptions } from './large-title-screen-options';
 
@@ -19,19 +20,6 @@ type BarProps = {
   largeTitle: boolean | undefined;
 };
 
-type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
-
-const headerConfigsOf = (node: RenderedNode | string | null): BarProps[] => {
-  if (node === null || typeof node === 'string') {
-    return [];
-  }
-
-  return [
-    ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as BarProps] : []),
-    ...(node.children ?? []).flatMap(headerConfigsOf),
-  ];
-};
-
 // The bar props native-stack derives from the merged options and hands to react-native-screens,
 // which turns them into the UIKit bar (translucent, background, shadow). They are read from the
 // header config of a rendered stack.
@@ -44,9 +32,9 @@ const barProps = async (options: NativeStackNavigationOptions): Promise<BarProps
     </NavigationContainer>,
   );
 
-  const tree = view.toJSON() as RenderedNode | RenderedNode[] | null;
-  const roots = Array.isArray(tree) ? tree : [tree];
-  const [{ translucent, backgroundColor, hideShadow, largeTitle }] = roots.flatMap(headerConfigsOf);
+  const [{ translucent, backgroundColor, hideShadow, largeTitle }] = headerConfigsIn<BarProps>(
+    view.toJSON(),
+  );
 
   // Only the props that make up the bar's look: the rest holds React elements, which an
   // equality check cannot walk.

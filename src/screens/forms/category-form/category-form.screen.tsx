@@ -10,6 +10,10 @@ import {
 } from '@kiko/categories/category-display';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
+import {
+  resolveCanonicalCategoryColor,
+  resolveCategoryColor,
+} from '@kiko/statistics/category-breakdown';
 import type { TimeClock } from '@kiko/dates';
 import { settingsRepo } from '@kiko/settings';
 import { accountsRepo } from '@kiko/accounts';
@@ -35,9 +39,9 @@ import ColorPicker from '@kiko/design-system/components/color-picker';
 import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
-import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { isSameCategory, prepareRules } from '@kiko/categories/category-rules';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -139,6 +143,7 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   const isEdit = categoryKey !== undefined;
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const scheme = useActiveColorScheme();
   const clock = useTimeClock();
   const { initialDraft, saveDraft } = useDraftParam<CategoryFormDraft>(navigation, route);
   const start = initialDraft ?? BLANK_DRAFT;
@@ -198,10 +203,10 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   );
 
   const trimmedName = name.trim();
-  const previewColor = resolveCategoryColor(
-    color,
-    categoryKey ?? (trimmedName || NEW_CATEGORY_PREVIEW_KEY),
-  );
+  const colorKey = categoryKey ?? (trimmedName || NEW_CATEGORY_PREVIEW_KEY);
+  // The picker rings the canonical (dark) hex; only the tile paints the scheme's display hex.
+  const canonicalColor = resolveCanonicalCategoryColor(color, colorKey);
+  const previewColor = resolveCategoryColor(color, colorKey, scheme);
 
   // The stack leaves an existing category's title empty so the raw route name never shows; the
   // category's own name fills it once it is read. A new category keeps the stack's "New Category".
@@ -364,7 +369,12 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
           }
         />
 
-        <ColorPicker label={t('forms.fields.color')} value={previewColor} onSelect={setColor} />
+        <ColorPicker
+          label={t('forms.fields.color')}
+          value={canonicalColor}
+          swatchSet="category"
+          onSelect={setColor}
+        />
 
         {isEdit && (
           <>

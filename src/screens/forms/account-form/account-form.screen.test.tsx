@@ -1,5 +1,5 @@
-import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
+import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -11,9 +11,15 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import type { accountsRepo } from '@kiko/accounts';
 import { darkTheme } from '@kiko/design-system/theme';
+import { entityColorsLight } from '@kiko/design-system/palette';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
+import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
@@ -1552,6 +1558,47 @@ describe('AccountFormScreen color follows kind until dirty', () => {
   });
 
   it('persists the manually picked color on a cash account', async () => {
+    const { getByLabelText, navigation } = await renderCashForm();
+
+    await fireEvent.changeText(getByLabelText('Initial value'), '100');
+    await fireEvent.press(getByLabelText('Color violet'));
+    await pressSave(navigation.setOptions);
+
+    expect(mockCreateCashAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Wallet', color: entityColors.violet }),
+    );
+  });
+});
+
+describe('AccountFormScreen in the light world', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCreateCashAccount.mockResolvedValue(createdCashAccount);
+    registerLightThemeFirst();
+  });
+
+  afterEach(() => {
+    restoreThemeOrder();
+  });
+
+  it('a light account form paints the tile through the entity map', async () => {
+    const { getByTestId } = await renderForm();
+
+    expect(glyphTintsWithin(getByTestId('holding-identity-name-field'))).toEqual([
+      entityColorsLight.white,
+    ]);
+  });
+
+  it('paints the swatches light and rings the default kind color', async () => {
+    const { getByLabelText, getByTestId } = await renderForm();
+
+    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
+    expect(StyleSheet.flatten(getByTestId('color-swatch-white').props.style).backgroundColor).toBe(
+      entityColorsLight.white,
+    );
+  });
+
+  it('a form opened in light saves the canonical dark hex', async () => {
     const { getByLabelText, navigation } = await renderCashForm();
 
     await fireEvent.changeText(getByLabelText('Initial value'), '100');

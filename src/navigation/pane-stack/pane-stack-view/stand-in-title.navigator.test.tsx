@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, Text } from 'react-native';
+import { headerConfigsIn } from '@kiko/test-support/header-configs';
 import type { LayoutMode, VerticalBarEdge } from '@kiko/display-regions';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { NavigationContainer, type ParamListBase, useRoute } from '@react-navigation/native';
@@ -99,23 +100,9 @@ const App = () => (
   </NavigationContainer>
 );
 
-type RenderedNode = {
-  type: string;
-  props: Record<string, unknown>;
-  children: (RenderedNode | string)[] | null;
-};
-
-const headerConfigs = (node: RenderedNode | string | null): Record<string, unknown>[] =>
-  node === null || typeof node === 'string'
-    ? []
-    : [
-        ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props] : []),
-        ...(node.children ?? []).flatMap(headerConfigs),
-      ];
-
 // What the native bar of Statistics is set to: the header configs that are not hidden.
 const statisticsBar = () =>
-  headerConfigs(screen.toJSON() as unknown as RenderedNode)
+  headerConfigsIn(screen.toJSON())
     .filter((config) => config.hidden !== true)
     .map(({ title, largeTitle }) => ({ title, largeTitle }));
 

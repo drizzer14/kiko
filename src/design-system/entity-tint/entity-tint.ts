@@ -1,4 +1,12 @@
-import { entityColorsDark } from '../palette';
+import { match } from 'ts-pattern';
+
+import {
+  type ColorScheme,
+  type SwatchName,
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '../palette';
 
 // Entity-color derivations shared across the design system: resolving an
 // account/holding/category's effective hue (`resolveEntityColor`), the two
@@ -191,3 +199,128 @@ export const isLightEntityColor = (colorHex: string): boolean =>
 // two-hex comparison.
 export const wcagContrastRatio = (hexA: string, hexB: string): number =>
   contrastRatio(relativeLuminance(hexA), relativeLuminance(hexB));
+
+// Lowest contrast to a white card that a stored hex outside the 14 swatches may keep in the light
+// scheme: a tile below it reads as a hole in the card. Taken from the approved palette file's
+// `storedHexMap.cannotMap` rule.
+const MINIMUM_LIGHT_CONTRAST = 3.4;
+const LIGHTNESS_STEP = 0.01;
+
+const contrastToWhite = (hex: string): number => contrastRatio(1, relativeLuminance(hex));
+
+// The light twin of each dark swatch hex in one light set. Keyed by the upper-case hex so a stored
+// `#ff9f0a` finds its swatch: the lookup is by the swatch, never by the string's letter case.
+const lightByDarkHex = (lightSet: Record<SwatchName, string>): ReadonlyMap<string, string> =>
+  new Map(
+    (Object.keys(entityColorsDark) as SwatchName[]).map((name) => [
+      entityColorsDark[name].toUpperCase(),
+      lightSet[name],
+    ]),
+  );
+
+const lightEntityByDarkHex = lightByDarkHex(entityColorsLight);
+const lightCategoryByDarkHex = lightByDarkHex(categoryColorsLight);
+
+const hueOf = (red: number, green: number, blue: number, high: number, spread: number): number => {
+  if (spread === 0) {
+    return 0;
+  }
+
+  if (high === red) {
+    return 60 * (((green - blue) / spread + 6) % 6);
+  }
+
+  if (high === green) {
+    return 60 * ((blue - red) / spread + 2);
+  }
+
+  return 60 * ((red - green) / spread + 4);
+};
+
+const hueSaturationLightnessOf = (
+  hex: string,
+): { hue: number; saturation: number; lightness: number } => {
+  const [redByte, greenByte, blueByte] = parseHex(hex);
+  const red = redByte / 255;
+  const green = greenByte / 255;
+  const blue = blueByte / 255;
+  const high = Math.max(red, green, blue);
+  const low = Math.min(red, green, blue);
+  const spread = high - low;
+  const lightness = (high + low) / 2;
+
+  return {
+    hue: hueOf(red, green, blue, high, spread),
+    saturation: spread === 0 ? 0 : spread / (1 - Math.abs(2 * lightness - 1)),
+    lightness,
+  };
+};
+
+const hexOfHueSaturationLightness = (
+  hue: number,
+  saturation: number,
+  lightness: number,
+): string => {
+  const reach = saturation * Math.min(lightness, 1 - lightness);
+  const channelAt = (offset: number): string => {
+    const sector = (offset + hue / 30) % 12;
+    const value = lightness - reach * Math.max(-1, Math.min(sector - 3, 9 - sector, 1));
+
+    return Math.round(value * 255)
+      .toString(16)
+      .padStart(2, '0');
+  };
+
+  return `#${channelAt(0)}${channelAt(8)}${channelAt(4)}`;
+};
+
+// Keeps the hue and saturation of `hex` and lowers its HSL lightness in 1% steps until the
+// contrast to white reaches `minimum`; a hex that already passes comes back as it was given. Black
+// passes at any minimum, so the recursion ends.
+const lowerLightnessToContrast = (hex: string, minimum: number): string => {
+  if (contrastToWhite(hex) >= minimum) {
+    return hex;
+  }
+
+  const { hue, saturation, lightness } = hueSaturationLightnessOf(hex);
+  const lowered = (step: number): string => {
+    const candidate = hexOfHueSaturationLightness(
+      hue,
+      saturation,
+      Math.max(0, lightness - step * LIGHTNESS_STEP),
+    );
+
+    return contrastToWhite(candidate) >= minimum ? candidate : lowered(step + 1);
+  };
+
+  return lowered(1);
+};
+
+// Dark is the identity. Light maps one of the 14 swatches to its twin in `lightTwinByDarkHex` by
+// key, and any other valid hex through the lightness rule above. The entity and the category
+// producer differ only in that map, so a rule fix lands in both.
+const displayColor = (
+  canonicalHex: string,
+  scheme: ColorScheme,
+  lightTwinByDarkHex: ReadonlyMap<string, string>,
+): string =>
+  match(scheme)
+    .with('dark', () => canonicalHex)
+    .with(
+      'light',
+      () =>
+        lightTwinByDarkHex.get(canonicalHex.toUpperCase()) ??
+        lowerLightnessToContrast(canonicalHex, MINIMUM_LIGHT_CONTRAST),
+    )
+    .exhaustive();
+
+// The hex a surface paints for a stored (canonical dark) entity color. Every sink of a stored
+// account or holding color goes through here; a write never does, so the database keeps the dark
+// hex.
+export const entityDisplayColor = (canonicalHex: string, scheme: ColorScheme): string =>
+  displayColor(canonicalHex, scheme, lightEntityByDarkHex);
+
+// The same map for a stored (canonical dark) category color, onto the category set: a category
+// hue is also a chart line and pie slice, so its light twins differ from the entity set's.
+export const categoryDisplayColor = (canonicalHex: string, scheme: ColorScheme): string =>
+  displayColor(canonicalHex, scheme, lightCategoryByDarkHex);

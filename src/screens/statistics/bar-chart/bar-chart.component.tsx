@@ -11,6 +11,8 @@ import type { TypeSlice } from '@kiko/statistics/type-breakdown';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { holdingTypeName } from '@kiko/holdings/holding-type-label';
+import { entityDisplayColor } from '@kiko/design-system/entity-tint';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 
 import { styles } from './bar-chart.styles';
 
@@ -77,6 +79,7 @@ const BarRow: FC<{ slice: TypeSlice; baseCurrency: Currency; scale: number; colo
 const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
   const { t } = useTranslation();
   const holdingDefaults = defaultHoldingColor;
+  const scheme = useActiveColorScheme();
 
   if (data.length === 0) {
     return (
@@ -110,7 +113,7 @@ const BarChart: FC<BarChartProps> = ({ data, baseCurrency }) => {
           scale={scale}
           // Match the holding cards: each type's bar wears the same entity color
           // its holdings do, keyed off the slice's type.
-          color={holdingDefaults[slice.type]}
+          color={entityDisplayColor(holdingDefaults[slice.type], scheme)}
         />
       ))}
     </Box>

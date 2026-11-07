@@ -544,6 +544,65 @@ describe('internal transfer matching beside exchange legs', () => {
     expect(matchedIdsOf(rows)).toEqual(new Set(['debit', 'credit']));
   });
 
+  describe('a row that sets a balance', () => {
+    const balanceSetRow = (
+      id: string,
+      holdingId: string,
+      amountMinorUnits: number,
+      time: number,
+    ): LedgerRow & { setsBalance: boolean } => ({
+      ...ledgerRow(id, holdingId, amountMinorUnits, time, 'UAH'),
+      setsBalance: true,
+    });
+
+    it('does not pair its credit with a real debit of the same amount', () => {
+      const rows = [
+        balanceSetRow('setCredit', 'h1', 2500, T),
+        ledgerRow('realDebit', 'h2', -2500, T + 1_000, 'UAH'),
+      ];
+
+      expect(matchedIdsOf(rows)).toEqual(new Set());
+    });
+
+    it('does not pair its debit with a real credit of the same amount', () => {
+      const rows = [
+        balanceSetRow('setDebit', 'h1', -2500, T),
+        ledgerRow('realCredit', 'h2', 2500, T + 1_000, 'UAH'),
+      ];
+
+      expect(matchedIdsOf(rows)).toEqual(new Set());
+    });
+
+    it('leaves the credit to the real debit when its own debit comes first in the ledger', () => {
+      const rows = [
+        balanceSetRow('setDebit', 'h1', -2500, T),
+        ledgerRow('realDebit', 'h2', -2500, T + 1_000, 'UAH'),
+        ledgerRow('realCredit', 'h3', 2500, T + 2_000, 'UAH'),
+      ];
+
+      expect(matchedIdsOf(rows)).toEqual(new Set(['realDebit', 'realCredit']));
+    });
+
+    it('drops the marked row from the rows the matcher may see', () => {
+      const plain = ledgerRow('plain', 'h1', -2500, T, 'UAH');
+      const rows = [balanceSetRow('marked', 'h2', 2500, T), plain];
+
+      expect(rowsForTransferMatch(rows)).toEqual([plain]);
+    });
+
+    it.each([
+      ['false', { setsBalance: false }],
+      ['absent', {}],
+    ])('still pairs two real rows with the mark %s', (_name, mark) => {
+      const rows = [
+        { ...ledgerRow('debit', 'h1', -2500, T, 'UAH'), ...mark },
+        { ...ledgerRow('credit', 'h2', 2500, T + 1_000, 'UAH'), ...mark },
+      ];
+
+      expect(matchedIdsOf(rows)).toEqual(new Set(['debit', 'credit']));
+    });
+  });
+
   it.each(MARKER_NAMES)('a row with only %s is never a partner', (marker) => {
     const markers = { [marker]: 'marked' };
 

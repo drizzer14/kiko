@@ -589,6 +589,52 @@ describe('exchangeFundingMatches', () => {
     expect(result.excludedIds).toEqual(new Set());
   });
 
+  describe('a row that sets a balance', () => {
+    const MARKED = { setsBalance: true };
+
+    it('is no funding debit for a real purchase of its total', () => {
+      const result = matchesOf([
+        exchangeRow('buy', 'p2p:UAH:4150.00', T),
+        fundingDebit('set-debit', T - 20 * MINUTE, MARKED),
+      ]);
+
+      expect(result).toEqual(NO_MATCHES);
+    });
+
+    it('is no purchase for a real bank debit when it carries the code', () => {
+      const result = matchesOf([
+        { ...exchangeRow('buy', 'p2p:UAH:4150.00', T), ...MARKED },
+        fundingDebit('debit', T - 20 * MINUTE),
+      ]);
+
+      expect(result).toEqual(NO_MATCHES);
+    });
+
+    it('leaves the match to a real debit that is farther in time', () => {
+      const result = matchesOf([
+        exchangeRow('buy', 'p2p:UAH:4150.00', T),
+        fundingDebit('set-debit', T - 5 * MINUTE, MARKED),
+        fundingDebit('debit', T - 30 * MINUTE),
+      ]);
+
+      expect(result.matches).toEqual(new Map([['debit', { exchangeId: 'buy', kind: 'p2p' }]]));
+      expect(result.excludedIds).toEqual(new Set(['debit']));
+    });
+
+    it.each([
+      ['false', { setsBalance: false }],
+      ['absent', {}],
+    ])('still matches a real debit and a real purchase with the mark %s', (_name, mark) => {
+      const result = matchesOf([
+        { ...exchangeRow('buy', 'p2p:UAH:4150.00', T), ...mark },
+        fundingDebit('debit', T - 20 * MINUTE, mark),
+      ]);
+
+      expect(result.matches).toEqual(new Map([['debit', { exchangeId: 'buy', kind: 'p2p' }]]));
+      expect(result.excludedIds).toEqual(new Set(['debit']));
+    });
+  });
+
   it.each([
     {
       key: 'transfer-like bank row',

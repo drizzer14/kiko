@@ -3,6 +3,8 @@ import { accounts, type AccountRow, type HoldingRow } from '@kiko/db';
 
 import {
   accountDisplayName,
+  accountSectionOf,
+  accountSectionOrder,
   accountsForFilter,
   hasNoAccounts,
   IMPLICIT_ACCOUNT_STORED_NAME,
@@ -59,6 +61,26 @@ describe('isImplicitAccount', () => {
 
     expect(archived.name).toBe('Old flat');
     expect(archived.kind).toBe('property');
+  });
+});
+
+describe('accountSectionOf', () => {
+  it('names the live property and debt accounts by kind and every other account main', () => {
+    expect(accountSectionOf({ kind: 'property', archivedAt: null })).toBe('property');
+    expect(accountSectionOf({ kind: 'debt', archivedAt: null })).toBe('debt');
+
+    for (const kind of otherKinds) {
+      expect(accountSectionOf({ kind, archivedAt: null })).toBe('main');
+    }
+  });
+
+  it('names an archived property or debt account main', () => {
+    expect(accountSectionOf({ kind: 'property', archivedAt: 1 })).toBe('main');
+    expect(accountSectionOf({ kind: 'debt', archivedAt: 1 })).toBe('main');
+  });
+
+  it('lists the sections main, property, debt', () => {
+    expect(accountSectionOrder).toEqual(['main', 'property', 'debt']);
   });
 });
 

@@ -1,3 +1,8 @@
+import {
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '@kiko/design-system/palette';
 import { i18n } from '@kiko/i18n/init';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -129,11 +134,24 @@ describe('buildFilterScope', () => {
 
 describe('buildAccountOptions', () => {
   it('names an implicit account by its display name and tints each option with its identity', () => {
-    const options = buildAccountOptions([BANK, LOANS], i18n.t);
+    const options = buildAccountOptions([BANK, LOANS], i18n.t, 'dark');
 
     expect(options).toEqual([
-      { value: 'bank', label: 'bank', ...accountIdentity(BANK) },
-      { value: 'loans', label: i18n.t('accounts.implicitName.debt'), ...accountIdentity(LOANS) },
+      { value: 'bank', label: 'bank', ...accountIdentity(BANK, 'dark') },
+      {
+        value: 'loans',
+        label: i18n.t('accounts.implicitName.debt'),
+        ...accountIdentity(LOANS, 'dark'),
+      },
+    ]);
+  });
+
+  it('tints each option with the light twin of its identity color in the light scheme', () => {
+    const options = buildAccountOptions([BANK, LOANS], i18n.t, 'light');
+
+    expect(options.map((option) => option.color)).toEqual([
+      entityColorsLight.white,
+      entityColorsLight.red,
     ]);
   });
 });
@@ -166,6 +184,7 @@ describe('buildCategoryOptions', () => {
       categories: CATEGORIES,
       categoryByKey: CATEGORY_BY_KEY,
       keptKeys: [],
+      scheme: 'dark',
     });
 
     expect(options).toEqual([
@@ -179,6 +198,7 @@ describe('buildCategoryOptions', () => {
       categories: CATEGORIES,
       categoryByKey: CATEGORY_BY_KEY,
       keptKeys: [],
+      scheme: 'dark',
     });
 
     expect(optionKeys(options)).toEqual(['groceries', 'transport', 'health', 'other']);
@@ -190,6 +210,7 @@ describe('buildCategoryOptions', () => {
       categories: CATEGORIES,
       categoryByKey: CATEGORY_BY_KEY,
       keptKeys: ['transport'],
+      scheme: 'dark',
     });
 
     expect(optionKeys(options)).toEqual(['transport', 'health']);
@@ -197,7 +218,7 @@ describe('buildCategoryOptions', () => {
       value: 'transport',
       label: 'Transport',
       icon: 'bus',
-      color: resolveCategoryColor('#112233', 'transport'),
+      color: resolveCategoryColor('#112233', 'transport', 'dark'),
     });
   });
 
@@ -207,9 +228,34 @@ describe('buildCategoryOptions', () => {
       categories: CATEGORIES,
       categoryByKey: CATEGORY_BY_KEY,
       keptKeys: ['groceries'],
+      scheme: 'dark',
     });
 
-    expect(option.color).toBe(resolveCategoryColor(null, 'groceries'));
+    expect(option.color).toBe(resolveCategoryColor(null, 'groceries', 'dark'));
+  });
+
+  it('a kept category option maps through the category set, like a slice', () => {
+    const colored = new Map<string, CategoryDisplay>([
+      ['transport', { title: 'Transport', icon: 'bus', color: entityColorsDark.violet }],
+    ]);
+    const [kept] = buildCategoryOptions({
+      slices: [],
+      categories: CATEGORIES,
+      categoryByKey: colored,
+      keptKeys: ['transport'],
+      scheme: 'light',
+    });
+    const [sliced] = buildCategoryOptions({
+      slices: [{ ...slice('transport'), color: categoryColorsLight.violet }],
+      categories: CATEGORIES,
+      categoryByKey: colored,
+      keptKeys: [],
+      scheme: 'light',
+    });
+
+    expect(kept.color).toBe(categoryColorsLight.violet);
+    expect(kept.color).not.toBe(entityColorsLight.violet);
+    expect(kept.color).toBe(sliced.color);
   });
 
   it('lists a key once, as the slice option, when it is both in the slices and kept', () => {
@@ -218,6 +264,7 @@ describe('buildCategoryOptions', () => {
       categories: CATEGORIES,
       categoryByKey: CATEGORY_BY_KEY,
       keptKeys: new Set(['health', 'health']),
+      scheme: 'dark',
     });
 
     expect(options).toEqual([
@@ -231,6 +278,7 @@ describe('buildCategoryOptions', () => {
       categories: CATEGORIES,
       categoryByKey: CATEGORY_BY_KEY,
       keptKeys: ['deleted'],
+      scheme: 'dark',
     });
 
     expect(options).toEqual([]);
@@ -242,6 +290,7 @@ describe('buildCategoryOptions', () => {
       categories: CATEGORIES,
       categoryByKey: CATEGORY_BY_KEY,
       keptKeys: [],
+      scheme: 'dark',
     });
 
     expect(optionKeys(options)).toEqual(['health']);

@@ -1,7 +1,17 @@
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import {
+  type SwatchName,
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '@kiko/design-system/palette';
 import { i18n } from '@kiko/i18n/init';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { darkTheme } from '@kiko/design-system/theme';
 
 import ColorPicker from './color-picker.component';
@@ -11,7 +21,7 @@ const { entityColors } = darkTheme.colors;
 describe('ColorPicker', () => {
   it('renders a tappable swatch for every entity color', async () => {
     const { getByLabelText } = await render(
-      <ColorPicker value={entityColors.white} onSelect={jest.fn()} />,
+      <ColorPicker swatchSet="entity" value={entityColors.white} onSelect={jest.fn()} />,
     );
 
     for (const name of Object.keys(entityColors)) {
@@ -21,7 +31,7 @@ describe('ColorPicker', () => {
 
   it('marks the swatch whose hex equals value as selected, and no other', async () => {
     const { getByLabelText } = await render(
-      <ColorPicker value={entityColors.yellow} onSelect={jest.fn()} />,
+      <ColorPicker swatchSet="entity" value={entityColors.yellow} onSelect={jest.fn()} />,
     );
 
     expect(getByLabelText('Color yellow').props.accessibilityState.selected).toBe(true);
@@ -31,7 +41,7 @@ describe('ColorPicker', () => {
   it('reports the tapped swatch hex through onSelect', async () => {
     const onSelect = jest.fn();
     const { getByLabelText } = await render(
-      <ColorPicker value={entityColors.white} onSelect={onSelect} />,
+      <ColorPicker swatchSet="entity" value={entityColors.white} onSelect={onSelect} />,
     );
 
     await fireEvent.press(getByLabelText('Color violet'));
@@ -41,7 +51,12 @@ describe('ColorPicker', () => {
 
   it('renders an optional caption above the swatches', async () => {
     const { getByText } = await render(
-      <ColorPicker value={entityColors.white} onSelect={jest.fn()} label="Color" />,
+      <ColorPicker
+        swatchSet="entity"
+        value={entityColors.white}
+        onSelect={jest.fn()}
+        label="Color"
+      />,
     );
 
     expect(getByText('Color')).toBeTruthy();
@@ -62,7 +77,7 @@ describe('ColorPicker', () => {
 
     const cellWidthOf = async () => {
       const { getByLabelText } = await render(
-        <ColorPicker value={entityColors.white} onSelect={jest.fn()} />,
+        <ColorPicker swatchSet="entity" value={entityColors.white} onSelect={jest.fn()} />,
       );
 
       return StyleSheet.flatten(getByLabelText('Color white').props.style).width;
@@ -106,7 +121,7 @@ describe('ColorPicker', () => {
 
     it('centres the ring in its cell and spaces rows by a row gap only', async () => {
       const { getByLabelText } = await render(
-        <ColorPicker value={entityColors.white} onSelect={jest.fn()} />,
+        <ColorPicker swatchSet="entity" value={entityColors.white} onSelect={jest.fn()} />,
       );
       const cell = StyleSheet.flatten(getByLabelText('Color white').props.style);
       const row = StyleSheet.flatten(getByLabelText('Color white').parent?.props.style);
@@ -119,7 +134,7 @@ describe('ColorPicker', () => {
 
     it('rings only the selected swatch', async () => {
       const { getByTestId } = await render(
-        <ColorPicker value={entityColors.yellow} onSelect={jest.fn()} />,
+        <ColorPicker swatchSet="entity" value={entityColors.yellow} onSelect={jest.fn()} />,
       );
 
       expect(StyleSheet.flatten(getByTestId('color-ring-yellow').props.style).borderColor).toBe(
@@ -128,6 +143,75 @@ describe('ColorPicker', () => {
       expect(StyleSheet.flatten(getByTestId('color-ring-white').props.style).borderColor).toBe(
         'transparent',
       );
+    });
+  });
+
+  describe('in the light world', () => {
+    beforeEach(() => {
+      registerLightThemeFirst();
+    });
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('paints the light value and reports the dark hex', async () => {
+      const onSelect = jest.fn();
+      const { getByLabelText, getByTestId } = await render(
+        <ColorPicker swatchSet="entity" value={entityColorsDark.white} onSelect={onSelect} />,
+      );
+
+      await fireEvent.press(getByLabelText('Color blue'));
+
+      expect(onSelect).toHaveBeenCalledWith(entityColorsDark.blue);
+      expect(StyleSheet.flatten(getByTestId('color-swatch-blue').props.style).backgroundColor).toBe(
+        entityColorsLight.blue,
+      );
+    });
+
+    it('rings the swatch whose dark hex equals value, and no other', async () => {
+      const { getByLabelText } = await render(
+        <ColorPicker swatchSet="entity" value={entityColorsDark.yellow} onSelect={jest.fn()} />,
+      );
+
+      expect(getByLabelText('Color yellow').props.accessibilityState.selected).toBe(true);
+      expect(getByLabelText('Color blue').props.accessibilityState.selected).toBe(false);
+    });
+
+    it('rings no swatch for a value equal to a light value', async () => {
+      const { getByLabelText } = await render(
+        <ColorPicker swatchSet="entity" value={entityColorsLight.yellow} onSelect={jest.fn()} />,
+      );
+
+      expect(getByLabelText('Color yellow').props.accessibilityState.selected).toBe(false);
+    });
+
+    it.each(Object.keys(entityColorsDark) as SwatchName[])(
+      'paints %s from the set it was given',
+      async (name) => {
+        const entity = await render(
+          <ColorPicker swatchSet="entity" value={entityColorsDark.white} onSelect={jest.fn()} />,
+        );
+        const category = await render(
+          <ColorPicker swatchSet="category" value={entityColorsDark.white} onSelect={jest.fn()} />,
+        );
+        const paintOf = (tree: typeof entity): unknown =>
+          StyleSheet.flatten(tree.getByTestId(`color-swatch-${name}`).props.style).backgroundColor;
+
+        expect(paintOf(entity)).toBe(entityColorsLight[name]);
+        expect(paintOf(category)).toBe(categoryColorsLight[name]);
+      },
+    );
+
+    it('reports the dark hex from the category set too', async () => {
+      const onSelect = jest.fn();
+      const { getByLabelText } = await render(
+        <ColorPicker swatchSet="category" value={entityColorsDark.white} onSelect={onSelect} />,
+      );
+
+      await fireEvent.press(getByLabelText('Color green'));
+
+      expect(onSelect).toHaveBeenCalledWith(entityColorsDark.green);
     });
   });
 
@@ -144,7 +228,7 @@ describe('ColorPicker', () => {
       });
 
       const { getByLabelText, queryByLabelText } = await render(
-        <ColorPicker value={entityColors.white} onSelect={jest.fn()} />,
+        <ColorPicker swatchSet="entity" value={entityColors.white} onSelect={jest.fn()} />,
       );
 
       expect(getByLabelText('Колір white')).toBeTruthy();

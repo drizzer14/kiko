@@ -484,6 +484,14 @@ describe('CategoriesScreen', () => {
       expect(navigation.navigate.mock.calls[0][0]).toBe('CategoryReview');
     });
 
+    it('separates the entry row from the grid with a divider', async () => {
+      const order = testIdsInOrder((await renderScreen()).toJSON());
+      const divider = order.indexOf('categories-review-divider');
+
+      expect(divider).toBeGreaterThan(order.indexOf(ENTRY));
+      expect(divider).toBeLessThan(order.indexOf('sortable-grid'));
+    });
+
     it('shows it with no transactions', async () => {
       mockCategories = [];
       mockRules = [];

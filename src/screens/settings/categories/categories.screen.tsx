@@ -9,6 +9,7 @@ import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import Divider from '@kiko/design-system/components/divider';
 import SettingsRow from '@kiko/screens/settings/settings-row';
 import { categoryKeyOf } from '@kiko/categories/category-rules';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -23,6 +24,7 @@ import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import { type CategoryRow, type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 
@@ -60,6 +62,7 @@ const ruleCountsByCategory = (rules: readonly CategoryRuleRow[]): Map<string, nu
 const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const scheme = useActiveColorScheme();
   const {
     data: categories,
     isLoading: categoriesLoading,
@@ -102,7 +105,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
         <CategoryCard
           title={displayName}
           icon={item.icon}
-          color={resolveCategoryColor(item.color, item.key)}
+          color={resolveCategoryColor(item.color, item.key, scheme)}
           ruleCount={ruleCounts.get(categoryKeyOf(item.key)) ?? 0}
           isDefault={isDefault}
           onPress={openUnlessLifted(item.key, () =>
@@ -151,6 +154,8 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('CategoryReview')}
           />
         </Card>
+
+        <Divider testID="categories-review-divider" spacing={2} />
 
         {/* A hold that moves reorders (through the shared `onGridDragEnd`, which persists only a
             real move); a hold that stays still opens the delete menu; a quick tap opens the page.

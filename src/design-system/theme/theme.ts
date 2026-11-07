@@ -17,6 +17,8 @@ import { StyleSheet } from 'react-native';
 import {
   type ColorScheme,
   categoryColorsLight,
+  chartFillDark,
+  chartFillLight,
   chartSeriesDark,
   chartSeriesLight,
   entityColorsDark,
@@ -237,6 +239,7 @@ export const darkTheme = {
     chartSeries: chartSeriesDark,
     glyphOnLightTile,
   },
+  chartFill: chartFillDark,
   spacing,
   radii,
   typography,
@@ -276,6 +279,7 @@ const lightColors = {
 export const lightTheme = {
   colorScheme: 'light' as ColorScheme,
   colors: lightColors,
+  chartFill: chartFillLight,
   spacing,
   radii,
   typography,

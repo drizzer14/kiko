@@ -7,6 +7,7 @@ import { cardSwitchesJoinedOf } from '@kiko/recurring/card-switch';
 import { neutralCategory } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { cardSwitchLedger, nowOf } from '@kiko/test-support/recurring-ledger';
+import { categoryColorsLight, entityColorsDark } from '@kiko/design-system/palette';
 import { type RecurringSeries, chargeGroupsOf, seriesOfGroups } from '@kiko/recurring/detection';
 
 import {
@@ -62,6 +63,7 @@ const inputOf = (overrides: Partial<GroupsInput>): GroupsInput => ({
   defaultCategoryKey: 'general',
   baseCurrency: 'UAH',
   rateTable: RATE_TABLE,
+  scheme: 'dark',
   ...overrides,
 });
 
@@ -151,7 +153,20 @@ describe('recurringGroupsOf: the default category group (no "Uncategorized" grou
     const defaultGroup = recurringGroupsOf(worldOf()).groups.find(({ key }) => key === 'general');
 
     expect(defaultGroup).toMatchObject({ title: 'Mango', icon: 'star' });
-    expect(defaultGroup?.color).toBe(resolveCategoryColor('#445566', 'general'));
+    expect(defaultGroup?.color).toBe(resolveCategoryColor('#445566', 'general', 'dark'));
+  });
+
+  it('paints a group heading through the category map in the light scheme', () => {
+    const lightGroup = recurringGroupsOf({
+      ...worldOf(),
+      categories: CATEGORIES.map((category) =>
+        category.key === 'general' ? { ...category, color: entityColorsDark.khaki } : category,
+      ),
+      scheme: 'light',
+    }).groups.find(({ key }) => key === 'general');
+
+    expect(lightGroup?.color).toBe(categoryColorsLight.khaki);
+    expect(lightGroup?.color).not.toBe(entityColorsDark.khaki);
   });
 
   it('names no group "Uncategorized", by key or by title', () => {

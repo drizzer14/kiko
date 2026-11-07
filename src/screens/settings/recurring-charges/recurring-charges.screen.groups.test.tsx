@@ -81,6 +81,7 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
         defaultCategoryKey: 'other',
         baseCurrency: 'UAH',
         rateTable: buildRateTable([{ base: 'USD', quote: 'UAH', rate: '41.5' }]),
+        scheme: 'dark',
       }),
       isLoading: false,
     };

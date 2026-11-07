@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import {
   monthsOfPeriod,
   resolveTablePeriod,
@@ -22,11 +23,17 @@ import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
+import { TABLES_VIEWS, type TablesView } from '@kiko/statistics/tables-view';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
+import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import { styles } from './tables.styles';
 import CategoryTable from './category-table';
+import CashFlowTable from './cash-flow-table';
+import NetWorthTable from './net-worth-table';
 import TablePeriodField from './table-period-field';
 
 // This screen is registered in the Home and the Statistics stacks (the Statistics screen that
@@ -35,6 +42,14 @@ import TablePeriodField from './table-period-field';
 type TablesScreenProps = {
   route: { params?: TablesParams };
   navigation: { setParams: (params: TablesParams) => void };
+};
+
+// A table without a category column has no use for the category filter, and a view added to the
+// union is a compile error here until it says whether it has one.
+const HAS_CATEGORY_FILTER: Record<TablesView, boolean> = {
+  categories: true,
+  cashFlow: false,
+  netWorth: false,
 };
 
 /**
@@ -46,6 +61,7 @@ type TablesScreenProps = {
  */
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   // Visibility, not focus: in two panes the panes behind this screen are in view without being the
   // focused route, and this screen is the only one read while it shows.
   const isVisible = useIsScreenVisible();
@@ -73,8 +89,26 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     rateTable,
     categoryByKey,
     filtered,
+    priceBook,
     spanStart,
+    transactionsFresh,
+    historyRows,
+    historyFresh,
   } = useStatisticsSources({ isVisible, now, selectedAccounts });
+
+  // A screen opened before Statistics has no run to read, so it starts the one that fills the
+  // rate history; one opened after a run that covers its span starts nothing and shares that run.
+  const backfillStatus = useRateHistoryBackfill({
+    transactions,
+    holdings,
+    historyRows,
+    transactionsFresh,
+    historyFresh,
+    baseCurrency,
+    spanStart,
+    now,
+  });
+
   const ledger = useSpendingLedger({
     transactions,
     holdings,
@@ -85,21 +119,35 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);
   const period = resolveTablePeriod(route.params?.period, periodOptions);
   const months = useMemo(() => monthsOfPeriod(period, spanStart, now), [period, spanStart, now]);
+  const view = route.params?.view ?? 'categories';
+  const hasCategoryFilter = HAS_CATEGORY_FILTER[view];
 
   // The category menu lists what the months spent on, so a table never offers a category it has
   // no cell for; a held pick that fell out of the period stays listed, checked. The pick excludes
   // by the same list, so it removes every row it does not cover, a row the period nets out too.
   const periodSlices = useMemo(
     () =>
-      categorySlicesOfMonths({
-        ledger,
-        months,
-        categoryDisplay: categoryByKey,
-        rateTable,
-        baseCurrency,
-        defaultCategoryKey,
-      }),
-    [months, ledger, categoryByKey, rateTable, baseCurrency, defaultCategoryKey],
+      hasCategoryFilter
+        ? categorySlicesOfMonths({
+            ledger,
+            months,
+            categoryDisplay: categoryByKey,
+            rateTable,
+            baseCurrency,
+            defaultCategoryKey,
+            scheme,
+          })
+        : [],
+    [
+      hasCategoryFilter,
+      months,
+      ledger,
+      categoryByKey,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      scheme,
+    ],
   );
 
   const categoryOptions = useMemo(
@@ -109,8 +157,9 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
         categories,
         categoryByKey,
         keptKeys: selectedCategories,
+        scheme,
       }),
-    [periodSlices, categories, categoryByKey, selectedCategories],
+    [periodSlices, categories, categoryByKey, selectedCategories, scheme],
   );
   const visibleSelectedCategories = useMemo(
     () => visibleCategorySelection(selectedCategories, categoryByKey, periodSlices),
@@ -125,6 +174,10 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     navigation.setParams({ period: next });
   };
 
+  const selectView = (next: TablesView): void => {
+    navigation.setParams({ view: next });
+  };
+
   if (!isReady) {
     return (
       <Screen belowHeader uncapped>
@@ -132,6 +185,12 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
       </Screen>
     );
   }
+
+  const viewLabels: Record<TablesView, string> = {
+    categories: t('tables.view.categories'),
+    cashFlow: t('tables.view.cashFlow'),
+    netWorth: t('tables.view.netWorth'),
+  };
 
   // They go into the table's scroll, so at a large type size they scroll away with the caption
   // and leave the rows the room; the empty state keeps them in place.
@@ -143,22 +202,24 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
           label={t('statistics.filterAccounts')}
           sheetTitle={t('statistics.filterAccountsSheetTitle')}
           testID="tables-account-filter"
-          options={buildAccountOptions(filtered.optionAccounts, t)}
+          options={buildAccountOptions(filtered.optionAccounts, t, scheme)}
           selected={filtered.visibleSelectedAccounts}
           onToggle={toggleAccount}
           triggerIcon="tray"
         />
 
-        <FilterMenu
-          key={`category-filter-${sheetGeneration}`}
-          label={t('statistics.filterCategories')}
-          sheetTitle={t('statistics.filterCategoriesSheetTitle')}
-          testID="tables-category-filter"
-          options={categoryOptions}
-          selected={visibleSelectedCategories}
-          onToggle={toggleCategory}
-          triggerIcon={genericEntitySymbol.category}
-        />
+        {hasCategoryFilter && (
+          <FilterMenu
+            key={`category-filter-${sheetGeneration}`}
+            label={t('statistics.filterCategories')}
+            sheetTitle={t('statistics.filterCategoriesSheetTitle')}
+            testID="tables-category-filter"
+            options={categoryOptions}
+            selected={visibleSelectedCategories}
+            onToggle={toggleCategory}
+            triggerIcon={genericEntitySymbol.category}
+          />
+        )}
       </Box>
 
       <TablePeriodField
@@ -174,17 +235,58 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   return (
     <Screen belowHeader uncapped>
       <Box gap={3} style={styles.content}>
-        <CategoryTable
-          ledger={ledger}
-          months={months}
-          now={now}
-          categoryDisplay={categoryByKey}
-          rateTable={rateTable}
-          baseCurrency={baseCurrency}
-          defaultCategoryKey={defaultCategoryKey}
-          excludedCategories={excludedCategories}
-          topContent={controls}
+        <SegmentedControl<TablesView>
+          options={TABLES_VIEWS}
+          selected={view}
+          onSelect={selectView}
+          labels={viewLabels}
+          labelVariant="caption"
+          accessibilityLabel={t('tables.view.label')}
+          testID="tables-view"
         />
+
+        {match(view)
+          .with('categories', () => (
+            <CategoryTable
+              ledger={ledger}
+              months={months}
+              now={now}
+              categoryDisplay={categoryByKey}
+              rateTable={rateTable}
+              baseCurrency={baseCurrency}
+              defaultCategoryKey={defaultCategoryKey}
+              excludedCategories={excludedCategories}
+              topContent={controls}
+            />
+          ))
+          .with('cashFlow', () => (
+            <CashFlowTable
+              ledger={ledger}
+              months={months}
+              now={now}
+              categoryDisplay={categoryByKey}
+              rateTable={rateTable}
+              baseCurrency={baseCurrency}
+              defaultCategoryKey={defaultCategoryKey}
+              topContent={controls}
+            />
+          ))
+          .with('netWorth', () => (
+            <NetWorthTable
+              accounts={filtered.filteredAccounts}
+              holdings={filtered.netWorthHoldings}
+              transactions={transactions}
+              historyRows={historyRows}
+              months={months}
+              now={now}
+              rateTable={rateTable}
+              priceBook={priceBook}
+              baseCurrency={baseCurrency}
+              backfillState={backfillStatus.state}
+              topContent={controls}
+            />
+          ))
+          .exhaustive()}
       </Box>
     </Screen>
   );

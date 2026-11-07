@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import type { AccountRow, CategoryRow, HoldingRow } from '@kiko/db';
 import { visibleSelection } from '@kiko/design-system/visible-selection';
@@ -72,11 +73,12 @@ export const buildFilterScope = (input: {
 export const buildAccountOptions = (
   optionAccounts: readonly AccountRow[],
   t: TFunction,
+  scheme: ColorScheme,
 ): FilterOption[] =>
   optionAccounts.map((account) => ({
     value: account.id,
     label: accountDisplayName(account, t),
-    ...accountIdentity(account),
+    ...accountIdentity(account, scheme),
   }));
 
 /**
@@ -107,8 +109,9 @@ export const buildCategoryOptions = (input: {
   categories: readonly Pick<CategoryRow, 'key'>[];
   categoryByKey: ReadonlyMap<string, CategoryDisplay>;
   keptKeys: Iterable<string>;
+  scheme: ColorScheme;
 }): FilterOption[] => {
-  const { slices, categories, categoryByKey, keptKeys } = input;
+  const { slices, categories, categoryByKey, keptKeys, scheme } = input;
   const byKey = new Map<string, FilterOption>();
 
   for (const slice of slices) {
@@ -138,7 +141,7 @@ export const buildCategoryOptions = (input: {
       value: key,
       label: display.title,
       icon: display.icon,
-      color: resolveCategoryColor(display.color, key),
+      color: resolveCategoryColor(display.color, key, scheme),
     });
   }
 

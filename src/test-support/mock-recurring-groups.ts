@@ -27,6 +27,8 @@ export const useRecurringGroups = ((shown) => ({
     defaultCategoryKey: DEFAULT_CATEGORY.key,
     baseCurrency: 'UAH',
     rateTable: buildRateTable([]),
+    // The suites that use this stand-in assert the order and the totals, never a color.
+    scheme: 'dark',
   }),
   isLoading: false,
 })) satisfies typeof useActualRecurringGroups;

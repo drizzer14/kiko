@@ -276,7 +276,10 @@ export const transactions = sqliteTable(
     // balance import from counting the row again past its as-of
     // (`postClosingRowsWhere`) and keeps the row out of spending in the Statistics
     // charts (`balanceSetIdsOf`): the row's edit and delete move the balance by its
-    // amount like any row's.
+    // amount like any row's. It also takes no part in the matchers that pair rows
+    // (`rowsForTransferMatch`, `exchangeFundingMatches` and
+    // `sameCurrencyMoveTransactionIds`), so it never pairs with, or takes the partner
+    // or funding match of, a real row of the same amount.
     setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' double as `accounts.institution` values. The

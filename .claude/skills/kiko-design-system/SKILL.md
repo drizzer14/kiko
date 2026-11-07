@@ -216,6 +216,11 @@ the theme's tokens, not literal values, so the token keys stay the one
 contract every component styles against, whichever theme supplies values.
 The token values live in `theme.ts` (`darkTheme`, `lightTheme`) and
 `palette.ts`; read those directly rather than restating them here.
+The light values come from `docs/design/light-palette/palette.json`, pinned by
+`src/design-system/palette/light-palette-source.test.ts`; change the JSON, never a light hex alone.
+Keep `chartSeriesDark` and the other dark blocks of `palette.ts` in place, and put new light sets
+below them. The palette check reads `palette.ts` by text position, so code placed above a dark
+block fails it.
 
 ## Locked decisions (user-approved)
 
@@ -806,8 +811,8 @@ where they can drift. The pipeline is:
   `stored ?? typeDefault` — that pattern misses an empty-string stored
   value and an unmapped kind/type default (e.g. a row written under a
   since-removed enum member), both of which throw downstream instead
-  of silently falling back. The gray fallback resolves from the single
-  dark palette (`entityColorsDark` in `palette.ts`). For an account
+  of silently falling back. The gray fallback resolves from
+  `entityColorsDark` in `palette.ts`; the light twins sit beside it. For an account
   row, call `accountIdentity` (`src/holdings/account-identity/`), which
   pairs this color with the icon fallback (see `kiko-domain`'s "Entity
   glyphs"); for a holding, call its twin `holdingIdentity`
@@ -816,8 +821,16 @@ where they can drift. The pipeline is:
   (`src/statistics/account-contribution/account-contribution.ts`) is
   the exception: its input has no icon, so it calls
   `resolveEntityColor` directly for the color only.
-- `resolveEntityColor`'s result feeds `EntityIconTile`
-  (`src/design-system/components/entity-icon-tile/`), the shared
+- `resolveEntityColor` returns the canonical dark hex. Display goes through
+  `entityDisplayColor(hex, scheme)` (`src/design-system/entity-tint/entity-tint.ts`),
+  and that result feeds `EntityIconTile`. Producers take a required `scheme` from
+  `useActiveColorScheme` (`src/design-system/active-color-scheme/`). `ColorPicker`
+  (`swatchSet` prop) and the forms keep and report the dark hex; only display is
+  mapped. A category takes the same path with `categoryDisplayColor` and the category
+  set: `resolveCategoryColor(stored, key, scheme)` displays,
+  `resolveCanonicalCategoryColor(stored, key)` feeds the picker. `EntityIconTile` reads
+  `theme.colors.glyphOnLightTile`. The tile
+  (`src/design-system/components/entity-icon-tile/`) is the shared
   squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)
   derives its two vertical-gradient stops (lighter top, darker bottom)
   from the one resolved hue via `lightenHex`/`darkenHex`, and

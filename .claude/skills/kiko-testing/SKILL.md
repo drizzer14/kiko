@@ -116,12 +116,27 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   keeps it mounted, as the native bottom tabs do.
 - `pane-stack-presentation.ts`: `nonPushPresentations`, the pane-stack screens whose options set a
   presentation other than a push; `test-ids-in-order.ts`: `testIdsInOrder`, every testID of a
-  rendered tree in paint order.
+  rendered tree in paint order; `header-configs.ts`: `headerConfigsIn`, the props of every native
+  header config (`RNSScreenStackHeaderConfig`) of a rendered tree in paint order, what
+  native-stack derives from the merged options; assert on it instead of a hand-rolled tree walk.
 - `mock-statistics-data-layer.ts`, `statistics-filter-data.ts`: the mocked data layer a real
   Statistics screen (or Home) mounts on, and its filter fixtures (`answerFilterData`,
-  `pressFilterOption`, the filter testIDs).
+  `pressFilterOption`, `transactionRowOf` (a transaction row with defaults), the filter testIDs).
 - `reset-statistics-filter-selection.ts`: `resetStatisticsFilterSelection`, an `afterEach` that
   puts the session-long Statistics account and category picks back on "all".
+- `light-theme-registered.ts`: `registerLightThemeFirst` and `restoreThemeOrder`, which put the
+  light theme first and dark first again in the Unistyles jest mock, for a light-world test. The
+  mock's `StyleSheet.create` resolves once at module evaluation, so a test of a stylesheet color
+  calls `registerLightThemeFirst` before it imports the module, inside `jest.isolateModules`; after
+  the imports it changes only `useUnistyles().theme`. The mock's `StyleSheet.configure`
+  replaces the theme registry (`node_modules/react-native-unistyles/src/mocks.ts`), so
+  importing a test-support module that imports `@kiko/design-system/unistyles` (for example
+  `src/test-support/reset-statistics-filter-selection.ts`) puts dark first again; call
+  `registerLightThemeFirst` after such an import. A suite that never imports
+  `@kiko/design-system/unistyles` gets theme `{}` and an undefined colorScheme, which the
+  display map throws on; a scheme-dependent test imports it.
+- `light-twin-of-dark.ts`: `lightTwinOfDark`, the light entity hex of each dark swatch hex, for a
+  test that expects a default color mapped through the light set.
 - `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
   where Jest's `findNodeHandle` returns null, for a share-anchor pin.
 
@@ -321,6 +336,12 @@ test from being decorative.
   language: use ids or a bilingual regex, never a single-language label. Its automatic failure
   screenshot cannot be turned off: run with `--debug-output` into the scratchpad, never open a
   `.png`, and remove that folder after quoting the log; ask before deleting `~/.maestro/tests/`.
+- Maestro: an assertion one iOS version cannot pass (the on-screen keyboard on an iOS 26.5
+  simulator) aborts the flow and skips every later step. Mark it `optional: true`; Maestro then
+  prints `(Optional)` in the line and a warned status (not a failed one) on failure, so a script
+  that greps the result must match that form.
+- Maestro: a `tapOn` by `id` taps the element centre. A full-screen backdrop behind a raised sheet
+  put the tap on a list row and changed data for later steps; close a sheet by a named control.
 
 ## Testing a native/ESM dependency
 
@@ -382,6 +403,12 @@ flagged too. A test that must read source text keeps one documented
 per-line override (`// nosemgrep: kiko-no-source-text-read-in-test
 OVERRIDE(<reason>)` on the line above that read), never a whole-file
 exclude. The current inventory is in `docs/harness/documented-exceptions.md`.
+A test that reads a tracked `docs/` file fails a Stryker dry run, because the `ignorePatterns` in
+`stryker.conf.json` exclude `docs/*` from the sandbox
+(`src/crypto-sync/binance/binance.privacy-policy.test.ts` and
+`src/i18n/locales/uk.catalog-rules.test.ts` do this); list any new one in that inventory.
+Such a test needs a `!docs/...` re-include chain in `ignorePatterns`; read
+`stryker.conf.json` for the pattern.
 Harness tests under `__tests__/` are out of scope: they read
 rules, scripts, docs, and temp projects.
 
@@ -401,8 +428,10 @@ Known limits:
 A test that asserts a text is ABSENT (`queryByText`, `not.toContain`)
 passes for ever once a reword changes the text it hunts. Derive that text
 from the i18n key (`i18n.t(...)`) or an exported constant, never a typed
-fragment. Add a positive twin that finds the same text in the case where
-it must be there, so the matcher is proven to match. After any reword,
+fragment. Exception: a test that pins REMOVED wording has no key to derive from (the key is
+gone). A typed fragment is the only form there. Keep it, and add the positive twin on the
+replacement text (`src/help/help-topics.test.ts`). Add a positive twin that finds the same text
+in the case where it must be there, so the matcher is proven to match. After any reword,
 grep the old fragment across `src/` and the tests.
 
 ## A subset matcher never holds a Set or a Map

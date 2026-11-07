@@ -34,14 +34,13 @@ import EmptyState from '@kiko/design-system/components/empty-state';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
-import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
-import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { accountDisplayName, hasNoAccounts } from '@kiko/holdings/implicit-account';
 import Screen, { usePaneContentWidth } from '@kiko/design-system/components/screen';
 import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
@@ -51,6 +50,7 @@ import type { StatisticsStackParamList, TabParamList } from '@kiko/navigation/ty
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildCategoryMeasures, buildCategoryTrend } from '@kiko/statistics/category-trend';
+import { buildNetWorthSeries, transactionsByHolding } from '@kiko/statistics/net-worth-series';
 import { buildCategoryBreakdown, type CategorySlice } from '@kiko/statistics/category-breakdown';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
@@ -73,23 +73,6 @@ const toPieSlice = (slice: CategorySlice): AccountSlice => ({
   share: slice.share,
   color: slice.color,
 });
-
-// Group the whole ledger by holding id so the net-worth series can reconstruct
-// each holding's running balance over time. Keyed by holding, not account,
-// because a holding's balance is what the series values at each day.
-const groupByHolding = (
-  transactions: { holdingId: string; time: number; amountMinorUnits: number }[],
-): Map<string, SeriesTransaction[]> => {
-  const byHolding = new Map<string, SeriesTransaction[]>();
-
-  for (const transaction of transactions) {
-    const list = byHolding.get(transaction.holdingId) ?? [];
-    list.push({ time: transaction.time, amountMinorUnits: transaction.amountMinorUnits });
-    byHolding.set(transaction.holdingId, list);
-  }
-
-  return byHolding;
-};
 
 // The category-spending donut's ring is thinner than the default (a higher
 // hole-radius-to-outer-radius ratio) than PieChart's own default, opening
@@ -127,6 +110,7 @@ const NET_WORTH_CARD_GAP = 3;
  */
 const StatisticsScreen: FC = () => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   // The card order and the shared row follow the window and the width the pane's content has (the
   // pane's, limited by the content cap), and nothing else: a filter or a date range never moves a
   // card. A window that is not large shows one column, every card full width (line, bar, pie,
@@ -266,7 +250,7 @@ const StatisticsScreen: FC = () => {
     () =>
       buildNetWorthSeries({
         holdings: filtered.netWorthHoldings,
-        transactionsByHolding: groupByHolding(transactions),
+        transactionsByHolding: transactionsByHolding(transactions),
         historyRows,
         baseCurrency,
         range: { from: rangeFrom, to: rangeTo },
@@ -304,9 +288,10 @@ const StatisticsScreen: FC = () => {
         rateTable,
         baseCurrency,
         now,
+        scheme,
         book: priceBook,
       }),
-    [filtered, rateTable, baseCurrency, now, priceBook, t],
+    [filtered, rateTable, baseCurrency, now, priceBook, t, scheme],
   );
 
   // The "Debts" total under the account pie
@@ -365,6 +350,7 @@ const StatisticsScreen: FC = () => {
         baseCurrency,
         defaultCategoryKey,
         excludedTransactionIds,
+        scheme,
       }),
     [
       rangeFilteredBreakdownTransactions,
@@ -373,6 +359,7 @@ const StatisticsScreen: FC = () => {
       baseCurrency,
       defaultCategoryKey,
       excludedTransactionIds,
+      scheme,
     ],
   );
 
@@ -403,8 +390,9 @@ const StatisticsScreen: FC = () => {
           ...selectedCategories,
           ...(appliedTrendFilter.mode === 'manual' ? appliedTrendFilter.keys : []),
         ],
+        scheme,
       }),
-    [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter],
+    [allCategorySlices, categories, selectedCategories, categoryByKey, appliedTrendFilter, scheme],
   );
 
   const visibleSelectedCategories = useMemo(
@@ -427,6 +415,7 @@ const StatisticsScreen: FC = () => {
         defaultCategoryKey,
         excludedCategories: excludedCategoryKeys,
         excludedTransactionIds,
+        scheme,
       }),
     [
       rangeFilteredBreakdownTransactions,
@@ -436,6 +425,7 @@ const StatisticsScreen: FC = () => {
       defaultCategoryKey,
       excludedCategoryKeys,
       excludedTransactionIds,
+      scheme,
     ],
   );
 
@@ -507,6 +497,7 @@ const StatisticsScreen: FC = () => {
         bucketDays: bucketDaysForSpan(rangeTo - rangeFrom),
         excludedCategories: excludedTrendCategoryKeys,
         excludedTransactionIds,
+        scheme,
       }),
     [
       trendTransactions,
@@ -518,6 +509,7 @@ const StatisticsScreen: FC = () => {
       rangeTo,
       excludedTrendCategoryKeys,
       excludedTransactionIds,
+      scheme,
     ],
   );
 
@@ -541,7 +533,7 @@ const StatisticsScreen: FC = () => {
     [categorySlices, baseCurrency],
   );
 
-  const accountOptions = buildAccountOptions(filtered.optionAccounts, t);
+  const accountOptions = buildAccountOptions(filtered.optionAccounts, t, scheme);
 
   if (!isReady) {
     return (

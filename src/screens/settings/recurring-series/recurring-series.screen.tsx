@@ -48,6 +48,7 @@ import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { useIsScreenVisible, useOpenInPane } from '@kiko/navigation/pane-stack';
 
 import { styles } from './recurring-series.styles';
@@ -126,6 +127,7 @@ const ChargeList: FC<ChargeListProps> = ({ contentContainerStyle, ...listProps }
 // shows the loading state in place of its rows, never the neutral text.
 const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   const { series: detectedSeries, markedSeries, isLoading } = useRecurringSeries();
   // The marks a Remove mark took away leave the hook's marked series with the settings read, ahead
   // of `goBack`; the series it removed stays on screen until then. Only this screen's own write
@@ -287,6 +289,7 @@ const RecurringSeriesScreen: FC<RecurringSeriesScreenProps> = ({ route, navigati
                 categoryIconColor={resolveCategoryColor(
                   category.color,
                   resolveCategoryKey(row.category, categoryByKey, defaultCategoryKey),
+                  scheme,
                 )}
                 categoryAccessibilityLabel={category.title}
                 money={Money.of(row.currency, row.amountMinorUnits)}

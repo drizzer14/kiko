@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { type SwatchName, entityColorsDark } from '@kiko/design-system/palette';
 
 import Box from '../box';
 import Text from '../text';
@@ -9,21 +10,29 @@ import Text from '../text';
 import { styles } from './color-picker.styles';
 import type { ColorPickerProps } from './color-picker.props';
 
-// A labeled single-select row of color swatches drawn from the named
-// `entityColors` palette (the one source of truth in the theme). The account and
-// holding create forms use it to color the entity; the selected swatch (the one
-// whose hex equals `value`) carries a ring, and tapping a swatch reports its hex
-// through `onSelect`. Presentational: the caller owns the state and the
-// default-follows-type wiring, exactly as it does for the ChipRow pickers.
+// The theme field each `swatchSet` paints from.
+const PAINT_SET_KEY = { entity: 'entityColors', category: 'categoryColors' } as const;
+
+// A labeled single-select row of color swatches, one per named swatch of the
+// dark palette. The account and holding create forms use it to color the entity;
+// the selected swatch (the one whose dark hex equals `value`) carries a ring, and
+// tapping a swatch reports its dark hex through `onSelect`, so a stored color is
+// always the canonical hex whichever scheme paints the disc. Presentational: the
+// caller owns the state and the default-follows-type wiring, exactly as it does
+// for the ChipRow pickers.
 const ColorPicker = ({
   value,
   onSelect,
+  swatchSet,
   label,
   accessibilityLabelPrefix,
 }: ColorPickerProps): ReactElement => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const swatches = Object.entries(theme.colors.entityColors);
+  const paintSet = theme.colors[PAINT_SET_KEY[swatchSet]];
+  const swatches = (Object.keys(entityColorsDark) as SwatchName[]).map(
+    (name) => [name, entityColorsDark[name], paintSet[name]] as const,
+  );
   const resolvedAccessibilityLabelPrefix = accessibilityLabelPrefix ?? t('forms.fields.color');
 
   return (
@@ -35,8 +44,8 @@ const ColorPicker = ({
       )}
 
       <Box style={styles.swatchRow}>
-        {swatches.map(([name, hex]) => {
-          const selected = value === hex;
+        {swatches.map(([name, canonicalHex, paintHex]) => {
+          const selected = value === canonicalHex;
 
           return (
             <Pressable
@@ -44,14 +53,17 @@ const ColorPicker = ({
               accessibilityRole="button"
               accessibilityState={{ selected }}
               accessibilityLabel={`${resolvedAccessibilityLabelPrefix} ${name}`}
-              onPress={() => onSelect(hex)}
+              onPress={() => onSelect(canonicalHex)}
               style={styles.swatchCell}
             >
               <View
                 testID={`color-ring-${name}`}
                 style={[styles.swatchRing, selected && { borderColor: theme.colors.textPrimary }]}
               >
-                <View style={[styles.swatch, { backgroundColor: hex }]} />
+                <View
+                  testID={`color-swatch-${name}`}
+                  style={[styles.swatch, { backgroundColor: paintHex }]}
+                />
               </View>
             </Pressable>
           );

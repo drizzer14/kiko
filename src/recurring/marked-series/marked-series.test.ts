@@ -231,6 +231,7 @@ describe('one charge per period in a marked chain', () => {
         defaultCategoryKey: 'general',
         baseCurrency: 'UAH',
         rateTable: buildRateTable([]),
+        scheme: 'dark',
       });
       const lastAmounts = world.shown.map(({ lastAmount }) => lastAmount ?? 0);
 

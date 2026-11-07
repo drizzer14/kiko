@@ -2,6 +2,7 @@ import type { AccountRow, HoldingRow } from '@kiko/db';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
+import { entityColorsDark, entityColorsLight } from '@kiko/design-system/palette';
 
 import {
   buildAccountContribution,
@@ -41,6 +42,7 @@ describe('buildAccountContribution', () => {
     const rateTable = { USD: 40, EUR: 45 };
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable,
@@ -71,6 +73,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
@@ -90,6 +93,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: { USD: 40 },
@@ -112,6 +116,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
@@ -125,6 +130,7 @@ describe('buildAccountContribution', () => {
 
   it('resolves a stored empty-string color to a real hex', () => {
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts: [account('a', 'X', { kind: 'cash', color: '' })],
       holdings: [holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_00 })],
       rateTable: {},
@@ -137,6 +143,7 @@ describe('buildAccountContribution', () => {
 
   it('resolves an unmapped kind to a real hex, never undefined', () => {
     const slices = buildAccountContribution({
+      scheme: 'dark',
       // The schema enum is TS-only with no CHECK constraint, so a row under a
       // kind outside the current list can still exist.
       accounts: [account('a', 'X', { kind: 'retired_kind' as AccountRow['kind'], color: null })],
@@ -151,6 +158,7 @@ describe('buildAccountContribution', () => {
 
   it('still prefers a valid stored color', () => {
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts: [account('a', 'X', { kind: 'cash', color: '#123456' })],
       holdings: [holding({ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_00 })],
       rateTable: {},
@@ -161,6 +169,50 @@ describe('buildAccountContribution', () => {
     expect(slices[0].color).toBe('#123456');
   });
 
+  describe('in the light scheme', () => {
+    const input = (accounts: ContributionAccount[]) => ({
+      accounts,
+      holdings: accounts.map((owner) =>
+        holding({
+          id: `h-${owner.id}`,
+          accountId: owner.id,
+          currency: 'UAH',
+          balanceMinorUnits: 100_00,
+        }),
+      ),
+      rateTable: {},
+      baseCurrency: 'UAH' as const,
+      now: NOW,
+    });
+
+    it('colors a slice with the light twin of its stored swatch', () => {
+      const slices = buildAccountContribution({
+        ...input([account('a', 'X', { kind: 'cash', color: entityColorsDark.violet })]),
+        scheme: 'light',
+      });
+
+      expect(slices[0].color).toBe(entityColorsLight.violet);
+    });
+
+    it('colors a slice with the light twin of its kind default when it stores no color', () => {
+      const slices = buildAccountContribution({
+        ...input([account('a', 'X', { kind: 'cash', color: null })]),
+        scheme: 'light',
+      });
+
+      expect(slices[0].color).toBe(entityColorsLight.khaki);
+    });
+
+    it('colors a slice with a stored hex outside the swatches through the lightness rule', () => {
+      const slices = buildAccountContribution({
+        ...input([account('a', 'X', { kind: 'cash', color: '#FFFF00' })]),
+        scheme: 'light',
+      });
+
+      expect(slices[0].color).toBe('#8f8f00');
+    });
+  });
+
   it('filters out an account with zero net worth', () => {
     const accounts = [account('a', 'Cash'), account('z', 'Empty')];
     const holdings = [
@@ -169,6 +221,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
@@ -203,6 +256,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
@@ -225,6 +279,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
@@ -243,6 +298,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const slices = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
@@ -275,6 +331,7 @@ describe('buildAccountContribution', () => {
     ];
 
     const noBook = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
@@ -293,6 +350,7 @@ describe('buildAccountContribution', () => {
       },
     ]);
     const withBook = buildAccountContribution({
+      scheme: 'dark',
       accounts,
       holdings,
       rateTable: {},
