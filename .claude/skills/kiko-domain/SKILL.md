@@ -1093,7 +1093,8 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   that shares a row with a marked one leaves whole.
 - A marked chain keeps charges more than half a step apart, a tapped row
   first (key 0), near amounts next, no anchor: `onePerSlotOf` in
-  `src/recurring/detection/detection.ts` (spec 8.3; read it for the keys). A row it drops reads 'Not marked' (or its detected text) and its mark field is disabled;
+  `src/recurring/detection/detection.ts` (spec 8.3; read it for the keys). A row it
+  drops reads 'Not marked' (or its detected text) and its mark field is disabled;
   `markedChainOfAmount` in `src/recurring/marked-series/marked-series.ts` returns `holdsRow`.
 - The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
 - The accepted false stop: a subscription that goes on at a price outside the chain shows "No
