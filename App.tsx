@@ -20,6 +20,7 @@ import { useMccBackfill } from '@kiko/categories/category-rules-repo';
 import { useNavigationTheme } from '@kiko/navigation/navigation-theme';
 import { useReminderScheduler } from '@kiko/reminders/use-reminder-scheduler';
 import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-settings';
+import { useSyncAppearanceWithSettings } from '@kiko/appearance/use-sync-appearance-with-settings';
 
 /**
  * Rendered only once `MigrationsGate` reports success, so its mount is the
@@ -33,6 +34,8 @@ import { useSyncLanguageWithSettings } from '@kiko/i18n/use-sync-language-with-s
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
+
+  useSyncAppearanceWithSettings();
 
   useAutoSync();
 
