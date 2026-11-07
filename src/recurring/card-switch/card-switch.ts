@@ -36,37 +36,35 @@ const isCardSwitch = (oldestFirst: readonly Started[]): boolean =>
 const partOf = ({ id, currency, chargeIds }: RecurringSeries) => ({ id, currency, chargeIds });
 
 // The newest part's fields stand, the oldest part's id stays, and no charge moves out of its part.
-const joinedOf = (oldest: RecurringSeries, newerFirst: readonly RecurringSeries[]) =>
-  newerFirst.reduce<RecurringSeries>(
-    (joined, newer) => ({
-      ...newer,
+const joinedOf = (oldest: RecurringSeries, newer: readonly RecurringSeries[]) =>
+  newer.reduce<RecurringSeries>(
+    (joined, next) => ({
+      ...next,
       id: joined.id,
-      chargeIds: [...newer.chargeIds, ...joined.chargeIds],
-      parts: [partOf(newer), ...(joined.parts ?? [])],
+      chargeIds: [...next.chargeIds, ...joined.chargeIds],
+      parts: [partOf(next), ...(joined.parts ?? [])],
     }),
     { ...oldest, parts: [partOf(oldest)] },
   );
 
-const joinedOrAsIs = (
-  group: readonly RecurringSeries[],
-  chargeGroups: ChargeGroups,
-): RecurringSeries[] => {
+const joinedOrAsIs = (group: RecurringSeries[], chargeGroups: ChargeGroups): RecurringSeries[] => {
   const started = group.flatMap(
     (series) =>
       foldMap(maybe(firstChargeTimeOf(series, chargeGroups)), (firstChargeTime) => [
         { series, firstChargeTime },
       ]) ?? [],
   );
-  const [oldest, ...newer] = [...started].sort(byFirstCharge);
+  const isEveryStarted = started.length === group.length;
+  const [oldest, ...newer] = started.sort(byFirstCharge);
 
-  return started.length === group.length && oldest !== undefined && isCardSwitch([oldest, ...newer])
+  return isEveryStarted && oldest !== undefined && isCardSwitch([oldest, ...newer])
     ? [
         joinedOf(
           oldest.series,
           newer.map(({ series }) => series),
         ),
       ]
-    : [...group];
+    : group;
 };
 
 /**
