@@ -220,6 +220,56 @@ describe('historyOwesRange', () => {
     );
   });
 
+  describe('the ground a Bybit re-scan reads again', () => {
+    // The forward pass read this ground whole, and the re-scan window behind the balance sync reads
+    // it again for late rows, so the caption's "not imported yet" would be false for it.
+    const rescanned = { start: NOW - 3 * DAY_MS, end: NOW - 2 * DAY_MS };
+
+    const owesOn = (
+      provider: 'binance' | 'bybit',
+      walkName: WalkName,
+      range: Record<string, unknown>,
+      lastBalanceSyncAt: number | null = NOW,
+    ) => historyOwesRange(owing(walkName, [range]), lastBalanceSyncAt, provider);
+
+    it('owes nothing to the caption for a range with no series inside the last re-scan window', () => {
+      expect(owesOn('bybit', 'log', rescanned)).toBe(false);
+    });
+
+    it.each([
+      ['a range owed in one series', { ...rescanned, series: 'log' }],
+      ['a range that starts before the window', { start: NOW - 8 * DAY_MS, end: NOW - 2 * DAY_MS }],
+      ['a range that ends after the cursor', { start: NOW - 3 * DAY_MS, end: NOW + 1 }],
+      ['a range of a scope', { ...rescanned, scope: 'backfill' }],
+    ])('owes to the caption for %s', (_label, range) => {
+      expect(owesOn('bybit', 'log', range)).toBe(true);
+    });
+
+    it('owes to the caption for the same range on a Binance walk', () => {
+      expect(owesOn('binance', 'capital', rescanned)).toBe(true);
+    });
+
+    it.each([
+      ['capital', 29],
+      ['transfer', 7],
+      ['log', 7],
+    ] as const)('reads the window of the %s walk as %i days', (walkName, days) => {
+      const inside = { start: NOW - days * DAY_MS, end: NOW - DAY_MS };
+      const outside = { start: NOW - days * DAY_MS - 1, end: NOW - DAY_MS };
+
+      expect(owesOn('bybit', walkName, inside)).toBe(false);
+      expect(owesOn('bybit', walkName, outside)).toBe(true);
+    });
+
+    it('owes to the caption while the account has never synced', () => {
+      expect(owesOn('bybit', 'log', rescanned, null)).toBe(true);
+    });
+
+    it('owes to the caption for a walk with no window', () => {
+      expect(owesOn('bybit', 'convert', rescanned)).toBe(true);
+    });
+  });
+
   it.each([
     ['a range', { fiatPayments: { cursor: NOW, pending: [{ start: 1, end: 3 }] } }],
     [

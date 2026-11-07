@@ -19,6 +19,7 @@ import {
   serveSlots,
 } from './bybit.convergence-test-fixtures';
 import { NOW } from './bybit.client-test-fixtures';
+import { isBybitRescannedRange } from './bybit.rescan-window';
 import { BYBIT_LANE_CALL_CAPS } from './bybit.history-budget';
 import { withdrawalRow } from './bybit.history-test-fixtures';
 import { ACCOUNT_ID, capitalWalkOf, served } from './bybit.capital-test-fixtures';
@@ -750,6 +751,66 @@ const COMMITTING_BURSTS: BurstSeed[] = [
   burstSeed('5,000 rows in a day', 5_000, DAY_MS, [23, 462], [23, 460], [23, 23, 23]),
 ];
 
+/**
+ * A burst of 1,001 rows inside one second that lies in the re-scan, whose rows the forward pass
+ * imports. `rowsIn` is MEASURED, fake route, 2026-11-07: the run by which every row is in, at a
+ * clock gap of 0, 1 hour and 1 day, in the order of `CLOCK_GAPS`; `undefined` where the forward
+ * pass stops at the burst and keeps its mark for the 200 runs.
+ */
+type FreshBurst = {
+  name: string;
+  span: number;
+  age: number;
+  rowsIn: [number | undefined, number | undefined, number | undefined];
+};
+
+const FRESH_SUB_SECOND_BURSTS: FreshBurst[] = [
+  { name: '700 ms, 1 day old', span: 700, age: DAY_MS, rowsIn: [24, undefined, undefined] },
+  { name: '800 ms, 1 day old', span: 800, age: DAY_MS, rowsIn: [24, 24, undefined] },
+  { name: '900 ms, 1 day old', span: 900, age: DAY_MS, rowsIn: [24, 24, undefined] },
+  { name: '700 ms, 12 hours old', span: 700, age: DAY_MS / 2, rowsIn: [24, 34, 34] },
+  { name: '800 ms, 12 hours old', span: 800, age: DAY_MS / 2, rowsIn: [24, 34, 34] },
+  { name: '900 ms, 12 hours old', span: 900, age: DAY_MS / 2, rowsIn: [24, 34, 34] },
+];
+
+const FRESH_BURST_RUNS = 200;
+
+/**
+ * Run the log walk of a fresh burst, moving the clock by `gap` after each run. While the dense mark
+ * stands, rows stay missing; once every row is in, each owed range of every later run is one the
+ * caption skips. Gives the run by which every row was in.
+ */
+const runFreshBurst = async (walk: LogAndConvertAccount['log'], gap: number) => {
+  let rowsInBy: number | undefined;
+  let isFinished = false;
+
+  for (let run = 1; run <= FRESH_BURST_RUNS && !isFinished; run += 1) {
+    isFinished = (await walk.run()).complete;
+
+    const imported = rowsOf(walk).length;
+    const { pending = [], cursor = null } = walk.marks() as {
+      pending?: Parameters<typeof isBybitRescannedRange>[1][];
+      cursor?: number | null;
+    };
+
+    if ((await denseMarkOf(walk)) !== undefined) {
+      expect(imported).toBeLessThan(1_001);
+    }
+
+    if (rowsInBy !== undefined) {
+      expect(
+        pending.every((ground) => isBybitRescannedRange('log', ground, cursor, walk.clock.now)),
+      ).toBe(true);
+    } else if (imported === 1_001) {
+      rowsInBy = run;
+    }
+
+    walk.clock.now += gap;
+  }
+
+  return { rowsInBy, isFinished };
+};
+
 const STUCK_BURSTS = [
   { name: '1,001 rows in 50 ms', count: 1_001, span: 50 },
   { name: '1,001 rows in one ms', count: 1_001, span: 1 },
@@ -1039,6 +1100,37 @@ describe('Bybit convergence of the log and the convert walk', () => {
         expect(outcome.runs).toBeLessThanOrEqual(ends[CLOCK_GAPS.indexOf(gap)]);
         expect(rowsOf(account.log)).toHaveLength(count);
         expect(await denseMarkOf(account.log)).toBeUndefined();
+      },
+      120_000,
+    );
+
+    // The forward pass imports the burst, and the re-scan reads its range again by design, so the
+    // caption must not call the range "not imported yet": every range left owed inside the re-scan
+    // window is one the caption skips. At a gap over 0 the clock moves past the burst and the walk
+    // completes. At gap 0 the clock never moves, so the overlap day and the re-scan hold the burst
+    // on every run and the walk does not complete.
+    it.each(FRESH_SUB_SECOND_BURSTS)(
+      'a fresh burst inside one second imports every row and leaves no caption range, or keeps its mark: $name',
+      async ({ span, age, rowsIn }) => {
+        const account = newLogAndConvertAccount();
+
+        serveLogAndConvert(account, { log: burstOfRows(1_001, NOW - age, span), converts: [] });
+
+        const { rowsInBy, isFinished } = await runFreshBurst(account.log, gap);
+        const ceiling = rowsIn[CLOCK_GAPS.indexOf(gap)];
+        const hasMark = (await denseMarkOf(account.log)) !== undefined;
+
+        if (ceiling === undefined) {
+          expect(hasMark).toBe(true);
+          expect(rowsInBy).toBeUndefined();
+        } else {
+          expect(rowsInBy).toBeLessThanOrEqual(ceiling);
+          expect(rowsInBy).toBeGreaterThan(0);
+        }
+
+        if (gap > 0 && !hasMark) {
+          expect(isFinished).toBe(true);
+        }
       },
       120_000,
     );

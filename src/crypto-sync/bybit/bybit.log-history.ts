@@ -1,4 +1,3 @@
-import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import {
   AMOUNT_STOP_CODES,
@@ -40,6 +39,7 @@ import { readCursorSpan } from './bybit.cursor-span';
 import type { BybitLogKind } from './bybit.log-types';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
+import { BYBIT_RESCAN_WINDOWS_MS } from './bybit.rescan-window';
 import { fetchLogPage, timeOfItem } from './bybit.history-client';
 import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun } from './bybit.history-budget';
 
@@ -51,7 +51,7 @@ import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun } from './bybit.history-budg
 const LOG_SERIES = 'log';
 
 /** The log route answers a window of at most 7 days. */
-const WINDOW_MS = 7 * DAY_MS;
+const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.log;
 
 /** A window costs one call at least, and the lane spends its calls on windows and pages. */
 const MAX_WINDOWS = BYBIT_LANE_CALL_CAPS.log;

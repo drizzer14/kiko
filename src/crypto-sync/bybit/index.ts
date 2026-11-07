@@ -8,6 +8,7 @@ export type { BybitLogKind } from './bybit.log-types';
 export { keyExpiryStateOf } from './bybit.key-expiry';
 export { walletLabelOf } from './bybit.holding-keys';
 export { isTrackedBybitAsset } from './bybit.tracked-coin';
+export { isBybitRescannedRange } from './bybit.rescan-window';
 export { bybitProvider, defaultBybitDeps } from './bybit.provider';
 export { createBybitHistoryRun } from './bybit.history-budget';
 export { syncBybitLogHistory } from './bybit.log-history';

@@ -5,8 +5,8 @@ import type {
   ParsedExchangeState,
   WalkId,
 } from '@kiko/crypto-sync/exchange/walk-state';
-import { isTrackedBybitAsset } from '@kiko/crypto-sync/bybit';
 import type { BalanceProviderId } from '@kiko/crypto-sync/provider';
+import { isBybitRescannedRange, isTrackedBybitAsset } from '@kiko/crypto-sync/bybit';
 import { isTrackedBinanceAsset, RESYNC_OVERLAP_MS } from '@kiko/crypto-sync/binance';
 
 // Each table below is typed by the provider id, so a new id does not compile until its decision
@@ -121,11 +121,28 @@ const isPlannedOverlapDay = (ground: BinancePendingRange, cursor: number | null)
   ground.end <= cursor;
 
 /**
+ * Whether a range is ground the caption is about. Not the overlap day a walk keeps planned across
+ * syncs, which the next sync reads by design, and not, for Bybit, a range in every series inside
+ * its re-scan window: the forward pass read that whole, so "not imported yet" is false for it.
+ */
+const isOwedRange = (
+  provider: BalanceProviderId,
+  walkId: WalkId,
+  ground: BinancePendingRange,
+  cursor: number | null,
+  lastBalanceSyncAt: number | null,
+): boolean =>
+  isRange(ground) &&
+  !(OVERLAP_KEEPING_WALKS.includes(walkId) && isPlannedOverlapDay(ground, cursor)) &&
+  !(provider === 'bybit' && isBybitRescannedRange(walkId, ground, cursor, lastBalanceSyncAt));
+
+/**
  * Whether any history walk owes ground the caption is about: a range, in every series or in one
  * (ground its forward cursor has passed and a later run still has to read: a page or a series the
  * run could not afford or read, a drift, an edge band), or a point that has stayed owed for more
  * than a day (`isOldPoint`). A range that is the overlap day a walk keeps planned across syncs
- * (`isPlannedOverlapDay`) is not owed: the next sync reads it by design. A fresh point is not
+ * (`isPlannedOverlapDay`) is not owed: the next sync reads it by design, and neither is a Bybit
+ * range in every series inside its re-scan window (`isBybitRescannedRange`). A fresh point is not
  * owed ground the walk is behind on: the record it keeps owed is read again on every sync. A list
  * that is not well formed owes nothing here; the walk repairs it on its next run. The ranges the
  * fiat re-scan reads around (`rescanStuck`) are kept in the same list, so they are read through
@@ -145,11 +162,7 @@ export const historyOwesRange = (
         (walkId) =>
           walks[walkId].pending?.some(
             (ground) =>
-              (isRange(ground) &&
-                !(
-                  OVERLAP_KEEPING_WALKS.includes(walkId) &&
-                  isPlannedOverlapDay(ground, walks[walkId].cursor)
-                )) ||
+              isOwedRange(provider, walkId, ground, walks[walkId].cursor, lastBalanceSyncAt) ||
               (lastBalanceSyncAt !== null && isOldPoint(ground, lastBalanceSyncAt)),
           ) ?? false,
       ),

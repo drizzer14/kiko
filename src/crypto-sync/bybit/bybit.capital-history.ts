@@ -40,6 +40,7 @@ import { holdingKeyOf } from './bybit.holding-keys';
 import { readCursorSpan } from './bybit.cursor-span';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
+import { BYBIT_RESCAN_WINDOWS_MS } from './bybit.rescan-window';
 import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun } from './bybit.history-budget';
 
 const CAPITAL_SERIES = ['deposit', 'internal', 'withdraw'] as const;
@@ -50,7 +51,7 @@ type CapitalSeries = (typeof CAPITAL_SERIES)[number];
  * Bybit's deposit and internal-deposit routes take a window under 30 days, and a withdrawal's
  * accepts the same: 29 days stays under the stated limit.
  */
-const WINDOW_MS = 29 * DAY_MS;
+const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.capital;
 
 /** A window costs one call per series, and the lane spends its calls on windows. */
 const MAX_WINDOWS = BYBIT_LANE_CALL_CAPS.capital / CAPITAL_SERIES.length;

@@ -32,6 +32,7 @@ import {
 import { readCursorSpan } from './bybit.cursor-span';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
+import { BYBIT_RESCAN_WINDOWS_MS } from './bybit.rescan-window';
 import { fetchTransferPage, timeOfItem } from './bybit.history-client';
 import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun } from './bybit.history-budget';
 import { type BybitWallet, exchangePairIdOf, holdingKeyOf } from './bybit.holding-keys';
@@ -44,7 +45,7 @@ import { type BybitWallet, exchangePairIdOf, holdingKeyOf } from './bybit.holdin
 const TRANSFER_SERIES = 'transfer';
 
 /** The transfer route answers a window of at most 7 days and refuses one second more. */
-const WINDOW_MS = 7 * DAY_MS;
+const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.transfer;
 
 /** A window costs one call, and the lane spends its calls on windows. */
 const MAX_WINDOWS = BYBIT_LANE_CALL_CAPS.transfer;
