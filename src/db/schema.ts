@@ -454,7 +454,7 @@ export const settings = sqliteTable('settings', {
   language: text('language', { enum: ['en', 'uk'] }),
   // The chosen appearance: 'system' follows the OS, 'light' and 'dark' pin the window. The enum is
   // TypeScript-only (the migration has no CHECK), so a reader goes through
-  // `parseAppearanceMode`, never this raw value.
+  // `parseAppearanceMode`, never this raw value. A restore keeps the live value.
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),

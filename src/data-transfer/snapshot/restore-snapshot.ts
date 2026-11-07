@@ -539,6 +539,7 @@ const NO_LIVE_DEVICE_SETTINGS = {
   lockEnabled: false,
   notificationsDeliverableSince: null,
   historyBackfillState: null,
+  appearance: 'system',
 } satisfies LiveDeviceSettings;
 
 const keptFromLive = (row: SettingsRow): LiveDeviceSettings =>

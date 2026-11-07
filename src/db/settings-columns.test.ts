@@ -57,7 +57,6 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'defaultCategoryKey',
   'lockGraceSeconds',
   'language',
-  'appearance',
   'lastSyncDisplayAt',
   'lastFullSyncAt',
   'trendCategoryKeys',
