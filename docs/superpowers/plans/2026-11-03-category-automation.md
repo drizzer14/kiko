@@ -483,7 +483,7 @@ CategoryReview: undefined;
 | `categoryReview.rowCount_*` | `{{count}} transactions` | `{{count}} транзакція / транзакції / транзакцій` |
 | `categoryReview.choose` | `Select category` | `Обрати категорію` |
 | `categoryReview.chooseFor` (added by the fix round) | `Select category for {{name}}` | `Обрати категорію для «{{name}}»` |
-| `categoryReview.optionsTitle` (title key) | `Select Category` | `Обрати категорію` |
+| `categoryReview.optionsTitle` (title key) | `Category` | `Категорія` |
 | `categoryReview.emptyTitle` | `Nothing to sort` | `Немає що розподіляти` |
 | `categoryReview.emptyMessage` | `Transactions without a category appear here, grouped by name. Select a category once, and Kiko adds a rule for it.` | `Тут зʼявляться транзакції без категорії, згруповані за назвою. Оберіть категорію один раз, і Кіко додасть для неї правило.` |
 | `help.topics.categoryRules.steps.6` | `To sort what has no category yet, open "Categories", tap "Sort transactions without a category" and select a category for a name.` | `Щоб розподілити транзакції без категорії, відкрийте «Категорії», натисніть «Розподілити транзакції без категорії» й оберіть категорію для назви.` |

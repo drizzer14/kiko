@@ -372,6 +372,37 @@ describe('MatcherRow', () => {
     );
   });
 
+  describe('the MCC and IBAN hints', () => {
+    const MCC_HINT = 'A four-digit code the bank gives each type of shop.';
+    const IBAN_HINT = 'The account number of the other side, starting with the country code.';
+
+    it('explains the merchant code on an mcc condition', async () => {
+      const { getByText, queryByText } = await renderRow({ draft: draftOf({ type: 'mcc' }) });
+
+      expect(getByText(MCC_HINT)).toBeTruthy();
+      expect(queryByText(IBAN_HINT)).toBeNull();
+    });
+
+    it('explains the counterparty IBAN on a counterIban condition', async () => {
+      const { getByText, queryByText } = await renderRow({
+        draft: draftOf({ type: 'counterIban' }),
+      });
+
+      expect(getByText(IBAN_HINT)).toBeTruthy();
+      expect(queryByText(MCC_HINT)).toBeNull();
+    });
+
+    it.each(['nameIs', 'amount', 'direction', 'time', 'account'] as const)(
+      'shows neither hint on a %s condition',
+      async (type) => {
+        const { queryByText } = await renderRow({ draft: draftOf({ type }) });
+
+        expect(queryByText(MCC_HINT)).toBeNull();
+        expect(queryByText(IBAN_HINT)).toBeNull();
+      },
+    );
+  });
+
   describe('removing the row', () => {
     it('offers Remove, labelled with the position of the row, when it can go', async () => {
       const onRemove = jest.fn();
@@ -417,5 +448,35 @@ describe('MatcherRow', () => {
         getByText('Рядки виписки без часу рахуються як полудень у часовому поясі виписки.'),
       ).toBeTruthy();
     });
+
+    it('explains the merchant code on an mcc condition, in Ukrainian', async () => {
+      const { getByText, queryByText } = await renderRow({ draft: draftOf({ type: 'mcc' }) });
+
+      expect(
+        getByText('Чотиризначний код, який банк присвоює кожному типу магазинів.'),
+      ).toBeTruthy();
+      expect(queryByText(/Номер рахунку іншої сторони/)).toBeNull();
+    });
+
+    it('explains the counterparty IBAN on a counterIban condition, in Ukrainian', async () => {
+      const { getByText, queryByText } = await renderRow({
+        draft: draftOf({ type: 'counterIban' }),
+      });
+
+      expect(
+        getByText('Номер рахунку іншої сторони, який починається з коду країни.'),
+      ).toBeTruthy();
+      expect(queryByText(/Чотиризначний код, який банк/)).toBeNull();
+    });
+
+    it.each(['nameIs', 'amount', 'time'] as const)(
+      'shows neither hint on a %s condition, in Ukrainian',
+      async (type) => {
+        const { queryByText } = await renderRow({ draft: draftOf({ type }) });
+
+        expect(queryByText(/Чотиризначний код, який банк/)).toBeNull();
+        expect(queryByText(/Номер рахунку іншої сторони/)).toBeNull();
+      },
+    );
   });
 });
