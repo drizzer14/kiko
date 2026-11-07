@@ -71,26 +71,31 @@ const lineOf = (cells: number[], total: number, input: CashFlowInput): CashFlowL
   average: averageOverComplete(cells, input.firstCompleteIndex, input.currentIsPartial),
 });
 
+/**
+ * What an income row adds to the income, in the base currency at today's rate; nothing for a row
+ * that `isIncomeRow` leaves out or whose currency has no rate. The one place a row is read as
+ * income, so a cell and the rows behind it cannot disagree.
+ */
+export const incomeAmountOf = (
+  row: LedgerRow,
+  excludedIds: ReadonlySet<string>,
+  rateTable: RateTable,
+  baseCurrency: Currency,
+): Money | undefined =>
+  isIncomeRow(row, excludedIds) && canConvert(row.currency, baseCurrency, rateTable)
+    ? convert(Money.of(row.currency, row.amountMinorUnits), baseCurrency, rateTable)
+    : undefined;
+
 const incomeCellsOf = (input: CashFlowInput): number[] => {
   const { ledger, months, rateTable, baseCurrency } = input;
   const cells = months.map(() => 0);
 
   for (const row of ledger.shownRows) {
-    if (
-      !isIncomeRow(row, ledger.excludedTransactionIds) ||
-      !canConvert(row.currency, baseCurrency, rateTable)
-    ) {
-      continue;
-    }
-
     const index = months.findIndex((month) => row.time >= month.start && row.time <= month.end);
+    const income = incomeAmountOf(row, ledger.excludedTransactionIds, rateTable, baseCurrency);
 
-    if (index !== -1) {
-      cells[index] += convert(
-        Money.of(row.currency, row.amountMinorUnits),
-        baseCurrency,
-        rateTable,
-      ).minorUnits;
+    if (index !== -1 && income !== undefined) {
+      cells[index] += income.minorUnits;
     }
   }
 

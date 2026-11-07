@@ -5,6 +5,8 @@ import {
   averageCellOf,
   cellOf,
   columnsOf,
+  periodOf,
+  openingCellOf,
   monthColumnsOf,
   openingColumnIndexOf,
   type Spoken,
@@ -44,6 +46,47 @@ describe('cellOf', () => {
 
     expect(cell.text).toBe('1');
     expect(cell.tone).toBeUndefined();
+  });
+});
+
+describe('openingCellOf', () => {
+  it('opens through the callback it is given, with the hint that says so', () => {
+    const open = jest.fn();
+    const cell = openingCellOf(1_234_56, 'Groceries, Total', spoken, open);
+
+    cell.onPress?.();
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(cell.accessibilityHint).toBe(i18n.t('tables.cellRows.hint'));
+  });
+
+  it('reads as the money cell it is built on', () => {
+    expect(openingCellOf(1_234_56, 'Groceries, Total', spoken, jest.fn())).toMatchObject(
+      cellOf(1_234_56, 'Groceries, Total', spoken),
+    );
+  });
+
+  it('is a plain cell for an amount of zero, with no press and no hint', () => {
+    const cell = openingCellOf(0, 'Groceries, Total', spoken, jest.fn());
+
+    expect(cell).toEqual(cellOf(0, 'Groceries, Total', spoken));
+    expect(cell).not.toHaveProperty('onPress');
+    expect(cell).not.toHaveProperty('accessibilityHint');
+  });
+
+  it('opens for a negative amount too', () => {
+    expect(typeof openingCellOf(-5_00, 'Net, Total', spoken, jest.fn()).onPress).toBe('function');
+  });
+});
+
+describe('periodOf', () => {
+  it('runs from the start of the first month to the end of the last', () => {
+    const months = calendarMonthsBetween(
+      new Date(2025, 0, 10).getTime(),
+      new Date(2025, 3, 20).getTime(),
+    );
+
+    expect(periodOf(months)).toEqual({ start: months[0].start, end: months[3].end });
   });
 });
 

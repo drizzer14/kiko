@@ -1,4 +1,5 @@
-import { type FC, useMemo } from 'react';
+import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import DataTable, {
   type DataTableCell,
@@ -6,21 +7,26 @@ import DataTable, {
   type DataTableRow,
 } from '@kiko/design-system/components/data-table';
 import Box from '@kiko/design-system/components/box';
+import { type FC, useCallback, useMemo } from 'react';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { firstCompleteMonthIndex } from '@kiko/statistics/table-period';
 import { buildCashFlow, type CashFlowLine } from '@kiko/statistics/cash-flow';
+import { type CellRange, expenseRowsOf, incomeRowsOf } from '@kiko/statistics/cell-rows';
 
 import {
   cellOf,
+  periodOf,
   columnsOf,
   dashCellOf,
   firstRowTimeOf,
   averageCellOf,
+  openingCellOf,
   openingColumnIndexOf,
   type Spoken,
 } from '../table-cells';
 import { monthTitle } from '../month-column-label';
+import CellRowsSheet, { useCellRowsSheet } from '../cell-rows-sheet';
 
 import { styles } from './cash-flow-table.styles';
 import type { CashFlowTableProps } from './cash-flow-table.props';
@@ -64,22 +70,45 @@ const rateCellOf = (
 
 type Line = CashFlowLine & { key: string; label: string; isSummary?: boolean };
 
+/** The lines whose cells open the rows behind them: the two that are sums of rows. */
+type CellSelector = 'income' | 'expenses';
+
+/** Which rows the month and Total cells of a line open, and where to show them. */
+type Opening = {
+  selector: CellSelector;
+  open: (title: string, selector: CellSelector, range: CellRange) => void;
+};
+
+// Net and the savings rate are computed from the other lines, with no rows behind them, so a
+// line with no `opening` has plain cells.
 const lineRowOf = (
   line: Line,
   months: CashFlowTableProps['months'],
   spoken: Spoken,
-): DataTableRow => ({
-  key: line.key,
-  label: line.label,
-  isSummary: line.isSummary,
-  cells: [
-    ...line.cells.map((amount, index) =>
-      cellOf(amount, `${line.label}, ${monthTitle(months[index], spoken.t)}`, spoken),
-    ),
-    cellOf(line.total, `${line.label}, ${spoken.t('tables.total')}`, spoken),
-    averageCellOf(line.average, `${line.label}, ${spoken.t('tables.average')}`, spoken),
-  ],
-});
+  opening?: Opening,
+): DataTableRow => {
+  const cellAt = (amount: number, label: string, range: () => CellRange): DataTableCell =>
+    foldMap(maybe(opening), ({ selector, open }) =>
+      openingCellOf(amount, label, spoken, () => open(label, selector, range())),
+    ) ?? cellOf(amount, label, spoken);
+
+  return {
+    key: line.key,
+    label: line.label,
+    isSummary: line.isSummary,
+    cells: [
+      ...line.cells.map((amount, index) =>
+        cellAt(
+          amount,
+          `${line.label}, ${monthTitle(months[index], spoken.t)}`,
+          () => months[index],
+        ),
+      ),
+      cellAt(line.total, `${line.label}, ${spoken.t('tables.total')}`, () => periodOf(months)),
+      averageCellOf(line.average, `${line.label}, ${spoken.t('tables.average')}`, spoken),
+    ],
+  };
+};
 
 const CashFlowTable: FC<CashFlowTableProps> = ({
   ledger,
@@ -89,10 +118,31 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
   rateTable,
   baseCurrency,
   defaultCategoryKey,
+  describeRow,
+  sheetGeneration,
   topContent,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
+  // The sheet computes its rows from this, in render, so it reads the ledger and rates as they are
+  // now, not as they were at the tap. A category pick never changes the cash flow, so the
+  // expenses' rows take none.
+  const rowsOf = useCallback(
+    (selector: CellSelector, range: CellRange) =>
+      match(selector)
+        .with('income', () => incomeRowsOf(ledger, range, rateTable, baseCurrency, describeRow))
+        .with('expenses', () =>
+          expenseRowsOf(
+            ledger,
+            range,
+            {},
+            { categoryDisplay, rateTable, baseCurrency, defaultCategoryKey, describe: describeRow },
+          ),
+        )
+        .exhaustive(),
+    [ledger, rateTable, baseCurrency, categoryDisplay, defaultCategoryKey, describeRow],
+  );
+  const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf);
   const currentIsPartial = (months.at(-1)?.end ?? 0) >= now;
   const firstRowTime = useMemo(() => firstRowTimeOf(ledger), [ledger]);
   const flow = useMemo(
@@ -131,11 +181,15 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
     const noAverage = income.average === null ? t('tables.noCompleteMonth') : noRate;
 
     return [
-      lineRowOf({ key: 'income', label: t('tables.cashFlow.income'), ...income }, months, spoken),
+      lineRowOf({ key: 'income', label: t('tables.cashFlow.income'), ...income }, months, spoken, {
+        selector: 'income',
+        open,
+      }),
       lineRowOf(
         { key: 'expenses', label: t('tables.cashFlow.expenses'), ...expenses },
         months,
         spoken,
+        { selector: 'expenses', open },
       ),
       lineRowOf(
         { key: 'net', label: t('tables.cashFlow.net'), isSummary: true, ...net },
@@ -159,7 +213,7 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
         ],
       },
     ];
-  }, [flow, months, baseCurrency, locale, t]);
+  }, [flow, months, baseCurrency, locale, t, open]);
 
   const hasMoney = [...flow.income.cells, ...flow.expenses.cells].some((cell) => cell !== 0);
   const caption = t('tables.cashFlow.caption', { currency: baseCurrency });
@@ -177,15 +231,25 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
   );
 
   return (
-    <DataTable
-      columns={columns}
-      rows={rows}
-      caption={currentIsPartial ? `${caption} ${t('tables.cashFlow.partialMonth')}` : caption}
-      topContent={topContent}
-      emptyContent={emptyContent}
-      initialColumnIndex={openingColumnIndexOf(months)}
-      testID="cash-flow-table"
-    />
+    <>
+      <DataTable
+        columns={columns}
+        rows={rows}
+        caption={currentIsPartial ? `${caption} ${t('tables.cashFlow.partialMonth')}` : caption}
+        topContent={topContent}
+        emptyContent={emptyContent}
+        initialColumnIndex={openingColumnIndexOf(months)}
+        testID="cash-flow-table"
+      />
+
+      {sheet !== undefined && (
+        <CellRowsSheet
+          key={`cell-rows-${sheetGeneration}`}
+          {...sheet}
+          baseCurrency={baseCurrency}
+        />
+      )}
+    </>
   );
 };
 

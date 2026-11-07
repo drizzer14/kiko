@@ -4,6 +4,7 @@ import { Money } from '@kiko/currency/money';
 import type { CalendarMonth } from '@kiko/dates';
 import { formatMoney } from '@kiko/currency/format';
 import type { Currency } from '@kiko/currency/currency';
+import type { CellRange } from '@kiko/statistics/cell-rows';
 import type { SpendingLedger } from '@kiko/statistics/spending-ledger';
 import type { DataTableCell, DataTableColumn } from '@kiko/design-system/components/data-table';
 
@@ -37,6 +38,29 @@ export const cellOf = (amount: number, label: string, spoken: Spoken): DataTable
     ...(text.startsWith(MINUS) ? { tone: 'negative' as const } : {}),
   };
 };
+
+/**
+ * A money cell that opens the rows behind it, with the hint that says so. A cell of exactly zero
+ * has no rows to show, so it stays a plain cell rather than read as a button that opens nothing.
+ */
+export const openingCellOf = (
+  amount: number,
+  label: string,
+  spoken: Spoken,
+  open: () => void,
+): DataTableCell => {
+  const cell = cellOf(amount, label, spoken);
+
+  return amount === 0
+    ? cell
+    : { ...cell, onPress: open, accessibilityHint: spoken.t('tables.cellRows.hint') };
+};
+
+/** The whole period, first month's start to last month's end: the range of a Total cell. */
+export const periodOf = (months: readonly CalendarMonth[]): CellRange => ({
+  start: months[0].start,
+  end: months[months.length - 1].end,
+});
 
 /** A dash for a value there is none of, with a word for VoiceOver instead of silence. */
 export const dashCellOf = (label: string, spokenValue: string): DataTableCell => ({

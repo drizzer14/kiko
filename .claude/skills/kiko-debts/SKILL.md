@@ -246,9 +246,12 @@ accrues either AT VALUATION time) backs the net-worth assets-minus-debt
 rule. The `loanHoldingId` link column + its repo
 functions are covered in their own subsection below. Interest-only
 spending is wired through kiko-domain's "Spending-exclusion pipeline"
-section's loan-payments module. The transaction-form field (`LoanPaymentField`)
-and the automatic payment-linking matcher are BOTH wired — see "The
-automatic loan-payment matcher" subsection below for the matcher's own
+section's loan-payments module. `loanPaymentIdOf(entryId)` and `loanEntryPartOf(entryId)`
+(`src/statistics/loan-payments/loan-payments.ts`) map a derived `loan-interest:<id>` or
+`loan-excess:<id>` entry back to its payment and to 'interest' or 'fee'; the Tables cell rows
+show the part on each row and take the description from the payment's own row.
+The transaction-form field (`LoanPaymentField`) and the automatic payment-linking matcher
+are BOTH wired — see "The automatic loan-payment matcher" subsection below for the matcher's own
 rules and every call site.
 
 ### Loan form + detail

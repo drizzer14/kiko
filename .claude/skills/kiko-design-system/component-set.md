@@ -477,7 +477,9 @@ new component can land between reviews of this skill:
   `ScrollView` so overflow scrolls instead of clipping — a sheet that
   needs its own pinned header/footer or a scroll-to-selection ref
   (date-range-field, category-field, icon-picker-modal) passes
-  `scrollable={false}` and renders its own inner `ScrollView` instead.
+  `scrollable={false}` and renders its own inner `ScrollView`, or a `FlatList` when the rows
+  are unbounded (`currency-field`, `src/screens/tables/cell-rows-sheet/`; the total stays
+  outside the list).
   Its drag-to-close grabber's pure math (`clampSheetTranslate`,
   `shouldDismissSheet`) lives in `bottom-sheet.gesture.ts` — see
   `kiko-gestures`. Read `bottom-sheet.props.d.ts` for the exact current
@@ -565,7 +567,9 @@ new component can land between reviews of this skill:
   for exactly this reason (the same fix `Screen`'s own background
   `ScrollView` applies for its search field, per that file's comment); any
   new sheet content that combines a focusable input with a tappable list
-  below it needs the same prop.
+  below it needs the same prop. `cell-rows-sheet` has no input, so it sets none.
+  `initialNumToRender` trips `check:full-word-identifiers` outside the exempted files (see
+  its EXEMPTIONS); use `windowSize`, as `cell-rows-sheet` does.
 - **SelectableRow** (`src/design-system/components/selectable-row/`) —
   the shared single-select row for a `BottomSheet` list: a 44pt-minimum
   tap target that fills with the accent background when `selected` (the

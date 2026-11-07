@@ -211,6 +211,20 @@ describe('NetWorthTable', () => {
     expect(table.initialColumnIndex).toBe(3);
   });
 
+  // A balance has no rows behind it that add up to it: it is a valuation at a month's end.
+  it('opens no rows from any cell, a month, the Change or an account or All row alike', async () => {
+    const { table } = await shown(propsOf());
+
+    expect(table.rows.length).toBeGreaterThan(1);
+
+    for (const row of table.rows) {
+      for (const cell of row.cells) {
+        expect(cell.onPress).toBeUndefined();
+        expect(cell.accessibilityHint).toBeUndefined();
+      }
+    }
+  });
+
   describe('the caption', () => {
     it('names the base currency and the rates, and that the latest month is today', async () => {
       const { table } = await shown(propsOf());

@@ -1696,23 +1696,27 @@ describe('AccountsScreen', () => {
     );
 
     it('lists the sections in the order accountSectionOrder names', async () => {
-      const headingTestIds: Record<ImplicitAccountKind, string> = {
+      const sectionTestIds: Record<ImplicitAccountKind | 'main', string> = {
+        main: 'accounts-grid',
         property: 'accounts-property-heading',
         debt: 'accounts-debts-heading',
       };
-      bothSections();
+      setLiveData({
+        accounts: [{ id: 'a', name: 'Monobank', kind: 'bank' }, propertyAccount(), debtAccount()],
+        holdings: [
+          { accountId: 'a', currency: 'UAH', balanceMinorUnits: 100_000 },
+          propertyHolding(),
+          loanHolding(),
+        ],
+      });
 
       const { getAllByTestId } = await renderAccounts();
 
       expect(
-        getAllByTestId(/^accounts-(property|debts)-heading$/).map(
-          (heading) => heading.props.testID,
+        getAllByTestId(/^(accounts-grid|accounts-(property|debts)-heading)$/).map(
+          (section) => section.props.testID,
         ),
-      ).toEqual(
-        accountSectionOrder.flatMap((section) =>
-          section === 'main' ? [] : [headingTestIds[section]],
-        ),
-      );
+      ).toEqual(accountSectionOrder.map((section) => sectionTestIds[section]));
     });
 
     it('never shows the old fixed Property or Debts text', async () => {
