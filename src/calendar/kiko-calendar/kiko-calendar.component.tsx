@@ -31,7 +31,7 @@ import type { KikoCalendarProps } from './kiko-calendar.props';
 //      (its own weekday-label row, via the SAME `firstDay` prop, which
 //      react-native-calendars forwards to a custom header automatically) read
 //      this, so the two stay in sync.
-// It also applies the app's dark calendar theme so callers don't repeat it.
+// It also applies the calendar theme of the active scheme so callers don't repeat it.
 const KikoCalendar: FC<KikoCalendarProps> = ({
   testID,
   markedDates,
@@ -50,8 +50,12 @@ const KikoCalendar: FC<KikoCalendarProps> = ({
   const calendarTheme = buildCalendarTheme(theme);
   const firstDay = weekStartFor(deviceRegion());
 
+  // The library builds its stylesheet once per mount (react-native-calendars/src/calendar/index.js
+  // `useRef(styleConstructor(theme))`), so a scheme change needs a new mount; the remount returns
+  // the calendar to its start month.
   return (
     <Calendar
+      key={theme.colorScheme}
       testID={testID}
       initialDate={initialDate}
       minDate={minDate}

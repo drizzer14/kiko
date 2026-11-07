@@ -1,6 +1,10 @@
-import { darkTheme } from '@kiko/design-system/theme';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { type ComponentProps, useContext } from 'react';
 import { HeaderHeightContext } from '@react-navigation/elements';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
@@ -1415,5 +1419,44 @@ describe('Screen with a title heading', () => {
     const { queryByTestId } = await renderWithHeading(jest.fn(), props);
 
     expect(queryByTestId('large-title-heading')).toBeNull();
+  });
+
+  // The safe-area view is a third-party native view: a Unistyles stylesheet color on it would not
+  // repaint on a scheme change, so its background comes from the re-rendered theme.
+  describe('page background on the safe-area view', () => {
+    type RenderedScreen = Awaited<ReturnType<typeof renderScreen>>;
+
+    const BRANCHES: [
+      string,
+      ComponentProps<typeof Screen>,
+      (view: RenderedScreen) => RenderedElement,
+    ][] = [
+      ['plain', {}, (view) => view.getByTestId(CONTENT_TEST_ID)],
+      ['scroll', { scroll: true }, (view) => view.getByTestId(SCROLL_VIEW_TEST_ID)],
+      ['bleedTop', { bleedTop: true }, (view) => view.getByText('content')],
+    ];
+
+    const pageColorOf = (child: RenderedElement): unknown =>
+      StyleSheet.flatten(child.parent?.props.style).backgroundColor;
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it.each(BRANCHES)('paints the dark page in the %s branch', async (_name, props, childOf) => {
+      const view = await renderScreen(props);
+
+      expect(pageColorOf(childOf(view))).toBe(darkTheme.colors.background);
+    });
+
+    it.each(BRANCHES)(
+      'paints the light page in the %s branch once light is the active theme',
+      async (_name, props, childOf) => {
+        registerLightThemeFirst();
+        const view = await renderScreen(props);
+
+        expect(pageColorOf(childOf(view))).toBe(lightTheme.colors.background);
+      },
+    );
   });
 });

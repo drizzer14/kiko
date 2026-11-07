@@ -248,7 +248,7 @@ reference: `useUnistyles` hands out a proxy, and the mock has no `rt.themeName` 
 ## 4. Mechanism
 
 - Palette copy: set 2 is the first set that needs it. It copies `.superpowers/sdd/1.4-light-scheme/palette/palette.json`, as
-  the user approved it, to `docs/design/light-palette/palette.json`. `__tests__/light-palette-source.test.ts` pins code to file.
+  the user approved it, to `docs/design/light-palette/palette.json`. `src/design-system/palette/light-palette-source.test.ts` pins code to file.
 - Values come only from that file. This spec defines none. A shape mismatch with the plan is a stop-and-ask to the designer.
 - Display path: stored or default hex (canonical dark), then producer with `scheme`, then sink. Sinks stay unaware.
 - Live switch: tap, `settingsRepo.setAppearance`, live query, hook, `Appearance.setColorScheme`, window trait, Unistyles native

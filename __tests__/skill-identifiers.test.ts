@@ -66,14 +66,13 @@ type ExemptionGroup = { reason: string; names: readonly string[] };
 const NON_PROJECT_NAMES: readonly ExemptionGroup[] = [
   {
     reason:
-      'symbols and source file names of react-native, react-native-sortables, RNGH, Unistyles, ' +
+      'symbols and source file names of react-native, react-native-sortables, RNGH, ' +
       'drizzle, a clipboard hook and jest-haste-map internals that the skill cites to explain a ' +
       'behavior; the code never calls them',
     names: [
       'RCTModalHostViewComponentView.mm',
       'DragProvider.ts',
       'PlatformColor',
-      'UnistylesRuntime.setTheme',
       'useClipboard()',
       'useMigrations',
       'updateProps',

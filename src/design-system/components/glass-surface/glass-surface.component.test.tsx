@@ -822,14 +822,15 @@ describe('GlassSurface', () => {
       expect(washFlat.backgroundColor).toBe(darkTheme.colors.surfaceWashStrong);
     });
 
-    // The app is dark-only, so the native glass's colorScheme is a fixed 'dark'.
-    it('passes a fixed dark colorScheme to the native glass', async () => {
+    // 'system' follows the window's interface style, so the glass samples its backdrop in
+    // whichever scheme the window is in.
+    it("lets the native glass follow the window's scheme", async () => {
       const { getByTestId } = await render(
         <GlassSurface testID="glass-surface" tint="rgba(255,69,58,0.1)">
           <Text>content</Text>
         </GlassSurface>,
       );
-      expect(getByTestId('glass-surface-base').props.colorScheme).toBe('dark');
+      expect(getByTestId('glass-surface-base').props.colorScheme).toBe('system');
     });
   });
 });

@@ -6,6 +6,7 @@ import DataTable, {
 } from '@kiko/design-system/components/data-table';
 import Box from '@kiko/design-system/components/box';
 import { activeLocale } from '@kiko/i18n/active-locale';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { buildCategoryByMonth } from '@kiko/statistics/category-by-month';
 import { averageOverComplete, firstCompleteMonthIndex } from '@kiko/statistics/table-period';
@@ -25,7 +26,7 @@ import type { CategoryTableProps } from './category-table.props';
 
 // The table keeps a row's key, title and amounts, never a slice color, so the scheme the breakdown
 // resolves colors in cannot show here; the category menu's own slices take the active one.
-const TABLE_SCHEME = 'dark';
+const TABLE_SCHEME: ColorScheme = 'dark';
 
 type Amounts = {
   key: string;

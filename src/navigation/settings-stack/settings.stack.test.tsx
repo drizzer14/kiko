@@ -51,7 +51,7 @@ type ScreenOptions = {
 // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26 tier.
 const sharedLargeTitleOptions = {
   headerLargeTitle: true,
-  headerBlurEffect: 'systemChromeMaterialDark',
+  headerBlurEffect: 'systemChromeMaterial',
   headerLargeStyle: { backgroundColor: 'transparent' },
 };
 

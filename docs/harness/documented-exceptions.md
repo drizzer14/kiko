@@ -704,7 +704,7 @@ verified usage, not dead weight:
   `__tests__/symbol-deployment-target.test.tsx` renders
   `@kiko/navigation/root-navigator` and imports `@kiko/holdings/entity-symbols`,
   `@kiko/holdings/entity-icon-pool`, `@kiko/design-system/components/icon-pools`,
-  `@kiko/design-system/edit-bar-item`, and `@kiko/navigation/dark-theme`.
+  `@kiko/design-system/edit-bar-item`, and `@kiko/navigation/navigation-theme`.
   Neither spawns Semgrep. A new entry needs the same: a real import of src
   logic, never a fixture string (build that specifier at runtime instead).
 - **`jest.config.js` `testPathIgnorePatterns`**:

@@ -14,7 +14,7 @@ import { reportWindow, resizeWindow } from '@kiko/test-support/window-size';
 import '@kiko/design-system/unistyles';
 
 import { SETTLE_DELAY_MS } from '../pane-stack';
-import { navigationDarkTheme } from '../dark-theme';
+import { navigationDarkTheme } from '../navigation-theme';
 
 import RootNavigator from './root.navigator';
 
@@ -77,11 +77,10 @@ describe('RootNavigator', () => {
   // The native UITabBar rebuilds its styling on every tab's
   // `onAppear` (see react-native-bottom-tabs `TabAppearModifier`). With no
   // `tabBarStyle`, that rebuild calls `configureWithDefaultBackground()`,
-  // whose material re-resolves against the ambient interface style. The app
-  // is dark-only (pins `UIUserInterfaceStyle = Dark`), and pinning
-  // `tabBarStyle.backgroundColor` to the dark background token additionally
+  // whose material re-resolves against the ambient interface style. Pinning
+  // `tabBarStyle.backgroundColor` to the active theme's background token
   // forces the bar's background to a concrete color on every rebuild, keeping
-  // one consistent dark scheme. `barTintColor` is NOT a real prop of the
+  // one consistent scheme. `barTintColor` is NOT a real prop of the
   // native navigator — see root.navigator.tsx.
   it('pins the tab-bar background to the active theme background so the scheme cannot flip', async () => {
     const { findByTestId } = await render(

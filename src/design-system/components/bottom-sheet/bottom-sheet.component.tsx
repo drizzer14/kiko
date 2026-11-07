@@ -352,7 +352,7 @@ const BottomSheet: FC<BottomSheetProps> = ({
           {isLiquidGlassSupported ? (
             <LiquidGlassView
               effect="regular"
-              colorScheme="dark"
+              colorScheme="system"
               tintColor={theme.colors.scrim}
               style={styles.backdropFill}
               pointerEvents="none"

@@ -32,7 +32,7 @@ Rules for every set:
 
 - Integration branch is `next`, never main. Each set records `next` at its start as its own base. Merge order: tasks 1, 2, 3, 4, 5, 6, 7. Track `1.4-small` is already in `next`.
 - Plan facts were re-checked on next 6be32bfcb. Re-grep every plan fact on the actual base. Facts name a symbol or anchor; any count is a floor, and the developer measures.
-- No color value appears in this plan. Light values come only from `docs/design/light-palette/palette.json`, the tracked copy made in set 2. A shape mismatch is a stop-and-ask.
+- No light color value appears in this plan. Light values come only from `docs/design/light-palette/palette.json`, the tracked copy made in set 2. A shape mismatch is a stop-and-ask.
 - The plist key `UIUserInterfaceStyle=Dark` stays until set 6. No tip before set 6 has `adaptiveThemes` on, an `Appearance.setColorScheme` call, or a reader of `settings.appearance`.
 - No flag, no demo module in `src/` (Guideline 2.5.19). A light look before set 6 uses only the scratch build of spec section 7, which is never merged.
 - No release cut from a tip that has sets 2-5 and no set 6. Owner: the release track. Merging into `next` does not break this, since `next` is not a release; a cut from `main` is not affected (spec section 7, point 3).
@@ -74,7 +74,7 @@ Rules for every set:
 ### 1.4-light-scheme-build task 2/7: Palette copy, light values, theme registered
 
 **Files:**
-- Create: `docs/design/light-palette/palette.json`, `__tests__/light-palette-source.test.ts`, `src/design-system/palette/palette.contrast.test.ts`
+- Create: `docs/design/light-palette/palette.json`, `src/design-system/palette/light-palette-source.test.ts`, `src/design-system/palette/palette.contrast.test.ts`
 - Modify: `src/design-system/palette/palette.ts`, `palette.test.ts`, `src/design-system/theme/theme.ts`, `theme.test.ts`, `src/design-system/unistyles/unistyles.ts`, `unistyles.test.ts`, `__tests__/property-sweep-sites.test.ts` if a sweep is added here, `harness/kiko/skills/release/SKILL.md`, `harness/kiko/.claude-plugin/plugin.json`
 
 **Interfaces:**
@@ -110,7 +110,7 @@ it('chartSeriesLight is a subset of categoryColorsLight', ...);
 it('chartSeriesDark mapped by key equals chartSeriesLight', ...);
 ```
 Palette `knownFailures` notes dark "glyph vs tile top" under 3:1; that stop is not this test's input. A dark set case that fails is measured and reported; the floor never drops. A light failure returns to the designer. The floor covers tiles and glyphs, not the segment thumb: under P2 no light twin of `gives the thumb >= 3:1 contrast against the track on black and on surface` is written, and that dark test in `segmented-control.component.test.tsx` stays as it is.
-- [ ] **step 6/7: Run.** `npx jest src/design-system __tests__/light-palette-source.test.ts --maxWorkers=2`, then `make jest-affected BASE=<set base>`, `npm run check:typecheck`, `npm run check:knip`. Every new export has a consumer at this tip.
+- [ ] **step 6/7: Run.** `npx jest src/design-system --maxWorkers=2`, then `make jest-affected BASE=<set base>`, `npm run check:typecheck`, `npm run check:knip`. Every new export has a consumer at this tip.
 - [ ] **step 7/7: Scratch look and commit.** Commit `feat(theme): light palette and theme, registered and unreachable`. The app stays dark: proof by the set 1 pair run on a smaller screen list. Optional scratch build for the palette look (spec section 7). `kiko:scribe`, with this set because it first registers `light`: `harness/kiko/skills/release/SKILL.md` gains one stop step directly above step 6 (the archive), unnumbered, so the skill's "step 6" references hold: if `src/design-system/unistyles/unistyles.ts` registers a `light` theme and `ios/Kiko/Info.plist` still has `UIUserInterfaceStyle`, stop the release. Bump `plugin.json` above main's version per harness-workflow (`references/plugin-and-hooks.md`); the coordinator runs `claude plugin update kiko@kiko-marketplace` and `/reload-plugins`. Harness-sync classification: Kiko-only (it names Kiko's theme file and plist key). Check: `make doc-suites`.
 
 ---
@@ -160,7 +160,7 @@ it('rings the swatch whose dark hex equals value', ...);
 ```
 Forms test: `it('a form opened in light saves the canonical dark hex', ...)` on `account-form` and `holding-form`, asserting the repo argument.
 - [ ] **step 4/7: Thread `scheme`.** Change producers; `npm run check:typecheck` lists callers; fix each with `useActiveColorScheme()`, adding `scheme` to `useMemo` deps. `statistics.screen`: the `slices` memo (`buildAccountContribution`) and the `buildAccountOptions` call; `use-statistics-sources`, `use-spending-ledger` and `use-rate-history-backfill` hold no color and stay. Forms: `iconColor={entityDisplayColor(effectiveColor, scheme)}`, `<ColorPicker value={effectiveColor} swatchSet="entity" .../>`. `BarChart`: `entityDisplayColor(defaultHoldingColor[type], scheme)`. The compiler does not list these three sites (spec D3, exception), so each gets a light-world test: `it('a light account form paints the tile through the entity map', ...)` in `account-form.screen.test.tsx`, `it('a light holding form paints the tile through the entity map', ...)` in `holding-form.screen.test.tsx`, `it('a light bar chart paints each slice through the entity map', ...)` in `bar-chart.component.test.tsx`.
-- [ ] **step 5/7: Glyph.** `EntityIconTile` reads `theme.colors.glyphOnLightTile` instead of `theme.colors.background`. Test: light world, tile with a light hex gets the token, not the page color. Existing dark assertions stay.
+- [ ] **step 5/7: Glyph.** (Correction after the build: the form "tile" is a tinted `SymbolIcon` (`IconEditor`), not `EntityIconTile`; step 4/7's caller lists missed the transaction-form chain, the recurring chain and tables/category-by-month (`CategoryTableSources.scheme`); `check-dark.mjs` is in the gitignored palette folder.) `EntityIconTile` reads `theme.colors.glyphOnLightTile` instead of `theme.colors.background`. Test: light world, tile with a light hex gets the token, not the page color. Existing dark assertions stay.
 - [ ] **step 6/7: Dark pins hold.** Existing `account-identity`, `holding-identity`, `account-contribution`, `statistics-filter-scope`, `entity-colors`, `holding-card`, `accounts.screen` tests (floor) gain `'dark'` where the signature needs it; no expected value changes. `make jest-affected BASE=<set base>`.
 - [ ] **step 7/7: Commit.** `feat(colors): accounts and holdings display through the light map`. App stays dark: `theme.colorScheme` is always `dark` at this tip.
 
@@ -194,7 +194,7 @@ it('dark area opacities stay 0.3 and 0.5', ...);
 - [ ] **step 2/5: Implement the map** with the shared internal of step 2/7 of task 3/7, taking `categoryColorsLight`. `categoryColor(key)` stays on `chartSeriesDark`.
 - [ ] **step 3/5: Thread `scheme`.** As in task 3/7. `statistics.screen`: the memos `allCategorySlices` and `categorySlices` (`buildCategoryBreakdown`), `trendSeries` (`buildCategoryTrend`) and `categoryOptions` (`buildCategoryOptions`). `statistics-filter-scope.test.ts`: `it('a kept category option maps through the category set, like a slice', ...)`. `category-form`: picker `swatchSet="category"`, `value={resolveCanonicalCategoryColor(...)}`, preview through the display path; form test: light form saves the dark hex. The compiler does not list the preview site (spec D3, exception): `it('a light category form paints the preview through the category map', ...)` in `category-form.screen.test.tsx`.
 - [ ] **step 4/5: Charts.** `net-worth-line` reads `theme.chartFill` for the two stop opacities; the sign-colored stroke (locked) stays. Light pie and trend tests: wedges and strokes use the category set, legend swatch equals its wedge.
-- [ ] **step 5/5: Commit.** `make jest-affected BASE=<set base>`; commit `feat(colors): categories and charts display through the light map`. `kiko:scribe`: `kiko-charts` opacity section and "Reuse the entity-color system for fills".
+- [ ] **step 5/5: Commit.** `make jest-affected BASE=<set base>`; commit `feat(colors): categories and charts display through the light map`. `kiko:scribe`: `kiko-charts` "Net-worth area-fill opacity" and "Reuse the entity-color system for fills".
 
 ---
 
@@ -240,7 +240,7 @@ windowOverrideOf(mode: AppearanceMode): 'light' | 'dark' | 'auto'
 APPEARANCE_MIRROR_KEY = 'kiko.appearanceMode'
 readAppearanceMirror(): AppearanceMode                   // NativeModules?.SettingsManager?.settings?.[KEY]
 writeAppearanceMirror(mode: AppearanceMode): void        // Settings.set
-applyLaunchAppearance(): void                            // light or dark: Appearance.setColorScheme; system: no call
+applyLaunchAppearance(): void                            // at launch; light or dark: Appearance.setColorScheme; system: no call (the sync hook calls 'auto' on a change to system)
 useSyncAppearanceWithSettings(): void
 settingsRepo.setAppearance(mode: AppearanceMode)
 ```
@@ -297,6 +297,7 @@ it('lists no tinted image', ...);
 ```
 - [ ] **step 2/3: Restore.** `git cat-file blob '1702e7085^:ios/Kiko/Images.xcassets/AppIcon.appiconset/AppIcon-1024-light.png'` into the file; never `git checkout` or `git restore`. `git hash-object` equals the blob. A guard denial on the shell write stops and goes to the coordinator. `Contents.json` is the `1702e7085^` file without the tinted entry; `AppIcon-1024.png` stays the dark image.
 - [ ] **step 3/3: Check and commit.** `npx jest __tests__/app-icon.test.ts --maxWorkers=2`. Commit `feat(ios): light and dark app icons`. Device row through the coordinator's deploy: icon follows the OS, both ways. Closes N16.
+- [ ] **step 3/3 (end of track): Design consistency review.** After this task's `kiko:reviewer` and before its READY FOR VERIFY, `kiko:designer` runs READ-ONLY over every screen and component sets 1-7 touched: shared components, tokens only, sibling patterns, en and uk, dark AND light. Findings become one small fix set with its own `kiko:reviewer`.
 
 ---
 
@@ -321,7 +322,7 @@ Each range is dispatch to BATCH READY of agent time. It excludes queue waits, ba
 |---|---|---|
 | 1 | 1.5-3 h | Duration log: "implicit device fix 1" 39 min (small set); "iPad Q11 control run" 44 min (5 Release sim builds), "iPad step 2 sim slot" 56 min; queued full verify 22-26 min |
 | 2 | 1-3 h | No similar row: wide range. Nearest anchors: the 39 min small set, plus the 22-26 min verify |
-| 3 | 2.5-5 h | `20261019T1351-kiko-account-currency` (a value threaded through forms and repositories): `Work` 147 min, start to finish 173 min. This set has a larger caller floor (34 files) |
+| 3 | 2.5-5 h | `20261019T1351-kiko-account-currency` (a value threaded through forms and repositories): `Work` 147 min, start to finish 173 min. This set has a larger caller floor (31 non-test files, measured) |
 | 4 | 2-4 h | Same row as set 3, with fewer callers |
 | 5 | 2.5-5 h | "implicit device fix 1" 39 min; `20261102T1840-kiko-guard-commit-main` steps 2 and 4, `Work` 27 and 21 min, for the guards; "iPad step 2 sim slot" 56 min for N2-R; verify 22-26 min |
 | 6 | 4-8 h, plus the user's device time | `20261019T1351-kiko-account-currency` 173 min; "iPad ops 2nd pass" 21 min per simulator pass. N16 on a device: no similar row, so the range is wide and excludes it |
