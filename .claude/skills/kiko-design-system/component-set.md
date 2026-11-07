@@ -87,7 +87,12 @@ new component can land between reviews of this skill:
   bar) also starts its title at the content's margin; a single stack under a side bar (the
   Duo outer pose, `placement === 'side'`) gets it too. On the Duo side-bar poses that margin
   aligns the content to the native title (user ruling 2026-10-29; the reason is in
-  kiko-design-system SKILL.md "Locked decisions"). Only the top bar
+  kiko-design-system SKILL.md "Locked decisions"). The layer stack over both
+  panes gets `FixedContentMarginContext` 0 in every pose, while the panes keep
+  their margin. Reason (device check owed, cause not proven): with the side-bar
+  margin the device showed the Tables bar go see-through during a swipe back on
+  the unfolded Duo in landscape; 0 keeps our patch inert on the layer. The
+  source comment in `PaneStackView` has the detail. Only the top bar
   lifts the cap: a pane with a SIDE tab bar (a Duo side-bar pose, or a
   large window) stays capped at 600 pt, with no large-window exception
   (user ruling 2026-10-21), and a pane whose bar is at the bottom keeps
@@ -595,7 +600,11 @@ new component can land between reviews of this skill:
   GENERIC version of this shape — `label`/`sheetTitle`/`options`/
   `selected` (nullable — see below)/`onSelect`/`labels`/optional
   `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
-  `error`/`testID` — and is now the ONE shared implementation: a
+  `error`/`testID`/optional `capped` (caps the trigger at
+  `theme.layout.selectTriggerMaxWidth` in `src/design-system/theme/theme.ts`:
+  trigger = min(column, cap); for a short one-phrase value such as the Tables
+  period; a larger Dynamic Type size wraps inside the cap) — and is now the ONE shared
+  implementation: a
   `property` account's Type-as-category field (`PropertyTypeField`,
   replacing the generic holding-type picker for that one account
   kind — see `kiko-domain`'s "`property_item` / `metal` create-form
