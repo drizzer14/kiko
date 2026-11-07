@@ -402,6 +402,8 @@ const markOf = (
   currency: RecurringMark['currency'] = 'UAH',
 ): RecurringMark => ({ currency, amountMinorUnits, period });
 
+const tappedOn = (stored: RecurringMark, transactionId: string) => ({ ...stored, transactionId });
+
 const storeEntries = (entries: object): void => storeRawChoices(JSON.stringify(entries));
 
 const markedEntriesOf = (choices: ReadonlyMap<string, RecurringMerchantChoice>): MarkedEntry[] =>
@@ -639,6 +641,45 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
       expect(storedEntries().get('apple')).toEqual({
         name: 'Apple',
         marks: [markOf(9_900, 'yearly'), APPLE_399],
+      });
+    });
+
+    describe('the tapped row id', () => {
+      const TAPPED_99 = tappedOn(APPLE_99, 'row-1');
+
+      it('stores the id with the mark and reads it back', async () => {
+        await mark('apple', 'Apple', TAPPED_99);
+
+        expect(storedEntries().get('apple')).toEqual({ name: 'Apple', marks: [TAPPED_99] });
+        expect((await readChoices()).get('apple')?.marks).toEqual([TAPPED_99]);
+      });
+
+      it('leaves one mark, with the new id, when a stored chain is marked on another row', async () => {
+        await mark('apple', 'Apple', TAPPED_99);
+        await mark('apple', 'Apple', tappedOn(markOf(9_900, 'yearly'), 'row-2'));
+
+        expect((await readChoices()).get('apple')?.marks).toEqual([
+          tappedOn(markOf(9_900, 'yearly'), 'row-2'),
+        ]);
+      });
+
+      it('keeps the stored id when the period of its chain changes', async () => {
+        await mark('apple', 'Apple', TAPPED_99);
+
+        await setPeriod('apple', [APPLE_99], 'yearly');
+
+        expect((await readChoices()).get('apple')?.marks).toEqual([
+          tappedOn(markOf(9_900, 'yearly'), 'row-1'),
+        ]);
+      });
+
+      it('removes a mark that holds an id when the chain given holds none', async () => {
+        await mark('apple', 'Apple', TAPPED_99);
+        await mark('apple', 'Apple', APPLE_399);
+
+        await unmark('apple', [APPLE_99]);
+
+        expect((await readChoices()).get('apple')?.marks).toEqual([APPLE_399]);
       });
     });
 
@@ -980,6 +1021,48 @@ describe('settingsRepo recurring merchant choices, on a real database', () => {
         storeEntries({ apple: { name: 'Apple', marks: isReversed ? stored.reverse() : stored } });
 
         expect((await readChoices()).get('apple')?.marks).toEqual([markOf(9_900, earlier)]);
+      },
+    );
+
+    it('keeps the tapped row id of a mark', async () => {
+      const tapped = tappedOn(GOOD_MARK, 'row-1');
+
+      storeEntries({ apple: { name: 'Apple', marks: [tapped] } });
+
+      expect((await readChoices()).get('apple')).toEqual({ name: 'Apple', marks: [tapped] });
+    });
+
+    it.each([
+      ['a number', 7],
+      ['an empty text', ''],
+      ['an object', { id: 'row-1' }],
+      ['an array', ['row-1']],
+      ['null', null],
+      ['a boolean', true],
+    ])('drops an id that is %s alone and keeps the mark', async (_title, transactionId) => {
+      storeEntries({
+        apple: { name: 'Apple', marks: [{ ...GOOD_MARK, transactionId }, OTHER_GOOD_MARK] },
+      });
+
+      expect((await readChoices()).get('apple')).toEqual({
+        name: 'Apple',
+        marks: [GOOD_MARK, OTHER_GOOD_MARK],
+      });
+    });
+
+    it.each([false, true])(
+      'reads two marks of one chain with two ids as the earlier period and its id (reversed: %s)',
+      async (isReversed) => {
+        const stored = [
+          tappedOn(markOf(9_900, 'yearly'), 'late-row'),
+          tappedOn(markOf(9_900, 'monthly'), 'early-row'),
+        ];
+
+        storeEntries({ apple: { name: 'Apple', marks: isReversed ? stored.reverse() : stored } });
+
+        expect((await readChoices()).get('apple')?.marks).toEqual([
+          tappedOn(markOf(9_900, 'monthly'), 'early-row'),
+        ]);
       },
     );
 

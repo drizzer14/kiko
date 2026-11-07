@@ -1,13 +1,23 @@
 import { at } from '@kiko/test-support/recurring-ledger';
 
-import { onePerSlotOf } from './detection';
 import type { Charge, RecurringPeriod } from './detection.types.d';
+import { onePerSlotOf as onePerSlotOfDetection } from './detection';
+
+// The table's rows read the fourth parameter, the ids of the rows the marks were tapped on.
+const onePerSlotOf: (
+  charges: readonly Charge[],
+  period: RecurringPeriod,
+  storedAmounts: readonly number[],
+  tappedIds?: ReadonlySet<string>,
+) => { kept: Charge[]; dropped: Charge[] } = onePerSlotOfDetection;
 
 type World = {
   title: string;
   period: RecurringPeriod;
   // Major units, as the marks of a world are written.
   stored: number[];
+  // The ids of the rows the marks were tapped on; absent reads as no tapped row.
+  tapped?: string[];
   kept: Charge[];
   dropped: Charge[];
 };
@@ -321,17 +331,135 @@ const WORLDS: World[] = [
   ...floorWorlds(),
 ];
 
+const JULY_5 = charge(2026, 7, 5, 100);
+const AUGUST_5 = charge(2026, 8, 5, 100);
+const OCTOBER_5 = charge(2026, 10, 5, 100);
+const KEY_ONE_MARCH = charge(2026, 3, 1, 100);
+const KEY_ONE_TAPPED = charge(2026, 3, 15, 103);
+const KEY_ONE_LAST = charge(2026, 3, 30, 100);
+const KEY_TWO_FIRST = charge(2026, 3, 1, 101);
+const KEY_TWO_TAPPED = charge(2026, 3, 15, 100);
+const KEY_TWO_LAST = charge(2026, 3, 30, 120);
+const FX_NEXT = charge(2026, 7, 5, 414.5);
+const FIFTHS_99 = monthlyRun(10, 5, 99);
+const TWENTIETHS_99 = monthlyRun(10, 20, 99);
+
+const without = (charges: readonly Charge[], ...removed: Charge[]): Charge[] =>
+  charges.filter(({ id }) => !removed.some((gone) => gone.id === id));
+
+// The same worlds with the mark tapped on a row: the tapped row stays and the rows half a step or
+// less from it drop. A gone id and an empty set read as no tapped row.
+const TAPPED_WORLDS: World[] = [
+  {
+    title: 'world A marked at 102, tapped 12 Oct: the tapped 102 stays, 5 Oct and 20 Aug drop',
+    period: 'monthly',
+    stored: [102],
+    tapped: [OCTOBER_102.id],
+    kept: [...without(FIVES, OCTOBER_5), OCTOBER_102],
+    dropped: [OCTOBER_5, AUGUST_98],
+  },
+  {
+    title: 'world A marked at 98, tapped 20 Aug: the tapped 98 stays, 5 Aug and 12 Oct drop',
+    period: 'monthly',
+    stored: [98],
+    tapped: [AUGUST_98.id],
+    kept: [...without(FIVES, AUGUST_5), AUGUST_98],
+    dropped: [AUGUST_5, OCTOBER_102],
+  },
+  {
+    title: 'world A marked at 100, tapped a 100: the tapped row is kept already',
+    period: 'monthly',
+    stored: [100],
+    tapped: [JULY_5.id],
+    kept: FIVES,
+    dropped: [AUGUST_98, OCTOBER_102],
+  },
+  {
+    title: 'an FX series, tapped 21 Jun: the tapped charge stays, 5 Jul drops',
+    period: 'monthly',
+    stored: [414],
+    tapped: [FX_TAPPED.id],
+    kept: [...FX_EARLY, FX_TAPPED],
+    dropped: [FX_NEXT],
+  },
+  {
+    title: 'key 1 world, tapped 15 Mar at 103: the tapped row stays, the two 100s drop',
+    period: 'monthly',
+    stored: [103],
+    tapped: [KEY_ONE_TAPPED.id],
+    kept: [KEY_ONE_TAPPED],
+    dropped: [KEY_ONE_MARCH, KEY_ONE_LAST],
+  },
+  {
+    title: 'key 2 world, tapped 15 Mar at 100: the tapped row stays, the 101 and the 120 drop',
+    period: 'monthly',
+    stored: [100],
+    tapped: [KEY_TWO_TAPPED.id],
+    kept: [KEY_TWO_TAPPED],
+    dropped: [KEY_TWO_FIRST, KEY_TWO_LAST],
+  },
+  {
+    title: 'two runs at 99, tapped a 5th: the fifths stay over the later twentieths',
+    period: 'monthly',
+    stored: [99],
+    tapped: [charge(2026, 6, 5, 99).id],
+    kept: FIFTHS_99,
+    dropped: TWENTIETHS_99,
+  },
+  {
+    title: 'bills, tapped any row: every bill stays',
+    period: 'monthly',
+    stored: [1150],
+    tapped: [charge(2026, 2, 10, 1385).id],
+    kept: BILLS,
+    dropped: [],
+  },
+  {
+    title: 'world A with two marks, 100 tapped 5 Oct and 102 tapped 12 Oct: 5 Oct stays',
+    period: 'monthly',
+    stored: [100, 102],
+    tapped: [OCTOBER_5.id, OCTOBER_102.id],
+    kept: FIVES,
+    dropped: [AUGUST_98, OCTOBER_102],
+  },
+  {
+    title: 'a tapped id that matches no charge reads as no tapped row (world A at 102)',
+    period: 'monthly',
+    stored: [102],
+    tapped: ['deleted-row'],
+    kept: FIVES,
+    dropped: [AUGUST_98, OCTOBER_102],
+  },
+  {
+    title: 'a tapped id that matches no charge reads as no tapped row (key 2 world)',
+    period: 'monthly',
+    stored: [100],
+    tapped: ['deleted-row'],
+    kept: [KEY_TWO_FIRST, KEY_TWO_LAST],
+    dropped: [KEY_TWO_TAPPED],
+  },
+  {
+    title: 'an empty tapped set reads as no tapped row (the 15 Mar at 103 drops)',
+    period: 'monthly',
+    stored: [103],
+    tapped: [],
+    kept: [KEY_ONE_MARCH, KEY_ONE_LAST],
+    dropped: [KEY_ONE_TAPPED],
+  },
+];
+
 const oldestFirst = (left: Charge, right: Charge): number =>
   left.time - right.time || left.id.localeCompare(right.id);
 
 const idsOf = (charges: readonly Charge[]): string[] => charges.map(({ id }) => id).sort();
 
 describe('onePerSlotOf', () => {
-  it.each(WORLDS)('$title', ({ period, stored, kept, dropped }) => {
+  it.each([...WORLDS, ...TAPPED_WORLDS])('$title', ({ period, stored, tapped, kept, dropped }) => {
     const result = onePerSlotOf(
       [...kept, ...dropped].sort(oldestFirst),
       period,
       stored.map((amount) => Math.round(amount * MINOR_UNITS_PER_MAJOR)),
+      new Set(tapped ?? []),
     );
 
     expect({ kept: idsOf(result.kept), dropped: idsOf(result.dropped) }).toEqual({
