@@ -3,6 +3,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import type { AppearanceMode } from '@kiko/appearance/appearance-mode';
 import type { RecurringMark, RecurringPeriod } from '@kiko/recurring/detection';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { type Repository, type SettingsRow, settings, database, write } from '@kiko/db';
@@ -156,6 +157,10 @@ export const settingsRepo = {
   setLanguage: (language: AppLanguage) =>
     write((databaseTransaction) =>
       databaseTransaction.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID)),
+    ),
+  setAppearance: (appearance: AppearanceMode) =>
+    write((databaseTransaction) =>
+      databaseTransaction.update(settings).set({ appearance }).where(eq(settings.id, SETTINGS_ID)),
     ),
   /**
    * Persist (or clear) the user's saved spending-trend filter (see

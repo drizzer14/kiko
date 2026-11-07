@@ -218,6 +218,16 @@ describe('settingsRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
+  it('setAppearance updates the single settings row with the chosen mode', async () => {
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await settingsRepo.setAppearance('light');
+
+    expect(captured.set).toEqual({ appearance: 'light' });
+    expect(captured.whereCalled).toBe(true);
+  });
+
   it('ensure inserts the single settings row and is idempotent', async () => {
     const store: Record<string, unknown>[] = [];
     mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);

@@ -29,6 +29,7 @@ const ALIAS_PREFIX = '@kiko/';
 // Paths relative to src/. The src root itself is a container too: its
 // plain folders (accounts, db, …) are features.
 const CONTAINERS = new Set([
+  'appearance',
   'bank-sync',
   'bonds',
   'calendar',

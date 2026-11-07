@@ -15,4 +15,6 @@ export const KEPT_FROM_LIVE_ON_RESTORE = [
   'notificationsDeliverableSince',
   // Where this device's history backfill resumes; a file carries another device's position.
   'historyBackfillState',
+  // The look is this device's choice, and an old or foreign file can hold any value.
+  'appearance',
 ] as const satisfies readonly (keyof SettingsRow)[];

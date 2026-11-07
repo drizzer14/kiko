@@ -1233,11 +1233,13 @@ the kind of thing that can still change:
   "Preparing database…" text/background itself) render in the user's
   chosen language on a cold launch, not the device language.
   `useSyncLanguageWithSettings` (mounted from `AppRoot`, after both
-  gates) only covers a LIVE switch from the Settings screen. The app is
-  dark-only — `UIUserInterfaceStyle = Dark` is pinned in
-  `ios/Kiko/Info.plist`, so there is no appearance to apply here at
-  all; `settings.appearance` is a retained-but-dead schema column (see
-  `kiko-domain`'s "App lock / security settings").
+  gates) only covers a LIVE switch from the Settings screen. The appearance mode
+  is the same shape, with a first-frame difference: `applyLaunchAppearance` runs in
+  `src/design-system/unistyles/unistyles.ts` before `StyleSheet.configure`, reading the
+  UserDefaults mirror (`src/appearance/appearance-mirror`) because the database is not
+  open yet; `useSyncAppearanceWithSettings` (mounted beside the language hook) follows
+  the `settings.appearance` row afterwards (see `kiko-design-system`'s "Light and dark
+  themes").
 
 ## Spending-exclusion pipeline
 

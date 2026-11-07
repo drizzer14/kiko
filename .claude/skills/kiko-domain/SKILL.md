@@ -1303,11 +1303,10 @@ re-locks, so a resident backgrounded process resumes without a prompt. That is
 an accepted, recorded risk — see `docs/security/README.md`. `lockGraceSeconds`
 is one of the documented reader-less `settings` columns pinned by
 `src/db/settings-columns.test.ts`'s `DOCUMENTED_READERLESS_COLUMNS` list —
-the other is `appearance` (the removed light/dark color-scheme feature; the
-app is now dark-only, see `kiko-design-system`'s "Dark-only theme"); wiring
-either back up means removing it from that test's list, which is the
-deliberate decision gate. Read the list itself for the exact current set
-rather than assuming only these two.
+`appearance` left that list when the appearance setting shipped (it stores the System,
+Light or Dark mode; see `kiko-design-system`'s "Light and dark themes"). Wiring a
+listed column up means removing it from that test's list, which is the
+deliberate decision gate. Read the list itself for the exact current set.
 
 ## Dates
 

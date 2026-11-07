@@ -28,12 +28,6 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   // cold-launch-only. Deliberately not dropped — see docs/security/README.md
   // and the comment on the column in schema.ts.
   'lockGraceSeconds',
-  // Legacy: the removed light/dark color-scheme feature. The app is
-  // dark-only, so nothing reads or writes this column. Deliberately
-  // not dropped (migrations here are additive-only — a removed feature's
-  // harmless retained column stays) — see the comment on the column in
-  // schema.ts.
-  'appearance',
   // Superseded: the previous spending-trend selection (a JSON array of category
   // slugs). Replaced by `trendFilter`; migration 0025 copies any saved value
   // across as a manual filter. Nothing in src/ reads or writes it —
@@ -63,7 +57,6 @@ const TAKEN_FROM_FILE_ON_RESTORE = [
   'defaultCategoryKey',
   'lockGraceSeconds',
   'language',
-  'appearance',
   'lastSyncDisplayAt',
   'lastFullSyncAt',
   'trendCategoryKeys',
