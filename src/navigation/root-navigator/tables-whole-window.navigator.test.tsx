@@ -10,6 +10,7 @@ import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { answerFilterData } from '@kiko/test-support/statistics-filter-data';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
@@ -77,7 +78,6 @@ const LAYER = 'two-pane-layer';
 const FORM = 'transaction-form-stub';
 const TABLES = 'tables-period';
 const WINDOW = { width: 951, height: 669 };
-const YEAR = new Date().getFullYear();
 
 // Testing Library leaves a view hidden from accessibility out of its queries by default, and a
 // shown layer is a modal view, which hides the panes beside it.
@@ -228,9 +228,14 @@ const pressTables = async (rendered: Rendered): Promise<void> => {
   await fireEvent.press(rendered.getByTestId(BUTTON));
 };
 
-const pickYear = async (rendered: Rendered, year: number): Promise<void> => {
+// This quarter is on offer for any data, and it is not the period a new push opens on.
+const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(Date.now());
+
+const pickThisQuarter = async (rendered: Rendered): Promise<void> => {
   await fireEvent.press(rendered.getByTestId(TABLES));
-  await fireEvent.press(rendered.getByTestId(`tables-period-option-year-${year}`));
+  await fireEvent.press(
+    rendered.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
+  );
 };
 
 // What the native stack sends when the user's Back or swipe has finished: the screen's own
@@ -606,24 +611,24 @@ describe('Tables is in a layer over both panes', () => {
     });
   });
 
-  // This row passes on any code that keeps the route in the state: it says the year survives the
+  // This row passes on any code that keeps the route in the state: it says the period survives the
   // switch and the layer is there again, nothing about how a Back behaves after the cycle on a
   // device.
   describe('a fold and an unfold with Tables open', () => {
     it.each(['HomeTab', 'StatisticsTab'])(
-      'keeps the year picked on the %s, and shows Tables in the layer again',
+      'keeps the period picked on the %s, and shows Tables in the layer again',
       async (tab) => {
         const rendered = await renderRoot();
 
         await goToTab(tab);
         await pressTables(rendered);
-        await pickYear(rendered, YEAR);
+        await pickThisQuarter(rendered);
 
         await setLayout('single');
 
         expect(allOf(rendered, PRIMARY)).toHaveLength(0);
         expect(allOf(rendered, LAYER)).toHaveLength(0);
-        expect(rendered.getByTestId(TABLES)).toHaveTextContent(String(YEAR), {
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', {
           exact: false,
         });
 
@@ -632,10 +637,10 @@ describe('Tables is in a layer over both panes', () => {
         expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
         expect(isLayerOpen(rendered)).toBe(true);
         expect(allOf(rendered, DIVIDER)).toHaveLength(1);
-        expect(rendered.getByTestId(TABLES)).toHaveTextContent(String(YEAR), {
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', {
           exact: false,
         });
-        expect(stackOf(tab).routes.at(-1)?.params?.period).toEqual({ kind: 'year', year: YEAR });
+        expect(stackOf(tab).routes.at(-1)?.params?.period).toEqual(THIS_QUARTER);
 
         await goBack();
 

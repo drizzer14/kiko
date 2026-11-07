@@ -1471,9 +1471,15 @@ export const en = {
     // Spoken for an average cell that shows a dash.
     noCompleteMonth: 'No complete month yet',
     period: {
+      firstHalf: 'First half',
       label: 'Period',
-      last12: 'Last 12 months',
+      lastQuarter: 'Last quarter',
+      lastYear: 'Last year',
+      quarter: 'Q{{quarter}} {{year}}',
+      secondHalf: 'Second half',
       sheetTitle: 'Period',
+      thisQuarter: 'This quarter',
+      thisYear: 'This year',
     },
     title: 'Tables',
     total: 'Total',

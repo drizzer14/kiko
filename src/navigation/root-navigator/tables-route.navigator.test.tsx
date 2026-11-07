@@ -7,6 +7,7 @@ import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { answerFilterData } from '@kiko/test-support/statistics-filter-data';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
@@ -100,12 +101,15 @@ const routesOf = (tab: string): StackRoute[] => {
 const tablesRouteOf = (tab: string): StackRoute | undefined =>
   routesOf(tab).find(({ name }) => name === 'Tables');
 
-const pickYear = async (rendered: Awaited<ReturnType<typeof renderRoot>>, year: number) => {
-  await fireEvent.press(rendered.getByTestId('tables-period'));
-  await fireEvent.press(rendered.getByTestId(`tables-period-option-year-${year}`));
-};
+// This quarter is on offer for any data, and it is not the period a new push opens on.
+const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(Date.now());
 
-const YEAR = new Date().getFullYear();
+const pickThisQuarter = async (rendered: Awaited<ReturnType<typeof renderRoot>>) => {
+  await fireEvent.press(rendered.getByTestId('tables-period'));
+  await fireEvent.press(
+    rendered.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
+  );
+};
 
 describe('the Tables route on the real RootNavigator', () => {
   beforeEach(() => {
@@ -126,7 +130,7 @@ describe('the Tables route on the real RootNavigator', () => {
     await fireEvent.press(rendered.getByTestId(BUTTON));
 
     expect(tablesRouteOf('StatisticsTab')).toBeDefined();
-    expect(rendered.getByTestId('tables-period')).toHaveTextContent('Last 12 months', {
+    expect(rendered.getByTestId('tables-period')).toHaveTextContent('This year', {
       exact: false,
     });
   });
@@ -141,31 +145,37 @@ describe('the Tables route on the real RootNavigator', () => {
     expect(rendered.getByTestId('tables-period')).toBeTruthy();
   });
 
-  it('keeps a picked year from one pane to two and back', async () => {
+  it('keeps a picked period from one pane to two and back', async () => {
     const rendered = await renderRoot();
 
     await goToTab('StatisticsTab');
     await fireEvent.press(rendered.getByTestId(BUTTON));
-    await pickYear(rendered, YEAR);
+    await pickThisQuarter(rendered);
 
-    expect(rendered.getByTestId('tables-period')).toHaveTextContent(String(YEAR), { exact: false });
+    expect(rendered.getByTestId('tables-period')).toHaveTextContent('This quarter', {
+      exact: false,
+    });
 
     await setLayout('columns');
 
-    expect(tablesRouteOf('StatisticsTab')?.params?.period).toEqual({ kind: 'year', year: YEAR });
-    expect(rendered.getByTestId('tables-period')).toHaveTextContent(String(YEAR), { exact: false });
+    expect(tablesRouteOf('StatisticsTab')?.params?.period).toEqual(THIS_QUARTER);
+    expect(rendered.getByTestId('tables-period')).toHaveTextContent('This quarter', {
+      exact: false,
+    });
 
     await setLayout('single');
 
-    expect(rendered.getByTestId('tables-period')).toHaveTextContent(String(YEAR), { exact: false });
+    expect(rendered.getByTestId('tables-period')).toHaveTextContent('This quarter', {
+      exact: false,
+    });
   });
 
-  it('opens a new push on the last 12 months after the screen was popped', async () => {
+  it('opens a new push on this year after the screen was popped', async () => {
     const rendered = await renderRoot();
 
     await goToTab('StatisticsTab');
     await fireEvent.press(rendered.getByTestId(BUTTON));
-    await pickYear(rendered, YEAR);
+    await pickThisQuarter(rendered);
 
     await act(async () => {
       navigationRef.goBack();
@@ -176,7 +186,7 @@ describe('the Tables route on the real RootNavigator', () => {
     await fireEvent.press(rendered.getByTestId(BUTTON));
 
     expect(tablesRouteOf('StatisticsTab')?.params?.period).toBeUndefined();
-    expect(rendered.getByTestId('tables-period')).toHaveTextContent('Last 12 months', {
+    expect(rendered.getByTestId('tables-period')).toHaveTextContent('This year', {
       exact: false,
     });
   });
