@@ -8,7 +8,7 @@ import {
   restoreThemeOrder,
 } from '@kiko/test-support/light-theme-registered';
 import {
-  answerFilterData,
+  FILTER_DATA_CLOCK,
   pressFilterOption,
   transactionRowOf,
 } from '@kiko/test-support/statistics-filter-data';
@@ -24,12 +24,12 @@ import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-p
 import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { act, fireEvent, render, renderHook, within } from '@testing-library/react-native';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
-import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import {
   answerWith,
   renderTables,
   screenElement,
+  setUpTablesWorld,
   SPENT_AT,
   SPENT_IN,
   spokenValue,
@@ -39,18 +39,14 @@ import { monthTitle } from './month-column-label';
 
 jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
 
-// The data of the world starts two days ago, so this quarter is the period that is always offered
-// besides this year.
-const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(Date.now());
+// The data of the world starts two days before the fixed clock, so this quarter is the period that
+// is always offered besides this year.
+const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 
 type Props = ComponentProps<typeof TablesScreen>;
 
 describe('TablesScreen', () => {
-  beforeEach(() => {
-    mockUseLiveQuery.mockImplementation(answerFilterData);
-  });
-
-  afterEach(resetStatisticsFilterSelection);
+  setUpTablesWorld();
 
   describe('the category table', () => {
     it('shows each category of the data in the month it was spent, with the full amount spoken', async () => {

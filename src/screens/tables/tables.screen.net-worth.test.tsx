@@ -2,25 +2,25 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthOf } from '@kiko/dates';
 import { act, fireEvent, renderHook } from '@testing-library/react-native';
-import { answerFilterData } from '@kiko/test-support/statistics-filter-data';
+import { FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
-import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
+import {
+  answerWith,
+  renderTables,
+  setUpTablesWorld,
+  spokenValue,
+} from './__fixtures__/tables-screen-world';
 import { monthTitle } from './month-column-label';
-import { answerWith, renderTables, spokenValue } from './__fixtures__/tables-screen-world';
 
 jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
 
 describe('TablesScreen', () => {
-  beforeEach(() => {
-    mockUseLiveQuery.mockImplementation(answerFilterData);
-  });
-
-  afterEach(resetStatisticsFilterSelection);
+  setUpTablesWorld();
 
   describe('the net worth table', () => {
-    const THIS_MONTH = monthTitle(calendarMonthOf(Date.now()), i18n.t);
+    const THIS_MONTH = monthTitle(calendarMonthOf(FILTER_DATA_CLOCK), i18n.t);
     // A closed account is the one an archived pick names: its holding must not reach the table.
     const withArchivedAccount = () =>
       mockUseLiveQuery.mockImplementation(

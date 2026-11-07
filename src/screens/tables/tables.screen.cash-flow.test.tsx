@@ -1,14 +1,14 @@
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { transactionRowOf } from '@kiko/test-support/statistics-filter-data';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { act, fireEvent, renderHook, within } from '@testing-library/react-native';
-import { answerFilterData, transactionRowOf } from '@kiko/test-support/statistics-filter-data';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
-import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import {
   answerWith,
   renderTables,
+  setUpTablesWorld,
   SPENT_AT,
   SPENT_IN,
   spokenValue,
@@ -17,11 +17,7 @@ import {
 jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
 
 describe('TablesScreen', () => {
-  beforeEach(() => {
-    mockUseLiveQuery.mockImplementation(answerFilterData);
-  });
-
-  afterEach(resetStatisticsFilterSelection);
+  setUpTablesWorld();
 
   describe('the cash flow table', () => {
     const withRows = (...rows: Parameters<typeof transactionRowOf>[0][]) =>

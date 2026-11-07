@@ -7,10 +7,10 @@ import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { reportWindow } from '@kiko/test-support/window-size';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { answerFilterData } from '@kiko/test-support/statistics-filter-data';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
+import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
@@ -229,7 +229,7 @@ const pressTables = async (rendered: Rendered): Promise<void> => {
 };
 
 // This quarter is on offer for any data, and it is not the period a new push opens on.
-const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(Date.now());
+const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 
 const pickThisQuarter = async (rendered: Rendered): Promise<void> => {
   await fireEvent.press(rendered.getByTestId(TABLES));
@@ -258,7 +258,7 @@ const goBack = async (): Promise<void> => {
 
 describe('Tables is in a layer over both panes', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ now: FILTER_DATA_CLOCK });
     mockLayout.mode = 'columns';
     reportWindow('regular', WINDOW.width, WINDOW.height);
     mockUseLiveQuery.mockImplementation(answerFilterData);

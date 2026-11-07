@@ -4,10 +4,10 @@ import {
   type ParamListBase,
 } from '@react-navigation/native';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { answerFilterData } from '@kiko/test-support/statistics-filter-data';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
+import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import '@kiko/design-system/unistyles';
@@ -102,7 +102,7 @@ const tablesRouteOf = (tab: string): StackRoute | undefined =>
   routesOf(tab).find(({ name }) => name === 'Tables');
 
 // This quarter is on offer for any data, and it is not the period a new push opens on.
-const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(Date.now());
+const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 
 const pickThisQuarter = async (rendered: Awaited<ReturnType<typeof renderRoot>>) => {
   await fireEvent.press(rendered.getByTestId('tables-period'));
@@ -113,7 +113,7 @@ const pickThisQuarter = async (rendered: Awaited<ReturnType<typeof renderRoot>>)
 
 describe('the Tables route on the real RootNavigator', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ now: FILTER_DATA_CLOCK });
     mockLayout.mode = 'single';
     mockUseLiveQuery.mockImplementation(answerFilterData);
   });
