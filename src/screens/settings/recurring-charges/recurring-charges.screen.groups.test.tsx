@@ -6,9 +6,11 @@ import { Money } from '@kiko/currency/money';
 import { formatMoney } from '@kiko/currency/format';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { MarkedChain } from '@kiko/recurring/marked-series';
-import type { RecurringSeries } from '@kiko/recurring/detection';
+import { cardSwitchesJoinedOf } from '@kiko/recurring/card-switch';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { cardSwitchLedger, nowOf } from '@kiko/test-support/recurring-ledger';
+import { type RecurringSeries, chargeGroupsOf, seriesOfGroups } from '@kiko/recurring/detection';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import RecurringChargesScreen from './recurring-charges.screen';
@@ -28,7 +30,7 @@ type SeriesState = {
 type ChargeRow = {
   id: string;
   amountMinorUnits: number;
-  currency: 'UAH';
+  currency: RecurringSeries['currency'];
   category: string | null;
 };
 
@@ -78,7 +80,7 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
         categories: mockCategories,
         defaultCategoryKey: 'other',
         baseCurrency: 'UAH',
-        rateTable: buildRateTable([]),
+        rateTable: buildRateTable([{ base: 'USD', quote: 'UAH', rate: '41.5' }]),
       }),
       isLoading: false,
     };
@@ -259,6 +261,69 @@ describe('RecurringChargesScreen — category groups', () => {
     expect(shown.map(({ id }) => id).sort()).toEqual(['netflix', 'power']);
     expect(all.map(({ id }) => id).sort()).toEqual(['netflix', 'power', 'spotify']);
     expect(queryByTestId(rowId('Spotify'))).toBeNull();
+  });
+});
+
+describe('RecurringChargesScreen — a card switch between currencies', () => {
+  const NETFLIX_HIDDEN: Choices = new Map([['netflix', { name: 'Netflix', hidden: true }]]);
+
+  // What the hook hands over: the series of the ledger, joined as it joins them.
+  const switchWorld = (choices: Choices = new Map()) => {
+    const ledger = cardSwitchLedger();
+    const groups = chargeGroupsOf(ledger, nowOf());
+    const currencyOfHolding = new Map(ledger.holdings.map(({ id, currency }) => [id, currency]));
+
+    mockSeriesState = {
+      ...EMPTY_STATE,
+      series: cardSwitchesJoinedOf(seriesOfGroups(groups, nowOf()), groups),
+      choices,
+    };
+    mockRows = ledger.rows.map(({ id, holdingId, amountMinorUnits }) => ({
+      id,
+      amountMinorUnits,
+      currency: currencyOfHolding.get(holdingId) ?? 'UAH',
+      category: 'subscriptions',
+    }));
+  };
+
+  const rowsOf = (tree: Awaited<ReturnType<typeof renderScreen>>): string[] =>
+    layoutOf(tree).filter((testId) => testId.startsWith('recurring-series-row-'));
+
+  it('shows one row, its amount the newest part`s, in the newest part`s category group', async () => {
+    switchWorld();
+
+    const tree = await renderScreen();
+
+    expect(rowsOf(tree)).toEqual(['recurring-series-row-uah-4']);
+    expect(
+      within(tree.getByTestId('recurring-series-row-uah-4')).getByText(
+        formatMoney(Money.of('USD', 1_000), activeLocale()),
+      ),
+    ).toBeTruthy();
+    expect(layoutOf(tree)).toContain('recurring-charges-group-subscriptions');
+  });
+
+  it('counts the newest part`s last charge once, in the group total and in the total of all', async () => {
+    switchWorld();
+
+    const { getByTestId } = await renderScreen();
+
+    expect(
+      within(getByTestId('recurring-charges-total')).getByText(moneyText(41_500)),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId('recurring-charges-group-total-subscriptions')).getByText(
+        moneyText(41_500),
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows no row of the name once it is hidden', async () => {
+    switchWorld(NETFLIX_HIDDEN);
+
+    const tree = await renderScreen();
+
+    expect(rowsOf(tree)).toEqual([]);
   });
 });
 

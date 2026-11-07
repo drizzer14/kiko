@@ -3,11 +3,18 @@ import { Money } from '@kiko/currency/money';
 import { convert } from '@kiko/rates/conversion';
 import type { Currency } from '@kiko/currency/currency';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
-import type { RecurringSeries } from '@kiko/recurring/detection';
+import { cardSwitchesJoinedOf } from '@kiko/recurring/card-switch';
 import { neutralCategory } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { cardSwitchLedger, nowOf } from '@kiko/test-support/recurring-ledger';
+import { type RecurringSeries, chargeGroupsOf, seriesOfGroups } from '@kiko/recurring/detection';
 
-import { type RecurringGroup, paidSoFarOf, recurringGroupsOf } from './recurring-groups';
+import {
+  type RecurringGroup,
+  paidSoFarByCurrencyOf,
+  paidSoFarOf,
+  recurringGroupsOf,
+} from './recurring-groups';
 
 type GroupsInput = Parameters<typeof recurringGroupsOf>[0];
 
@@ -407,5 +414,41 @@ describe('paidSoFarOf', () => {
 
   it('takes the series and the rows, and no rate table', () => {
     expect(paidSoFarOf.length).toBe(2);
+  });
+});
+
+describe('a card switch between currencies', () => {
+  const ledger = cardSwitchLedger();
+  const groups = chargeGroupsOf(ledger, nowOf());
+  const shown = cardSwitchesJoinedOf(seriesOfGroups(groups, nowOf()), groups);
+  const currencyOfHolding = new Map(ledger.holdings.map(({ id, currency }) => [id, currency]));
+  const rows = ledger.rows.map(({ id, holdingId, amountMinorUnits }) =>
+    rowOf(id, amountMinorUnits, 'media', currencyOfHolding.get(holdingId) ?? 'UAH'),
+  );
+  // 1 USD is 41.50 UAH: the 10.00 USD last charge is 415.00 UAH, the 400.00 UAH one is 400.00.
+  const rateTable = buildRateTable([{ base: 'USD', quote: 'UAH', rate: '41.5' }]);
+
+  it('counts a joined row once, by its newest part`s last charge, in its group and in the total', () => {
+    const { groups: shownGroups, total } = recurringGroupsOf(inputOf({ shown, rows, rateTable }));
+
+    expect(idsOf(shownGroups[0].series)).toHaveLength(1);
+    expect(plain(shownGroups[0].total)).toEqual({ currency: 'UAH', minorUnits: 41_500 });
+    expect(plain(total)).toEqual({ currency: 'UAH', minorUnits: 41_500 });
+  });
+
+  it('gives one paid figure per currency, newest part first', () => {
+    expect(paidSoFarByCurrencyOf(shown[0], rows).map(plain)).toEqual([
+      { currency: 'USD', minorUnits: 5_000 },
+      { currency: 'UAH', minorUnits: 200_000 },
+    ]);
+  });
+
+  it('gives one figure for a series with no parts, as `paidSoFarOf` does', () => {
+    const series = seriesOf('spotify', { currency: 'USD', chargeIds: ['a', 'b'] });
+    const spotifyRows = [rowOf('a', -999, 'media', 'USD'), rowOf('b', -1_001, 'media', 'USD')];
+
+    expect(paidSoFarByCurrencyOf(series, spotifyRows).map(plain)).toEqual([
+      { currency: 'USD', minorUnits: 2_000 },
+    ]);
   });
 });

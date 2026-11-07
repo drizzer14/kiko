@@ -57,6 +57,12 @@ const paidFromRowsById = (series: RecurringSeries, rowById: ReadonlyMap<string, 
 export const paidSoFarOf = (series: RecurringSeries, rows: readonly ChargeRow[]): Money =>
   paidFromRowsById(series, new Map(rows.map((row) => [row.id, row])));
 
+// STUB for the developer: one figure until the per-part lines of spec 19.6 replace it.
+export const paidSoFarByCurrencyOf = (
+  series: RecurringSeries,
+  rows: readonly ChargeRow[],
+): Money[] => [paidSoFarOf(series, rows)];
+
 export const recurringGroupsOf = ({
   shown,
   rows,

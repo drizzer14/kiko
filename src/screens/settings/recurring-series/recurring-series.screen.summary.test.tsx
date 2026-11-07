@@ -194,10 +194,10 @@ const LABELS: Record<'en' | 'uk', Labels> = {
   },
 };
 
-const screenElement = () => (
+const screenElement = (route: ScreenProps['route']['params'] = ROUTE) => (
   <RecurringSeriesScreen
     navigation={asNavigationProp<ScreenProps['navigation']>(navigationSpy())}
-    route={asRouteProp<ScreenProps['route']>('RecurringSeries', ROUTE)}
+    route={asRouteProp<ScreenProps['route']>('RecurringSeries', route)}
   />
 );
 
@@ -354,6 +354,61 @@ describe.each(['en', 'uk'] as const)('RecurringSeriesScreen — the table, in %s
       labels.paid,
     ]);
     expect(getByTestId(VALUE.paid)).toHaveTextContent(paidText(), { exact: true });
+  });
+});
+
+describe('RecurringSeriesScreen — the page of a joined row', () => {
+  const dayOf = (month: number): number => new Date(2026, month, 15, 9, 30).getTime();
+  const inCurrency = (id: string, currency: 'USD' | 'UAH', minorUnits: number, time: number) => ({
+    ...chargeRow(id, minorUnits),
+    currency,
+    time,
+  });
+
+  const JOINED = seriesWith({
+    currency: 'USD',
+    chargeIds: ['usd-2', 'usd-1', 'uah-2', 'uah-1'],
+    parts: [
+      { id: 'usd-1', currency: 'USD', chargeIds: ['usd-2', 'usd-1'] },
+      { id: 'uah-1', currency: 'UAH', chargeIds: ['uah-2', 'uah-1'] },
+    ],
+  });
+
+  // The route holds the newest part's currency, as the list opens it.
+  const renderJoined = () => {
+    mockSeries = [JOINED];
+    mockMarkedSeries = [];
+
+    return render(screenElement({ ...ROUTE, currency: 'USD' }));
+  };
+
+  beforeEach(() => {
+    mockLedger = [
+      inCurrency('uah-1', 'UAH', -100_000, dayOf(2)),
+      inCurrency('uah-2', 'UAH', -100_000, dayOf(3)),
+      inCurrency('usd-1', 'USD', -2_500, dayOf(8)),
+      inCurrency('usd-2', 'USD', -2_500, dayOf(9)),
+    ];
+  });
+
+  it('lists the charges of both currencies newest first, and counts all of them', async () => {
+    const { getByTestId, toJSON } = await renderJoined();
+    const chargeIds = testIdsInOrder(toJSON()).filter((id) =>
+      id.startsWith('recurring-series-charge-'),
+    );
+
+    expect(chargeIds).toEqual(
+      ['usd-2', 'usd-1', 'uah-2', 'uah-1'].map((id) => `recurring-series-charge-${id}`),
+    );
+    expect(getByTestId(VALUE.chargeCount)).toHaveTextContent('4', { exact: true });
+  });
+
+  it('gives "All paid so far" one line per currency, the newest part first', async () => {
+    const { getByTestId } = await renderJoined();
+    const usd = formatMoney(Money.of('USD', 5_000), activeLocale());
+    const uah = formatMoney(Money.of('UAH', 200_000), activeLocale());
+
+    expect(getByTestId(VALUE.paid)).toHaveTextContent(`${usd}${uah}`, { exact: true });
   });
 });
 
