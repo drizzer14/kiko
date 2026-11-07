@@ -2,6 +2,7 @@ import { match, P } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
+import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
 import Button from '@kiko/design-system/components/button';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -45,6 +46,7 @@ const unlockLabel = (result: AuthResult | undefined, t: TFunction): string =>
  */
 const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const { isReady, isLocked, unlock } = useAppLock();
   const [lastResult, setLastResult] = useState<AuthResult | undefined>(undefined);
 
@@ -73,7 +75,10 @@ const LockGate: FC<{ children: ReactNode }> = ({ children }) => {
   }
 
   return (
-    <SafeAreaView testID="lock-gate" style={styles.fill}>
+    <SafeAreaView
+      testID="lock-gate"
+      style={[styles.gate, { backgroundColor: theme.colors.background }]}
+    >
       <Box padding={6} gap={4} style={styles.content}>
         <SymbolIcon name="faceid" size={LOCK_ICON_SIZE} tone="textSecondary" />
 

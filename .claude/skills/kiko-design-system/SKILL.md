@@ -87,13 +87,13 @@ is what keeps native chrome (bottom tab bar, stack headers/large-title
 blur, system controls, the native date picker) on the dark appearance
 regardless of the device's own OS setting — there is no
 `Appearance.setColorScheme` call anywhere driving it live. React
-Navigation's own native chrome uses `navigationDarkTheme`
-(`src/navigation/dark-theme/dark-theme.ts`), which now sources its `colors` from
-concrete dark hex values matching the design-system dark tokens
-directly, rather than an OS-trait-resolving `PlatformColor` — with a
-single fixed appearance there is nothing for a semantic color to
-repaint in response to. Read `dark-theme.ts` directly for the exact
-field mapping rather than restating it here.
+Navigation's own chrome colors come from one theme per scheme,
+`navigationDarkTheme` and `navigationLightTheme`
+(`src/navigation/navigation-theme/navigation-theme.ts`), each sourcing its `colors` from the
+design-system token values of its scheme rather than an OS-trait-resolving `PlatformColor`.
+`useNavigationTheme()` (`use-navigation-theme.ts` beside it) picks the one that follows the
+active theme's `colorScheme`, and `App.tsx` hands it to `NavigationContainer`. Read the source
+file directly for the exact field mapping rather than restating it here.
 
 `settings.appearance` (`src/db/schema.ts`) still exists as a schema
 column — migrations here are additive-only, so a removed feature's
@@ -222,6 +222,40 @@ Keep `chartSeriesDark` and the other dark blocks of `palette.ts` in place, and p
 below them. The palette check reads `palette.ts` by text position, so code placed above a dark
 block fails it.
 
+## Native chrome follows the window
+
+The window's interface style decides the scheme of every native view. The only allowed switch is
+`Appearance.setColorScheme`, and only the set 6 appearance control calls it. No file pins a
+scheme beside it, and no file switches the Unistyles theme by hand. Three pre-write guard rules in
+`rules/semgrep-prewrite.yml` keep it so; each has a fixture pair under `rules/fixtures/`.
+
+- `kiko-no-unistyles-set-theme`: no call of `UnistylesRuntime.setTheme` or
+  `UnistylesRuntime.setAdaptiveThemes`. The window's scheme is the one source, and the allowed
+  switch is `Appearance.setColorScheme`. A manual call is a second switch that can disagree with
+  the native chrome, and on Unistyles 3.3.0 these two calls were the #1179 path. Reading
+  `UnistylesRuntime.themeName` stays allowed.
+- `kiko-no-hard-coded-native-scheme`: no `colorScheme="dark"` or `colorScheme="light"` JSX prop
+  (`colorScheme="system"` follows the window, as `GlassSurface` and `BottomSheet` set it), no
+  `keyboardAppearance` of `'dark'` or `'light'` as a prop or an object field (an input that sets
+  none takes the window's style), and no `headerBlurEffect` whose string ends in `Dark` or
+  `Light` in any case, as an object field (`systemChromeMaterial` has no scheme in its name, so
+  the bar's own style picks it; `large-title-screen-options.ts` uses it). A pinned value keeps
+  the view in the old scheme when the window changes, and the dark-only app hid that.
+- `kiko-no-nested-text`: no `Text` or `MoneyText` inside a `Text`. Unistyles 3.6.0 (issue #1329)
+  leaves a nested `Text` on its old color under a Reanimated view when the theme changes; the fix
+  (PR #1353) ships in 3.8.0, so the nested form waits for that version. The tree has no nested
+  site. Put the parts side by side in a `View`, or render one `Text` with the whole string.
+
+The tab bar's `tabBarStyle`, `tabBarActiveTintColor` and `tabBarInactiveTintColor` stay as props
+read from `useUnistyles`: they carry token colors, not a scheme, and are outside all three rules.
+
+A third-party native view (`SafeAreaView` in
+`src/design-system/components/screen/screen.component.tsx` and
+`src/auth/lock-gate/lock-gate.component.tsx`) takes its theme color by an inline prop from
+`useUnistyles`, because a stylesheet color does not repaint on a scheme change.
+`react-native-calendars` builds its stylesheet once per mount, so `KikoCalendar`
+(`src/calendar/kiko-calendar/`) remounts per scheme with `key={theme.colorScheme}`.
+
 ## Locked decisions (user-approved)
 
 Each entry is a visual the user approved. Never change or revert one —
@@ -345,8 +379,9 @@ every one of them, so scan this list rather than the reference files for what is
   glass path's tint; (3) every large-title native stack takes
   `screenOptions={largeTitleScreenOptions}`
   (`src/navigation/large-title-screen-options/`), which on this tier adds
-  `headerBlurEffect: 'systemChromeMaterialDark'` plus `headerLargeStyle:
-  { backgroundColor: 'transparent' }` (the at-rest large title stays
+  `headerBlurEffect: 'systemChromeMaterial'` (no scheme in the name: the blur takes the nav bar's
+  own style override, which native-stack sets from the navigation theme's `dark` flag) plus
+  `headerLargeStyle: { backgroundColor: 'transparent' }` (the at-rest large title stays
   transparent, only the scrolled bar blurs), because react-native-screens
   builds a transparent appearance with no background effect there. On
   iOS 26+ it passes neither option. A new large-title stack, or a screen
@@ -681,7 +716,8 @@ reads which unit a given field shows in a test.
 
 ## Calendar week start
 
-`KikoCalendar` (`src/calendar/kiko-calendar/`) starts its week on the
+`KikoCalendar` (`src/calendar/kiko-calendar/`) remounts per scheme: see "Native chrome follows
+the window". It starts its week on the
 DEVICE REGION's first weekday, like a native iOS calendar app — NOT
 the app language. `weekStartFor(region)`
 (`src/calendar/week-start/`) maps a 2-letter region code to `0`

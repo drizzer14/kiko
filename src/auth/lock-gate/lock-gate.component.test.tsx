@@ -1,4 +1,9 @@
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -109,6 +114,37 @@ describe('LockGate', () => {
     expect(getByText('Unlock')).toBeTruthy();
     expect(queryByText('secret balances')).toBeNull();
     expect(mockUnlock).toHaveBeenCalledTimes(1);
+  });
+
+  // The safe-area view is a third-party native view: a stylesheet color on it would not repaint on
+  // a scheme change, so the page color is a prop from the re-rendered theme.
+  describe('page color', () => {
+    const renderLocked = () => {
+      mockAppLock.current = { isReady: true, isLocked: true, unlock: mockUnlock };
+
+      return renderGate();
+    };
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('paints the dark page behind the lock prompt', async () => {
+      const { getByTestId } = await renderLocked();
+
+      expect(StyleSheet.flatten(getByTestId('lock-gate').props.style).backgroundColor).toBe(
+        darkTheme.colors.background,
+      );
+    });
+
+    it('paints the light page behind the lock prompt once light is the active theme', async () => {
+      registerLightThemeFirst();
+      const { getByTestId } = await renderLocked();
+
+      expect(StyleSheet.flatten(getByTestId('lock-gate').props.style).backgroundColor).toBe(
+        lightTheme.colors.background,
+      );
+    });
   });
 
   it('shows the Face ID glyph on the lock prompt', async () => {

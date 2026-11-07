@@ -291,11 +291,10 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
       // real, final position rather than wherever it was when first
       // measured.
       key={remountToken}
-      // The app is dark-only (native chrome is pinned dark via
-      // `UIUserInterfaceStyle`), so the glass material samples its backdrop
-      // under a fixed dark interface style — no scheme flip to repaint for.
+      // 'system' makes the glass material sample its backdrop under the window's own interface
+      // style, so it repaints with the window instead of holding a scheme of its own.
       effect={glassEffect}
-      colorScheme="dark"
+      colorScheme="system"
       tintColor={tint ?? glassTint}
       animated={false}
       style={[RNStyleSheet.absoluteFill, { borderRadius }]}

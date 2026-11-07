@@ -87,7 +87,7 @@ describe('AccountsStack', () => {
 
     expect(navigator.props.screenOptions).toEqual({
       headerLargeTitle: true,
-      headerBlurEffect: 'systemChromeMaterialDark',
+      headerBlurEffect: 'systemChromeMaterial',
       headerLargeStyle: { backgroundColor: 'transparent' },
     });
   });

@@ -272,6 +272,24 @@ describe('BottomSheet', () => {
 
       expect(backdropChild.props.tintColor).toBe(darkTheme.colors.scrim);
     });
+
+    it("lets the scrim glass and the sheet's glass follow the window's scheme", async () => {
+      const { getByTestId } = await render(
+        <BottomSheet
+          visible
+          onDismiss={jest.fn()}
+          testID={SHEET_TEST_ID}
+          backdropTestID="sheet-backdrop"
+        >
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+      const backdropChildren = getByTestId('sheet-backdrop').props.children;
+      const scrimGlass = Array.isArray(backdropChildren) ? backdropChildren[0] : backdropChildren;
+
+      expect(scrimGlass.props.colorScheme).toBe('system');
+      expect(getByTestId(`${SHEET_TEST_ID}-glass-base`).props.colorScheme).toBe('system');
+    });
   });
 
   // The scrim, grabber, and children all still render once the card routes
