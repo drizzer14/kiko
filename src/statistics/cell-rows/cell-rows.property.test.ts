@@ -350,7 +350,7 @@ describe('the rows of a cell add up to the cell', () => {
       for (const ledger of ledgers) {
         expect(rowsIn(ledger, PERIOD).length).toBeGreaterThan(0);
         expect(incomeIn(ledger, PERIOD).length).toBeGreaterThan(0);
-        expect(rowsIn(ledger, PERIOD).some((row) => row.paymentId !== undefined)).toBe(true);
+        expect(rowsIn(ledger, PERIOD).some((row) => row.loanPart !== undefined)).toBe(true);
         expect(ledger.excludedTransactionIds.size).toBeGreaterThan(0);
       }
     });

@@ -30,7 +30,6 @@ const INTEREST: CellRow = {
   description: 'Mortgage payment',
   native: Money.of('UAH', 9_000),
   base: Money.of('UAH', 9_000),
-  paymentId: 'payment',
   loanPart: 'interest',
 };
 const FEE: CellRow = {
@@ -39,7 +38,6 @@ const FEE: CellRow = {
   description: 'Mortgage payment',
   native: Money.of('UAH', 300),
   base: Money.of('UAH', 300),
-  paymentId: 'payment',
   loanPart: 'fee',
 };
 // More rows than a sheet can mount at once: a 12-month Total on a synced card holds this many.
@@ -138,6 +136,7 @@ describe('CellRowsSheet', () => {
     const { getByTestId } = await shown(rows);
 
     expect(within(getByTestId('cell-rows-total')).getByText('6,000.00 ₴')).toBeTruthy();
+    expect(within(getByTestId('cell-rows-list')).queryByTestId('cell-rows-total')).toBeNull();
   });
 
   it('is read-only: no row can be pressed', async () => {

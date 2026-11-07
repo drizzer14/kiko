@@ -1,6 +1,6 @@
 import maybe, { foldMap } from 'fnts/maybe';
-import { useCallback, useMemo, useState } from 'react';
 import type { CellRange, CellRow } from '@kiko/statistics/cell-rows';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CellRowsSheetProps } from './cell-rows-sheet.props';
 
@@ -17,9 +17,10 @@ type Opened<Selector> = {
  * What a table holds to show the rows behind a cell. It holds which cell was opened (its selector
  * and range), never the rows: the rows are computed from `rowsOf`, which the table builds from its
  * live ledger and rates, so a sync or a rate refresh moves the sheet's total with the cell. The
- * cell stays when the sheet is dismissed, so the closing animation does not show an empty sheet. A
- * native sheet stays presented over another tab, so a sheet opened in an earlier `sheetGeneration`
- * is hidden, never shown again by the remount that the new generation causes.
+ * rows are computed only while the sheet is visible; a hidden sheet keeps the rows it last showed,
+ * so the closing animation does not show an empty sheet and a ledger change while it is hidden
+ * costs nothing. A native sheet stays presented over another tab, so a sheet opened in an earlier
+ * `sheetGeneration` is hidden, never shown again by the remount that the new generation causes.
  */
 export const useCellRowsSheet = <Selector>(
   sheetGeneration: number,
@@ -38,15 +39,23 @@ export const useCellRowsSheet = <Selector>(
     setOpened((held) => foldMap(maybe(held), (current) => ({ ...current, isOpen: false })));
   }, []);
 
+  const visible = opened?.isOpen === true && opened.generation === sheetGeneration;
+  const liveRows = useMemo(
+    () => (visible && opened ? rowsOf(opened.selector, opened.range) : undefined),
+    [visible, opened, rowsOf],
+  );
+
+  const lastRows = useRef<readonly CellRow[]>([]);
+  useEffect(() => {
+    if (liveRows) {
+      lastRows.current = liveRows;
+    }
+  }, [liveRows]);
+  const rows = liveRows ?? lastRows.current;
+
   const sheet = useMemo<Omit<CellRowsSheetProps, 'baseCurrency'> | undefined>(
-    () =>
-      foldMap(maybe(opened), ({ generation, title, selector, range, isOpen }) => ({
-        visible: isOpen && generation === sheetGeneration,
-        title,
-        rows: rowsOf(selector, range),
-        onDismiss: dismiss,
-      })),
-    [opened, sheetGeneration, rowsOf, dismiss],
+    () => foldMap(maybe(opened), ({ title }) => ({ visible, title, rows, onDismiss: dismiss })),
+    [opened, visible, rows, dismiss],
   );
 
   return { open, sheet };

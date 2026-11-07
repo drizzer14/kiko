@@ -636,6 +636,13 @@ describe('the choices a help step names', () => {
     },
   );
 
+  it('names the table, not the filter, that the cells of step 12 are in', () => {
+    const step = stepOf(enValues, 'viewStatistics', 12);
+
+    expect(step).toContain(`In the "${en.tables.view.categories}" table, tap`);
+    expect(step).toContain(`in the "${en.tables.view.cashFlow}" table, tap`);
+  });
+
   it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],
     ['uk', ukValues, /лише/i, 'Відсотки за кредитом'],
