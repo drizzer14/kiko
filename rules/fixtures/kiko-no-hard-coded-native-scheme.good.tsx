@@ -10,6 +10,14 @@ export const systemGlass = <LiquidGlassView colorScheme="system" />;
 
 export const defaultKeyboard = <TextInput keyboardAppearance="default" />;
 
+declare const scheme: 'dark' | 'light';
+
+export const schemeFromVariable = (
+  <LiquidGlassView colorScheme={scheme}>
+    <TextInput keyboardAppearance={scheme} />
+  </LiquidGlassView>
+);
+
 export const noKeyboardAppearance = <TextInput autoCorrect={false} />;
 
 export const inputProps = {

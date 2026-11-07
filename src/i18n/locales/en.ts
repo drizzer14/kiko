@@ -75,6 +75,7 @@ export const en = {
         unavailable: 'Biometric hardware is unavailable on this device.',
       },
     },
+    appearance: 'Appearance',
     baseCurrency: 'Base currency',
     baseCurrencySheetTitle: 'Base Currency',
     categories: 'Categories',
@@ -140,6 +141,11 @@ export const en = {
   language: {
     en: '🇬🇧 English',
     uk: '🇺🇦 Українська',
+  },
+  appearance: {
+    system: 'System',
+    light: 'Light',
+    dark: 'Dark',
   },
   calendar: {
     month: {
@@ -1301,14 +1307,15 @@ export const en = {
         title: 'Set Up a Reminder',
       },
       systemSettings: {
-        rowLabel: 'Change the language or lock the app',
+        rowLabel: 'Change the language or appearance, or lock the app',
         steps: {
           '1': 'Open the "Settings" tab, then tap "System".',
           '2': 'Under "Language", choose your language.',
-          '3': 'Turn on "Require Face ID or passcode" to lock Kiko. Each time you launch it, it asks for Face ID or your device passcode.',
-          '4': 'To turn the lock off, Kiko first asks you to confirm it is you.',
+          '3': 'Under "Appearance", choose "System", "Light", or "Dark". "System" follows your device.',
+          '4': 'Turn on "Require Face ID or passcode" to lock Kiko. Each time you launch it, it asks for Face ID or your device passcode.',
+          '5': 'To turn the lock off, Kiko first asks you to confirm it is you.',
         },
-        title: 'Language and App Lock',
+        title: 'Language, Appearance, and App Lock',
       },
       trackLoan: {
         rowLabel: 'Track a loan',
