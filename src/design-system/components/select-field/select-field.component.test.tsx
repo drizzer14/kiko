@@ -1,9 +1,8 @@
+import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
-
-import { StyleSheet } from 'react-native';
-import { darkTheme } from '@kiko/design-system/theme';
 import '@kiko/design-system/unistyles';
 import SelectField from '.';
 import type { SelectFieldProps } from './select-field.props';

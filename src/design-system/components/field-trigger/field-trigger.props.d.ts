@@ -54,8 +54,9 @@ export type FieldTriggerProps = {
   // one error renders under its whole group (a split payment's return rows).
   // Never set beside `error`. Defaults to false.
   invalid?: boolean;
-  // Caps the trigger at `theme.layout.selectTriggerMaxWidth`, the value wrapping inside it.
-  // Omitted leaves the trigger as wide as its column. Defaults to false.
+  // Caps the trigger at `theme.layout.selectTriggerMaxWidth`, the value wrapping inside it. The
+  // trigger is min(column, cap) wide whatever its value. Omitted leaves it as wide as its column.
+  // Defaults to false.
   capped?: boolean;
   // An optional testID applied to the Pressable trigger, so a flow can tap the
   // field to open its picker sheet. Omitted leaves the trigger untagged. When

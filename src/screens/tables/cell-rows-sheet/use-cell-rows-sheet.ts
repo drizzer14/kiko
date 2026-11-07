@@ -13,8 +13,9 @@ type Opened<Selector> = {
   isOpen: boolean;
 };
 
-// Compared row by row, not by array identity: a caller whose `rowsOf` changes on every render hands
-// a new array each time, and a state set on each of those renders would never settle.
+// Compared row by row, not by array identity, so the shown rows are set again only when a row
+// changed. It settles only while `rowsOf` is memoized: one that builds new rows on every render
+// never does, so the caller must hand a stable `rowsOf`.
 const sameRows = (first: readonly CellRow[], second: readonly CellRow[]) =>
   first.length === second.length && first.every((row, index) => row === second[index]);
 

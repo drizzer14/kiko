@@ -16,11 +16,10 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(3),
     paddingHorizontal: theme.spacing(3),
   },
-  // A capped trigger stops at the shared width and starts at the leading edge, so a long value
-  // wraps inside the cap (`valueCapped` lets the text shrink to it) rather than widening the field.
+  // A capped trigger is the column's width up to the shared cap, whatever its label, so a long
+  // value wraps inside the cap (`valueCapped` lets the text shrink to it), not widening the field.
   fieldCapped: {
     maxWidth: theme.layout.selectTriggerMaxWidth,
-    alignSelf: 'flex-start',
   },
   valueCapped: {
     flexShrink: 1,
