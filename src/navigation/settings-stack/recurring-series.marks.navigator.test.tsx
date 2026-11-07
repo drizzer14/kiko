@@ -179,19 +179,9 @@ const goBack = async (): Promise<void> => {
 const seriesParams = (): object | undefined =>
   navigationRef.getRootState()?.routes.find(({ name }) => name === 'RecurringSeries')?.params;
 
-const PLAIN_LINES: Record<RecurringPeriod, string> = {
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  everyThreeMonths: 'Every 3 months',
-  everySixMonths: 'Every 6 months',
-  yearly: 'Yearly',
-};
-
-const markedLine = (period: RecurringPeriod): string => PLAIN_LINES[period];
-
 // A marked series: Remove mark in place of "Not a recurring charge", its charge count and, where
-// charges do not fit their period, the "Marked:" line. A series whose charges all fit keeps the
-// detected wording, so `line` is stated only where the world makes it a "Marked:" one.
+// charges do not fit their period, the plain period line. A series whose charges all fit keeps the
+// detected wording, so `line` is stated only where the world replaces it with the period line.
 const expectMarkedSeries = async (
   view: View,
   { line, count }: { line?: string; count: number },
@@ -371,7 +361,7 @@ describe('Settings stack: a fold with a marked series and its form open', () => 
     expect(seriesParams()).toEqual(routeBefore);
 
     await goBack();
-    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 2 });
+    await expectMarkedSeries(view, { line: 'Yearly', count: 2 });
 
     expect(view.getByTestId('recurring-series-charge-cheap-0')).toBeTruthy();
     expect(view.getByTestId('recurring-series-charge-cheap-9')).toBeTruthy();
