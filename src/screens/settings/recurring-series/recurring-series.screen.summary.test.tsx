@@ -170,6 +170,7 @@ type Labels = {
   chargeCount: string;
   paid: string;
   stopped: string;
+  monthly: string;
 };
 
 const LABELS: Record<'en' | 'uk', Labels> = {
@@ -180,6 +181,7 @@ const LABELS: Record<'en' | 'uk', Labels> = {
     chargeCount: 'Number of charges',
     paid: 'All paid so far',
     stopped: 'No recent charge',
+    monthly: 'Monthly',
   },
   uk: {
     repeats: 'Періодичність',
@@ -188,6 +190,7 @@ const LABELS: Record<'en' | 'uk', Labels> = {
     chargeCount: 'Кількість списань',
     paid: 'Усього сплачено',
     stopped: 'Без нових списань',
+    monthly: 'Щомісяця',
   },
 };
 
@@ -328,10 +331,7 @@ describe.each(['en', 'uk'] as const)('RecurringSeriesScreen — the table, in %s
   it('reads the marked line of a marked series as its recurrence, with no status row', async () => {
     const { getByTestId, queryByTestId } = await renderWorld([], [MARKED_SERIES]);
 
-    expect(getByTestId(VALUE.repeats)).toHaveTextContent(
-      i18n.t('recurringCharges.marked.monthly'),
-      { exact: true },
-    );
+    expect(getByTestId(VALUE.repeats)).toHaveTextContent(labels.monthly, { exact: true });
     expect(queryByTestId(VALUE.status)).toBeNull();
     expect(getByTestId(VALUE.chargeCount)).toHaveTextContent('3', { exact: true });
   });

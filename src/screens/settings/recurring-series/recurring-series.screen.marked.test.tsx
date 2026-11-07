@@ -147,9 +147,7 @@ describe('RecurringSeriesScreen — a marked series', () => {
     const series = markedOf(state, 'Netflix');
     const { getByTestId } = await renderScreen(state, routeOf(series));
 
-    expect(getByTestId(REPEATS)).toHaveTextContent(i18n.t('recurringCharges.marked.monthly'), {
-      exact: true,
-    });
+    expect(getByTestId(REPEATS)).toHaveTextContent('Monthly', { exact: true });
     expect(getByTestId(LAST_CHARGE)).toHaveTextContent(lastChargeDate(series), { exact: true });
     expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
   });
@@ -633,9 +631,7 @@ describe('RecurringSeriesScreen — a marked route after a pick on a row of its 
     expect([...markedOf(after, 'Apple').chargeIds].sort()).toEqual(['cheap-0', 'cheap-9']);
     expect(detectedOf(after, 'Apple').chargeIds).toHaveLength(10);
     expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('2', { exact: true });
-    expect(getByTestId(REPEATS)).toHaveTextContent(i18n.t('recurringCharges.marked.yearly'), {
-      exact: true,
-    });
+    expect(getByTestId(REPEATS)).toHaveTextContent('Yearly', { exact: true });
     expect(getByText(removeMarkText())).toBeTruthy();
     expect(queryByTestId(EMPTY)).toBeNull();
   });

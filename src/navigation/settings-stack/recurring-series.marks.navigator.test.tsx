@@ -179,8 +179,15 @@ const goBack = async (): Promise<void> => {
 const seriesParams = (): object | undefined =>
   navigationRef.getRootState()?.routes.find(({ name }) => name === 'RecurringSeries')?.params;
 
-const markedLine = (period: RecurringPeriod): string =>
-  i18next.t(`recurringCharges.marked.${period}`);
+const PLAIN_LINES: Record<RecurringPeriod, string> = {
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  everyThreeMonths: 'Every 3 months',
+  everySixMonths: 'Every 6 months',
+  yearly: 'Yearly',
+};
+
+const markedLine = (period: RecurringPeriod): string => PLAIN_LINES[period];
 
 // A marked series: Remove mark in place of "Not a recurring charge", its charge count and, where
 // charges do not fit their period, the "Marked:" line. A series whose charges all fit keeps the

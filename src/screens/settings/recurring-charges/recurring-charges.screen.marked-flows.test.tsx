@@ -279,7 +279,8 @@ describe('RecurringChargesScreen — the list as marks come and go', () => {
 
     expect(screen.getByText(i18n.t('recurringCharges.markedEmptyHeading'))).toBeTruthy();
     expect(screen.getByText('Ghost')).toBeTruthy();
-    expect(screen.getByText(i18n.t('recurringCharges.marked.yearly'))).toBeTruthy();
+    expect(screen.getByText('Yearly')).toBeTruthy();
+    expect(screen.queryByText(/^Marked:/)).toBeNull();
     expect(await screen.opened()).toEqual(['Netflix:detected']);
 
     await screen.store(NO_ENTRY);
