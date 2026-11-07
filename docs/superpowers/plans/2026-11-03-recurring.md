@@ -1061,7 +1061,7 @@ disagreement, never edits to green):
   `chainsOfEntry` and `markedChainOfAmount` (fix-divergent-twins)? Can the anchor sit on an extra (world C) or flip on row
   order? Does any reader of the marked series still see a dropped charge (totals, stopped, last charge, date line, route)? Are
   the test edits only the named ones, each with its `was`?
-- [ ] **step 4/9 (kiko:qa): pins for the redesigned rule (the brief's "6b").** Base: the branch tip holding the spec commit
+- [x] **step 4/9 (kiko:qa): pins for the redesigned rule (the brief's "6b").** Done: 5b71f3943, re-pins bcffe67b7 (10 anchor-era pins in row-recurrence, recurring-series.screen.marked and the marks navigator). Base: the branch tip holding the spec commit
   `docs(recurring): one charge per period without an anchor`. Spec 8.3's redesigned table and its `now` column are the
   contract; re-grep every symbol. (a) A direct table test of `onePerSlotOf`: new file
   `src/recurring/detection/detection.one-per-slot.test.ts` (the `detection.performance.test.ts` naming; `detection.test.ts`
@@ -1079,10 +1079,10 @@ disagreement, never edits to green):
   **Check:** `npx jest src/recurring/detection/detection.one-per-slot src/recurring/marked-series src/recurring/use-row-mark
   --maxWorkers=2`, output in a file; reds only where named. **`check:dup`:** a new test file over 1000 lines is a dup risk
   (memory: new-test-file-over-1000-lines-dup-regression): keep it one table.
-- [ ] **step 5/9 (kiko:developer): the rule without an anchor.** `onePerSlotOf` in `detection.ts` per spec 8.3's table: sort by
+- [x] **step 5/9 (kiko:developer): the rule without an anchor.** Done: ee963791b. `onePerSlotOf` in `detection.ts` per spec 8.3's table: sort by
   time then id; the floor `daysBetween > slotDays / 2`; the near test in minor units; the five keys as one tuple compared key
-  by key; the DP scanning only predecessors past the floor and within half a step of the best one (spec 8.3 "The
-  computation"); gap cost by `stepForward` and `dayGapOf` with k >= 1. Remove `anchorOf`, `signedSlotPairOf`,
+  by key; the DP scanning the past-floor predecessors within half a step of the latest one (`predecessorIndexesOf`;
+  spec 8.3 "The computation"); gap cost by `stepForward` and `dayGapOf` with k >= 1. Remove `anchorOf`, `signedSlotPairOf`,
   `ANCHOR_CANDIDATES` if nothing else reads them (knip). Update the doc comments of `onePerSlotOf` and `markedSeriesOf` (no
   "slot around one anchor"). Signature, `marked-series.ts`, `use-row-mark.ts` and the form unchanged. No pin edited. Commit
   `fix(recurring): one charge per period without an anchor`. **Checks:** fast tier on write; `npx jest src/recurring
@@ -1091,11 +1091,12 @@ disagreement, never edits to green):
   `detection.performance.test.ts`), output in a file; add one case to the performance suite only if it has none with a dense
   marked key (the daily shop's 500 rows marked monthly), its bound measured, not typed; `make jest-affected BASE=<step 4/9
   commit>` (exit 3: say so).
-- [ ] **step 6/9 Re-review (kiko:reviewer).** Diff from step 3/9's tip. Top questions: does every world of spec 8.3's table
+- [x] **step 6/9 Re-review (kiko:reviewer).** Done: APPROVE at bcffe67b7. Diff from step 3/9's tip. Top questions: does every world of spec 8.3's table
   hold (the reviewer reruns its probe `p1.test.ts` against the new rule); is the DP's predecessor window exact (the
-  "within half a step of the best" argument), or can it miss a tie; does any reader still see a dropped charge; is the
+  "within half a step of the latest past-floor one" argument; a 15,000-case brute force found 0 mismatches), or can it
+  miss a tie; does any reader still see a dropped charge; is the
   tapped row dropped only where spec 8.3 "The tapped row" says?
-- [ ] **step 7/9 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's mark rules ("A mark's chain ... The chain's
+- [x] **step 7/9 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the no-anchor rule in the skill, spec and plan` commit. kiko-domain's mark rules ("A mark's chain ... The chain's
   charges are the series"): the bullet a6a7a55aa added says "at most one charge per period slot"; reword it to the
   redesigned rule (kept charges more than half a step apart, near amounts first, no anchor). Report the sha or "no drift
   found".
