@@ -116,11 +116,11 @@ const ledgerDatabase = (): DatabaseSync => {
   applyAllMigrations(target);
   target.exec('PRAGMA foreign_keys = ON;');
   target.exec(`
-    INSERT INTO accounts (id, name, kind)
-      VALUES ('first-account', 'First', 'bank'), ('second-account', 'Second', 'bank');
-    INSERT INTO holdings (id, account_id, name, type, currency)
-      VALUES ('first-card', 'first-account', 'Card', 'card', 'UAH'),
-             ('second-card', 'second-account', 'Card', 'card', 'UAH');
+    INSERT INTO accounts (id, name, kind, created_at)
+      VALUES ('first-account', 'First', 'bank', 1000), ('second-account', 'Second', 'bank', 1000);
+    INSERT INTO holdings (id, account_id, name, type, currency, created_at)
+      VALUES ('first-card', 'first-account', 'Card', 'card', 'UAH', 1000),
+             ('second-card', 'second-account', 'Card', 'card', 'UAH', 1000);
   `);
 
   return target;
@@ -142,12 +142,12 @@ const seedRules = (target: DatabaseSync): void => {
 const seedLedgerRows = (target: DatabaseSync): void => {
   target.exec(`
     INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category,
-      mcc, counter_iban, source, category_set_by_hand)
-    VALUES ('pending', 'first-card', -100, 1000, 'Silpo Market', NULL, NULL, NULL, 'manual', 0),
-           ('coded', 'first-card', -200, 2000, 'Anything', 'groceries', 5411, NULL, 'manual', 0),
-           ('picked', 'second-card', -300, 3000, 'ATB', 'shopping', 5411, NULL, 'manual', 1),
+      mcc, counter_iban, source, category_set_by_hand, created_at)
+    VALUES ('pending', 'first-card', -100, 1000, 'Silpo Market', NULL, NULL, NULL, 'manual', 0, 1000),
+           ('coded', 'first-card', -200, 2000, 'Anything', 'groceries', 5411, NULL, 'manual', 0, 2000),
+           ('picked', 'second-card', -300, 3000, 'ATB', 'shopping', 5411, NULL, 'manual', 1, 3000),
            ('transfer', 'first-card', -400, 4000, 'Anything', 'food', NULL,
-             'UA213223130000026007233566001', 'manual', 0);
+             'UA213223130000026007233566001', 'manual', 0, 4000);
   `);
 };
 
