@@ -6,7 +6,7 @@ import { merchantNameOf, merchantSpellingOf } from '@kiko/transactions/merchant-
 export type MarkOption = 'none' | RecurringPeriod;
 
 type MarkWrite = {
-  row: { amountMinorUnits: number; description: string };
+  row: { id: string; amountMinorUnits: number; description: string };
   currency: Currency;
   chain: { marks: readonly RecurringMark[] } | null;
   option: MarkOption;
@@ -46,5 +46,6 @@ export const writeMark = ({ row, currency, chain, option }: MarkWrite): Promise<
     currency,
     amountMinorUnits: Math.abs(row.amountMinorUnits),
     period: option,
+    transactionId: row.id,
   });
 };

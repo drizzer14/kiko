@@ -1,15 +1,7 @@
 import { at } from '@kiko/test-support/recurring-ledger';
 
+import { onePerSlotOf } from './detection';
 import type { Charge, RecurringPeriod } from './detection.types.d';
-import { onePerSlotOf as onePerSlotOfDetection } from './detection';
-
-// The table's rows read the fourth parameter, the ids of the rows the marks were tapped on.
-const onePerSlotOf: (
-  charges: readonly Charge[],
-  period: RecurringPeriod,
-  storedAmounts: readonly number[],
-  tappedIds?: ReadonlySet<string>,
-) => { kept: Charge[]; dropped: Charge[] } = onePerSlotOfDetection;
 
 type World = {
   title: string;
