@@ -39,7 +39,8 @@ file before you edit the component it describes.
   `FieldError`, `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`,
   `EntryDateHeader`, `PairedFieldsRow`, the field and filter helpers (`deriveFieldTestID`,
   `toggleFilterValue`),
-  `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `AppearanceSwitch`, `DayOfMonthGrid`,
+  `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `AppearanceSwitch`,
+  `DayOfMonthGrid`,
   `SegmentedControl` with the tabs-vs-chips rule, the chart components (`BarChart`, `PieChart`,
   `NetWorthLine`), `ColorPicker`, `TransactionCard`, and the form header) and the rules
   "No imports across screen folders", "Scroll to the first invalid field" and
