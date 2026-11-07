@@ -869,10 +869,17 @@ Bybit's first read is smaller in total, but its 60/min transfer route sets a muc
 
 | Lane cap | Windows per run | Capital: runs, calls | Transfer: runs, calls |
 |---|---|---|---|
-| capital 15, transfer 10 | 5, 10 | 6, 81 | 11, 106 |
-| capital 30, transfer 20 (CHOSEN) | 10, 20 | 3, 81 | 6, 106 |
-| capital 60, transfer 40 | 20, 40 | 2, 81 | 3, 106 |
-| capital 78+, transfer 105+ | 26, 105 | 1, 81 | 1, 106 |
+| capital 15, transfer 10 | 5, 10 | 6, 81 | 11, 105 |
+| capital 30, transfer 20 (CHOSEN) | 10, 20 | 3, 78 | 6, 105 |
+| capital 60, transfer 40 | 20, 40 | 2, 78 | 3, 105 |
+| capital 78+, transfer 105+ | 26, 105 | 1, 78 | 1, 105 |
+
+PLANNER CALL 129 (was: 81 and 106 in every row): the calls are the windows, 26 x 3 = 78 for
+capital and 105 for transfer, plus 3 for capital and 1 for transfer only when a run before the
+last leaves its cursor less than one window (29 days, 7 days) behind its own clock. Of these rows
+only capital 15 does: run 5 ends at `now - 4 days`, so run 6 owes the overlap day. For the
+chosen caps, the cursor of the run before the last is 149 days (capital) and 29 days (transfer)
+behind its clock, so no catch-up run owes the day.
 
 Calls = the windows, plus the 1-day overlap that a run leaves owed behind its cursor only when
 that cursor's ground was read within one re-scan window of its time (PLANNER CALL 124; was: each
@@ -887,9 +894,11 @@ Stage E, one page per window:
 
 | Lane cap | Log windows per run | Log: runs, calls | Convert, per run | Convert: runs to a whole pass |
 |---|---|---|---|---|
-| log 10, convert 5 | 10 | 11, 106 | 5 pages | ceil((pages + 1) / 5) |
-| log 20, convert 10 (CHOSEN) | 20 | 6, 106 | 10 pages | ceil((pages + 1) / 10) |
-| log 40, convert 20 | 40 | 3, 106 | 20 pages | ceil((pages + 1) / 20) |
+| log 10, convert 5 | 10 | 11, 105 | 5 pages | ceil((pages + 1) / 5) |
+| log 20, convert 10 (CHOSEN) | 20 | 6, 105 | 10 pages | ceil((pages + 1) / 10) |
+| log 40, convert 20 | 40 | 3, 105 | 20 pages | ceil((pages + 1) / 20) |
+
+The log calls are its 105 windows (PLANNER CALL 129; was: 106, with the overlap read).
 
 The log runs alongside transfer, on the same windows and the same cap, so a user sees both ends on the same run. During catch-up the re-scan and owed ground of the log wait, as for transfer. A pass over 1,000 converts spans runs, and `pageIndex` resumes it.
 
@@ -901,10 +910,10 @@ run): the numbers after "MEASURED" below, as runs, calls.
 
 | Seed | Rows | Capital pages per window | Capital: runs, calls | Transfer: runs, calls |
 |---|---|---|---|---|
-| Small account | under 50 per window | 1 per series | COMPUTED 3, 81; MEASURED 3, 84 at every gap | COMPUTED 6, 106; MEASURED 6, 110 at every gap |
-| Busy | 1,000 per capital series, 1,000 transfers, even | 1 per series | COMPUTED 3, 81; MEASURED 3, 84 at every gap | COMPUTED 6, 106; MEASURED 6, 110 at every gap |
-| Heavy | 5,000 per capital series, 5,000 transfers, even | 4 per series | COMPUTED at least 13, at least 315; MEASURED 15, 420 / 15, 422 / 15, 419 (worst 15, 422) | COMPUTED 6, at least 106; MEASURED 6, 110 at every gap |
-| Burst | 5,000 transfers in one 7-day window | | COMPUTED 3, 81; MEASURED 3, 84 | COMPUTED at least 5 + 3 halvings beyond the even case, per the pager rule below; MEASURED 30, 597 at gap 0, 34, 676 at 1 hour and 1 day (worst 34, 676). With no plain hint the real walker measured 52, 1,036: three halvings again after each commit (PLANNER CALL 122) |
+| Small account | under 50 per window | 1 per series | COMPUTED 3, 78 (PLANNER CALL 129; was: 81); MEASURED 3, 84 at every gap | COMPUTED 6, 105 (was: 106); MEASURED 6, 110 at every gap |
+| Busy | 1,000 per capital series, 1,000 transfers, even | 1 per series | COMPUTED 3, 78 (was: 81); MEASURED 3, 84 at every gap | COMPUTED 6, 105 (was: 106); MEASURED 6, 110 at every gap |
+| Heavy | 5,000 per capital series, 5,000 transfers, even | 4 per series | COMPUTED at least 13, at least 303: 25 windows of 199 rows at 4 pages and the last window of 4 days at 1 page, in 3 series (PLANNER CALL 129; was: at least 315, every window at 4 pages plus the overlap); MEASURED 15, 420 / 15, 422 / 15, 419 (worst 15, 422) | COMPUTED 6, at least 105 (was: 106); MEASURED 6, 110 at every gap |
+| Burst | 5,000 transfers in one 7-day window | | COMPUTED 3, 78 (was: 81); MEASURED 3, 84 | COMPUTED at least 8, at least 105 (was: 106): 5 + 3 halvings beyond the even case, per the pager rule below; MEASURED 30, 597 at gap 0, 34, 676 at 1 hour and 1 day (worst 34, 676). With no plain hint the real walker measured 52, 1,036: three halvings again after each commit (PLANNER CALL 122) |
 
 Busiest single run: 30 calls of capital and 20 of transfer, so no lane cap is exceeded. The burst's spans, as the
 spacing of the runs between commits, are the same at all 3 gaps. `NAMED_SEEDS` pins a burst ceiling of 34, 676 and a heavy
@@ -914,10 +923,10 @@ The same for stage E, COMPUTED; `bybit.convergence.test.ts` in set 9 replaces th
 
 | Seed | Log rows | Log pages per window | Log: runs, calls | Converts | Convert: calls per run, steady |
 |---|---|---|---|---|---|
-| Small account | under 50 per window | 1 | 6, 106 | 0 | 1 |
-| Spot user | 1,000 over 2 years, even | 1 | 6, 106 | 100 | 2 |
-| Busy | 5,000 over 2 years, even | 1 (48 rows, close to full) | 6, at least 106 | 1,000 | 10, the lane cap; a whole pass takes 2 runs |
-| Perps bot | 50,000 over 2 years, even | 10 | at least 53, at least 1,050. The forward pass ends at run 53 (planner, fake route, 2026-11-07); the overlap days that follow it end within the runs plan set 9 step 6/7 measures (PLANNER CALL 124; was: 129, 2,570 at gap 0, 217, 4,333 at 1 hour, 166, 3,313 at 1 day) | 0 | 1 |
+| Small account | under 50 per window | 1 | 6, 105 (PLANNER CALL 129; was: 106) | 0 | 1 |
+| Spot user | 1,000 over 2 years, even | 1 | 6, 105 (was: 106) | 100 | 2 |
+| Busy | 5,000 over 2 years, even | 1 (48 rows, close to full) | 6, at least 105 (was: 106) | 1,000 | 10, the lane cap; a whole pass takes 2 runs |
+| Perps bot | 50,000 over 2 years, even | 10 | at least 53, at least 1,042: 104 windows of 480 rows at 10 pages and the last window of 1 day, 66 rows, at 2 pages; a split narrows a span and never lowers the pages, as ceil(a) + ceil(b) >= ceil(a + b); 53 runs = ceil(1,042 / 20) (PLANNER CALL 129; was: 1,050, every window at 10 pages). The forward pass ends at run 53 (planner, fake route, 2026-11-07); the overlap days that follow it end within the runs plan set 9 step 6/7 measures (PLANNER CALL 124; was: 129, 2,570 at gap 0, 217, 4,333 at 1 hour, 166, 3,313 at 1 day) | 0 | 1 |
 | A day of 1,001 rows, even (N1) | Over 1,000 in a day, 10 days old | 21 in the first read | 9, 182. Was: 11, 222 with no plain hint | | |
 | 1,001 rows in 1 hour | The same | 21 | 14, 282. Was: never commits, with a split that stops at a day (Q3 (b)); 23, 462 with no plain hint | | |
 | 1,001 rows in 2 minutes | The same | 21 | 25, 502. Was: never commits; 65, 1,302 with no plain hint | | |
@@ -976,6 +985,8 @@ in memory and commit together. Its parameter `minSplitMs` is a day for capital a
 - after a page, span of `minSplitMs` or less: it returns `undefined`, and the hint stays. For `log` and `fundingLedger`, when that span was the first this run read in its pass, a full lane did not hold it, so the walk also writes the mark below (F4, PLANNER CALL 73). For `log`, that 1 second is the split of the forward pass only: a pending, re-scan or point read splits down to 1 ms (`LOG_REREAD_MIN_SPLIT_MS`), because it reads ground the forward pass already read whole, in spans that held the lane, so a split at its own edges always finds a span that fits (PLANNER CALL 123; was: 1 second for every pass, and a burst that a forward span edge split was read again for ever at other edges, with no mark and the pending caption). The forward pass stays the only writer of the mark.
 
 The mark: a new patch kind `denseSpans` on the `logKinds` precedent, one entry per series, `log` or `fundingLedger`, holding that span's start. So it is bounded by 2 entries, it is written only when it changes, and a Binance state keeps its text. A budget stop after an earlier read writes none. The commit that moves that series past the span drops its entry, a floor that passes the span does this through that commit, and `exchangeStateReset` and a disconnect drop both. While an entry stands, `bybitHistoryDense` shows in place of `exchangeHistoryPending`, whose words "will keep importing" do not hold there.
+
+The pending caption and the re-scan (PLANNER CALL 130): for a Bybit walk, a range in `pending` with no `series` and no `scope` that lies wholly inside `[lastBalanceSyncAt - re-scan window, cursor]` of that walk does not show `exchangeHistoryPending`. It is ground that the forward pass already read whole and that the re-scan reads again by design (the principle of `OVERLAP_KEEPING_WALKS`), so "not imported yet" is false for it. The range stays in `pending`, and the walk reads it as before. A range with a series (a stop), a range older than the window, and every Binance walk show the caption as before. Was: a burst of over 1,000 rows inside one second, under 7 days old, that the forward pass imported, stalls each re-scan pass (one halving a sync, about 30 syncs a pass); the overlap days wait behind it in `pending`, and the caption showed on 120 of the 122 syncs after every row imported (1 hour between syncs, MEASURED by the planner, fake route, 2026-11-07), until the burst was 7 days old.
 
 The plain hint (PLANNER CALL 63): `runWalkPlan` drops a resume on a forward or re-scan pass, because the cursor keeps what those passes read. So after a commit, the next run starts again from the whole 7-day window, and halves again, one halving per run. `log` and `fundingLedger` wrap `walkSpans` in one Bybit helper, `plainHintOf`, that turns a resume on those two passes into a plain hint `{ start: resume.from, end: hint.end }`. `holdsStart` keeps it, and a hint only narrows a read, so it skips no ground. No shared code moves, and a Binance walk is byte-identical. On the seed of 100,000 rows, that is the difference between 167 and 1,636 runs (section 5). Capital and transfer use it too (PLANNER CALL 122; was: "Capital and transfer stay as they are", and the burst of 5,000 transfers took 52 runs, one span every 4 runs). `plainHintOf` lives in `bybit.cursor-span.ts` from set 6 on, and `runBybitWalk` applies it to every Bybit walk through one optional hook of `runExchangeWalkPlan`, so every later Bybit walk gets it with no code of its own. The hook moves shared code by one optional parameter: a Binance walk passes none and stays byte-identical. What a user sees on the burst seed:
 
@@ -2112,6 +2123,8 @@ stays 3, so "Enable Reading" holds; uk title), `en.uk.parity.test.ts`, `en.casin
 | PLANNER CALL 126 (new; review of set 9, m2; step 5/5 call 2) | The final period of `bybitLogLeftOut` stays: the line is a caption, and kiko-translator gives a caption a final "." always, as `accountDetail.notImported` and `untrackedCoins` have. The key stays in `LABEL_VALUE_ALLOWLIST`, and its reason names that role in place of "the translator's review ... is still owed". The scribe changes kiko-translator's "one named exception" to two | The pattern `Label: {{value}}` reads the shape, not the role. What the user sees: no change |
 | PLANNER CALL 127 (new; review of set 9, BACKLOG) | Both lines go to the Backlog. (1) `logKinds` is patched on every span that met a left-out kind (up to 20 state writes a run on a perps account): write it only when a kind is new. (2) `dropPast` runs before the commit, so a commit that then stops drops the mark one run early | (1) The patch writes the same set, so the line does not change. (2) The span that ends past the mark was read whole, so it was not too dense in that read; with the commit stopped, the pending caption ("will keep importing") is the true one, and a span that is again too dense writes the mark again on the next first forward read. What the user sees: nothing wrong in either |
 | PLANNER CALL 128 (new; review of set 9, carry) | Plan set 10 gains two lines. (1) Rule 51 step 4 does not read a merged convert range as covering every Funding ledger row in its extent: the range says only that converts wait somewhere in it. Set 10 step 2/6 puts the reading it takes into the matrix, red first. (2) The ledger walk keeps CALL 123's law: a pending, re-scan or point read of ground the forward pass committed ends, proved by a burst that a forward span edge splits | (1) A merged range is the hull of 13 or more waiting converts, and most of its inside holds none. Read as cover, every ledger row under W old inside it is `waiting` (PLANNER CALL 68 bounds it to W), a lost row while it stands. (2) The ledger rounds its spans out to whole seconds, so M1 can come back in another shape |
+| PLANNER CALL 129 (new; step 6/7 developer call 1; changes PLANNER CALL 121's table numbers) | The floor asserts are right, and the table numbers were wrong. A table number is the least a walker must read to cover the ground, so the test's `calls >= table.calls` guards a walker that skips a window, and it stays. The numbers counted two reads that are not floors: the overlap read (CALL 121; CALL 124 takes it out of every catch-up run whose cursor trails its clock by more than one window) and a full last window (729 days = 104 windows of 7 days and 1 day; 25 windows of 29 days and 4 days). New numbers, section 5: capital 3, 78; transfer 6, 105; log 6, 105; heavy capital at least 13, at least 303; burst transfer at least 8, at least 105; perps bot at least 53, at least 1,042. Capital 15 keeps 6, 81, because its run 5 ends 4 days behind its clock | The developer MEASURED 78, 105, 105 and 1,048 to 1,051 (report-set9-step6-cefbee14e.md). A loosened bound with no derivation is not taken: each number above is the count of windows and pages, and each MEASURED value is at or above it. What the user sees: nothing; the walker reads the same ground with fewer calls |
+| PLANNER CALL 130 (new; step 6/7 developer call 2) | Not M1, and in scope. The cause, MEASURED by the planner (scratch diagnostic of the real log walk, fake route, 2026-11-07; spans 700, 800 and 900 ms, 0.5 and 1 day old, gaps 0, 15 minutes, 1 hour, 6 hours and 1 day): `planWalkPasses` leaves an owed range inside the re-scan to the re-scan (`withoutRead`). A burst of 1,001 rows (21 pages) inside the 7-day re-scan stalls each re-scan pass: each read that holds it spends the lane of 20 and halves once, about 30 syncs a pass. The overlap days of those syncs wait in `pending` behind it, so `exchangeHistoryPending` shows while every row is imported: at 1 hour, rows in by sync 24, the caption on 120 of the next 122 syncs, until the burst is 7 days old (sync 145; 0.5 day old: sync 157). At gap 0 the clock never moves, so the overlap day and the re-scan hold the burst for ever, and `complete` stays false: no app code reads `complete` (`run-crypto-sync.ts`), and `pending` empties at sync 52 to 83 and stays empty. Fix (the caption, Bybit only): `historyOwesRange` skips, for a Bybit walk, a range with no `series` and no `scope` inside `[lastBalanceSyncAt - re-scan window, cursor]` (section 5, "The pager rule"). The walk, its marks and every Binance caption do not move. The 20 log calls a sync while such a burst is under 7 days old stay: a cost inside the lane, no wrong value. Bursts that the forward pass stops at keep the mark and `bybitHistoryDense` (1 day old, at 1 hour and 1 day: MEASURED) | Such a range is ground the forward pass imported whole, and the re-scan reads it for late rows only, so "not imported yet" is false for it, a wrong text (strict scope). A stop is tagged with its series in every Bybit walk (`taggedWith`, `driftOf`), so a missing row keeps its caption. The range stays stored, so a re-scan pass that a long absence restarts past it still leaves it to the pending pass: no row can be lost by this fix. Options not taken: a walk that drops the range (loses a late-row guard after a long absence, a possible wrong value); a re-read that keeps the forward pass's span edges (a new mark and more code; it would also end the 20 calls). OVERNIGHT: the coordinator asks the user this as Q-p, and default A (this fix) holds until the answer |
 
 Changed by the rulings of the builder check, the re-check and the user's answers (was: and now, per ruling that
 reverses a row):
@@ -2262,6 +2275,8 @@ reverses a row):
 | PLANNER CALL 123 | The log's split outside the forward pass | 1 second for every pass: a burst a forward span edge split (1,001 rows in 300 ms or 400 ms) is read again for ever, 20 calls a sync, the pending caption for good | 1 ms for a pending, re-scan or point read, 1 second for the forward pass and its mark: the re-read ends, and the caption clears |
 | PLANNER CALL 124 | The overlap day behind a Bybit forward start | owed on every run (CALL 121); perps bot: rows in by sync 53, then the false pending caption for 76 more syncs (gap 0) or 164 (1 hour) | owed only when `cursorReadAt` says the cursor's ground was read within one re-scan window of its time; the caption clears soon after the forward end |
 | PLANNER CALL 125 | A merged convert range | "with the earliest `since`" | no `since`; the caption shows at once while it stands (the code as built) |
+| PLANNER CALL 129 | Section 5, COMPUTED calls of a catch-up | capital 81, transfer 106, log 106, heavy capital 315, perps bot 1,050: the overlap read counted, and the last 1-day window counted as full | the windows alone (78, 105, 105), heavy capital 303 and perps bot 1,042 by the pages of the last window; capital 15 alone keeps 81 |
+| PLANNER CALL 130 | The pending caption on a Bybit range inside the re-scan window | shown: a fresh burst over 1,000 rows in a second kept "will keep importing" up on 120 of 122 syncs after its rows imported, for up to 7 days | not shown for a range with no series inside `[lastBalanceSyncAt - window, cursor]`; a stop's range and an older range show it |
 | O59 | The user's spec approval (O41) | not given, so R1 waited for it | given on 2026-11-04: the coordinator relayed the answer "Approve (Recommended)" to the question in the approval report, at tip fc83566e2; the report named four residuals (O51, O46, O56, O58 (a)); R1 has not run; the coordinator gives the user the R1 list and the four residuals, and no other step starts until the coordinator says that the R1 output file is ready |
 
 | Id | Conflict | Kept |
