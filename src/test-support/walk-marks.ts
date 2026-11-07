@@ -64,6 +64,7 @@ const LISTED_FIELDS: Record<WalkField, true> = {
   multiCoinSeen: true,
   readFailedAt: true,
   pageIndex: true,
+  cursorReadAt: true,
   passOwed: true,
 };
 

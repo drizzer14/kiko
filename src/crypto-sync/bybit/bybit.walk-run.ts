@@ -51,6 +51,20 @@ export const historyFloorOf = (now: number): number => now - HISTORY_DAYS * DAY_
 /** A record that settles late can sit this far behind the cursor, so the re-scan starts there. */
 const OVERLAP_MS = DAY_MS;
 
+/**
+ * The overlap day is owed behind a cursor whose ground was read within one re-scan window of its
+ * time, and when no clock was stored. A late record is one that the re-scan window reads, so
+ * ground read long after its time holds none: a catch-up run over it owes no day.
+ */
+const overlapMsOf = (
+  cursor: number | null,
+  cursorReadAt: number | undefined,
+  windowMs: number,
+): number =>
+  cursor === null || cursorReadAt === undefined || cursorReadAt - cursor < windowMs
+    ? OVERLAP_MS
+    : 0;
+
 /** The stop of a span whose pages repeated a cursor or held a row the span cannot hold. */
 export const BYBIT_PAGE_DRIFT = 'bybit-page-drift';
 
@@ -213,7 +227,7 @@ export const runBybitWalk = async <Deps extends BybitWalkDeps, Page>(input: {
   }
 
   const stored = await readWalkMarks(deps, accountId, walkId);
-  const { cursor, rescan: rescanCursor } = stored;
+  const { cursor, rescan: rescanCursor, cursorReadAt } = stored;
   const write = walkMarkWriterOf(deps, accountId, walkId);
   const roundRobins = await readWalkRoundRobins({ stored, write });
   const floorMs = historyFloorOf(now);
@@ -233,7 +247,7 @@ export const runBybitWalk = async <Deps extends BybitWalkDeps, Page>(input: {
     floorMs,
     endTime: now,
     windowMs: input.windowMs,
-    overlapMs: OVERLAP_MS,
+    overlapMs: overlapMsOf(cursor, cursorReadAt, input.windowMs),
     maxWindows: input.maxWindows,
   });
 
@@ -267,6 +281,13 @@ export const runBybitWalk = async <Deps extends BybitWalkDeps, Page>(input: {
     read: (window, span, keepCalls) => input.read(context, window, span, keepCalls),
     commit: (window, span, page, pass) => input.commit(context, window, span, page, pass),
   });
+
+  // The cursor is written before this clock, so a cut between the two leaves the older clock, which
+  // owes the day: that is the safe side.
+  if (context.marks.cursor !== cursor) {
+    await write([{ field: 'cursorReadAt', value: now }]);
+  }
+
   const lastForwardEnd = foldMap(maybe(plan.forward.at(-1)), (window) => window.end);
 
   // A plan holds a capped number of windows: a forward pass that ends before now leaves history

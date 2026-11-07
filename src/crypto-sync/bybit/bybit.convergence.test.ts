@@ -189,6 +189,11 @@ const rowsOf = (walk: SettlingWalk) =>
 // restarted rests at another position of the same rotation, which changes no row and no ground.
 const ROTATION_MARKS = ['pointCursor', 'rangeCursor', 'backfillCursor', 'backfillTurn'];
 
+// The clock of the run that last moved the cursor. A run killed between the cursor and this write
+// leaves the older clock, which owes the overlap day (the safe side), so it differs from an
+// uninterrupted run's clock while the ground, the rows and the owed ground are the same.
+const CLOCK_MARKS = ['cursorReadAt'];
+
 // A restart can leave the hint lists stored empty where an uninterrupted run left none: both hold
 // no span.
 const holdsNoSpan = (hints: unknown): boolean =>
@@ -201,7 +206,9 @@ const groundMarksOf = (walk: SettlingWalk) =>
   Object.fromEntries(
     Object.entries(walk.marks()).filter(
       ([field, value]) =>
-        !ROTATION_MARKS.includes(field) && !(field === 'spanHints' && holdsNoSpan(value)),
+        !ROTATION_MARKS.includes(field) &&
+        !CLOCK_MARKS.includes(field) &&
+        !(field === 'spanHints' && holdsNoSpan(value)),
     ),
   );
 
@@ -237,16 +244,19 @@ const BURST_ROWS = 5_000;
 const burstSlots = (count: number, from = BURST_FROM): RowSlot[] =>
   evenSlots(count, from + HOUR_MS, from + WINDOW_MS - HOUR_MS);
 
+// The measured calls of the walks below, 2026-11-07: a catch-up run reads ground long after its
+// time, so it owes no overlap day and the calls are the windows alone. Was 84 and 110: each run
+// before the last read that day too.
 const SMALL_CAPITAL: WalkBound = {
   table: { runs: 3, calls: 81 },
   tableRuns: 'ceiling',
-  measured: { runs: 3, calls: 84 },
+  measured: { runs: 3, calls: 78 },
 };
 
 const ONE_PAGE_TRANSFER: WalkBound = {
   table: { runs: 6, calls: 106 },
   tableRuns: 'ceiling',
-  measured: { runs: 6, calls: 110 },
+  measured: { runs: 6, calls: 105 },
 };
 
 const NAMED_SEEDS: NamedSeed[] = [
@@ -285,7 +295,7 @@ const NAMED_SEEDS: NamedSeed[] = [
       capital: {
         table: { runs: 13, calls: 315 },
         tableRuns: 'floor',
-        measured: { runs: 15, calls: 422 },
+        measured: { runs: 13, calls: 363 },
       },
       transfer: ONE_PAGE_TRANSFER,
     },
@@ -304,7 +314,7 @@ const NAMED_SEEDS: NamedSeed[] = [
       transfer: {
         table: { runs: 8, calls: 106 },
         tableRuns: 'floor',
-        measured: { runs: 34, calls: 676 },
+        measured: { runs: 16, calls: 311 },
       },
     },
   },
@@ -626,14 +636,17 @@ type LogAndConvertSeed = {
   world: () => LogAndConvertWorld;
   rows: { log: number; convert: number };
   log: WalkBound;
+  /** The runs until the forward cursor of the log walk reaches the clock of the first run. */
+  forwardEnd: number;
   /** The runs and calls of a whole pass, and the calls of a pass that starts over. */
   convert: { runs: number; calls: number; steadyCalls: number };
 };
 
+// Was 110 calls, for the reason of `SMALL_CAPITAL`.
 const ONE_PAGE_LOG: WalkBound = {
   table: { runs: 6, calls: 106 },
   tableRuns: 'ceiling',
-  measured: { runs: 6, calls: 110 },
+  measured: { runs: 6, calls: 105 },
 };
 
 const LOG_AND_CONVERT_SEEDS: LogAndConvertSeed[] = [
@@ -642,6 +655,7 @@ const LOG_AND_CONVERT_SEEDS: LogAndConvertSeed[] = [
     world: () => ({ log: evenSlots(40), converts: [] }),
     rows: { log: 40, convert: 0 },
     log: ONE_PAGE_LOG,
+    forwardEnd: 6,
     convert: { runs: 1, calls: 1, steadyCalls: 1 },
   },
   {
@@ -649,6 +663,7 @@ const LOG_AND_CONVERT_SEEDS: LogAndConvertSeed[] = [
     world: () => ({ log: evenSlots(1_000), converts: evenSlots(100) }),
     rows: { log: 1_000, convert: 200 },
     log: ONE_PAGE_LOG,
+    forwardEnd: 6,
     convert: { runs: 1, calls: 2, steadyCalls: 2 },
   },
   {
@@ -656,18 +671,22 @@ const LOG_AND_CONVERT_SEEDS: LogAndConvertSeed[] = [
     world: () => ({ log: evenSlots(5_000), converts: evenSlots(1_000) }),
     rows: { log: 5_000, convert: 2_000 },
     log: ONE_PAGE_LOG,
+    forwardEnd: 6,
     convert: { runs: 2, calls: 11, steadyCalls: 10 },
   },
   {
     name: 'perps bot',
     world: () => ({ log: evenSlots(50_000), converts: [] }),
     rows: { log: 50_000, convert: 0 },
-    // MEASURED: 129 runs and 2,570 calls at gap 0, 217 and 4,333 at 1 hour, 166 and 3,313 at 1 day.
+    // MEASURED, 2026-11-07: the walk is complete when its forward pass ends, at run 53, with 1,051
+    // calls at gap 0, 1,048 at 1 hour and 1,049 at 1 day: no catch-up run re-reads the overlap day.
+    // Was 129 runs and 2,570 calls at gap 0, 217 and 4,333 at 1 hour, 166 and 3,313 at 1 day.
     log: {
       table: { runs: 53, calls: 1_050 },
       tableRuns: 'floor',
-      measured: { runs: 217, calls: 4_333 },
+      measured: { runs: 53, calls: 1_051 },
     },
+    forwardEnd: 53,
     convert: { runs: 1, calls: 1, steadyCalls: 1 },
   },
 ];
@@ -681,7 +700,10 @@ type BurstSeed = {
   measured: { runs: number; calls: number };
   /**
    * MEASURED, fake route, 2026-11-07: the runs until the burst's owed ground ends, at a clock gap
-   * of 0, 1 hour and 1 day, in the order of `CLOCK_GAPS`.
+   * of 0, 1 hour and 1 day, in the order of `CLOCK_GAPS`. The cursor trails the clock by more than
+   * a re-scan window while it crosses a burst 10 days old, so no overlap day is owed behind it and
+   * the owed ground ends with the forward pass, give or take a run where a day's gap moves the
+   * floor.
    */
   ends: [number, number, number];
 };
@@ -708,19 +730,19 @@ const burstSeed = (
 });
 
 const COMMITTING_BURSTS: BurstSeed[] = [
-  burstSeed('a day of 1,001 rows', 1_001, DAY_MS, [9, 182], [9, 180], [10, 10, 10]),
-  burstSeed('1,001 rows in 1 hour', 1_001, HOUR_MS, [14, 282], [14, 280], [15, 15, 15]),
-  burstSeed('1,001 rows in 2 minutes', 1_001, 120_000, [25, 502], [25, 500], [39, 39, 39]),
-  burstSeed('1,001 rows in 30 s', 1_001, 30_000, [30, 602], [30, 600], [54, 54, 54]),
-  burstSeed('1,001 rows in 5 s', 1_001, 5_000, [35, 702], [35, 700], [66, 66, 66]),
-  burstSeed('1,001 rows in 2 s', 1_001, 2_000, [35, 702], [35, 700], [62, 62, 67]),
-  burstSeed('1,001 rows in 1.2 s', 1_001, 1_200, [35, 702], [35, 700], [58, 58, 93]),
-  burstSeed('1,001 rows in 1 s', 1_001, 1_000, [35, 702], [35, 700], [106, 106, 106]),
-  burstSeed('1,001 rows in 400 ms', 1_001, 400, [40, 802], [40, 800], [88, 88, 88]),
-  burstSeed('1,001 rows in 300 ms', 1_001, 300, [40, 802], [40, 800], [88, 88, 88]),
-  burstSeed('2,001 rows in 5 s', 2_001, 5_000, [37, 742], [37, 740], [75, 81, 81]),
-  burstSeed('2,001 rows in 2 s', 2_001, 2_000, [39, 782], [39, 780], [86, 86, 86]),
-  burstSeed('5,000 rows in a day', 5_000, DAY_MS, [23, 462], [23, 460], [43, 47, 47]),
+  burstSeed('a day of 1,001 rows', 1_001, DAY_MS, [9, 182], [9, 180], [9, 9, 9]),
+  burstSeed('1,001 rows in 1 hour', 1_001, HOUR_MS, [14, 282], [14, 280], [14, 14, 14]),
+  burstSeed('1,001 rows in 2 minutes', 1_001, 120_000, [25, 502], [25, 500], [25, 25, 25]),
+  burstSeed('1,001 rows in 30 s', 1_001, 30_000, [30, 602], [30, 600], [30, 30, 30]),
+  burstSeed('1,001 rows in 5 s', 1_001, 5_000, [35, 702], [35, 700], [35, 35, 36]),
+  burstSeed('1,001 rows in 2 s', 1_001, 2_000, [35, 702], [35, 700], [35, 35, 35]),
+  burstSeed('1,001 rows in 1.2 s', 1_001, 1_200, [35, 702], [35, 700], [35, 35, 35]),
+  burstSeed('1,001 rows in 1 s', 1_001, 1_000, [35, 702], [35, 700], [35, 35, 35]),
+  burstSeed('1,001 rows in 400 ms', 1_001, 400, [40, 802], [40, 800], [40, 40, 41]),
+  burstSeed('1,001 rows in 300 ms', 1_001, 300, [40, 802], [40, 800], [40, 40, 41]),
+  burstSeed('2,001 rows in 5 s', 2_001, 5_000, [37, 742], [37, 740], [37, 37, 38]),
+  burstSeed('2,001 rows in 2 s', 2_001, 2_000, [39, 782], [39, 780], [39, 39, 40]),
+  burstSeed('5,000 rows in a day', 5_000, DAY_MS, [23, 462], [23, 460], [23, 23, 23]),
 ];
 
 const STUCK_BURSTS = [
@@ -888,7 +910,7 @@ describe('Bybit convergence of the log and the convert walk', () => {
   describe.each(CLOCK_GAPS)('at a clock gap of %i ms', (gap) => {
     it.each(LOG_AND_CONVERT_SEEDS)(
       "log and convert reach the end within the table's runs: the $name seed",
-      async ({ world, rows, log, convert }) => {
+      async ({ world, rows, log, forwardEnd, convert }) => {
         const account = newLogAndConvertAccount();
 
         serveLogAndConvert(account, world());
@@ -897,6 +919,7 @@ describe('Bybit convergence of the log and the convert walk', () => {
         const convertOutcome = await settle(account.convert, gap);
 
         expect(rowsOf(account.log)).toHaveLength(rows.log);
+        expect(untilForwardEnd(logOutcome).runs).toBe(forwardEnd);
         expectWithinBound(logOutcome, log);
         expect(rowsOf(account.convert)).toHaveLength(rows.convert);
         expect(convertOutcome.runs).toBeLessThanOrEqual(convert.runs);
@@ -983,7 +1006,8 @@ describe('Bybit convergence of the log and the convert walk', () => {
     }, 120_000);
 
     // The same burst 3 days old lies inside the 7-day re-scan, whatever the overlap day owes, so
-    // this one needs the 1 ms split outside the forward pass on its own.
+    // this one needs the 1 ms split outside the forward pass on its own. MEASURED, 2026-11-07: with
+    // a split to 1 second there, it never ends at a gap of 1 hour (it ends at the other two).
     it('a burst of 1,001 rows in 300 ms, 3 days old, ends its owed ground, or its mark stands', async () => {
       const account = newLogAndConvertAccount();
 

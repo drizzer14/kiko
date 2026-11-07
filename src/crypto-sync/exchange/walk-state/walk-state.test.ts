@@ -103,7 +103,7 @@ type StoredReads = [label: string, stored: unknown, reads: unknown];
  * The fields this table covers: the multi-coin marks, the backfill cursor and the three turn marks
  * read by their own rules, which `walk-state.multi-coin.test.ts`,
  * `walk-state.backfill-cursor.test.ts`, `walk-state.backfill-turn.test.ts` and
- * `walk-state.behind-run.test.ts` cover, and the convert marks, which
+ * `walk-state.behind-run.test.ts` cover, and the convert marks and the cursor read mark, which
  * `walk-state.log-marks.test.ts` covers.
  */
 type TableField = Exclude<
@@ -117,6 +117,7 @@ type TableField = Exclude<
   | 'rescanStuck'
   | 'readFailedAt'
   | 'pageIndex'
+  | 'cursorReadAt'
   | 'passOwed'
 >;
 

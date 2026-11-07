@@ -601,7 +601,7 @@ describe('the log walk: what each row is', () => {
       await walk.run();
 
       expect((await storedStateOf(walk)).logKinds).toEqual(['bonuses', 'derivatives']);
-      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
       expect(warned.spy()).not.toHaveBeenCalled();
     });
 

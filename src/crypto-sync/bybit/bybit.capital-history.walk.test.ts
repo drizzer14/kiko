@@ -332,6 +332,7 @@ describe('the capital walk: windows, pages and marks', () => {
 
       expect(walk.marks()).toEqual({
         cursor: NOW,
+        cursorReadAt: NOW,
         rescan: BYBIT_RESTART_FLOOR_MS,
         pending: [],
       });
@@ -342,7 +343,7 @@ describe('the capital walk: windows, pages and marks', () => {
 
       await walk.run();
 
-      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
     });
   });
 

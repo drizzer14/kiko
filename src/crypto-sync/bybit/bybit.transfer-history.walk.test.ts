@@ -260,6 +260,7 @@ describe('the transfer walk: windows, pages and marks', () => {
 
       expect(walk.marks()).toEqual({
         cursor: NOW,
+        cursorReadAt: NOW,
         rescan: Date.UTC(2017, 0, 1),
         pending: [],
       });
@@ -270,7 +271,7 @@ describe('the transfer walk: windows, pages and marks', () => {
 
       await walk.run();
 
-      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
     });
   });
 

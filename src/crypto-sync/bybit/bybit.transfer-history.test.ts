@@ -202,7 +202,7 @@ describe('the transfer walk: what each row is', () => {
       await walk.run();
 
       expect(walk.keys()).toEqual([]);
-      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
       expect(warn).not.toHaveBeenCalled();
     });
 
@@ -273,7 +273,7 @@ describe('the transfer walk: what each row is', () => {
       await walk.run();
 
       expect(walk.keys()).toEqual([]);
-      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
       expect(warn).not.toHaveBeenCalled();
     });
   });
@@ -292,7 +292,7 @@ describe('the transfer walk: what each row is', () => {
         'acc-1:xfer:good:BTC:BTC:fund',
         'acc-1:xfer:good:BTC:BTC:unified',
       ]);
-      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
       expect(warn).not.toHaveBeenCalled();
     });
   });

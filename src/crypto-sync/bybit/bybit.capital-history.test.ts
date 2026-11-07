@@ -522,7 +522,7 @@ describe('the capital walk: what each row is', () => {
         await walk.run();
 
         expect(walk.keys()).toEqual([`acc-1:${kind}:good:BTC`]);
-        expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+        expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
         expect(warn).not.toHaveBeenCalled();
       },
     );

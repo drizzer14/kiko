@@ -114,6 +114,7 @@ describe('the Bybit arm over a real database: disconnect and reconnect', () => {
 
     expect(walkMarksOf(mockDatabase, ACCOUNT_ID, 'transfer')).toMatchObject({
       cursor: NOW,
+      cursorReadAt: NOW,
       pending: [expect.objectContaining({ kind: 'point', series: 'transfer' })],
     });
     expect(storedState()).toHaveProperty('keyExpiry');

@@ -106,6 +106,12 @@ export type WalkMarks = {
    */
   pageIndex?: number;
   /**
+   * The clock of the run that last moved the walk's cursor (Bybit only), so a run can tell ground
+   * read near its time from ground read long after it. Absent on every other walk, so a Binance
+   * state keeps its text. A disconnect drops it with the cursor.
+   */
+  cursorReadAt?: number;
+  /**
    * The points the convert read's pass has owed so far (Bybit only); the pass's end replaces
    * `pending` with them.
    */
@@ -223,6 +229,7 @@ export type ParsedWalkMarks = {
   multiCoinSeen?: true;
   readFailedAt?: number;
   pageIndex?: number;
+  cursorReadAt?: number;
   passOwed?: BinancePendingRange[];
 };
 
@@ -320,6 +327,7 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
     ...foldMap(maybe(timeOrUndefined(entry.readFailedAt)), (readFailedAt) => ({ readFailedAt })),
     ...foldMap(maybe(pageIndexOrUndefined(entry.pageIndex)), (pageIndex) => ({ pageIndex })),
+    ...foldMap(maybe(timeOrUndefined(entry.cursorReadAt)), (cursorReadAt) => ({ cursorReadAt })),
     ...foldMap(maybe(passOwedOf(entry.passOwed)), (passOwed) => ({ passOwed })),
   };
 };

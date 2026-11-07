@@ -197,7 +197,12 @@ describe('the log walk: windows, pages and marks', () => {
 
       await walk.run();
 
-      expect(walk.marks()).toEqual({ cursor: NOW, rescan: Date.UTC(2017, 0, 1), pending: [] });
+      expect(walk.marks()).toEqual({
+        cursor: NOW,
+        cursorReadAt: NOW,
+        rescan: Date.UTC(2017, 0, 1),
+        pending: [],
+      });
     });
 
     it('writes the cursor of the span it read and nothing else when the pass is whole', async () => {
@@ -205,7 +210,7 @@ describe('the log walk: windows, pages and marks', () => {
 
       await walk.run();
 
-      expect(walk.marks()).toEqual({ cursor: NOW, pending: [] });
+      expect(walk.marks()).toEqual({ cursor: NOW, cursorReadAt: NOW, pending: [] });
     });
   });
 

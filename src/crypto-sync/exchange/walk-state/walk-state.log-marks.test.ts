@@ -85,6 +85,34 @@ describe('the convert marks pageIndex and passOwed', () => {
   );
 });
 
+describe('the mark cursorReadAt', () => {
+  it('reads the stored clock as stored, beside the cursor it belongs to', () => {
+    expect(marksOf({ cursor: 5, cursorReadAt: 9 }, 'log')).toMatchObject({
+      cursor: 5,
+      cursorReadAt: 9,
+    });
+  });
+
+  it('reads an entry that holds none with none, as a Binance entry is', () => {
+    expect(marksOf({ cursor: 5, pending: [] })).not.toHaveProperty('cursorReadAt');
+  });
+
+  it.each([
+    ['a negative number', -1],
+    ['a fraction', 1.5],
+    ['text', '9'],
+    ['null', null],
+    ['a boolean', true],
+  ])(
+    'reads a cursorReadAt stored as %s as absent, so the overlap day is owed',
+    (_label, stored) => {
+      expect(marksOf({ cursor: 5, cursorReadAt: stored }, 'log')).not.toHaveProperty(
+        'cursorReadAt',
+      );
+    },
+  );
+});
+
 describe('the log kinds', () => {
   it('are none when the state holds none, and nothing is named', () => {
     const parsed = readableOf({});

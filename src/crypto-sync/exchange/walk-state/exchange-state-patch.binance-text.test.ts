@@ -120,7 +120,7 @@ describe('a Binance state text under the log walk and the convert marks', () => 
     );
   });
 
-  it('reads back with no convert mark on any walk, no log kind and no dense span', () => {
+  it('reads back with no convert mark or cursor read mark on any walk, no log kind and no dense span', () => {
     const parsed = parseExchangeState(storedText);
 
     if (parsed.kind === 'malformed') {
@@ -130,6 +130,7 @@ describe('a Binance state text under the log walk and the convert marks', () => 
     BINANCE_WALKS.forEach((walkId) => {
       expect(parsed.walks[walkId]).not.toHaveProperty('pageIndex');
       expect(parsed.walks[walkId]).not.toHaveProperty('passOwed');
+      expect(parsed.walks[walkId]).not.toHaveProperty('cursorReadAt');
     });
     expect(parsed.walks.log).toEqual(
       expect.objectContaining({ cursor: null, pending: [], rescan: null }),
