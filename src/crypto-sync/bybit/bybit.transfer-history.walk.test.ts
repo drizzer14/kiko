@@ -5,7 +5,6 @@ import { NOW } from './bybit.client-test-fixtures';
 import { BybitRefusalError } from './bybit.client';
 import { isBybitCoolingDown } from './bybit.cooldown';
 import { BybitHoldingMissingError } from './bybit.walk-run';
-import { isBybitRescannedRange } from './bybit.rescan-window';
 import { BybitHistoryParseError } from './bybit.history-client';
 import { transferAt, transferWalkOf } from './bybit.transfer-test-fixtures';
 import { ACCOUNT_ID, CURSOR_PREFIX, readsOf, served } from './bybit.capital-test-fixtures';
@@ -269,11 +268,7 @@ describe('the transfer walk: windows, pages and marks', () => {
         NOW - WINDOW_MS,
       );
       expect(walk.keys()).toEqual([]);
-      const stored = (walk.marks().pending ?? []) as Parameters<typeof isBybitRescannedRange>[1][];
-
-      expect(
-        stored.filter((ground) => isBybitRescannedRange('transfer', ground, NOW, NOW)),
-      ).toEqual([]);
+      expect(walk.marks().pending).toBeUndefined();
     });
 
     it('a failure that is not a missing holding rejects as it is', async () => {
