@@ -57,10 +57,19 @@ const WINDOW_MS = 7 * DAY_MS;
 const MAX_WINDOWS = BYBIT_LANE_CALL_CAPS.log;
 
 /**
- * Bybit compares the window at the second, so a span of a second or less is not split again: a
- * smaller one holds no fewer rows. One that a full lane does not hold is too dense to read.
+ * The forward pass's split. Bybit compares the window at the second, so a span of a second or less
+ * is not split again there: a smaller one holds no fewer rows. One that a full lane does not hold
+ * is too dense to read.
  */
 const LOG_MIN_SPLIT_MS = 1_000;
+
+/**
+ * The split of every other read. It covers ground behind the forward cursor, which held the lane
+ * until it read that ground whole in spans of at most a lane's rows, so a split to the millisecond
+ * reaches a span that fits. Only over a lane's rows inside one millisecond that came after the
+ * forward read stops it.
+ */
+const LOG_REREAD_MIN_SPLIT_MS = 1;
 
 const LOG_ROW_UNREADABLE = 'log-row-unreadable';
 
@@ -403,6 +412,7 @@ const readSpan = (
   context: LogContext,
   span: WalkWindow,
   keep: number,
+  window: OwedWindow,
   dense: { mark: DenseMark['mark']; isFirstForwardRead: boolean },
 ): Promise<SpanRead<SpanRecords> | undefined> =>
   readUnderCooldown(context, async () => {
@@ -413,7 +423,9 @@ const readSpan = (
       lane: 'log',
       span,
       keep,
-      minSplitMs: LOG_MIN_SPLIT_MS,
+      minSplitMs: context.plan.forward.includes(window)
+        ? LOG_MIN_SPLIT_MS
+        : LOG_REREAD_MIN_SPLIT_MS,
       readPage: (cursor) => deps.fetchLogPage(apiKey, secret, { span, cursor }, options),
       timesOf: (item) => item.times,
       reachOf,
@@ -560,7 +572,7 @@ export const syncBybitLogHistory = (
     maxWindows: MAX_WINDOWS,
     callsOf: () => 1,
     read: (context, window, span, keep) =>
-      readSpan(context, span, keep, {
+      readSpan(context, span, keep, window, {
         mark: dense.mark,
         isFirstForwardRead: dense.isFirstForwardRead(context, window),
       }),

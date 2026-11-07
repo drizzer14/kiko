@@ -13,10 +13,10 @@ import {
 import { NOW } from './bybit.client-test-fixtures';
 import { ACCOUNT_ID } from './bybit.capital-test-fixtures';
 
-// Q8: random fills of one trade, read as one row per fill or as one row per order, in any page
-// order and any page size, read twice, with a summary row that has an empty tradeId added at
-// random. The sum per coin is the sum of `change`, whatever the form, and a row with an empty
-// tradeId never adds.
+// Random fills of one trade, read as one row per fill or as one row per order, in any page order
+// and any page size, read twice, with a summary row that has an empty tradeId added at random. The
+// sum per coin is the sum of `change`, whatever the form, and a row with an empty tradeId never
+// adds.
 const FULL_SEEDS = Array.from({ length: 30 }, (_unused, position) => 3 + position * 7);
 const SEEDS = sweep(FULL_SEEDS);
 

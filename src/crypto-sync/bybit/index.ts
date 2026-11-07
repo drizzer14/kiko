@@ -4,6 +4,7 @@ export {
   readBybitCredentials,
   saveBybitCredentials,
 } from './bybit.credentials';
+export type { BybitLogKind } from './bybit.log-types';
 export { keyExpiryStateOf } from './bybit.key-expiry';
 export { walletLabelOf } from './bybit.holding-keys';
 export { isTrackedBybitAsset } from './bybit.tracked-coin';

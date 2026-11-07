@@ -45,10 +45,10 @@ import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
-import { keyExpiryStateOf, walletLabelOf } from '@kiko/crypto-sync/bybit';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
+import { type BybitLogKind, keyExpiryStateOf, walletLabelOf } from '@kiko/crypto-sync/bybit';
 
 import ProviderSheet from '../provider-sheet';
 import { styles } from '../account-detail.styles';
@@ -187,17 +187,32 @@ const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) 
   );
 };
 
-// The kinds of log entry the log walk names and does not import, in the order of the closed list.
-// A kind the stored list holds that this build does not name is left out of the line.
-const logKindCopyKeys: [string, ParseKeys][] = [
-  ['derivatives', 'accountDetail.bybitLogKind.derivatives'],
-  ['convertEntries', 'accountDetail.bybitLogKind.convertEntries'],
-  ['interestAndLoans', 'accountDetail.bybitLogKind.interestAndLoans'],
-  ['bonuses', 'accountDetail.bybitLogKind.bonuses'],
-  ['earn', 'accountDetail.bybitLogKind.earn'],
-  ['stocks', 'accountDetail.bybitLogKind.stocks'],
-  ['custody', 'accountDetail.bybitLogKind.custody'],
-  ['other', 'accountDetail.bybitLogKind.other'],
+type LeftOutLogKind = Exclude<BybitLogKind, 'spotTrade' | 'coveredElsewhere'>;
+
+// The kinds of log entry the log walk names and does not import. Keyed by the kind, so a kind that
+// is added or renamed fails the type check here. A kind the stored list holds that this build does
+// not name is left out of the line.
+const logKindCopyKeys: Record<LeftOutLogKind, ParseKeys> = {
+  derivatives: 'accountDetail.bybitLogKind.derivatives',
+  convertEntries: 'accountDetail.bybitLogKind.convertEntries',
+  interestAndLoans: 'accountDetail.bybitLogKind.interestAndLoans',
+  bonuses: 'accountDetail.bybitLogKind.bonuses',
+  earn: 'accountDetail.bybitLogKind.earn',
+  stocks: 'accountDetail.bybitLogKind.stocks',
+  custody: 'accountDetail.bybitLogKind.custody',
+  other: 'accountDetail.bybitLogKind.other',
+};
+
+// The order of the closed list.
+const LOG_KIND_ORDER: readonly LeftOutLogKind[] = [
+  'derivatives',
+  'convertEntries',
+  'interestAndLoans',
+  'bonuses',
+  'earn',
+  'stocks',
+  'custody',
+  'other',
 ];
 
 // The entries of the transaction log the last reads met and did not import. Split out like
@@ -205,7 +220,9 @@ const logKindCopyKeys: [string, ParseKeys][] = [
 const LogLeftOutLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
   const { t } = useTranslation();
   const met = logKindsOf(walkState);
-  const kinds = logKindCopyKeys.filter(([kind]) => met.includes(kind)).map(([, key]) => t(key));
+  const kinds = LOG_KIND_ORDER.filter((kind) => met.includes(kind)).map((kind) =>
+    t(logKindCopyKeys[kind]),
+  );
 
   if (loading || !hasKeyLines(provider) || kinds.length === 0) {
     return null;

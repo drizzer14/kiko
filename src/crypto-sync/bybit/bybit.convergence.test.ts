@@ -679,6 +679,11 @@ type BurstSeed = {
   span: number;
   table: { runs: number; calls: number };
   measured: { runs: number; calls: number };
+  /**
+   * MEASURED, fake route, 2026-11-07: the runs until the burst's owed ground ends, at a clock gap
+   * of 0, 1 hour and 1 day, in the order of `CLOCK_GAPS`.
+   */
+  ends: [number, number, number];
 };
 
 const BURST_START = NOW - 10 * DAY_MS;
@@ -692,28 +697,30 @@ const burstSeed = (
   span: number,
   [runs, calls]: RunsAndCalls,
   [measuredRuns, measuredCalls]: RunsAndCalls,
+  ends: BurstSeed['ends'],
 ): BurstSeed => ({
   name,
   count,
   span,
   table: { runs, calls },
   measured: { runs: measuredRuns, calls: measuredCalls },
+  ends,
 });
 
 const COMMITTING_BURSTS: BurstSeed[] = [
-  burstSeed('a day of 1,001 rows', 1_001, DAY_MS, [9, 182], [9, 180]),
-  burstSeed('1,001 rows in 1 hour', 1_001, HOUR_MS, [14, 282], [14, 280]),
-  burstSeed('1,001 rows in 2 minutes', 1_001, 120_000, [25, 502], [25, 500]),
-  burstSeed('1,001 rows in 30 s', 1_001, 30_000, [30, 602], [30, 600]),
-  burstSeed('1,001 rows in 5 s', 1_001, 5_000, [35, 702], [35, 700]),
-  burstSeed('1,001 rows in 2 s', 1_001, 2_000, [35, 702], [35, 700]),
-  burstSeed('1,001 rows in 1.2 s', 1_001, 1_200, [35, 702], [35, 700]),
-  burstSeed('1,001 rows in 1 s', 1_001, 1_000, [35, 702], [35, 700]),
-  burstSeed('1,001 rows in 400 ms', 1_001, 400, [40, 802], [40, 800]),
-  burstSeed('1,001 rows in 300 ms', 1_001, 300, [40, 802], [40, 800]),
-  burstSeed('2,001 rows in 5 s', 2_001, 5_000, [37, 742], [37, 740]),
-  burstSeed('2,001 rows in 2 s', 2_001, 2_000, [39, 782], [39, 780]),
-  burstSeed('5,000 rows in a day', 5_000, DAY_MS, [23, 462], [23, 460]),
+  burstSeed('a day of 1,001 rows', 1_001, DAY_MS, [9, 182], [9, 180], [10, 10, 10]),
+  burstSeed('1,001 rows in 1 hour', 1_001, HOUR_MS, [14, 282], [14, 280], [15, 15, 15]),
+  burstSeed('1,001 rows in 2 minutes', 1_001, 120_000, [25, 502], [25, 500], [39, 39, 39]),
+  burstSeed('1,001 rows in 30 s', 1_001, 30_000, [30, 602], [30, 600], [54, 54, 54]),
+  burstSeed('1,001 rows in 5 s', 1_001, 5_000, [35, 702], [35, 700], [66, 66, 66]),
+  burstSeed('1,001 rows in 2 s', 1_001, 2_000, [35, 702], [35, 700], [62, 62, 67]),
+  burstSeed('1,001 rows in 1.2 s', 1_001, 1_200, [35, 702], [35, 700], [58, 58, 93]),
+  burstSeed('1,001 rows in 1 s', 1_001, 1_000, [35, 702], [35, 700], [106, 106, 106]),
+  burstSeed('1,001 rows in 400 ms', 1_001, 400, [40, 802], [40, 800], [88, 88, 88]),
+  burstSeed('1,001 rows in 300 ms', 1_001, 300, [40, 802], [40, 800], [88, 88, 88]),
+  burstSeed('2,001 rows in 5 s', 2_001, 5_000, [37, 742], [37, 740], [75, 81, 81]),
+  burstSeed('2,001 rows in 2 s', 2_001, 2_000, [39, 782], [39, 780], [86, 86, 86]),
+  burstSeed('5,000 rows in a day', 5_000, DAY_MS, [23, 462], [23, 460], [43, 47, 47]),
 ];
 
 const STUCK_BURSTS = [
@@ -962,10 +969,10 @@ describe('Bybit convergence of the log and the convert walk', () => {
       120_000,
     );
 
-    // The forward pass imports a burst that a span edge splits, but the re-scan of it cuts the
-    // burst at other places, and a span of 1 second or less that holds over 1,000 rows is read
-    // again by every run: that ground is owed for ever, with no mark and the pending caption.
-    it.failing('a burst of 1,001 rows in 300 ms ends its owed ground, or its mark stands', async () => {
+    // The forward pass imports a burst that a span edge splits, and the ground it then leaves owed
+    // behind the cursor is read again outside the forward pass, which splits a span down to 1 ms:
+    // the split reaches a span that fits, so the owed ground ends with no mark.
+    it('a burst of 1,001 rows in 300 ms ends its owed ground, or its mark stands', async () => {
       const account = newLogAndConvertAccount();
 
       serveLogAndConvert(account, { log: burstOfRows(1_001, BURST_START, 300), converts: [] });
@@ -974,6 +981,38 @@ describe('Bybit convergence of the log and the convert walk', () => {
 
       expect(outcome.isFinished || (await denseMarkOf(account.log)) !== undefined).toBe(true);
     }, 120_000);
+
+    // The same burst 3 days old lies inside the 7-day re-scan, whatever the overlap day owes, so
+    // this one needs the 1 ms split outside the forward pass on its own.
+    it('a burst of 1,001 rows in 300 ms, 3 days old, ends its owed ground, or its mark stands', async () => {
+      const account = newLogAndConvertAccount();
+
+      serveLogAndConvert(account, {
+        log: burstOfRows(1_001, NOW - 3 * DAY_MS, 300),
+        converts: [],
+      });
+
+      const outcome = await settle(account.log, gap, 200);
+
+      expect(outcome.isFinished || (await denseMarkOf(account.log)) !== undefined).toBe(true);
+    }, 120_000);
+
+    it.each(COMMITTING_BURSTS)(
+      'a burst the forward pass commits ends its owed ground, with no mark: $name',
+      async ({ count, span, ends }) => {
+        const account = newLogAndConvertAccount();
+
+        serveLogAndConvert(account, { log: burstOfRows(count, BURST_START, span), converts: [] });
+
+        const outcome = await settle(account.log, gap, 200);
+
+        expect(outcome.isFinished).toBe(true);
+        expect(outcome.runs).toBeLessThanOrEqual(ends[CLOCK_GAPS.indexOf(gap)]);
+        expect(rowsOf(account.log)).toHaveLength(count);
+        expect(await denseMarkOf(account.log)).toBeUndefined();
+      },
+      120_000,
+    );
 
     it('a spot row that fails its check leaves at most 12 ranges and no point, on every run', async () => {
       const account = newLogAndConvertAccount();

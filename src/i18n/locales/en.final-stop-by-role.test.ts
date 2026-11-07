@@ -59,8 +59,8 @@ const LABEL_VALUE_ALLOWLIST = new Set([
   // real error (it reports what went wrong reading a specific code), so it
   // keeps a final "." unlike every other "Label: {{value}}" string.
   'accountDetail.unsupportedCurrencyCode',
-  // Written with a final period in en and uk, and the translator's review of the sentence is still
-  // owed, so the period stays until it rules.
+  // A caption: phrased as a label, but a caption keeps its final "." (as
+  // `accountDetail.notImported` and `untrackedCoins` do), in en and uk.
   'accountDetail.bybitLogLeftOut',
 ]);
 

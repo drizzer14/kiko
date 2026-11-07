@@ -11,9 +11,9 @@ import { transferAt, transferWalkOf } from './bybit.transfer-test-fixtures';
 import { ACCOUNT_ID, capitalWalkOf, served } from './bybit.capital-test-fixtures';
 import { holdingKeyOf, partsOfHoldingKey, type BybitWallet } from './bybit.holding-keys';
 
-// Q1 and Q2: every key carries its coin, BTC too, and two coins that share the id of a move share
-// no row and no pair. The pair of a trade or a convert names its two coins, and its test joins
-// this file in the set that adds those walks.
+// Every key carries its coin, BTC too, and two coins that share the id of a move share no row and
+// no pair. The pair of a trade or a convert names its two coins, and its test joins this file in
+// the set that adds those walks.
 const SEEDS = sweep(Array.from({ length: 20 }, (_unused, position) => 17 + position * 11));
 
 // Small consecutive seeds of the Lehmer generator draw the same first value, so each seed is

@@ -296,6 +296,36 @@ describe('the log walk: windows, pages and marks', () => {
       expect(await storedDenseSpans(walk)).toBeUndefined();
     });
 
+    // Ground outside the forward pass lies behind the cursor, which held the lane there, so a split
+    // to the millisecond reaches a span that fits, and it never writes the mark. The floor case is
+    // over a lane's rows inside one millisecond: the range stays owed and no mark shows.
+    it('a span of a second or less that a full lane cannot finish splits outside the forward pass, and writes no mark', async () => {
+      const owed = { start: NOW - 20 * DAY_MS, end: NOW - 20 * DAY_MS + 900, series: 'log' };
+      const walk = newWalk({ fake: { pageSize: 1 } }, ACCOUNT_ID, { cursor: NOW, pending: [owed] });
+      walk.world.log = sameInstant(25, owed.start);
+
+      const widthOfOwedRead = async (): Promise<number> => {
+        walk.reads.length = 0;
+        await walk.run();
+
+        return Math.min(
+          ...readsOf(walk.reads, 'log')
+            .filter(({ startTime }) => startTime >= owed.start - SECOND_MS && startTime < owed.end)
+            .map(({ startTime, endTime }) => endTime - startTime),
+        );
+      };
+      const widths: number[] = [];
+
+      for (let run = 0; run < 12; run += 1) {
+        widths.push(await widthOfOwedRead());
+      }
+
+      expect(widths).toEqual([900, 450, 225, 112, 56, 28, 14, 7, 3, 1, 1, 1]);
+      expect(denseWritesOf(walk)).toEqual([]);
+      expect(await storedDenseSpans(walk)).toBeUndefined();
+      expect(walk.marks().pending).toEqual([expect.objectContaining({ start: owed.start })]);
+    });
+
     it('the commit past the span drops its mark, and a commit that ends where the mark starts leaves it', async () => {
       const stands = newWalk({}, ACCOUNT_ID, { cursor: NOW }, markedAt(NOW));
       const passed = newWalk({}, ACCOUNT_ID, { cursor: CURSOR }, markedAt(CURSOR));

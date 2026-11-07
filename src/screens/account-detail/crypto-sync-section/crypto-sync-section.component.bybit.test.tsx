@@ -79,6 +79,11 @@ const BYBIT_NAME = providerDisplayName('bybit', i18n.t);
 
 const PENDING_FRAGMENT = 'transaction history is not imported yet';
 
+// What an absence assert hunts comes from its key, so a reword cannot leave it matching nothing.
+const LOG_LEFT_OUT_START = i18n
+  .t('accountDetail.bybitLogLeftOut', { kinds: '' })
+  .replace(': .', '');
+
 const untrackedLine = (tickers: string, exchange: string): string =>
   `Not tracked: ${tickers}. Kiko does not import a currency its ${exchange} sync does not support.`;
 
@@ -481,7 +486,7 @@ describe('the left-out line of a Bybit account', () => {
   it('shows no line while the log left out nothing', async () => {
     const { queryByText } = await renderState('bybit', { walks: {}, logKinds: [] });
 
-    expect(queryByText('Unified log entries', { exact: false })).toBeNull();
+    expect(queryByText(LOG_LEFT_OUT_START, { exact: false })).toBeNull();
   });
 
   it('names no kind this build does not know, and no line when it knows none', async () => {
@@ -490,7 +495,7 @@ describe('the left-out line of a Bybit account', () => {
 
     expect(mixed.getByText('Unified log entries not imported: Earn moves.')).toBeTruthy();
     expect(mixed.queryByText('mystery', { exact: false })).toBeNull();
-    expect(unknownOnly.queryByText('Unified log entries', { exact: false })).toBeNull();
+    expect(unknownOnly.queryByText(LOG_LEFT_OUT_START, { exact: false })).toBeNull();
   });
 
   it('is not shown while the state row is still loading', async () => {
@@ -502,7 +507,7 @@ describe('the left-out line of a Bybit account', () => {
       <CryptoSyncSection account={accountOf('bybit')} holdings={[holdingOf('bybit')]} />,
     );
 
-    expect(queryByText('Unified log entries', { exact: false })).toBeNull();
+    expect(queryByText(LOG_LEFT_OUT_START, { exact: false })).toBeNull();
   });
 
   describe('in Ukrainian', () => {
@@ -533,6 +538,7 @@ describe('the dense line of a Bybit account', () => {
   const DENSE_START = Date.UTC(2024, 0, 20, 12);
   const DENSE_LINE =
     'Bybit lists too many records within one second on 20.01.2024. Kiko cannot read past them, so later trades or Funding moves stay out, and the past of your net worth can be off by those amounts.';
+  const DENSE_LINE_OF_KEY = i18n.t('accountDetail.bybitHistoryDense', { date: '20.01.2024' });
 
   it('replaces the pending caption while a mark stands, with the date of the mark', async () => {
     const { getByText, queryByText } = await renderState('bybit', {
@@ -548,7 +554,7 @@ describe('the dense line of a Bybit account', () => {
     const { getByText, queryByText } = await renderState('bybit', { walks: {}, denseSpans: {} });
 
     expect(getByText(PENDING_FRAGMENT, { exact: false })).toBeTruthy();
-    expect(queryByText('too many records', { exact: false })).toBeNull();
+    expect(queryByText(DENSE_LINE_OF_KEY)).toBeNull();
   });
 
   it('shows once, with the earliest date, for a mark of each series', async () => {
@@ -591,7 +597,7 @@ describe('the dense line of a Bybit account', () => {
       <CryptoSyncSection account={accountOf('bybit')} holdings={[holdingOf('bybit')]} />,
     );
 
-    expect(queryByText('too many records', { exact: false })).toBeNull();
+    expect(queryByText(DENSE_LINE_OF_KEY)).toBeNull();
   });
 
   it('keeps the Binance pending caption word for word', async () => {
