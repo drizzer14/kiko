@@ -20,11 +20,12 @@ import {
   type Currency,
 } from '@kiko/test-support/recurring-ledger';
 import { daysBetween } from '@kiko/holdings/interest';
+import { seededRandom } from '@kiko/test-support/seeded-random';
 import { merchantNameOf } from '@kiko/transactions/merchant-name';
 import { buildRulesPerformanceFixture } from '@kiko/categories/category-rules/__fixtures__/rules-performance-fixture';
 
-import { detectRecurringSeries } from './detection';
-import type { RecurringInput, RecurringLedgerRow } from './detection.types.d';
+import { detectRecurringSeries, onePerSlotOf } from './detection';
+import type { Charge, RecurringInput, RecurringLedgerRow } from './detection.types.d';
 
 // The reads of `time` on the input rows may not pass `rows x (log2(rows) + K)`. K is the smallest
 // whole number under which the first run on this fixture passed: it read `time` twice per row
@@ -43,7 +44,16 @@ const SORT_COMPARISON_OFFSET = 6;
 // calls, 36.24 per row. It is never raised, so a scan that compares every charge of a group
 // with every other fails it.
 const DAY_GAP_CALLS_PER_ROW = 37;
+// Calls of `daysBetween` per charge of one dense marked key: 500 charges one a day, marked
+// monthly, each scanning only the charges within a step. The first run made 54 076 calls, 108.15
+// per charge, so 109 was the smallest whole number. It is never raised, so a scan of every earlier
+// charge (at least 250 per charge here) fails it.
+const DENSE_KEY_GAP_CALLS_PER_CHARGE = 109;
 const HOLDINGS_PER_CURRENCY = { UAH: 8, USD: 4, EUR: 3, GBP: 3, BTC: 2 } as const;
+const DENSE_KEY_CHARGES = 500;
+const DENSE_KEY_BASE_AMOUNT = 100;
+const DENSE_KEY_AMOUNT_SPREAD = 1_501;
+const DENSE_KEY_SEED = 104_729;
 const PLANTED_ROW_COUNT = 3;
 const PLANTED_DESCRIPTION = 'Planted Gym Club';
 const PLANTED_AMOUNT_MINOR_UNITS = -45_000;
@@ -191,6 +201,25 @@ describe('detectRecurringSeries on a large ledger', () => {
 
     expect(calls).toBeGreaterThan(0);
     expect(calls).toBeLessThanOrEqual(rows.length * DAY_GAP_CALLS_PER_ROW);
+  });
+
+  it('measures day gaps within DENSE_KEY_GAP_CALLS_PER_CHARGE of each charge of a dense marked key', () => {
+    const random = seededRandom(DENSE_KEY_SEED);
+    const charges: Charge[] = Array.from({ length: DENSE_KEY_CHARGES }, (_unused, day) => ({
+      id: `shop-${day}`,
+      time: at(2026, 11, 3 - day),
+      amount: DENSE_KEY_BASE_AMOUNT + Math.floor(random() * DENSE_KEY_AMOUNT_SPREAD),
+      source: 'manual',
+      holdingId: 'UAH-0',
+      holdingName: 'UAH-0',
+      description: 'Silpo',
+    }));
+
+    const { kept } = onePerSlotOf(charges, 'monthly', [charges[0].amount]);
+    const calls = jest.mocked(daysBetween).mock.calls.length;
+
+    expect(kept.length).toBeGreaterThan(1);
+    expect(calls).toBeLessThanOrEqual(charges.length * DENSE_KEY_GAP_CALLS_PER_CHARGE);
   });
 
   it('finds three fixture rows planted monthly', () => {

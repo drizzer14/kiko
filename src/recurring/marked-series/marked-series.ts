@@ -68,7 +68,7 @@ const piecesOf = (amounts: readonly number[], marks: readonly RecurringMark[]): 
   );
 
 // The one builder of a currency's chains, for the series and for the form's row read, so both
-// drop the same charges: the amount cut picks the piece, then one charge a period slot stays.
+// drop the same charges: the amount cut picks the piece, then one charge a period stays.
 const chainsOfCharges = (
   groupCharges: readonly Charge[],
   marks: readonly RecurringMark[],
@@ -119,8 +119,9 @@ const seriesOfChain = (
  * The charge chain of every stored amount, one series per chain that holds a charge. A mark reads
  * only the group of its own key and currency, so no amount compares across currencies. A stored
  * amount alone in its piece selects nothing and comes back as a chain without charges. A chain
- * keeps at most one charge per period slot, so a second charge of the same month stays out of
- * the series. The output order does not depend on the order of the rows or of the marks.
+ * keeps charges more than half a period apart, near amounts first, so a second charge of the
+ * same month stays out of the series. The output order does not depend on the order of the rows
+ * or of the marks.
  */
 export const markedSeriesOf = (
   chargeGroups: ChargeGroups,
@@ -158,8 +159,8 @@ export const detectedBesideMarked = (
 /**
  * The marked chain whose lowest and highest amounts span `amountMinorUnits`, or null when the
  * amount lies in no chain that holds a stored amount of `currency`. `charges` are one group's
- * charges, unfolded: the slot rule reads their times, so the fold is needed here too. `holdsRow`
- * is false for a row the chain's slot rule drops; a folded twin and a row outside the read stay
+ * charges, unfolded: the one-per-period rule reads their times, so the fold is needed here too.
+ * `holdsRow` is false for a row that rule drops; a folded twin and a row outside the read stay
  * held.
  */
 export const markedChainOfAmount = (

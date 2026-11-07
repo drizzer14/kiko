@@ -68,8 +68,8 @@ const WEEK_DAYS = 7;
 const MONTHS_PER_YEAR = 12;
 const MONTHS_PER_QUARTER = 3;
 const MONTHS_PER_HALF_YEAR = 6;
-// The newest charges at the nearest amount that may set the rhythm: at most 144 steps to cost.
-const ANCHOR_CANDIDATES = 12;
+// An amount is near a stored one within one twentieth of it.
+const NEAR_AMOUNT_DENOMINATOR = 20;
 // The month's last day and the next month's first are one day apart in a 31-day month.
 const DAYS_IN_LONGEST_MONTH = 31;
 const AVERAGE_MONTH_DAYS = 30.4375;
@@ -270,85 +270,113 @@ const SLOT_STEPS: Record<RecurringPeriod, SlotStep> = {
   yearly: YEARLY,
 };
 
-const signedDaysBetween = (from: number, to: number): number =>
-  daysBetween(from, to) - daysBetween(to, from);
-
-// `slotPairOf`'s nearest step, signed: a charge before the anchor sits in a negative slot. A tie
-// keeps the lower slot, so the pick never depends on the order of the charges.
-const signedSlotPairOf = (anchorTime: number, time: number, step: SlotStep): SlotPair => {
-  const nearest = Math.round(signedDaysBetween(anchorTime, time) / step.slotDays);
-
-  return [nearest - 1, nearest, nearest + 1]
-    .map((slots) => ({ slots, deviation: dayGapOf(step.stepForward(anchorTime, slots), time) }))
-    .reduce((best, candidate) => (candidate.deviation < best.deviation ? candidate : best));
-};
-
 const amountReachOf = (amount: number, storedAmounts: readonly number[]): number =>
   minOf(storedAmounts.map((stored) => Math.abs(amount - stored)));
 
-// The anchor is a charge, never an average: calendar months would split a due date that drifts
-// at a month end, and a median of days flips between two days half a month apart. Only the
-// charges nearest a stored amount set the rhythm, so a second subscription at a near price
-// cannot.
-const anchorOf = (
-  charges: readonly Charge[],
-  step: SlotStep,
-  storedAmounts: readonly number[],
-): Charge => {
-  const nearestReach = minOf(charges.map(({ amount }) => amountReachOf(amount, storedAmounts)));
-  const candidates = charges
-    .filter(({ amount }) => amountReachOf(amount, storedAmounts) === nearestReach)
-    .slice(-ANCHOR_CANDIDATES);
-  const costed = candidates.map((candidate) => ({
-    candidate,
-    cost: total(
-      candidates.map(({ time }) => signedSlotPairOf(candidate.time, time, step).deviation),
-    ),
-  }));
+// Integer minor units: 5 percent is one twentieth, so no float rounds a boundary pair.
+const isNearAmount = (amount: number, storedAmounts: readonly number[]): boolean =>
+  storedAmounts.some((stored) => Math.abs(amount - stored) * NEAR_AMOUNT_DENOMINATOR <= stored);
 
-  // The candidates run oldest first, so `<=` hands a tie to the newest.
-  return costed.reduce((best, next) => (next.cost <= best.cost ? next : best)).candidate;
+// The days from `later` to the nearest step of `earlier` that is at least one: a paused month
+// costs nothing, a month-end drift one day a gap.
+const gapCostOf = (earlier: number, later: number, step: SlotStep): number => {
+  const nearest = Math.round(daysBetween(earlier, later) / step.slotDays);
+
+  return minOf(
+    [nearest - 1, nearest, nearest + 1]
+      .filter((slots) => slots >= 1)
+      .map((slots) => dayGapOf(step.stepForward(earlier, slots), later)),
+  );
+};
+
+// A run's keys, smaller is better in each: the near and the kept counts are negated, so one
+// lexicographic compare reads the whole order. The last key, a full tie, is the caller's.
+type RunScore = readonly [number, number, number, number];
+
+type Run = { score: RunScore; previous: number | undefined };
+
+const compareScores = (left: RunScore, right: RunScore): number =>
+  left.reduce((difference, key, index) => difference || key - right[index], 0);
+
+// A predecessor more than half a step before another one can always be followed by it, so it
+// loses on the first two keys: only those within half a step of the latest one can tie.
+const predecessorIndexesOf = (
+  sorted: readonly Charge[],
+  index: number,
+  halfStep: number,
+): number[] => {
+  const isFarEnough = (earlier: number, later: number): boolean =>
+    daysBetween(sorted[earlier].time, sorted[later].time) > halfStep;
+  let latest = index - 1;
+
+  while (latest >= 0 && !isFarEnough(latest, index)) {
+    latest -= 1;
+  }
+
+  const indexes: number[] = [];
+
+  for (let earlier = latest; earlier >= 0 && !isFarEnough(earlier, latest); earlier -= 1) {
+    indexes.unshift(earlier);
+  }
+
+  return indexes;
 };
 
 /**
- * The charges of a marked chain with at most one per period slot, `charges` folded and oldest
- * first. Slots count from one anchor charge, never charge to charge, so a clamped month end does
- * not drift. The charge kept in a slot is the one nearest a stored amount, then nearest the
- * slot's step, then the earliest, then by id, so no row order changes the answer.
+ * The charges of a marked chain, folded, split into the kept run and the dropped rest, both
+ * oldest first. Kept charges sit more than half a step apart. Of all such runs the kept one has
+ * the most charges at a near amount, then the most charges, then the least gap to each previous
+ * step, then the nearest stored amounts, then the later charges. It reads only times, amounts and
+ * ids, so neither the row order nor one charge's rhythm changes the answer.
  */
 export const onePerSlotOf = (
   charges: readonly Charge[],
   period: RecurringPeriod,
   storedAmounts: readonly number[],
 ): { kept: Charge[]; dropped: Charge[] } => {
-  if (charges.length === 0) {
-    return { kept: [], dropped: [] };
+  const step = SLOT_STEPS[period];
+  const sorted = [...charges].sort(compareCharges);
+  const runs: Run[] = [];
+
+  sorted.forEach(({ amount, time }, index) => {
+    const near = Number(isNearAmount(amount, storedAmounts));
+    const reach = amountReachOf(amount, storedAmounts);
+    let best: Run = { score: [-near, -1, 0, reach], previous: undefined };
+
+    // Oldest first, so `<=` hands a full tie to the later predecessor.
+    for (const previous of predecessorIndexesOf(sorted, index, step.slotDays / 2)) {
+      const [nearCount, count, cost, totalReach] = runs[previous].score;
+      const score: RunScore = [
+        nearCount - near,
+        count - 1,
+        cost + gapCostOf(sorted[previous].time, time, step),
+        totalReach + reach,
+      ];
+
+      if (compareScores(score, best.score) <= 0) {
+        best = { score, previous };
+      }
+    }
+
+    runs.push(best);
+  });
+
+  // The same `<=`: a full tie ends at the later charge, so the last charge stays current.
+  const end = runs.reduce(
+    (bestEnd, run, index) => (compareScores(run.score, runs[bestEnd].score) <= 0 ? index : bestEnd),
+    0,
+  );
+  const keptIndexes = new Set<number>();
+  let index: number | undefined = sorted.length === 0 ? undefined : end;
+
+  while (index !== undefined) {
+    keptIndexes.add(index);
+    index = runs[index].previous;
   }
 
-  const step = SLOT_STEPS[period];
-  const anchor = anchorOf(charges, step, storedAmounts);
-  const bySlot = groupedBy(
-    charges.map((charge) => ({
-      charge,
-      reach: amountReachOf(charge.amount, storedAmounts),
-      ...signedSlotPairOf(anchor.time, charge.time, step),
-    })),
-    ({ slots }) => slots,
-  );
-  const ranked = [...bySlot.values()].map((slot) =>
-    slot.sort(
-      (left, right) =>
-        left.reach - right.reach ||
-        left.deviation - right.deviation ||
-        compareCharges(left.charge, right.charge),
-    ),
-  );
-
   return {
-    kept: ranked.map(([best]) => best.charge).sort(compareCharges),
-    dropped: ranked
-      .flatMap((slot) => slot.slice(1).map(({ charge }) => charge))
-      .sort(compareCharges),
+    kept: sorted.filter((_, position) => keptIndexes.has(position)),
+    dropped: sorted.filter((_, position) => !keptIndexes.has(position)),
   };
 };
 
