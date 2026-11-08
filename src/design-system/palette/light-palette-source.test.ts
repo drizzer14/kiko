@@ -121,7 +121,9 @@ describe('the approved light palette file', () => {
     expect(lightTheme.colorScheme).toBe('light');
   });
 
-  // The dark look is locked: this is the dark theme as it stood before the light set.
+  // The dark look is locked: this is the dark theme as it stood before the light set. `rowBand`
+  // and `sumTint` came after the light set (set tables visual 2), so they are in the snapshot
+  // and not in NEW_COLOR_KEYS: listing them there would drop them from the dark lock.
   it('dark values did not change: darkTheme.colors minus the new keys equals its base snapshot', () => {
     const base = {
       background: '#000000',
@@ -141,6 +143,8 @@ describe('the approved light palette file', () => {
       negativeSubtle: 'rgba(255,69,58,0.18)',
       neutralSubtle: 'rgba(118,118,128,0.24)',
       border: '#38383A',
+      rowBand: 'rgba(255,255,255,0.04)',
+      sumTint: 'rgba(255,255,255,0.10)',
       scrim: 'rgba(0,0,0,0.4)',
       scrimFallback: 'rgba(0,0,0,0.55)',
       entityColors: entityColorsDark,
