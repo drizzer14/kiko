@@ -1,12 +1,4 @@
-type ModalProps = { visible: boolean; animationType?: string; testID?: string };
-
-const modalModule = require('react-native/Libraries/Modal/Modal') as {
-  default: (props: ModalProps) => unknown;
-};
-
-const spyOnModalRender = () => jest.spyOn(modalModule, 'default');
-
-type ModalRenderSpy = ReturnType<typeof spyOnModalRender>;
+import { spyOnModalRendersPerTest } from './modal-render-spy';
 
 export type ModalAnimationSpy = {
   // The animation the Modal was handed in the render that last hid it (the
@@ -21,40 +13,14 @@ export type ModalAnimationSpy = {
 };
 
 // The jest Modal renders nothing once hidden, so a test cannot read the close
-// animation off the tree. This spies on the Modal's render and reads the props
-// every render was handed instead, for the one Modal whose `testID` is given
-// (a screen renders other sheets too, and they re-render with it). It filters
-// by `testID` only, so it assumes one mounted Modal instance per `testID` for
-// the test's lifetime (a remount, or two live Modals with the same `testID`,
-// would mix their runs).
-//
-// Call it at describe or file level, never inside a test or a hook: it
-// registers its own `beforeEach` (spy) and `afterEach` (restore), and Jest
-// rejects a hook defined inside a test. The restore has to live here and not
-// with the caller: the project's `clearMocks` only clears call history, so a
-// spy a test forgot to restore would hand every later test in the file a Modal
-// that is still a mock. No other export creates the spy, so a caller cannot
-// skip the restore.
+// animation off the tree. This reads the props every render of the one Modal
+// whose `testID` is given was handed (see `spyOnModalRendersPerTest`, whose
+// call rules and one-Modal-per-`testID` assumption it shares).
 export const spyOnModalAnimationPerTest = (modalTestID: string): ModalAnimationSpy => {
-  let spy: ModalRenderSpy | undefined;
-
-  beforeEach(() => {
-    spy = spyOnModalRender();
-  });
-
-  afterEach(() => {
-    spy?.mockRestore();
-    spy = undefined;
-  });
+  const rendersOfModal = spyOnModalRendersPerTest(modalTestID);
 
   const transitionAnimation = (toVisible: boolean): string | undefined => {
-    if (spy === undefined) {
-      throw new Error('The Modal animation spy is only readable while a test runs.');
-    }
-
-    const renders = spy.mock.calls
-      .map(([props]) => props)
-      .filter((props) => props.testID === modalTestID);
+    const renders = rendersOfModal();
     const inState = renders.map((props) => Boolean(props.visible) === toVisible);
     const lastInState = inState.lastIndexOf(true);
     const runStart = inState.slice(0, lastInState + 1).lastIndexOf(false) + 1;

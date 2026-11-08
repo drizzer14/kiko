@@ -472,22 +472,14 @@ describe('CategoryTable', () => {
     describe('a pressed row', () => {
       const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
 
-      const pressRow = async (
-        rendered: Awaited<ReturnType<typeof shown>>['rendered'],
-        rowId: string,
-      ) => {
-        await fireEvent.press(rendered.getByTestId(`cell-row-${rowId}`));
-
-        return modal.finishClosing;
-      };
-
       it('opens the transaction of a pressed row after the sheet closes', async () => {
         const { rendered } = await pressed(propsOf(WORLD), 'category-groceries', 1);
-        const closeSheet = await pressRow(rendered, 'g-feb');
+
+        await fireEvent.press(rendered.getByTestId('cell-row-g-feb'));
 
         expect(onOpenTransaction).not.toHaveBeenCalled();
 
-        await closeSheet();
+        await modal.finishClosing();
 
         expect(onOpenTransaction).toHaveBeenCalledTimes(1);
         expect(onOpenTransaction).toHaveBeenCalledWith('g-feb');
@@ -508,9 +500,8 @@ describe('CategoryTable', () => {
           0,
         );
 
-        const closeSheet = await pressRow(rendered, 'loan-interest:loan-payment');
-
-        await closeSheet();
+        await fireEvent.press(rendered.getByTestId('cell-row-loan-interest:loan-payment'));
+        await modal.finishClosing();
 
         expect(onOpenTransaction).toHaveBeenCalledWith('loan-payment');
       });
