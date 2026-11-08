@@ -14,7 +14,11 @@ import {
   spokenValue,
 } from './__fixtures__/tables-screen-world';
 
-jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  (
+    require('@kiko/test-support/mock-pane-stack') as typeof import('@kiko/test-support/mock-pane-stack')
+  ).paneStackModule(() => jest.fn(), { useIsScreenVisible: () => true }),
+);
 
 describe('TablesScreen', () => {
   setUpTablesWorld();

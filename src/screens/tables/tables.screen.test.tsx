@@ -37,7 +37,11 @@ import {
 import type TablesScreen from './tables.screen';
 import { monthTitle } from './month-column-label';
 
-jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  (
+    require('@kiko/test-support/mock-pane-stack') as typeof import('@kiko/test-support/mock-pane-stack')
+  ).paneStackModule(() => jest.fn(), { useIsScreenVisible: () => true }),
+);
 
 // The data of the world starts two days before the fixed clock, so this quarter is the period that
 // is always offered besides this year.
@@ -47,6 +51,10 @@ type Props = ComponentProps<typeof TablesScreen>;
 
 describe('TablesScreen', () => {
   setUpTablesWorld();
+
+  beforeEach(() => {
+    reportWindow('compact', 393, 852);
+  });
 
   describe('the category table', () => {
     it('shows each category of the data in the month it was spent, with the full amount spoken', async () => {
@@ -243,10 +251,6 @@ describe('TablesScreen', () => {
 
     beforeEach(() => {
       reportWindow('regular', 1376, 1032);
-    });
-
-    afterEach(() => {
-      reportWindow('compact', 393, 852);
     });
 
     it('is capped for a plain Screen of the same window, so the cases below are a change', async () => {

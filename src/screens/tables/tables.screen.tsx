@@ -14,15 +14,14 @@ import {
 } from '@kiko/statistics/statistics-filter-scope';
 import Box from '@kiko/design-system/components/box';
 import Screen from '@kiko/design-system/components/screen';
+import { useVerticalBarEdge } from '@kiko/display-regions';
 import type { TablesParams } from '@kiko/navigation/types';
 import { rowDescriberOf } from '@kiko/statistics/cell-rows';
 import { type FC, useEffect, useMemo, useState } from 'react';
-import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
-import { useLayoutMode, useVerticalBarEdge } from '@kiko/display-regions';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
 import { TABLES_VIEWS, type TablesView } from '@kiko/statistics/tables-view';
@@ -30,6 +29,7 @@ import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
+import { useIsScreenVisible, useSettledLayoutMode } from '@kiko/navigation/pane-stack';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import { styles } from './tables.styles';
@@ -126,7 +126,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   // bar is the system's own trait, the layout mode the app's own test for that room, so a folded
   // Duo (one page) and a portrait Duo (a bottom bar) keep the period in its own row.
   const verticalBarEdge = useVerticalBarEdge();
-  const layoutMode = useLayoutMode();
+  const layoutMode = useSettledLayoutMode();
   const isPeriodBesideFilters = verticalBarEdge !== 'none' && layoutMode === 'columns';
 
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);

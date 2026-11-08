@@ -1,5 +1,6 @@
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { SETTLE_DELAY_MS } from '@kiko/navigation/pane-stack';
 import { relativeTablePeriodsOf } from '@kiko/statistics/table-period';
 import { act, fireEvent, within } from '@testing-library/react-native';
 import { reportWindow, resizeWindow } from '@kiko/test-support/window-size';
@@ -8,7 +9,11 @@ import type { HorizontalSizeClass, VerticalBarEdge } from '@kiko/display-regions
 
 import { renderTables, setUpTablesWorld } from './__fixtures__/tables-screen-world';
 
-jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  (
+    require('@kiko/test-support/mock-pane-stack') as typeof import('@kiko/test-support/mock-pane-stack')
+  ).paneStackModule(() => jest.fn(), { useIsScreenVisible: () => true }),
+);
 
 const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 
@@ -24,7 +29,7 @@ const idsInFilterBar = (rendered: Rendered): string[] =>
 describe('the period field on the Tables screen', () => {
   setUpTablesWorld();
 
-  afterEach(() => {
+  beforeEach(() => {
     reportWindow('compact', 393, 852);
   });
 
@@ -55,7 +60,7 @@ describe('the period field on the Tables screen', () => {
       expect(getAllByTestId('tables-period')).toHaveLength(1);
     });
 
-    it('keeps the route period and an open filter sheet when the window folds to one page', async () => {
+    it('keeps the route period and an open filter sheet when the Duo unfolded turns to portrait', async () => {
       const rendered = await renderTables({ period: THIS_QUARTER });
       const { getByTestId, queryAllByTestId } = rendered;
 
@@ -66,6 +71,9 @@ describe('the period field on the Tables screen', () => {
       const optionsBefore = queryAllByTestId(/^tables-account-filter-option-/).length;
 
       await resizeWindow(669, 951);
+      await act(async () => {
+        jest.advanceTimersByTime(SETTLE_DELAY_MS);
+      });
 
       expect(optionsBefore).toBeGreaterThan(0);
       expect(queryAllByTestId(/^tables-account-filter-option-/)).toHaveLength(optionsBefore);
@@ -73,6 +81,33 @@ describe('the period field on the Tables screen', () => {
         exact: false,
       });
       expect(idsInFilterBar(rendered)).toEqual(['tables-account-filter', 'tables-category-filter']);
+    });
+  });
+
+  describe('through a pose change that reports one frame of another mode', () => {
+    beforeEach(() => {
+      reportWindow('regular', 951, 669, 'trailing');
+    });
+
+    it('keeps an open Period sheet open through a one-frame change to one page', async () => {
+      const rendered = await renderTables();
+      const { getByTestId, queryAllByTestId } = rendered;
+
+      await act(async () => {
+        await fireEvent.press(getByTestId('tables-period'));
+      });
+
+      const optionsBefore = queryAllByTestId(/^tables-period-option-/).length;
+
+      await resizeWindow(669, 951);
+      await resizeWindow(951, 669);
+      await act(async () => {
+        jest.advanceTimersByTime(SETTLE_DELAY_MS);
+      });
+
+      expect(optionsBefore).toBeGreaterThan(0);
+      expect(queryAllByTestId(/^tables-period-option-/)).toHaveLength(optionsBefore);
+      expect(idsInFilterBar(rendered)).toContain('tables-period');
     });
   });
 
@@ -87,7 +122,7 @@ describe('the period field on the Tables screen', () => {
       reportWindow(sizeClass, width, height, verticalBarEdge);
     });
 
-    it('stays in a row of its own, under the row of the other filters', async () => {
+    it("stays out of the row of the other filters, in the table's top", async () => {
       const rendered = await renderTables();
       const top = within(rendered.getByTestId('category-table-top'));
 

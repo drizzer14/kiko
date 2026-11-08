@@ -17,7 +17,8 @@ const setDimensions = (width: number, height: number): void => {
 
 /**
  * The window a test renders into: the size class and the vertical-bar edge (the side bar's edge;
- * `none` is a bottom bar) the native module reports, and the window size.
+ * `none` is no side bar: a bottom bar on an iPhone or a Duo, a top bar on an iPad) the native
+ * module reports, and the window size.
  * The wrapper reads the size class once per mounted tree, so call this before the first render;
  * `resizeWindow` changes the size of a mounted one.
  */
