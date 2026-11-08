@@ -1,6 +1,7 @@
 import { i18n } from '@kiko/i18n/init';
 import type { TimeClock } from '@kiko/dates';
 import { act } from '@testing-library/react-native';
+import { mccLabelOf } from '@kiko/categories/mcc-names';
 import type { Currency } from '@kiko/currency/currency';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 
@@ -18,8 +19,22 @@ const ACCOUNT_NAMES = new Map([['account-1', 'Main card']]);
 
 const accountNameOf = (accountId: string): string | null => ACCOUNT_NAMES.get(accountId) ?? null;
 
+// Widened here because the card's `mccLabelOf` option is added to `RuleSummaryOptions` after these
+// pins; a variable (not a literal) passes today and stays valid once the option is declared.
+type RuleRowsOptions = Parameters<typeof ruleRows>[1] & {
+  mccLabelOf: (mccText: string) => string;
+};
+
+const optionsOf = (clock: TimeClock): RuleRowsOptions => ({
+  t: i18n.t,
+  clock,
+  formatAmount,
+  accountNameOf,
+  mccLabelOf: (mccText) => mccLabelOf(mccText, i18n.language),
+});
+
 const rowsOf = (matchers: CategoryRuleMatcher[], clock: TimeClock = CLOCK_24) =>
-  ruleRows(matchers, { t: i18n.t, clock, formatAmount, accountNameOf });
+  ruleRows(matchers, optionsOf(clock));
 
 const summaryOf = (matchers: CategoryRuleMatcher[], clock: TimeClock = CLOCK_24): string =>
   ruleSummary(rowsOf(matchers, clock));
@@ -118,8 +133,34 @@ describe('ruleRows', () => {
       ]).map(({ label, value }) => ({ label, value })),
     ).toEqual([
       { label: 'Merchant code (MCC)', value: '0042' },
-      { label: 'Merchant code (MCC)', value: '5411' },
+      { label: 'Merchant code (MCC)', value: '5411 – Grocery Stores, Supermarkets' },
     ]);
+  });
+
+  it('shows an unlisted code as its digits', () => {
+    expect(rowsOf([{ type: 'mcc', code: 42 }]).map((row) => row.value)).toEqual(['0042']);
+  });
+
+  it('passes a stored code to the label option padded to four digits', () => {
+    const received: string[] = [];
+    const options: RuleRowsOptions = {
+      ...optionsOf(CLOCK_24),
+      mccLabelOf: (mccText) => {
+        received.push(mccText);
+
+        return mccText;
+      },
+    };
+
+    ruleRows(
+      [
+        { type: 'mcc', code: 42 },
+        { type: 'mcc', code: 5411 },
+      ],
+      options,
+    );
+
+    expect(received).toEqual(['0042', '5411']);
   });
 
   it('hands the stored minor units and currency to the amount formatter untouched', () => {
@@ -197,6 +238,12 @@ describe('ruleSummary', () => {
       await act(async () => {
         await i18n.changeLanguage('en');
       });
+    });
+
+    it('shows the mcc name in Ukrainian', () => {
+      expect(rowsOf([{ type: 'mcc', code: 5411 }]).map((row) => row.value)).toEqual([
+        '5411 – Продукти',
+      ]);
     });
 
     it('reads the labels and the quoted name in Ukrainian', () => {
