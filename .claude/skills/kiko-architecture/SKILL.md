@@ -1090,9 +1090,11 @@ have their own, older, pre-existing chunking — don't assume they use
   `./node_modules/.bin/biome check <file>` and the data pins in `mcc-names.test.ts`.
   `src/categories/mcc-names/` holds `mcc-names.ts` (re-exports `MCC_NAMES_NOTICE`),
   `mcc-names.notice.ts` (licence text; the Sominemo MIT notice ships as bundled text, no screen),
-  `mcc-names.data.json`, `mcc-names.test.ts` and `index.ts`. Pins that compare an internal file
-  with its barrel live in the colocated `src/categories/mcc-names/mcc-names.test.ts`, not in
-  `__tests__/`.
+  `mcc-names.data.json`, `mcc-names.test.ts`, `mcc-names.notice.test.ts` and `index.ts`. Notice
+  pins (licence hash, source credits) live in the colocated
+  `src/categories/mcc-names/mcc-names.notice.test.ts`, the barrel-reach pin in
+  `src/categories/mcc-names/mcc-names.test.ts`. A test that imports src code lives colocated in
+  src, never in `__tests__/` (`__tests__/harness-tests-do-not-depend-on-src.test.ts`).
 
 ## Repository module shape
 
