@@ -1,7 +1,7 @@
 // The stored set of the Funding ledger on a real `node:sqlite` engine with the shipped migrations
 // and foreign keys on: the read of one account, the upsert and the delete by key, and the prune.
 // Each statement filters by `account_id`, so a row of another account is never read, changed or
-// removed (A88, store part).
+// removed.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {

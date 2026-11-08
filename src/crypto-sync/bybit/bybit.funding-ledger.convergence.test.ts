@@ -59,7 +59,7 @@ describe.each(GAPS)('the Funding ledger walk over bursts, at a clock gap of %i m
   // The edge between two forward spans lies in the second of the burst, and the route reads whole
   // seconds, so both spans read the burst: a row read twice is harmless by its key, and the burst
   // that a lane holds is stored whole. The reads outside the forward pass lie behind the cursor,
-  // which read this ground whole, so a split to a millisecond ends them (CALL 123's law).
+  // which read this ground whole, so a split to a millisecond ends them.
   it('a burst that a forward span edge splits ends its owed ground with every row stored, and no mark', async () => {
     const edge = NOW - 3 * DAY_MS;
     const walk = newWalk(NOW - 10 * DAY_MS);
@@ -114,9 +114,13 @@ describe.each(GAPS)('the Funding ledger walk over bursts, at a clock gap of %i m
     ];
 
     const outcome = await settle(walk, gap);
+    const mark = await denseMarkOf(walk);
 
     expect(outcome.isFinished).toBe(false);
-    expect(await denseMarkOf(walk)).toBeDefined();
+    // A span of a second or less holds both burst seconds only when its whole seconds reach both,
+    // so its start lies within a second of the first.
+    expect(mark).toBeGreaterThan(second - SECOND_MS);
+    expect(mark).toBeLessThan(second + SECOND_MS);
     expect(denseWritesOf(walk)).toBe(1);
   }, 120_000);
 

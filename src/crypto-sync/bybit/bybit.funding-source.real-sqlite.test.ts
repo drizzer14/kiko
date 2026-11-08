@@ -2,7 +2,7 @@
 // walks (capital, transfer, convert) over the REAL repositories on a real `node:sqlite` engine (the
 // shipped migrations, foreign keys on): the record of a source row lands in `funding_match_rows`
 // beside its row, a second run writes no second one, and a rolled back deposit takes its record
-// away with its row (A87, source part). No page with a row was read live: every row is built from
+// away with its row. No page with a row was read live: every row is built from
 // the docs pages' samples.
 let mockDatabase: DatabaseSync;
 

@@ -1,7 +1,7 @@
 // The reconcile of the Funding ledger over the REAL repositories on a real `node:sqlite` engine
 // (the shipped migrations, foreign keys on): rule 51 runs on the stored set, and only the
-// difference against the rows already written is written (A87, A88, A101, A107). No page with a
-// row was read live: the stored set is built by hand from the shape the walks store.
+// difference against the rows already written is written. No page with a row was read live: the
+// stored set is built by hand from the shape the walks store.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
