@@ -39,7 +39,12 @@ describe('app icon catalog', () => {
       size: '1024x1024',
     });
     expect(dark).toHaveLength(1);
-    expect(dark[0].filename).toBe('AppIcon-1024.png');
+    expect(dark[0]).toMatchObject({
+      filename: 'AppIcon-1024.png',
+      idiom: 'universal',
+      platform: 'ios',
+      size: '1024x1024',
+    });
     entries.forEach((entry) => {
       expect(fs.existsSync(path.join(ICON_FOLDER, entry.filename))).toBe(true);
     });
