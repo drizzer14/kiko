@@ -2,6 +2,8 @@ import maybe, { foldMap } from 'fnts/maybe';
 
 import mccNamesData from './mcc-names.data.json';
 
+export { MCC_NAMES_NOTICE } from './mcc-names.notice';
+
 export type MccName = { code: string; en: string; uk: string };
 
 // The standard merchant category code names, en and uk, shown verbatim as the sources write them.

@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { MCC_NAMES_NOTICE } from '@kiko/categories/mcc-names';
 
 import { MCC_SOURCES } from '../scripts/mcc-names/generate-mcc-names';
 
@@ -15,8 +16,7 @@ const NOTICE_MODULE = join(__dirname, '..', 'src/categories/mcc-names', 'mcc-nam
 
 const sources = MCC_SOURCES as Record<string, { license: string }>;
 
-const barrelNotice = (): Notice =>
-  (require('@kiko/categories/mcc-names') as { MCC_NAMES_NOTICE?: Notice }).MCC_NAMES_NOTICE ?? {};
+const barrelNotice = (): Notice => MCC_NAMES_NOTICE;
 
 const noticeModuleNotice = (): Notice =>
   (require(NOTICE_MODULE) as { MCC_NAMES_NOTICE: Notice }).MCC_NAMES_NOTICE;
