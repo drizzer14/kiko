@@ -137,7 +137,8 @@ Five-row samples, in file order:
 | `1520` | Будівництво. Підрядники |
 | `1711` | Кондиціонери. Встановлення |
 
-Task 7/10 step 5 writes the byte size of `mcc-names.data.json`.
+Task 7/10 step 5 regenerated `mcc-names.data.json` (981 entries, none dropped): 99224 bytes
+(about 97 KB, inside the research estimate of 60-100 KB).
 
 ### 3.4 Shape and display
 
