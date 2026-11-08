@@ -349,15 +349,30 @@ describe('categoryDisplayColor', () => {
     );
   });
 
-  // The light sets are identical and dark has one set, so no hex differs by producer; the routing
-  // proof is that this producer reads the category table.
-  it.each(SWATCHES)('%s reads the category table in light and in dark', (name) => {
-    expect(categoryDisplayColor(entityColorsDark[name], 'light')).toBe(
-      lightTheme.colors.categoryColors[name],
-    );
-    expect(categoryDisplayColor(entityColorsDark[name], 'dark')).toBe(
-      darkTheme.colors.categoryColors[name],
-    );
+  // The real light sets are identical, so no real hex tells the producers apart. Divergent light
+  // sets under a mocked palette prove each producer reads its own table for the same dark hex.
+  it.each(SWATCHES)('%s routes each producer to its own light set', (name) => {
+    jest.isolateModules(() => {
+      jest.doMock('@kiko/design-system/palette', () => {
+        const actual = jest.requireActual('@kiko/design-system/palette');
+        const filled = (hex: string): Record<string, string> =>
+          Object.fromEntries(Object.keys(actual.entityColorsLight).map((key) => [key, hex]));
+
+        return {
+          ...actual,
+          entityColorsLight: filled('#0A0A0A'),
+          categoryColorsLight: filled('#0B0B0B'),
+        };
+      });
+
+      const routed = jest.requireActual('./entity-tint') as typeof import('./entity-tint');
+      const darkHex = entityColorsDark[name];
+
+      expect(routed.categoryDisplayColor(darkHex, 'light')).toBe('#0B0B0B');
+      expect(routed.entityDisplayColor(darkHex, 'light')).toBe('#0A0A0A');
+    });
+
+    jest.dontMock('@kiko/design-system/palette');
   });
 
   it.each(OUT_OF_SET)('light out of set takes the entity lightness rule: %s', (stored) => {

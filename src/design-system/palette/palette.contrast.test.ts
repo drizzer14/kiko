@@ -48,8 +48,7 @@ describe('palette contrast: dark entity tiles', () => {
   });
 });
 
-// No light tile-vs-page 3:1 case, on purpose: the user waived it on 2026-11-08 (the palette
-// plan's light-tile ruling), so the glyph and the mark carry the contrast instead.
+// The light tile is exempt from the page 3:1 floor; the glyph and the mark carry the contrast.
 describe('palette contrast: light tiles', () => {
   it.each(lightCases)('%s glyph holds 4.5:1 on the base', (_label, hex, scheme) => {
     expect(wcagContrastRatio(glyphOf(hex, scheme, 'light'), hex)).toBeGreaterThanOrEqual(
