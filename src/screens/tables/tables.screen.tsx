@@ -22,6 +22,7 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { useLayoutMode, useVerticalBarEdge } from '@kiko/display-regions';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
 import { TABLES_VIEWS, type TablesView } from '@kiko/statistics/tables-view';
@@ -121,6 +122,13 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   // holdings' names, and re-reads the language when it changes.
   const describeRow = useMemo(() => rowDescriberOf(holdings, t), [holdings, t]);
 
+  // The Duo unfolded in landscape: a side bar on a window with room for two panes. The vertical
+  // bar is the system's own trait, the layout mode the app's own test for that room, so a folded
+  // Duo (one page) and a portrait Duo (a bottom bar) keep the period in its own row.
+  const verticalBarEdge = useVerticalBarEdge();
+  const layoutMode = useLayoutMode();
+  const isPeriodBesideFilters = verticalBarEdge !== 'none' && layoutMode === 'columns';
+
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);
   const period = resolveTablePeriod(route.params?.period, periodOptions, now);
   const months = useMemo(() => monthsOfPeriod(period, spanStart, now), [period, spanStart, now]);
@@ -197,11 +205,29 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     netWorth: t('tables.view.netWorth'),
   };
 
+  const periodField = (
+    <TablePeriodField
+      key={`period-${sheetGeneration}`}
+      period={period}
+      options={periodOptions}
+      now={now}
+      onSelect={selectPeriod}
+      testID="tables-period"
+    />
+  );
+
   // They go into the table's scroll, so at a large type size they scroll away with the caption
   // and leave the rows the room; the empty state keeps them in place.
   const controls = (
     <Box gap={3}>
-      <Box direction="row" gap={3} style={styles.filterBar}>
+      <Box
+        direction="row"
+        gap={3}
+        style={[styles.filterBar, isPeriodBesideFilters && styles.filterBarWithPeriod]}
+        testID="tables-filter-bar"
+      >
+        {isPeriodBesideFilters && periodField}
+
         <FilterMenu
           key={`account-filter-${sheetGeneration}`}
           label={t('statistics.filterAccounts')}
@@ -227,14 +253,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
         )}
       </Box>
 
-      <TablePeriodField
-        key={`period-${sheetGeneration}`}
-        period={period}
-        options={periodOptions}
-        now={now}
-        onSelect={selectPeriod}
-        testID="tables-period"
-      />
+      {!isPeriodBesideFilters && periodField}
     </Box>
   );
 
