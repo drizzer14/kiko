@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import { darkTheme } from '@kiko/design-system/theme';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 
 import DataTable from '.';
 import type { DataTableProps } from './data-table.props';
@@ -70,47 +70,98 @@ describe('DataTable rows and column lines', () => {
       );
     });
 
-    it('keeps a sum column its own tint on a banded row', async () => {
+    it('lets the band run across a sum column, which keeps a translucent tint of its own', async () => {
+      const rendered = await renderTable();
+      const bandedRowGround = flat(
+        rendered.getByTestId(`${PREFIX}-scrolled-row-b`),
+      ).backgroundColor;
+
+      expect(bandedRowGround).toBe(darkTheme.colors.rowBand);
+
+      for (const row of ['a', 'b']) {
+        const sumGround = flat(rendered.getByTestId(`${PREFIX}-cell-${row}-total`)).backgroundColor;
+
+        expect(sumGround).toBe(darkTheme.colors.sumTint);
+        expect(
+          flat(rendered.getByTestId(`${PREFIX}-cell-${row}-jan`)).backgroundColor,
+        ).toBeUndefined();
+      }
+
+      // A fill with alpha below one lets the row's band show through, in both themes.
+      for (const theme of [darkTheme, lightTheme]) {
+        expect(theme.colors.sumTint).toMatch(/^rgba\(.+,0?\.\d+\)$/);
+        expect(theme.colors.sumTint).not.toBe(theme.colors.sheetBackground);
+      }
+    });
+
+    it('keeps the body content growing to the room beside the fixed column', async () => {
       const rendered = await renderTable();
 
-      expect(flat(rendered.getByTestId(`${PREFIX}-cell-b-total`)).backgroundColor).toBe(
-        darkTheme.colors.sheetBackground,
-      );
+      expect(flat(rendered.getByTestId(`${PREFIX}-body-content`)).flexGrow).toBe(1);
     });
   });
 
   describe('column separators', () => {
-    it('draws one on every body cell and header cell but the last column', async () => {
+    it('draws one per column edge in the body and in the header, none after the last', async () => {
       const rendered = await renderTable();
 
-      for (const row of ['a', 'b', 'all']) {
-        expect(rendered.queryByTestId(`${PREFIX}-separator-${row}-jan`)).toBeTruthy();
-        expect(rendered.queryByTestId(`${PREFIX}-separator-${row}-feb`)).toBeTruthy();
-        expect(rendered.queryByTestId(`${PREFIX}-separator-${row}-total`)).toBeNull();
-      }
-
+      expect(rendered.queryByTestId(`${PREFIX}-separator-jan`)).toBeTruthy();
+      expect(rendered.queryByTestId(`${PREFIX}-separator-feb`)).toBeTruthy();
+      expect(rendered.queryByTestId(`${PREFIX}-separator-total`)).toBeNull();
       expect(rendered.queryByTestId(`${PREFIX}-header-separator-jan`, hidden)).toBeTruthy();
       expect(rendered.queryByTestId(`${PREFIX}-header-separator-feb`, hidden)).toBeTruthy();
       expect(rendered.queryByTestId(`${PREFIX}-header-separator-total`, hidden)).toBeNull();
+      // None per cell: the lines are two tracks of columns - 1 views, not one per row.
+      expect(rendered.queryByTestId(`${PREFIX}-separator-a-jan`)).toBeNull();
     });
 
-    it('is a hairline of the border colour on the right edge, out of the layout', async () => {
+    it('is a full-height hairline of the border colour at each running column edge', async () => {
       const rendered = await renderTable();
-      const style = flat(rendered.getByTestId(`${PREFIX}-separator-a-jan`));
-      const headerStyle = flat(rendered.getByTestId(`${PREFIX}-header-separator-jan`, hidden));
 
-      for (const line of [style, headerStyle]) {
-        expect(line.position).toBe('absolute');
-        expect(line.width).toBe(darkTheme.layout.hairline);
-        expect(line.right).toBe(0);
-        expect(line.backgroundColor).toBe(darkTheme.colors.border);
+      await fireEvent(rendered.getByTestId(PREFIX), 'layout', layoutEvent(400, 600));
+      await fireEvent(
+        rendered.getByTestId(`${PREFIX}-measure-labels`, hidden),
+        'layout',
+        layoutEvent(60),
+      );
+
+      const widths = [50, 70, 90];
+
+      for (const [index, column] of columns.entries()) {
+        await fireEvent(
+          rendered.getByTestId(`${PREFIX}-measure-column-${column.key}`, hidden),
+          'layout',
+          layoutEvent(widths[index]),
+        );
+      }
+
+      const padding = darkTheme.spacing(4);
+      const edges = [50 + padding, 50 + padding + 70 + padding].map(
+        (edge) => edge - darkTheme.layout.hairline,
+      );
+
+      for (const [index, key] of ['jan', 'feb'].entries()) {
+        for (const line of [
+          flat(rendered.getByTestId(`${PREFIX}-separator-${key}`)),
+          flat(rendered.getByTestId(`${PREFIX}-header-separator-${key}`, hidden)),
+        ]) {
+          expect(line.position).toBe('absolute');
+          expect(line.top).toBe(0);
+          expect(line.bottom).toBe(0);
+          expect(line.width).toBe(darkTheme.layout.hairline);
+          expect(line.left).toBe(edges[index]);
+          expect(line.backgroundColor).toBe(darkTheme.colors.border);
+        }
       }
     });
 
     it('never touches a pointer, so a cell press still reaches the cell', async () => {
       const rendered = await renderTable();
 
-      expect(rendered.getByTestId(`${PREFIX}-separator-a-jan`).props.pointerEvents).toBe('none');
+      expect(rendered.getByTestId(`${PREFIX}-separator-jan`).props.pointerEvents).toBe('none');
+      expect(
+        rendered.getByTestId(`${PREFIX}-header-separator-jan`, hidden).props.pointerEvents,
+      ).toBe('none');
     });
 
     it('leaves the column and the first-column widths as they were', async () => {

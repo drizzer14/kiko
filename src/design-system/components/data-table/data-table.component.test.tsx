@@ -731,11 +731,11 @@ describe('DataTable', () => {
       });
 
       expect(flat(rendered.getByTestId(`${PREFIX}-cell-groceries-total`)).backgroundColor).toBe(
-        darkTheme.colors.sheetBackground,
+        darkTheme.colors.sumTint,
       );
-      expect(flat(header).backgroundColor).toBe(darkTheme.colors.sheetBackground);
+      expect(flat(header).backgroundColor).toBe(darkTheme.colors.sumTint);
       expect(flat(rendered.getByTestId(`${PREFIX}-cell-groceries-jan`)).backgroundColor).not.toBe(
-        darkTheme.colors.sheetBackground,
+        darkTheme.colors.sumTint,
       );
     });
 

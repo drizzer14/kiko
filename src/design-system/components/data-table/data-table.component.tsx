@@ -81,6 +81,15 @@ const DataTable: FC<DataTableProps> = ({
     [rows, columns, textHeights, padding],
   );
   const contentWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+  // One line per column edge but the last, laid over the track: the edge less the hairline, so the
+  // line sits inside its own column as the cell's right edge did.
+  const separatorOffsets = columnWidths
+    .slice(0, -1)
+    .map(
+      (_, columnIndex) =>
+        columnWidths.slice(0, columnIndex + 1).reduce((sum, width) => sum + width, 0) -
+        theme.layout.hairline,
+    );
   const availableWidth = Math.max(containerWidth - fixedWidth, 0);
   const overflows = containerWidth > 0 && contentWidth > availableWidth;
   const isMeasured =
@@ -184,15 +193,16 @@ const DataTable: FC<DataTableProps> = ({
                 <RNText style={styles.headerText} testID={`${testID}-header-text-${column.key}`}>
                   {column.header}
                 </RNText>
-
-                {columnIndex < columns.length - 1 && (
-                  <View
-                    style={styles.columnSeparator}
-                    pointerEvents="none"
-                    testID={`${testID}-header-separator-${column.key}`}
-                  />
-                )}
               </View>
+            ))}
+
+            {separatorOffsets.map((offset, columnIndex) => (
+              <View
+                key={columns[columnIndex].key}
+                style={[styles.columnSeparator, { left: offset }]}
+                pointerEvents="none"
+                testID={`${testID}-header-separator-${columns[columnIndex].key}`}
+              />
             ))}
           </Animated.View>
         </View>
@@ -233,7 +243,7 @@ const DataTable: FC<DataTableProps> = ({
         contentContainerStyle={styles.bodyScrollContent}
         testID={`${testID}-body-scroll`}
       >
-        <View style={styles.bodyContent}>
+        <View style={styles.bodyContent} testID={`${testID}-body-content`}>
           {rows.map((row, rowIndex) => (
             <View
               key={row.key}
@@ -275,18 +285,19 @@ const DataTable: FC<DataTableProps> = ({
                     >
                       {cell.text}
                     </RNText>
-
-                    {cellIndex < columns.length - 1 && (
-                      <View
-                        style={styles.columnSeparator}
-                        pointerEvents="none"
-                        testID={`${testID}-separator-${row.key}-${column.key}`}
-                      />
-                    )}
                   </Pressable>
                 );
               })}
             </View>
+          ))}
+
+          {separatorOffsets.map((offset, columnIndex) => (
+            <View
+              key={columns[columnIndex].key}
+              style={[styles.columnSeparator, { left: offset }]}
+              pointerEvents="none"
+              testID={`${testID}-separator-${columns[columnIndex].key}`}
+            />
           ))}
         </View>
       </Animated.ScrollView>

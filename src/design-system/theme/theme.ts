@@ -213,8 +213,11 @@ export const darkTheme = {
     neutralSubtle: 'rgba(118,118,128,0.24)',
     border: '#38383A', // separator (dark)
     // The alternate-row ground of a table: a faint white veil, translucent so it lies over the
-    // opaque `surface` of the fixed column and the scrolled rows alike and reads as one band.
+    // `surface` of the fixed column and the screen background under the scrolled rows alike.
     rowBand: 'rgba(255,255,255,0.04)',
+    // The ground of a table's sum columns (total, average): translucent, so the row band runs
+    // across them too; about the old opaque `sheetBackground` over the black screen.
+    sumTint: 'rgba(255,255,255,0.10)',
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet) on iOS 26+. NOT the opaque `background` token: a
     // modal scrim reads as a frosted dim over whatever screen is behind it —
@@ -276,6 +279,7 @@ const lightColors = {
   neutralSubtle: 'rgba(118,118,128,0.12)',
   border: '#C6C6C8',
   rowBand: 'rgba(0,0,0,0.04)',
+  sumTint: 'rgba(60,60,67,0.06)',
   scrim: 'rgba(0,0,0,0.3)',
   scrimFallback: 'rgba(0,0,0,0.4)',
   entityColors: entityColorsLight,
