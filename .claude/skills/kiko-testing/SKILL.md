@@ -286,6 +286,10 @@ test from being decorative.
   held across runs).
 - A red commit for a missing export or field reads it by a runtime lookup so the file type-checks;
   after the green, tidy the lookup into a typed import or field.
+- When a rule changes, include a DISCRIMINATING case where the old and new rules disagree; a
+  test green under both proves nothing.
+- Prove routing between two tables with divergent mocked tables (`jest.isolateModules` plus
+  `jest.doMock`) when the real tables are equal.
 - The seed list goes through `sweep` (below).
 
 ## Device, engine and configuration traps

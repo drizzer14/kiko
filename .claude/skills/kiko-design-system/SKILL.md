@@ -880,9 +880,22 @@ where they can drift. The pipeline is:
   squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)
   derives its two vertical-gradient stops (lighter top, darker bottom)
   from the one resolved hue via `lightenHex`/`darkenHex`, and
-  `isLightEntityColor` (`entity-tint.ts`, a real WCAG contrast-ratio
-  check, not a naive brightness average) picks a white or dark glyph
-  tint so the SF Symbol on top stays legible on every palette swatch.
+  `prefersDarkGlyph(colorHex, scheme)` (`entity-tint.ts`, a real WCAG
+  contrast-ratio check) picks the glyph tint: dark scheme, black only
+  when white contrasts under 3:1; light scheme, black when black
+  contrasts more than white.
+
+Light palette v3.1 rules (source of truth
+`docs/design/light-palette/palette.json`, plus its `markSwatches`):
+
+- One light set serves entity and category
+  (`categoryColorsLight` equals `entityColorsLight`).
+- Light tiles are exempt from the page 3:1 floor; the glyph and the
+  mark carry the contrast. The glyph needs at least 4.5 on the base and
+  at least 3 on the worst gradient stop.
+- `markColor(hex, scheme)` (`entity-tint.ts`) is the color for icon and
+  line sinks: a gamut-safe chroma clamp with a module cache. The sinks
+  are icon and line tints only; tiles keep the tile color.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
