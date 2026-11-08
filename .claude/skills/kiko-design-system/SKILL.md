@@ -136,7 +136,9 @@ The token categories, defined once in a single theme module (read
 `src/design-system/theme/theme.ts` for the full set):
 
 - **color** — background, surface (per elevation level), primary
-  text, secondary text, accent(s), positive-money, negative-money.
+  text, secondary text, accent(s), positive-money, negative-money, and `fieldBackground`,
+  the input fill (`transparent` in dark, `#FFFFFF` in light; read it in
+  `src/design-system/theme/theme.ts`). Every text-like input uses it, not `surface`.
 - **spacing** — a scale used for all padding/margin/gap; components
   never hardcode a pixel value for spacing.
 - **typography** — font sizes/weights/line-heights for the type

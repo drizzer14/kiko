@@ -15,8 +15,8 @@ describe('parseAppearanceMode', () => {
 });
 
 describe('appearanceModes', () => {
-  it('lists system, light, dark in that order', () => {
-    expect(appearanceModes).toEqual(['system', 'light', 'dark']);
+  it('lists light, system, dark in that order', () => {
+    expect(appearanceModes).toEqual(['light', 'system', 'dark']);
   });
 });
 
