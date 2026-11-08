@@ -25,10 +25,13 @@ jest.mock('./bybit.credentials', () => ({
 
 import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
-import { type FundingMatchRow, write } from '@kiko/db';
+import { holdingsRepo } from '@kiko/holdings/repo';
+import { transactionsRepo } from '@kiko/transactions/repo';
 import { seedWalkMarks } from '@kiko/test-support/walk-marks';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+import { buildSpendingLedger } from '@kiko/statistics/spending-ledger';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
+import { type FundingMatchRow, accounts, database, write } from '@kiko/db';
 import { BinanceWalkStop, exchangeStateDepsOf } from '@kiko/crypto-sync/exchange/walk';
 
 import { NOW } from './bybit.client-test-fixtures';
@@ -379,6 +382,117 @@ describe('the reconcile of the Funding ledger on real SQLite', () => {
         .run('not json', ACCOUNT);
 
       await expect(reconcile()).rejects.toEqual(new BinanceWalkStop('exchange-state-malformed'));
+    });
+  });
+
+  describe('what a listed row can take from its neighbours', () => {
+    const MINUTE_MS = 60_000;
+    const THOUSAND_USDT_MINOR_UNITS = 100_000_000_000;
+    const FIAT_DEBIT_MINOR_UNITS = 415_000;
+
+    const idWhere = (column: 'external_id' | 'description', value: string): string =>
+      (
+        mockDatabase.prepare(`SELECT id FROM transactions WHERE ${column} = ?`).get(value) as {
+          id: string;
+        }
+      ).id;
+
+    const idOf = (externalId: string): string => idWhere('external_id', externalId);
+
+    const idByDescription = (description: string): string => idWhere('description', description);
+
+    const setMarker = (externalId: string, marker: string | null): void => {
+      mockDatabase
+        .prepare('UPDATE transactions SET untracked_counterpart = ? WHERE external_id = ?')
+        .run(marker, externalId);
+    };
+
+    const excludedIds = async (): Promise<ReadonlySet<string>> => {
+      const holdings = await holdingsRepo.allQuery();
+
+      return buildSpendingLedger({
+        transactions: await transactionsRepo.listAllQuery(),
+        holdings,
+        accounts: await database.select().from(accounts),
+        shownHoldings: holdings,
+      }).excludedTransactionIds;
+    };
+
+    const loanCandidateIds = async (): Promise<string[]> =>
+      (await transactionsRepo.loanMatchCandidatesQuery({ minTime: 0, currencies: ['USDT'] })).map(
+        ({ id }) => id,
+      );
+
+    // A credit one minute after the Out row, of the same amount on another holding, is the partner
+    // the transfer matcher would take. A bank debit before the In row, of a total in fiat, is the
+    // funding the funding matcher would pair with an exchange row of that code. A debit of the
+    // Out row's amount is a loan payment candidate.
+    const seedNeighbours = async (): Promise<void> => {
+      mockDatabase.exec(`
+        INSERT INTO accounts (id, name, kind) VALUES ('cash-account', 'Cash', 'cash');
+        INSERT INTO accounts (id, name, kind) VALUES ('bank-account', 'Bank', 'bank');
+        INSERT INTO holdings (id, account_id, name, type, currency)
+          VALUES ('cash', 'cash-account', 'Cash', 'cash', 'USDT');
+        INSERT INTO holdings (id, account_id, name, type, currency)
+          VALUES ('card', 'bank-account', 'Card', 'card', 'UAH');
+      `);
+
+      for (const neighbour of [
+        {
+          holdingId: 'cash',
+          amountMinorUnits: THOUSAND_USDT_MINOR_UNITS,
+          time: ago(10) + MINUTE_MS,
+          description: 'partner credit',
+        },
+        {
+          holdingId: 'cash',
+          amountMinorUnits: -THOUSAND_USDT_MINOR_UNITS,
+          time: ago(5),
+          description: 'loan candidate',
+        },
+        {
+          holdingId: 'card',
+          amountMinorUnits: -FIAT_DEBIT_MINOR_UNITS,
+          time: ago(20) - 10 * MINUTE_MS,
+          description: 'bank debit',
+        },
+      ]) {
+        await transactionsRepo.add({ ...neighbour, source: 'manual' });
+      }
+    };
+
+    it('a listed row stays out of spending and of the transfer, funding and loan matchers', async () => {
+      await store([
+        ledgerRowOf(ledgerKey('in'), ago(20), { amount: '4150' }),
+        ledgerRowOf(ledgerKey('out'), ago(10), { amount: '1000', direction: 'O' }),
+      ]);
+      await reconcile();
+      await seedNeighbours();
+
+      const inId = idOf(ledgerKey('in'));
+      const outId = idOf(ledgerKey('out'));
+      const partnerId = idByDescription('partner credit');
+      const bankDebitId = idByDescription('bank debit');
+      const loanCandidateId = idByDescription('loan candidate');
+
+      const excluded = await excludedIds();
+
+      // Both rows are out of spending, in either direction, and neither takes a neighbour.
+      expect(excluded.has(inId)).toBe(true);
+      expect(excluded.has(outId)).toBe(true);
+      expect(excluded.has(partnerId)).toBe(false);
+      expect(excluded.has(bankDebitId)).toBe(false);
+      expect(await loanCandidateIds()).toEqual([loanCandidateId]);
+
+      // Without the marker the same rows take them, so the marker is what keeps the neighbours.
+      setMarker(ledgerKey('out'), null);
+      setMarker(ledgerKey('in'), 'p2p:UAH:4150.00');
+
+      const unmarked = await excludedIds();
+
+      expect(unmarked.has(partnerId)).toBe(true);
+      expect(unmarked.has(bankDebitId)).toBe(true);
+      expect((await loanCandidateIds()).sort()).toEqual([loanCandidateId, outId].sort());
     });
   });
 
