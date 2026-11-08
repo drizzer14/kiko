@@ -1088,6 +1088,11 @@ have their own, older, pre-existing chunking — don't assume they use
   npx jest __tests__/generate-mcc-names.test.ts --maxWorkers=2`. Stryker globs `.ts`/`.tsx`, and
   neither the pre-write guard nor guard-replay reads JSON, so check the file with
   `./node_modules/.bin/biome check <file>` and the data pins in `mcc-names.test.ts`.
+  `src/categories/mcc-names/` holds `mcc-names.ts` (re-exports `MCC_NAMES_NOTICE`),
+  `mcc-names.notice.ts` (licence text; the Sominemo MIT notice ships as bundled text, no screen),
+  `mcc-names.data.json`, `mcc-names.test.ts` and `index.ts`. Pins that compare an internal file
+  with its barrel live in the colocated `src/categories/mcc-names/mcc-names.test.ts`, not in
+  `__tests__/`.
 
 ## Repository module shape
 
