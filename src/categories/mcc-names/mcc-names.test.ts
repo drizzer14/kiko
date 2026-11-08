@@ -1,18 +1,6 @@
 import { categoryForMcc } from '@kiko/monobank/mcc-category';
 
-type MccName = { code: string; en: string; uk: string };
-
-type MccNamesModule = {
-  MCC_NAMES: readonly MccName[];
-  MCC_NAME_SEPARATOR: string;
-  mccNameOf: (code: string, language: string) => string | undefined;
-  mccLabelOf: (code: string, language: string) => string;
-};
-
-// A runtime lookup keeps the typecheck green while the module is not written yet.
-const { MCC_NAMES, MCC_NAME_SEPARATOR, mccNameOf, mccLabelOf } = jest.requireActual(
-  './mcc-names',
-) as MccNamesModule;
+import { MCC_NAMES, MCC_NAME_SEPARATOR, mccNameOf, mccLabelOf } from './mcc-names';
 
 const MEASURED_CODE_COUNT = 981;
 const CODE_PATTERN = /^\d{4}$/;

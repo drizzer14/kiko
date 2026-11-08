@@ -396,12 +396,6 @@ verified usage, not dead weight:
   `__tests__/deps-ranges.test.ts`, which spawns the script as a child
   process against a fixture `package.json`, not an import, so Jest's
   coverage does not make Knip see it as reachable either.
-- **`knip.json` `ignore`**: `scripts/mcc-names/generate-mcc-names.js` — the dependency-free
-  generator of the bundled MCC names. Its only caller is `__tests__/generate-mcc-names.test.ts`,
-  which loads it by a computed path (`require(GENERATOR_PATH)`, so the pins run while the file is
-  missing and the staged typecheck passes), never a static import Knip's scan can follow, so Knip
-  reports it as an unused file. Exercised directly by that test, including the `KIKO_REGEN_MCC=1`
-  regeneration that writes the data file.
 - **`scripts/checks/feature-imports.js`'s `TEST_ONLY` allowlist**
   (`kiko-feature-imports`): the paths below may be imported deep, through
   `@kiko/<path>`, and only by a test file. No barrel may export them

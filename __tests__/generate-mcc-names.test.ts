@@ -1,30 +1,33 @@
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
+import type { MccName } from '@kiko/categories/mcc-names';
 
-type MccName = { code: string; en: string; uk: string };
+import {
+  MCC_SOURCES,
+  verifySource,
+  buildMccNames,
+  renderMccNamesJson,
+  renderReviewTable,
+} from '../scripts/mcc-names/generate-mcc-names';
+
 type GregglesRow = {
   mcc: string | number;
   edited_description: string;
   combined_description: string;
 };
 type SominemoFile = Record<string, { uk: string; ru: string }>;
-type BuildResult = { entries: MccName[]; report: { dropped: string[] } };
-type Source = { url: string; commit: string; sha256: string; license: string };
-type Generator = {
-  MCC_SOURCES: { greggles: Source; sominemo: Source };
-  verifySource: (text: string, expectedSha256: string) => void;
-  buildMccNames: (input: { greggles: GregglesRow[]; sominemo: SominemoFile }) => BuildResult;
-  renderMccNamesJson: (entries: MccName[]) => string;
-  renderReviewTable: (entries: MccName[]) => string;
-};
 
 const REPOSITORY_ROOT = join(__dirname, '..');
-const GENERATOR_PATH = join(REPOSITORY_ROOT, 'scripts/mcc-names/generate-mcc-names.js');
 const DATA_PATH = join(REPOSITORY_ROOT, 'src/categories/mcc-names/mcc-names.data.json');
 
-// A runtime lookup, so the staged typecheck passes while the module is missing.
-const generator = (): Generator => require(GENERATOR_PATH);
+const generator = () => ({
+  MCC_SOURCES,
+  verifySource,
+  buildMccNames,
+  renderMccNamesJson,
+  renderReviewTable,
+});
 
 const row = (mcc: string | number, edited: string, combined: string = edited): GregglesRow => ({
   mcc,

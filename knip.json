@@ -29,8 +29,7 @@
     "scripts/checks/mutation-score.js",
     "scripts/checks/mutation-rerun.js",
     "scripts/checks/comment-only-changes.js",
-    "scripts/checks/mutation-ranges.js",
-    "scripts/mcc-names/generate-mcc-names.js"
+    "scripts/checks/mutation-ranges.js"
   ],
   "ignoreDependencies": [
     "@babel/runtime",
