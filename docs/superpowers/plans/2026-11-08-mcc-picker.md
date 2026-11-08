@@ -233,8 +233,9 @@ renderReviewTable(entries): string // TSV: code, en, uk
   - `uses the U+02BC apostrophe in every Ukrainian name` (no `'` or U+2019 between two Cyrillic
     letters; regex as in `uk.catalog-rules.test.ts`).
   - `holds the common codes`: 5411, 5812, 4829, 6011, `0742` with its leading zero.
-  - `names every code the category map knows`: each code 0-9999 with `categoryForMcc(code) !==
-    'other'` (from `@kiko/monobank/mcc-category`) has an entry; a gap is a stop-and-report.
+  - `names every code the category map knows except the codes the sources leave out`: the mapped
+    codes 0-9999 (`categoryForMcc(code) !== 'other'`) with no entry `toEqual` 3791-3999 without
+    3816 and 3835, then 6540 (209 codes; they show as their digits, spec 3.3, 5.4).
   - `mccNameOf gives the name per language and undefined for an unlisted code`; `treats a language
     other than uk as en`.
   - `mccLabelOf joins code and name with an en dash and shows an unlisted code as its digits`

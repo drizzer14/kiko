@@ -111,7 +111,8 @@ commit each of those gaps is also absent from greggles, so no greggles code lack
 (3.2). En casing in 3000-3999 as written (Q-MCC4), for the user:
 419 of the 683 en texts are all capitals, 264 are not; examples: `3000` "UNITED AIRLINES",
 `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", `3351` "AFFILIATED AUTO RENTAL", and `3003`
-"Airlines" (a generic text, 3003 is one of many such codes).
+"Airlines" (a generic text, 3003 is one of many such codes). The category map knows 209 codes the
+sources do not name (3791-3999 except 3816 and 3835, and 6540); they show as their digits.
 
 Presence: `5411` "Grocery Stores, Supermarkets" / «Продукти»; `5812` "Eating places and
 Restaurants" / «Кафе. Ресторани»; `4829` "Money Orders – Wire Transfer" (U+2013 in the en text) /
