@@ -19,11 +19,7 @@ const ACCOUNT_NAMES = new Map([['account-1', 'Main card']]);
 
 const accountNameOf = (accountId: string): string | null => ACCOUNT_NAMES.get(accountId) ?? null;
 
-// Widened here because the card's `mccLabelOf` option is added to `RuleSummaryOptions` after these
-// pins; a variable (not a literal) passes today and stays valid once the option is declared.
-type RuleRowsOptions = Parameters<typeof ruleRows>[1] & {
-  mccLabelOf: (mccText: string) => string;
-};
+type RuleRowsOptions = Parameters<typeof ruleRows>[1];
 
 const optionsOf = (clock: TimeClock): RuleRowsOptions => ({
   t: i18n.t,
@@ -167,14 +163,12 @@ describe('ruleRows', () => {
     const received: [number, Currency][] = [];
 
     ruleRows([{ type: 'amount', operator: 'eq', minorUnits: 100000, currency: 'BTC' }], {
-      t: i18n.t,
-      clock: CLOCK_24,
+      ...optionsOf(CLOCK_24),
       formatAmount: (minorUnits, currency) => {
         received.push([minorUnits, currency]);
 
         return '0.00100000 BTC';
       },
-      accountNameOf,
     });
 
     expect(received).toEqual([[100000, 'BTC']]);

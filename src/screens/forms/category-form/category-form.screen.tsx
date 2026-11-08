@@ -24,6 +24,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import type { TextInputInstance } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Text from '@kiko/design-system/components/text';
+import { mccLabelOf } from '@kiko/categories/mcc-names';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
@@ -79,6 +80,7 @@ const ruleLinesOf = (
   accounts: readonly AccountRow[],
   t: TFunction,
   clock: TimeClock,
+  language: string,
 ): RuleLine[] => {
   const prepared = prepareRules(rules);
   // An id in no row is a deleted account: it names no holding, so its rule matches nothing.
@@ -97,6 +99,7 @@ const ruleLinesOf = (
         clock,
         formatAmount: formatRuleAmount,
         accountNameOf,
+        mccLabelOf: (mccText) => mccLabelOf(mccText, language),
       });
 
       return { id: rule.id, rows, summary: ruleSummary(rows), isReadable: true };
@@ -141,7 +144,7 @@ const saveEdits = async (
 const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) => {
   const { categoryKey } = route.params;
   const isEdit = categoryKey !== undefined;
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
   const scheme = useActiveColorScheme();
   const clock = useTimeClock();
@@ -198,8 +201,11 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const isDefault = categoryKey === defaultCategoryKey;
   const lines = useMemo(
-    () => foldMap(maybe(categoryKey), (key) => ruleLinesOf(rules, key, accounts, t, clock)) ?? [],
-    [rules, categoryKey, accounts, t, clock],
+    () =>
+      foldMap(maybe(categoryKey), (key) =>
+        ruleLinesOf(rules, key, accounts, t, clock, i18n.language),
+      ) ?? [],
+    [rules, categoryKey, accounts, t, clock, i18n.language],
   );
 
   const trimmedName = name.trim();
