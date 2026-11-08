@@ -1,5 +1,7 @@
 import { categoryForMcc } from '@kiko/monobank/mcc-category';
 
+import { MCC_NAMES_NOTICE } from './mcc-names.notice';
+import { MCC_NAMES_NOTICE as BARREL_NOTICE } from '.';
 import { MCC_NAMES, MCC_NAME_SEPARATOR, mccNameOf, mccLabelOf } from './mcc-names';
 
 const MEASURED_CODE_COUNT = 981;
@@ -94,6 +96,12 @@ describe('mccNameOf', () => {
   it('treats a language other than uk as en', () => {
     expect(mccNameOf('5411', 'de')).toBe(nameOfCode('5411')?.en);
     expect(mccNameOf('5411', '')).toBe(nameOfCode('5411')?.en);
+  });
+});
+
+describe('bundled MCC names notice', () => {
+  it('reaches the notice from the module the rule card imports', () => {
+    expect(BARREL_NOTICE).toBe(MCC_NAMES_NOTICE);
   });
 });
 
