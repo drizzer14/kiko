@@ -24,11 +24,15 @@ import {
   resolveRowHeights,
 } from './data-table.layout';
 import { styles } from './data-table.styles';
-import type { DataTableProps } from './data-table.props';
+import type { DataTableProps, DataTableRow } from './data-table.props';
 
 const STICKY_HEADER_INDICES = [1];
 
 const NO_WIDTHS: Record<string, number> = {};
+
+// Every second body row takes the band, the first stays plain; the total row keeps the plain
+// ground that sets it apart.
+const isBanded = (row: DataTableRow, rowIndex: number) => rowIndex % 2 === 1 && !row.isSummary;
 
 const HIDDEN_FROM_ACCESSIBILITY = {
   accessibilityElementsHidden: true,
@@ -180,6 +184,14 @@ const DataTable: FC<DataTableProps> = ({
                 <RNText style={styles.headerText} testID={`${testID}-header-text-${column.key}`}>
                   {column.header}
                 </RNText>
+
+                {columnIndex < columns.length - 1 && (
+                  <View
+                    style={styles.columnSeparator}
+                    pointerEvents="none"
+                    testID={`${testID}-header-separator-${column.key}`}
+                  />
+                )}
               </View>
             ))}
           </Animated.View>
@@ -191,10 +203,14 @@ const DataTable: FC<DataTableProps> = ({
   const bodyNode = (
     <View style={styles.bodyRow} testID={`${testID}-body-row`}>
       <View style={[styles.fixedColumn, { width: fixedWidth }]} testID={`${testID}-fixed-column`}>
-        {rows.map((row) => (
+        {rows.map((row, rowIndex) => (
           <View
             key={row.key}
-            style={[styles.fixedRow, { minHeight: rowHeights[row.key] }]}
+            style={[
+              styles.fixedRow,
+              isBanded(row, rowIndex) && styles.bandedRow,
+              { minHeight: rowHeights[row.key] },
+            ]}
             testID={`${testID}-fixed-row-${row.key}`}
           >
             <RNText
@@ -214,13 +230,18 @@ const DataTable: FC<DataTableProps> = ({
         scrollEnabled={overflows}
         showsHorizontalScrollIndicator={false}
         style={styles.bodyScroll}
+        contentContainerStyle={styles.bodyScrollContent}
         testID={`${testID}-body-scroll`}
       >
-        <View>
-          {rows.map((row) => (
+        <View style={styles.bodyContent}>
+          {rows.map((row, rowIndex) => (
             <View
               key={row.key}
-              style={[styles.scrolledRow, { minHeight: rowHeights[row.key] }]}
+              style={[
+                styles.scrolledRow,
+                isBanded(row, rowIndex) && styles.bandedRow,
+                { minHeight: rowHeights[row.key] },
+              ]}
               testID={`${testID}-scrolled-row-${row.key}`}
             >
               {row.cells.map((cell, cellIndex) => {
@@ -254,6 +275,14 @@ const DataTable: FC<DataTableProps> = ({
                     >
                       {cell.text}
                     </RNText>
+
+                    {cellIndex < columns.length - 1 && (
+                      <View
+                        style={styles.columnSeparator}
+                        pointerEvents="none"
+                        testID={`${testID}-separator-${row.key}-${column.key}`}
+                      />
+                    )}
                   </Pressable>
                 );
               })}

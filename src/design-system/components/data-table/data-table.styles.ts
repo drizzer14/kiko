@@ -62,6 +62,28 @@ export const styles = StyleSheet.create((theme) => ({
   bodyScroll: {
     flex: 1,
   },
+  // The rows fill the room beside the fixed column even when every column fits, so a band runs to
+  // the table's right edge.
+  bodyScrollContent: {
+    flexGrow: 1,
+  },
+  bodyContent: {
+    flexGrow: 1,
+  },
+  // Translucent, so it lies over the opaque ground of the fixed column and of the scroll alike.
+  bandedRow: {
+    backgroundColor: theme.colors.rowBand,
+  },
+  // Drawn over the cell's right edge, outside its layout: a border would take the hairline from
+  // the text's room, and the measured column width would not hold the amount on one line.
+  columnSeparator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: theme.layout.hairline,
+    backgroundColor: theme.colors.border,
+  },
   fixedRow: {
     justifyContent: 'center',
     paddingHorizontal: theme.spacing(CELL_PADDING_UNITS),
