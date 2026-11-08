@@ -18,6 +18,7 @@ import { reportWindow } from '@kiko/test-support/window-size';
 import { paramsAfter } from '@kiko/test-support/navigation-props';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
@@ -171,20 +172,15 @@ describe('TablesScreen', () => {
       describe('then a tap on a row of its sheet', () => {
         // The routes the stack holds under this screen, which it reads when a row is pressed.
         const FORM_OF_GROCERIES = { name: 'TransactionForm', params: { transactionId: 'e1' } };
+        const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
 
         const rowPressed = async (stack: object[] = []) => {
           const rendered = await tapped(`Groceries, ${SPENT_IN}`);
 
           rendered.navigation.getState.mockReturnValue({ routes: [...stack, { name: 'Tables' }] });
-          // The Modal leaves the tree once the sheet is hidden, and an event is not fired on an
-          // unmounted element, so its dismiss handler is read before the press: the native side
-          // calls it when the close has finished.
-          const { onDismiss } = rendered.getByTestId('cell-rows-sheet-modal').props;
 
           await fireEvent.press(rendered.getByTestId('cell-row-e1'));
-          await act(async () => {
-            onDismiss();
-          });
+          await modal.finishClosing();
 
           return rendered.navigation;
         };

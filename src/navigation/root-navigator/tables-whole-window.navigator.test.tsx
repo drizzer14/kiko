@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { reportWindow } from '@kiko/test-support/window-size';
 import { act, fireEvent } from '@testing-library/react-native';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
@@ -550,6 +551,8 @@ describe('Tables is in a layer over both panes', () => {
   // closed. The world holds the spending `e1` (Groceries) and `e2` (Transport), so the Total cell
   // of Groceries lists `e1`.
   describe('a row of a cell opens its form', () => {
+    const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
+
     const formsOf = (tab: string): StackRoute[] =>
       stackOf(tab).routes.filter(({ name }) => name === 'TransactionForm');
 
@@ -557,15 +560,9 @@ describe('Tables is in a layer over both panes', () => {
       await act(async () => {
         await fireEvent.press(rendered.getByLabelText('Groceries, Total'));
       });
-      // The Modal leaves the tree once the sheet is hidden, and an event is not fired on an
-      // unmounted element, so its dismiss handler is read before the press: the native side calls
-      // it when the close has finished.
-      const { onDismiss } = rendered.getByTestId('cell-rows-sheet-modal').props;
 
       await fireEvent.press(rendered.getByTestId('cell-row-e1'));
-      await act(async () => {
-        onDismiss();
-      });
+      await modal.finishClosing();
     };
 
     const openFormOf = async (transactionId: string): Promise<void> => {

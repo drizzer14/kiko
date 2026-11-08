@@ -31,10 +31,6 @@ const hookOf = () =>
   );
 
 describe('useCellRowsSheet', () => {
-  beforeEach(() => {
-    onOpenTransaction.mockClear();
-  });
-
   it('has no sheet before a cell is opened', async () => {
     const { result } = await hookOf();
 

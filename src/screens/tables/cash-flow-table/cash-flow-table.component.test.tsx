@@ -13,6 +13,7 @@ import {
   transactionRow,
   worldInput,
 } from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 
 import CashFlowTable from '.';
 
@@ -284,6 +285,7 @@ describe('CashFlowTable', () => {
   });
 
   describe('a cell that opens the rows behind it', () => {
+    const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
     const HINT = i18n.t('tables.cellRows.hint');
     // 0 January, 1 February, 2 March, 3 April, 4 May, 5 June, 6 Total, 7 Average. The columns
     // of each line that hold an amount, which are the ones that open.
@@ -432,18 +434,12 @@ describe('CashFlowTable', () => {
 
     it('opens the credit of a pressed income row after the sheet closes', async () => {
       const { rendered } = await pressed(propsOf(WORLD), 'income', 0);
-      // The Modal leaves the tree once the sheet is hidden, and an event is not fired on an
-      // unmounted element, so its dismiss handler is read before the press: the native side calls
-      // it when the close has finished.
-      const { onDismiss } = rendered.getByTestId('cell-rows-sheet-modal').props;
 
       await fireEvent.press(rendered.getByTestId('cell-row-salary-jan'));
 
       expect(onOpenTransaction).not.toHaveBeenCalled();
 
-      await act(async () => {
-        onDismiss();
-      });
+      await modal.finishClosing();
 
       expect(onOpenTransaction).toHaveBeenCalledTimes(1);
       expect(onOpenTransaction).toHaveBeenCalledWith('salary-jan');

@@ -14,6 +14,7 @@ import {
   transactionRow,
   worldInput,
 } from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 
 import CategoryTable from '.';
 
@@ -469,22 +470,15 @@ describe('CategoryTable', () => {
     });
 
     describe('a pressed row', () => {
-      // The Modal leaves the tree once the sheet is hidden, and an event is not fired on an
-      // unmounted element, so its dismiss handler is read before the press: the native side calls
-      // it when the close has finished.
+      const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
+
       const pressRow = async (
         rendered: Awaited<ReturnType<typeof shown>>['rendered'],
         rowId: string,
       ) => {
-        const { onDismiss } = rendered.getByTestId('cell-rows-sheet-modal').props;
-
         await fireEvent.press(rendered.getByTestId(`cell-row-${rowId}`));
 
-        return async () => {
-          await act(async () => {
-            onDismiss();
-          });
-        };
+        return modal.finishClosing;
       };
 
       it('opens the transaction of a pressed row after the sheet closes', async () => {
