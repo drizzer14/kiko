@@ -129,7 +129,9 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
 
   // The Duo unfolded in landscape: a side bar on a window with room for two panes. The vertical
   // bar is the system's own trait, the layout mode the app's own test for that room, so a folded
-  // Duo (one page) and a portrait Duo (a bottom bar) keep the period in its own row.
+  // Duo (one page) and a portrait Duo (a bottom bar) keep the period in its own row. The mode is
+  // the settled one: a pose change that shows the raw mode for one frame would move the period
+  // field and close a Period sheet that is open.
   const verticalBarEdge = useVerticalBarEdge();
   const layoutMode = useSettledLayoutMode();
   const isPeriodBesideFilters = verticalBarEdge !== 'none' && layoutMode === 'columns';
