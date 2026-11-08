@@ -21,23 +21,24 @@ number pad, `MCC_DIGITS` digits, hint `ruleForm.mccHint`. The user sees MCCs now
 
 In: a bundled MCC name list (code, en, uk) and its generator; a live read of the user's own codes
 with counts; the picker field in the rule form; the rule card on the category page shows the same
-"code – name" label (Q-MCC3); the MIT notice for the uk names (Q-MCC2).
+"code – name" label (Q-MCC3); the MIT notice for the uk names, bundled as text (Q-MCC2 D).
 
 Out: any change to the stored rule (`{ type: 'mcc'; code: number }`), the parser, the matcher,
 `EXPORT_VERSION`, the database schema; MCC names anywhere else in the app (transaction rows,
 statistics); runtime download of any list; a migration or an index.
 
-## 2. Decisions taken and pending
+## 2. Decisions taken
 
-| # | Question | State | Answer used by the plan |
+User answers 2026-11-08 21:20, relayed by the coordinator; binding.
+
+| # | Question | Answer | was: (the default the plan offered) |
 |---|---|---|---|
-| Q-MCC1 | Accept community sources (low provenance risk) | PENDING USER, default yes | greggles + Sominemo, section 3 |
-| Q-MCC2 | Where the MIT notice ships | PENDING USER, default A | A: Settings row "Acknowledgements" + plain text page. B: own uk names for every code, no notice. C: a credit line in the picker |
-| Q-MCC3 | The rule card on the category page shows "5411 – Grocery Stores, Supermarkets" too | PENDING USER, default yes | yes: one label everywhere a stored code shows (section 6) |
-| Q-MCC4 | en and uk names shown as the sources write them (source casing and punctuation): 419 of the 683 en names in 3000-3999 are all capitals, for example `3000` "UNITED AIRLINES", `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", next to `3003` "Airlines"; in uk those codes read «Авіалінії», «Готелі. Курорти» (section 3.3) | PENDING USER, default yes | yes: data, not UI copy (section 3.4) |
+| Q-MCC1 | Accept community sources (low provenance risk) | YES: greggles + Sominemo, section 3 | default yes (same) |
+| Q-MCC2 | Where the MIT notice ships | D (a new option): the notice text ships bundled in the app in `src/categories/mcc-names/mcc-names.notice.ts`; no screen (section 7) | default A: a Settings row "Acknowledgements" and a plain text page, with 5 catalogue keys (plan task 10/10, now dropped, never built) |
+| Q-MCC3 | The rule card on the category page shows "5411 – Grocery Stores, Supermarkets" too | YES: one label everywhere a stored code shows (section 6) | default yes (same) |
+| Q-MCC4 | en and uk names shown as the sources write them (source casing and punctuation): 419 of the 683 en names in 3000-3999 are all capitals, for example `3000` "UNITED AIRLINES", `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", next to `3003` "Airlines"; in uk those codes read «Авіалінії», «Готелі. Курорти» (section 3.3) | YES, as the sources write them: data, not UI copy (section 3.4) | default yes (same) |
 
-The plan builds on every default and does not wait for the answers. What each "no" keeps, drops
-and re-pins (with the "was:" pin edits): plan section "Pending defaults".
+The UI strings of section 9 (12 rows) are approved as written. Plan section "User answers".
 
 ## 3. Data
 
@@ -48,16 +49,16 @@ and re-pins (with the "was:" pin edits): plan section "Pending defaults".
 | codes, en names | `https://github.com/greggles/mcc-codes`, `mcc_codes.json` | `df792275c567946119a8903d36dbd33e44a248bf` | Unlicense (public domain), no attribution required |
 | uk names | `https://github.com/Sominemo/MCC-Localize-Dataset`, file named in the research as `mcc-loc.json` | `7b3cbceeb3fbbd6a27dbe489b25abe82552ddff2` | MIT, "Copyright (c) 2020 Sominemo"; the notice must ship |
 
-Measured by plan task 7/10 step 1 (fetched 2026-11-08 from
+Measured by plan task 7/9 step 1 (fetched 2026-11-08 from
 `raw.githubusercontent.com/<owner>/<repo>/<commit>/<file>`, read by path with `JSON.parse` only):
 
 | File (exact name) | Bytes | SHA-256 | Shape |
 |---|---|---|---|
 | greggles `mcc_codes.json` | 265156 | `60fff0a4457e18dd03731a8971f219f2d1e4b22a13c1d930aaac07badbfe8e68` | JSON array of objects; every object has the seven fields `mcc` (string, four digits, leading zeros kept, for example `"0742"`), `edited_description`, `combined_description`, `usda_description`, `irs_description`, `irs_reportable` (strings) and `id` (number) |
 | Sominemo `mcc-loc.json` (the name the research gave is right) | 69063 | `ed32d9bfca87862580d3228b1a23203a07e9a9152b4b1cca6bd2f0c765a01347` | one JSON object keyed by the four-character code string; each value `{ "uk": string, "ru": string }`; no short-name or full-name field, only one uk name per code; file order is by code, but `Object.keys` lists non-padded keys first, so the generator sorts and never relies on key order |
-| Sominemo `LICENSE` (kept for task 10/10) | 1065 | `ea371db4627976fe5c82dacb744ed2deb0391e6d4a23a6aecc9ea64f4858626a` | the standard MIT text, "Copyright (c) 2020 Sominemo": the same text as the research quote |
+| Sominemo `LICENSE` (shipped verbatim in the notice, section 7) | 1065 | `ea371db4627976fe5c82dacb744ed2deb0391e6d4a23a6aecc9ea64f4858626a` | the standard MIT text, "Copyright (c) 2020 Sominemo": the same text as the research quote |
 
-The generator header (task 7/10 step 3) carries these SHA-256 values. Each file is fetched from
+The generator header (task 7/9 step 3) carries these SHA-256 values. Each file is fetched from
 `raw.githubusercontent.com/<owner>/<repo>/<commit>/<file>` into its own new, empty scratch
 directory; the generator reads it by path with `JSON.parse` only and refuses a file whose SHA-256
 differs from the pinned one. Nothing from ISO 18245, Visa or Mastercard documents is copied
@@ -82,7 +83,7 @@ differs from the pinned one. Nothing from ISO 18245, Visa or Mastercard document
 
 ### 3.3 Measured counts (step 1 below; step 5 adds the data file size)
 
-Measured by plan task 7/10 step 1 on 2026-11-08 with a scratch Node script (`JSON.parse` of the two
+Measured by plan task 7/9 step 1 on 2026-11-08 with a scratch Node script (`JSON.parse` of the two
 pinned files; code padded to four digits, en = trimmed `edited_description`, else
 `combined_description`). The research could not count greggles; the 2026-11-03 CSV check of 981 rows
 (plan `docs/superpowers/plans/2026-11-03-category-automation.md`, task 1 step 3) matches.
@@ -137,7 +138,7 @@ Five-row samples, in file order:
 | `1520` | Будівництво. Підрядники |
 | `1711` | Кондиціонери. Встановлення |
 
-Task 7/10 step 5 regenerated `mcc-names.data.json` (981 entries, none dropped): 99224 bytes
+Task 7/9 step 5 regenerated `mcc-names.data.json` (981 entries, none dropped): 99224 bytes
 (about 97 KB, inside the research estimate of 60-100 KB).
 
 ### 3.4 Shape and display
@@ -185,7 +186,7 @@ heading only, never the empty text.
 - Rows returned equal the distinct non-null codes in range (at most 10,000; on the 50,000-row pin,
   exactly the seeded distinct count), never one per transaction; no JavaScript work per transaction.
 - Zero reads while the sheet is closed; on a write while open, one re-read per reactive fire.
-- Measured by a real `node:sqlite` pin on 50,000 seeded rows (task 8/10): statement count,
+- Measured by a real `node:sqlite` pin on 50,000 seeded rows (task 8/9): statement count,
   `EXPLAIN QUERY PLAN` rows, result length and count sum. Wall clock measured by hand and quoted in
   the READY report, as the track's precedent states (plan S13, 2026-11-03). Spec 3.2.3 of the base
   spec measured a 100,000-row GROUP BY scan on a Mac; Statistics already reads every row live, so
@@ -257,16 +258,16 @@ codes" heading and rows; a no-match line when a query empties both sections.
 | Rule card value, code 42 | "0042" | "0042" |
 | Sheet closing (fade) | n/a | own heading only, no empty text |
 | User with no MCC rows (manual only) | n/a | own section heading + empty text; full list usable |
-| App Store reviewer | n/a | own codes after importing the kit's Monobank statement (MCC column checked in plan task 7/10 step 1); else seeded demo rows (plan task 9/10, conditional steps) |
+| App Store reviewer | n/a | own codes after importing the kit's Monobank statement (MCC column checked in plan task 7/9 step 1); else seeded demo rows (plan task 9/9, conditional steps) |
 
-Reviewer kit check (plan task 7/10 step 1, 2026-11-08, read only): the kit folder is
+Reviewer kit check (plan task 7/9 step 1, 2026-11-08, read only): the kit folder is
 `memory/refs/reviewer-kit/` in the main checkout (one folder, untracked). Its
 `kiko-demo-statement-monobank.csv` (64 data rows, a header row, 65 lines) HAS an MCC column: the
 third column, headed `MCC`, with a four-digit value on every one of the 64 rows (14 distinct codes:
 5411 x9, 5814 x7, 5732 x7, 4814 x7, 4121 x7, 5912 x5, 5811 x5, 4829 x4, 4111 x4, 5812 x3, 5818 x2,
 5541 x2, 5815 x1, 4899 x1). The importer reads that column (`COLUMN.mcc: 2` in
 `monobank-csv.format.ts`, mapped in `mapping.ts`), so the reviewer's "Your codes" section fills after
-`Monobank` > Import statement. Result: plan task 9/10 steps 7-8 are skipped. The kit's
+`Monobank` > Import statement. Result: plan task 9/9 steps 7-8 are skipped. The kit's
 `HOW-TO-IMPORT.txt` names the statement but not its MCC column; the Notes for Review (plan "Texts for
 the user") name the path.
 
@@ -280,36 +281,35 @@ language, as `accountNameOf` is resolved today. `describeMatcher` keeps its four
 "0042" (section 5.4). The summary builds no label of its own: the value is exactly the field's
 label, built once.
 
-## 7. Notice (Q-MCC2)
+## 7. Notice (Q-MCC2 D)
 
-Default A: a Settings row "Acknowledgements" (its own card below Help, SF Symbol `doc.text`) opens a
-plain text page: a title, one intro sentence, then per data set its name (catalogue key), its source
-line and its license name, then for Sominemo the MIT text. `doc.text` is in SF Symbols 1.0
-(iOS 13.0+ in `sf-symbols-typescript`), so it exists on the deployment target iOS 18.2
-(kiko-design-system, "SF Symbol availability"; `__tests__/symbol-deployment-target.test.tsx` checks
-the quoted literal).
+The MIT notice ships as bundled text in the app; no screen shows it (user answer D, 2026-11-08).
+was: default A, a Settings row "Acknowledgements" and a plain text page with 5 catalogue keys;
+now: no row, no page, no route, no catalogue key.
 
-Untranslated constants in `src/categories/mcc-names/mcc-names.notice.ts`, shown the same in both
-languages, not catalogue keys: each data set's source line (the repository URL), its license name
-(`The Unlicense`, `MIT License`), and the Sominemo MIT text (copyright line, permission notice,
-warranty paragraph) verbatim from the LICENSE file at the pinned commit. Legal text and URLs are not
-translated, and the MIT text's straight quotes would break the uk catalogue rules. The greggles
-entry (name, source, license name) is the courtesy line: the Unlicense asks for none.
+Untranslated constants in `src/categories/mcc-names/mcc-names.notice.ts` (`MCC_NAMES_NOTICE`,
+keyed as the generator's `MCC_SOURCES`), not catalogue keys: each data set's source line (the
+repository URL), its license name (`The Unlicense`, `MIT License`), and the Sominemo MIT text
+(copyright line, permission notice, warranty paragraph) verbatim from the LICENSE file at the
+pinned commit: its SHA-256 equals the LICENSE row of section 3.1. Legal text and URLs are not
+translated. The greggles entry (source, license name, no text) is the courtesy line: the
+Unlicense asks for none.
 
-B: the generator drops the Sominemo input; a new hand-written uk file (kiko-translator) covers all
-981 codes; no notice and no page.
-C: one caption row at the end of the picker list crediting the uk names, with the MIT text reachable
-from it. What each changes: plan section "Pending defaults".
+Bundled: Metro bundles only modules reachable from the app entry, so `mcc-names.ts` re-exports the
+notice and the barrel `@kiko/categories/mcc-names` (imported by the rule card's screen) carries it
+into the release bundle. A jest pin checks the hash and the barrel reach (plan task 7/9 step 11);
+the release bundle is checked once on a device build with `scripts/bundle-contains.js` (plan
+"Closing steps (track end)").
 
 ## 8. Compliance, i18n, export, help
 
 - Guideline 2.5.19: no flag; the picker shows on every mcc condition, and its own section shows its
   empty text with no data. The demo rows hold `mcc: null` (accepted in base plan S22). The reviewer
   reaches "Your codes" by importing the reviewer kit's fake Monobank statement when it has an MCC
-  column (plan task 7/10 step 1 checks); if it has none, plan task 9/10 seeds `mcc` on a few demo
-  Monobank rows and regenerates both demo `.kiko` files. The Notes for Review name the picker, the
-  own-codes path and Acknowledgements (plan "Texts for the user"). The Acknowledgements row shows on
-  every install. No demo or seed import from `src/`.
+  column (plan task 7/9 step 1 checks); if it has none, plan task 9/9 seeds `mcc` on a few demo
+  Monobank rows and regenerates both demo `.kiko` files. The Notes for Review name the picker and the
+  own-codes path (plan "Texts for the user"). The MIT notice is bundled text in every install, on
+  no screen (section 7). No demo or seed import from `src/`.
 - No network call, SDK or permission; the list is bundled data (2.5.2 not touched). App Privacy
   unchanged.
 - Trademarks: the en names of codes 3000-3999 (airlines, hotels, car rental) are the sources' descriptive text, no
@@ -319,14 +319,14 @@ from it. What each changes: plan section "Pending defaults".
 - Help: unchanged. `help.topics.categoryRules.steps.2` already names "the merchant code"; the
   picker explains itself.
 - i18n: both catalogues together; plurals `_one/_few/_many/_other` in both; uk apostrophe U+02BC;
-  the sheet title and the page title in `src/i18n/locales/title-keys.ts`. Removed or renamed keys:
+  the sheet title in `src/i18n/locales/title-keys.ts`. Removed or renamed keys:
   none. One changed copy: `ruleForm.errorMcc`.
 
-## 9. Texts (drafts; kiko-translator decides, the user approves)
+## 9. Texts (APPROVED by the user 2026-11-08 21:20)
 
-16 new keys (the plural group counted once; 11 picker, 5 Acknowledgements) and one changed copy:
-17 rows. Plus user-visible texts that are code constants, listed for the user too: the separator
-` – ` (section 3.4) and the notice constants (section 7).
+11 new keys (the plural group counted once) and one changed copy: 12 rows. Plus the user-visible
+code constant, the separator ` – ` (section 3.4). The notice constants (section 7) show on no
+screen. The 5 Acknowledgements keys of the earlier draft are dropped with Q-MCC2 D.
 
 | Key | en | uk |
 |---|---|---|
@@ -342,11 +342,6 @@ from it. What each changes: plan section "Pending defaults".
 | `ruleForm.mccNoMatch` | No codes match your search. | Немає кодів за вашим запитом. |
 | `ruleForm.mccTransactionCount_one/_few/_many/_other` | `{{count}} transaction`; the rest `{{count}} transactions` | `{{count}} транзакція` / `{{count}} транзакції` / `{{count}} транзакцій` / `{{count}} транзакції` |
 | `ruleForm.errorMcc` (changed) | was: Enter a four-digit code. now: Select a code or enter four digits. | was: Введіть чотиризначний код. now: Оберіть код або введіть чотири цифри. |
-| `settings.acknowledgements` (Q-MCC2 A) | Acknowledgements | Подяки |
-| `acknowledgements.title` (title key) | Acknowledgements | Подяки |
-| `acknowledgements.intro` | Kiko uses these open data sets. Their licenses are below. | Кіко використовує ці відкриті набори даних. Їхні ліцензії наведено нижче. |
-| `acknowledgements.mccNamesEnglish` | Merchant code names in English | Назви кодів продавців англійською |
-| `acknowledgements.mccNamesUkrainian` | Merchant code names in Ukrainian | Назви кодів продавців українською |
 
 Data texts for the user: every uk name (Sominemo) and the en names, as one review table written
-by the regeneration run (plan task 7/10).
+by the regeneration run (plan task 7/9).

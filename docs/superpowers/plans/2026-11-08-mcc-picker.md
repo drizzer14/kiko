@@ -38,8 +38,8 @@ symbol, not a line: re-grep each fact on the actual base before building on it.
 - UI: shared components and theme tokens only; no new design-system component; no import across
   screen folders. `1.4-light-scheme` then applies by itself.
 - Guideline 2.5.19: no flag; the picker and its empty state show with no data; the reviewer has a
-  path to "Your codes" (task 7/10 step 1, task 9/10 steps 7-8); the Acknowledgements row shows on
-  every install.
+  path to "Your codes" (task 7/9 step 1, task 9/9 steps 7-8). The MIT notice ships as bundled text
+  in every install (`mcc-names.notice.ts`, task 7/9 steps 11-12); no screen shows it (Q-MCC2 D).
 - A catalogue key added or a copy line changed: same step in `en.ts` and `uk.ts`; kiko-translator
   casing and full-stop rules by role; plurals `_one/_few/_many/_other` in both; uk apostrophe
   U+02BC; uk says «Кіко», «натиснути»; a sheet or nav title key goes in `title-keys.ts`. Removed or
@@ -57,17 +57,16 @@ symbol, not a line: re-grep each fact on the actual base before building on it.
   `make verify`, `check:all` or full jest. Mutation: the coordinator's queued gate per task with
   `KIKO_MUTATION_BASE` = that task's own base commit, never a whole-branch run; gates are paused by
   the user, so none is scheduled until lifted.
-- **Merge rule (binding):** tasks 7/10, 8/10 and 9/10 do NOT merge into `next` until task 10/10's
-  verify is green; the four tasks merge into `next` together, after the texts' approval. Task 7/10
-  bundles MIT-licensed uk names whose notice ships in task 10/10, so a tip without task 10/10 never
-  reaches `next` or a release. Each task still gets its own READY FOR VERIFY and verify. If an
-  answer drops task 10/10 (Q-MCC1 "no", Q-MCC2 B), the gate is the green verify of the tip that
-  holds the revert commits.
+- **Merge gate:** each task merges into `next` on its own green verify, in order 7/9, 8/9, 9/9.
+  Task 7/9 carries the MIT notice with the uk names it bundles (steps 11-12), so no tip holds the
+  names without the notice. The texts are approved (user, 2026-11-08 21:20; "Texts for the user").
+  Task 9/9 also needs the track-end designer check, the sim check and the user's device confirm
+  before its merge (UI).
 - No duration estimate anywhere; whoever needs one uses `kiko:estimator`.
 
 Run-log gaps (`run-log.mjs stats --gaps --repo kiko`, read 2026-11-08): this plan closes none and
 leaves all open. Nearest, left open: `20261015T1035-kiko-release-1-2/3` (rule-form barrel for a demo
-test; the conditional demo steps of task 9/10 add a builder pin, not a rule-form demo test) and
+test; the conditional demo steps of task 9/9 add a builder pin, not a rule-form demo test) and
 `20261025T1318-kiko-empty-selectors/6` (created-option pickers repeat open-guard-create; the MCC
 picker creates nothing).
 
@@ -75,23 +74,27 @@ picker creates nothing).
 
 1. The first tap on a row while the search keyboard is up: `CurrencyField` needed
    `keyboardShouldPersistTaps="handled"`, or the tap only dismisses the keyboard. Pinned in task
-   9/10; sim check.
+   9/9; sim check.
 2. A stored code not in the list (42) and a half-typed "54": the trigger must show the digits, and
-   "Other code" must open the typed field holding them, never an empty one. Pinned in task 9/10.
+   "Other code" must open the typed field holding them, never an empty one. Pinned in task 9/9.
 3. Apostrophes on both sides of the search: a uk query `об'єкт` must find a name stored with
    U+02BC, and an en query `men's` must find a name written with `'` or U+2019. One fold on query
-   and name. Pinned in task 9/10.
+   and name. Pinned in task 9/9.
 4. The own read under a sync while the sheet is open: one re-read per fire, never a read while
-   closed, and no empty text during the close fade. Pinned in task 9/10 (the `enabled` argument,
-   `ownLoading`) and task 8/10 (one statement).
+   closed, and no empty text during the close fade. Pinned in task 9/9 (the `enabled` argument,
+   `ownLoading`) and task 8/9 (one statement).
 5. A Sominemo uk name with `'` or `’` inside a word reaching the bundle: the generator rewrites it
-   and a data pin refuses it. Pinned in task 7/10.
+   and a data pin refuses it. Pinned in task 7/9.
+6. The MIT notice in the release bundle: a module no production path reads is not bundled by
+   Metro. The notice is re-exported by `mcc-names.ts`, which the rule card imports. Pinned in task
+   7/9 step 11 (byte hash and barrel reach); proved on the release bundle at the device deploy
+   ("Closing steps (track end)").
 
 ## Details settled by this plan
 
 | # | Decision | Reason |
 |---|---|---|
-| P1 | Task labels continue the track: `1.4-category-automation task 7/10` to `10/10`; verify labels `1.4-category-automation-task-7` and so on. Tasks stack in this worktree, each base the previous task's tip. | The base plan used 1/6 to 6/6; distinct labels keep the run log and queue apart. |
+| P1 | Task labels continue the track: `1.4-category-automation task 7/9` to `9/9` (task 10/10 dropped by Q-MCC2 D); verify labels `1.4-category-automation-task-7` and so on. Tasks stack in this worktree, each base the previous task's tip. | The base plan used 1/6 to 6/6; distinct labels keep the run log and queue apart. |
 | P2 | The data file is `mcc-names.data.json`, a JSON array sorted by code, written as `JSON.stringify(entries, null, 2)` plus a newline. `mcc-names.ts` imports it and exports `MCC_NAMES: readonly MccName[]`. No format step: the renderer's output must pass `./node_modules/.bin/biome check` on that one file as written (a finding is fixed in `renderMccNamesJson`, never by a format run or an ignore). | Stryker mutates `.ts`/`.tsx` only (`stryker.conf.json` `mutate`; `mutation.sh` diffs `'*.ts' '*.tsx'`), so the data makes no static mutants and the per-task gate stays bounded. JSON import precedent: `package.json` in `settings.screen.tsx` (`resolveJsonModule` from `@react-native/typescript-config`; jest and Metro already load it). |
 | P3 | `scripts/mcc-names/generate-mcc-names.js` exports pure functions (`MCC_SOURCES`, `verifySource`, `buildMccNames`, `renderMccNamesJson`, `renderReviewTable`). Its header comment names the URLs, commits, SHA-256, licenses and the regeneration command (JSON holds no comment). The write is in `__tests__/generate-mcc-names.test.ts` under `KIKO_REGEN_MCC=1` with `KIKO_MCC_GREGGLES`, `KIKO_MCC_SOMINEMO`, `KIKO_MCC_REVIEW_OUT` paths. | A shell write into `src/` is denied by kill-guard; a test-process write has the demo precedent. Knip sees the script through the test. |
 | P4 | uk names come from Sominemo only (spec 3.2); a greggles code without one makes the run refuse. No fallback rule and no hand-written uk file. | Measured (spec 3.3): Sominemo names all 981 greggles codes, including all 683 in 3000-3999; a fallback would name no code (strict scope, no dead code). |
@@ -101,21 +104,24 @@ picker creates nothing).
 | P8 | Language: `i18n.language === 'uk'` picks `uk`, anything else `en` (`appLanguages` in `src/i18n/device-language/device-language.ts`). Memo keys include `i18n.language`. | A live language switch re-labels the list, as Home's titles do. |
 | P9 | The label separator is `MCC_NAME_SEPARATOR = ' – '` (U+2013) in `mcc-names.ts`, a code constant (spec 3.4); `mccLabelOf` takes no `t`. | Identical in en and uk, like `SEPARATOR` in `rule-summary.ts`; differs from the card's ` · ` row separator. |
 
-## Pending defaults
+## User answers (2026-11-08 21:20, relayed by the coordinator; binding)
 
-Every task builds on the default; none waits for an answer. An answer arrives before the merge
-(merge rule), so a "no" lands as new commits on the track tip, then the named pins rerun and the
-affected tasks' verify is queued again. Pin edits name the old (was:) and new value.
-
-| Question | Default applied now | If "no": stays | If "no": goes | Tasks and steps that change | "was:" pin edits |
-|---|---|---|---|---|---|
-| Q-MCC1 community sources | greggles + Sominemo | task 8/10 read; `MccField` with "Your codes" (digits only) and "Other code"; `errorMcc` | generator, `mcc-names.data.json`, `MCC_NAMES` and lookups; "All codes" section and `ruleForm.mccAllSection`; names on trigger, rows, card; task 10/10 (no bundled data, no notice) | 7/10 steps 1-7 reverted by new commits; 9/10 steps 1-6; 10/10 dropped | `rule-summary.test.ts` mcc value was: `'5411 – <name>'`, now: `'5411'`. `mcc-picker-rows.test.ts` lists was: Other, own, all; now: Other, own only. `category-rule-form.screen.test.tsx` trigger was: `5411 – <name>`, now: `5411`. `mcc-picker-rows.test.ts` name pins (`a text query matches the name by substring, any case`, `folds an ASCII apostrophe, U+2019 and U+02BC to one character in the query and the name`, `an en name with an apostrophe matches a typed apostrophe`, `names each code in the current language`) was: present, now: deleted. `mcc-field.component.test.tsx` `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>`, now: `5411`. `rule-summary.test.ts` `shows the mcc name in Ukrainian` and `category-form.screen.test.tsx` `shows a merchant-code rule with its name on the card` was: present, now: deleted (as Q-MCC3). Copy `ruleForm.mccSearchPlaceholder` was: "Search by code or name" / «Пошук за кодом або назвою», now: "Search by code" / «Пошук за кодом» (draft, back to the user). Notes line: the 'All codes' sentence and the Acknowledgements sentence was: present, now: deleted. Generator and data test files deleted |
-| Q-MCC2 notice place | A: Settings row + page | tasks 7/10-9/10 | — | — | — |
-| Q-MCC2 answer B | — | tasks 7/10-9/10 with greggles en | Sominemo input; task 10/10 page, row, route, notice; keys `settings.acknowledgements`, `acknowledgements.*` (5); the Notes line's Acknowledgements part | new commits: a hand-written uk file for all 981 codes (kiko-translator, U+02BC) becomes the generator's uk input; 7/10 step 2 (pins), 3 (generator), 5 (regenerate, re-send the review table); 10/10 dropped | `MCC_SOURCES` pin was: greggles and sominemo, now: greggles only. `buildMccNames` input was: `{ greggles, sominemo }`, now: `{ greggles, ukNames }`. `refuses a run with a code that has no uk name, listing every such code` was: no Sominemo uk name, now: no entry in the hand-written file. `drops a Sominemo-only code and reports it` was: present, now: deleted; report `dropped` was: a list, now: no field. Data pins unchanged |
-| Q-MCC2 answer C | — | tasks 7/10-9/10; `mcc-names.notice.ts`; `acknowledgements.title` (now the credit sheet's title, stays in `title-keys.ts`); `acknowledgements.intro`, `acknowledgements.mccNamesEnglish`, `acknowledgements.mccNamesUkrainian` (shown on the credit sheet, texts unchanged) | Settings row, page, route; `settings.acknowledgements`; the Notes line's "Settings > Acknowledgements" sentence (replaced by one naming the credit row in the picker, drafted for the user) | 9/10 steps 1-2 (`mccPickerRows` gains a last `{ type: 'credit' }` row); 10/10 steps 1-2 become: the credit row opens a sheet with the notice; one new key for the caption, drafted for the user | every `toEqual` list in `mcc-picker-rows.test.ts` was: ends at the last code or `noMatch` row, now: plus `{ type: 'credit' }` last. 10/10 settings and stack pins replaced by a sheet pin. Notes line was: "Settings > Acknowledgements shows the licenses of the bundled code names.", now: the credit-row sentence |
-| Q-MCC3 card label | yes | data and picker | `mccLabelOf` option on `RuleSummaryOptions` and its wiring | 7/10 steps 6-7 reverted by new commits | `rule-summary.test.ts` mcc value was: `'5411 – Grocery Stores, Supermarkets'`, now: `'5411'`; `shows the mcc name in Ukrainian` deleted; `category-form.screen.test.tsx` `shows a merchant-code rule with its name on the card` deleted. `'0042'` stays |
-| Q-MCC4 source casing | yes, verbatim | everything | verbatim casing; the user's rule (for example sentence case of an all-capitals en text) applies in the generator. Measured (spec 3.3): 419 of the 683 en names in 3000-3999 are all capitals, for example `3000` "UNITED AIRLINES", `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", next to `3003` "Airlines"; in uk those codes read «Авіалінії», «Готелі. Курорти» (no capitals) | 7/10 steps 2-3 (a casing pin and rule), 5 (regenerate, re-send the review table), 6 (card pin value) | new pin `re-cases an all-capitals en name` (3000 "UNITED AIRLINES" in, the user's casing out) was: absent, now: present. `rule-summary.test.ts` mcc value was: source casing, now: re-cased. Task 9/10 step 3 `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>` in source casing, now: re-cased. Task 9/10 step 5 `keeps a typed merchant code when the type of the row is changed and changed back` trigger was: `5411 – <name>` in source casing, now: re-cased |
-
+- Q-MCC1 community sources: YES. greggles (en) and Sominemo (uk) stay, as built in task 7/9.
+- Q-MCC2 where the MIT notice ships: D (a new option). The notice text ships bundled in the app in
+  `src/categories/mcc-names/mcc-names.notice.ts`; no screen. was: default A, a Settings row and an
+  Acknowledgements page (task 10/10, 5 keys); now: task 10/10 and its 5 keys
+  (`settings.acknowledgements`, `acknowledgements.title`, `acknowledgements.intro`,
+  `acknowledgements.mccNamesEnglish`, `acknowledgements.mccNamesUkrainian`) dropped, never built,
+  so no pin changes; the notice moves into task 7/9 steps 11-12. The hold of tasks 7-9 on task 10
+  is void.
+- Q-MCC3 the rule card shows "code – name": YES, as built in task 7/9 steps 6-7.
+- Q-MCC4 names as the sources write them: YES, verbatim casing, no re-casing rule. Record of the
+  casing facts asked about (spec 3.3): 419 of the 683 en names in 3000-3999 are all capitals, for
+  example `3000` "UNITED AIRLINES", `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", next to `3003`
+  "Airlines"; in uk those codes read «Авіалінії», «Готелі. Курорти» (no capitals).
+- UI strings: the 12 rows of spec 9 (11 new keys, the plural group counted once, plus the changed
+  `ruleForm.errorMcc`) are APPROVED as written (2026-11-08 21:20).
+- Notes for Review draft: its Acknowledgements sentence is dropped.
 ## Conflict surface
 
 | Task | Shared files | Other tracks |
@@ -123,7 +129,6 @@ affected tasks' verify is queued again. Pin edits name the old (was:) and new va
 | 7 | `rule-summary.ts`, `category-form.screen.tsx` | none expected |
 | 8 | `transactions.repo.ts` (one added member) | `1.4-tables` may add reads beside it; additive |
 | 9 | `matcher-row.component.tsx`, `en.ts`, `uk.ts`, `title-keys.ts`; conditional: `build-demo-snapshot.ts`, both demo `.kiko` files, `kiko-category-check-en.kiko` | `1.4-small` edits both catalogues; added lines only. A demo conflict: base plan S22, regenerate, never hand-merge |
-| 10 | `settings.screen.tsx`, `settings.stack.tsx`, `src/navigation/types/types.d.ts`, `en.ts`, `uk.ts`, `title-keys.ts` | `1.4-small` rewrites `settings.screen.tsx`: merge `next` first, then add the card |
 
 ## Closing steps (every task, same order)
 
@@ -138,34 +143,39 @@ Each task's last steps, named by number in the task:
 - **Ready:** READY FOR VERIFY to the coordinator: worktree, label, base sha, head sha, mutable file
   count (`make mutable` with `KIKO_MUTATION_BASE` = task base), named-file runs and their output
   path, hand-measured numbers where the task asks. The coordinator queues the verify and reruns it
-  until green. Merge: the merge rule (Global Constraints): tasks 7/10-9/10 wait for task 10/10's
-  green verify, then all four merge into `next` together.
+  until green. Merge: the merge gate (Global Constraints): the task merges into `next` on its own
+  green verify.
 
-Track end, before task 10/10 READY (its step 6) and the final merge: the `kiko:designer` read-only
-consistency check of the picker diff (tasks 9/10 and 10/10 against task 9/10's base), the sim check
-list below, and the texts to the user (section "Texts for the user").
+Track end, in task 9/9 before its READY and merge: the `kiko:designer` read-only consistency check
+of the picker diff (task 9/9 step 9, against task 9/9's base), the sim check list below and the
+user's device confirm. The texts are approved (section "Texts for the user").
 
 ---
 
-## 1.4-category-automation task 7/10: the MCC name data and the rule card label
+## 1.4-category-automation task 7/9: the MCC name data and the rule card label
 
 **Needs:** nothing. **Base:** a00115db2 or the track tip when it starts.
 
-**Files (floor). Mutable: 3** (`mcc-names.ts`, `rule-summary.ts`, `category-form.screen.tsx`;
-`mcc-names.data.json` is not mutated, P2).
+**Files (floor). Mutable: 4** (`mcc-names.ts`, `mcc-names.notice.ts`, `rule-summary.ts`,
+`category-form.screen.tsx`; `mcc-names.data.json` is not mutated, P2).
 - Create: `scripts/mcc-names/generate-mcc-names.js`, `src/categories/mcc-names/mcc-names.data.json` (generated), `src/categories/mcc-names/mcc-names.ts`,
-  `src/categories/mcc-names/index.ts`
+  `src/categories/mcc-names/index.ts`, `src/categories/mcc-names/mcc-names.notice.ts` (steps
+  11-12)
 - Modify: `src/screens/forms/category-form/rule-summary/rule-summary.ts`,
   `src/screens/forms/category-form/category-form.screen.tsx`,
   `docs/superpowers/specs/2026-11-08-mcc-picker-design.md` (sections 3.1, 3.3, 5.4)
 - Tests: `__tests__/generate-mcc-names.test.ts`, `src/categories/mcc-names/mcc-names.test.ts`,
   `src/screens/forms/category-form/rule-summary/rule-summary.test.ts`,
-  `src/screens/forms/category-form/category-form.screen.test.tsx`
+  `src/screens/forms/category-form/category-form.screen.test.tsx`,
+  `__tests__/mcc-names-notice.test.ts` (step 11)
 
 **Interfaces. Produces:**
 ```ts
 // @kiko/categories/mcc-names
 export type MccName = { code: string; en: string; uk: string };
+// mcc-names.notice.ts, re-exported by mcc-names.ts (steps 11-12); keys equal MCC_SOURCES keys
+export const MCC_NAMES_NOTICE: Readonly<Record<'greggles' | 'sominemo',
+  { source: string; licenseName: string; licenseText?: string }>>;
 export const MCC_NAMES: readonly MccName[]; // from mcc-names.data.json
 export const MCC_NAME_SEPARATOR: ' – ';
 export const mccNameOf: (code: string, language: string) => string | undefined;
@@ -180,7 +190,9 @@ renderMccNamesJson(entries): string
 renderReviewTable(entries): string // TSV: code, en, uk
 ```
 
-- [x] **step 1/11 (kiko:developer): fetch and measure.** In a new, empty scratch directory per file,
+Steps 1-10 are done (commits through `cea18f539`); steps 11-16 add the notice (Q-MCC2 D).
+
+- [x] **step 1/16 (kiko:developer): fetch and measure.** In a new, empty scratch directory per file,
   fetch greggles `mcc_codes.json` and the Sominemo uk file from
   `raw.githubusercontent.com/<owner>/<repo>/<commit>/<file>` at the commits of spec 3.1. Read only
   with a scratch Node script kept in another directory, passing the paths as arguments. Record in
@@ -190,14 +202,14 @@ renderReviewTable(entries): string // TSV: code, en, uk
   4829, 6011, 0742, and three en texts of codes 3000-3999 as written (their casing, for the Q-MCC4
   question). A missing one of the first four, or a license file that differs from the research
   quote, is a stop-and-report. Also read the Sominemo LICENSE at the commit and keep its exact text
-  for task 10/10. Reviewer kit: read (read only) the header and a few rows of the fake Monobank
+  for the notice (steps 11-12). Reviewer kit: read (read only) the header and a few rows of the fake Monobank
   statement in the current release's reviewer-kit folder (main checkout, untracked; release skill,
   "Freshness"; its generator `memory/refs/demo-statement/make-fake-statement.py` wrote an `mcc`
   column when read on 2026-11-08) and record in spec 5.4 whether the kit file has an MCC column
-  with values. No column: task 9/10 steps 7-8 run; a column: they are marked skipped. Commit
+  with values. No column: task 9/9 steps 7-8 run; a column: they are marked skipped. Commit
   `docs(category): measured MCC sources`.
 
-- [ ] **step 2/11 (kiko:qa): generator pins.** Create `__tests__/generate-mcc-names.test.ts`, tiny
+- [x] **step 2/16 (kiko:qa): generator pins.** Create `__tests__/generate-mcc-names.test.ts`, tiny
   inline inputs only, no download:
   - `takes the edited description and falls back to the combined one`; `trims and collapses spaces`
     (a real case: `5599` "Miscellaneous Auto Dealers " with its trailing space).
@@ -221,13 +233,13 @@ renderReviewTable(entries): string // TSV: code, en, uk
   Red: `npx jest __tests__/generate-mcc-names.test.ts --maxWorkers=2` (module missing). Commit
   `test(category): pins for the MCC names generator`.
 
-- [ ] **step 3/11 (kiko:developer): the generator.** `generate-mcc-names.js`, spec 3.2 in order, on
-  the defaults of "Pending defaults" (do not wait for the answers); header with the URLs, commits,
+- [x] **step 3/16 (kiko:developer): the generator.** `generate-mcc-names.js`, spec 3.2 in order
+  (built on the defaults; the user kept them, "User answers"); header with the URLs, commits,
   SHA-256, licenses (Unlicense; MIT, "Copyright (c) 2020 Sominemo") and the regeneration command.
   Dependency-free (kiko-linter's Node checker rule). Green: same command. Commit
   `feat(category): MCC names generator`.
 
-- [ ] **step 4/11 (kiko:qa): data pins.** Create `src/categories/mcc-names/mcc-names.test.ts`, reading
+- [x] **step 4/16 (kiko:qa): data pins.** Create `src/categories/mcc-names/mcc-names.test.ts`, reading
   `MCC_NAMES` through the module (never the file text):
   - `holds each code once`; `holds only four-digit codes`; `is sorted by code`.
   - `holds exactly <N> codes` (N from step 1's measured output count).
@@ -245,7 +257,7 @@ renderReviewTable(entries): string // TSV: code, en, uk
   Red: `npx jest src/categories/mcc-names --maxWorkers=2`. Commit `test(category): MCC names data
   pins`.
 
-- [ ] **step 5/11 (kiko:developer): the data.** Regenerate (no hand-written uk names: Sominemo names every
+- [x] **step 5/16 (kiko:developer): the data.** Regenerate (no hand-written uk names: Sominemo names every
   code, spec 3.3; a refusal listing codes is a stop-and-report). Run
   `KIKO_REGEN_MCC=1 KIKO_MCC_GREGGLES=<path> KIKO_MCC_SOMINEMO=<path>
   KIKO_MCC_REVIEW_OUT=.superpowers/sdd/1.4-category-automation/mcc-names-review.tsv npx jest
@@ -257,7 +269,7 @@ renderReviewTable(entries): string // TSV: code, en, uk
   3.3. Green: step 2 and step 4 commands. Run `npm run check:dup`; a finding on the data file is
   P7. Commit `feat(category): bundled MCC names, en and uk`.
 
-- [ ] **step 6/11 (kiko:qa): rule card pins.** In `rule-summary.test.ts`, the ruling changes one pin:
+- [x] **step 6/16 (kiko:qa): rule card pins.** In `rule-summary.test.ts`, the ruling changes one pin:
   - was: `{ label: 'Merchant code (MCC)', value: '5411' }`; now `value: '5411 – Grocery Stores,
     Supermarkets'` (the measured en name). `value: '0042'` for code 42 stays.
   - Add `shows the mcc name in Ukrainian` and `shows an unlisted code as its digits`.
@@ -266,7 +278,7 @@ renderReviewTable(entries): string // TSV: code, en, uk
   - `category-form.screen.test.tsx`: `shows a merchant-code rule with its name on the card`.
   Red, named files. Commit `test(category): the rule card names the merchant code`.
 
-- [ ] **step 7/11 (kiko:developer): the card.** `mccLabelOf: (mccText: string) => string` option on
+- [x] **step 7/16 (kiko:developer): the card.** `mccLabelOf: (mccText: string) => string` option on
   `RuleSummaryOptions` (spec 6); the `.with({ type: 'mcc' }, ...)` branch of `describeMatcher` keeps
   its `padStart(MCC_DIGITS, '0')` and passes the padded text to the option, whose result is the
   value. Resolved in `category-form.screen.tsx` with the data module's `mccLabelOf` and
@@ -274,23 +286,62 @@ renderReviewTable(entries): string // TSV: code, en, uk
   files plus `src/categories/mcc-names`. Commit `feat(category): rule card shows the merchant code
   name`.
 
-- [ ] **step 8/11 Review (kiko:reviewer).** Top questions: can any download path execute or land
+- [x] **step 8/16 Review (kiko:reviewer).** Top questions: can any download path execute or land
   outside its scratch directory; does the generator refuse every malformed input the spec lists; is
   the provenance table complete (URLs, commits, SHA-256, licenses); did `check:guard-replay` run
   after the regeneration. No migration.
-- [ ] **step 9/11 Drift (kiko:retrospect).** Check kiko-domain (MCC text), kiko-translator (data
+- [x] **step 9/16 Drift (kiko:retrospect).** Check kiko-domain (MCC text), kiko-translator (data
   names and the separator kept out of the catalogue), kiko-architecture (bundled JSON data,
   regeneration precedent), kiko-linter (a new dependency-free Node script under `scripts/`).
-- [ ] **step 10/11 Scribe (kiko:scribe).**
-- [ ] **step 11/11 Ready.** Label `1.4-category-automation-task-7`. The report names the review TSV
-  path for the user's text review and the kit statement's MCC column result. No merge into `next`:
-  held for task 10/10 (merge rule).
+- [x] **step 10/16 Scribe (kiko:scribe).** `cea18f539`.
+- [ ] **step 11/16 (kiko:qa): notice pins.** Create `__tests__/mcc-names-notice.test.ts` (a knip
+  entry by its glob). Read the notice through the barrel `@kiko/categories/mcc-names` by a runtime
+  lookup (Global Constraints, red commit); `MCC_SOURCES` from
+  `scripts/mcc-names/generate-mcc-names.js`, as `__tests__/generate-mcc-names.test.ts` does.
+  - `ships the full license text of every MIT source`: the keys of `MCC_SOURCES` whose `license` is
+    `'MIT'` `toEqual` `['sominemo']` (so the pin never passes on an empty list); for each, the
+    SHA-256 (`node:crypto`, UTF-8) of `MCC_NAMES_NOTICE[key].licenseText` equals the LICENSE value
+    of spec 3.1 (`ea371db4...626a`, written out in full in the test).
+  - `credits every source with its repository and license name`: the notice keys `toEqual` the
+    `MCC_SOURCES` keys; greggles `https://github.com/greggles/mcc-codes`, `The Unlicense`, no
+    license text (the courtesy line, spec 7); Sominemo
+    `https://github.com/Sominemo/MCC-Localize-Dataset`, `MIT License`.
+  - `reaches the notice from the module the rule card imports`: the barrel's `MCC_NAMES_NOTICE`
+    `toBe` the export of `mcc-names.notice.ts` (the barrel is what `category-form.screen.tsx`
+    imports; re-grep that import on the base).
+  Red: `npx jest __tests__/mcc-names-notice.test.ts --maxWorkers=2` (export missing), output kept
+  in a file. Commit `test(category): pins for the bundled MCC names notice`.
+- [ ] **step 12/16 (kiko:developer): the notice.** Fetch the Sominemo `LICENSE` at commit
+  `7b3cbceeb3fbbd6a27dbe489b25abe82552ddff2` into a new, empty scratch directory outside the
+  worktree; check its SHA-256 equals spec 3.1 before use; never execute it. Create
+  `src/categories/mcc-names/mcc-names.notice.ts` with `MCC_NAMES_NOTICE` (Interfaces): untranslated
+  constants, spec 7; the MIT text verbatim, its trailing newline and straight quotes kept (a
+  template literal; the text holds no backtick or `${`). Re-export it from `mcc-names.ts`
+  (`export { MCC_NAMES_NOTICE } from './mcc-names.notice';`): Metro bundles only modules reachable
+  from the entry, and a re-export compiles to an exports getter, which keeps the require under
+  inline requires; the barrel `index.ts` already re-exports `mcc-names.ts`. A short comment says
+  why the notice ships (MIT: the notice goes with every copy); no history note. Tidy the test to
+  static imports. Green: `npx jest __tests__/mcc-names-notice.test.ts src/categories/mcc-names
+  --maxWorkers=2`; `npm run check:knip` (no unused export or file; a finding is a stop-and-report,
+  no ignore entry); `npm run check:dup`; `npm run check:secrets`. Commit `feat(category): the MIT
+  notice ships with the MCC names`.
+- [ ] **step 13/16 Review (kiko:reviewer), targeted:** the diff `cea18f539..HEAD` only. Top
+  questions: is the shipped text byte-equal to the pinned LICENSE (the hash pin, not a hand read);
+  is the notice on a production import path that the release bundle keeps; are the constants out
+  of the catalogue and untranslated; does any pin pass on an empty source list.
+- [ ] **step 14/16 Drift (kiko:retrospect).** kiko-compliance (licenses of bundled data: MIT
+  notice shipped as bundled text, no screen), kiko-architecture (`mcc-names` folder contents).
+- [ ] **step 15/16 Scribe (kiko:scribe).** Sha or "no drift found".
+- [ ] **step 16/16 Ready.** Label `1.4-category-automation-task-7`, base the task's recorded base. The report
+  names the review TSV path, the kit statement's MCC column result, and the notice pins' output
+  path. Merge into `next` on this green verify (merge gate). The release-bundle proof of the
+  notice runs on AC at the next device deploy ("Closing steps (track end)").
 
 ---
 
-## 1.4-category-automation task 8/10: the user's own codes with counts
+## 1.4-category-automation task 8/9: the user's own codes with counts
 
-**Needs:** nothing. **Base:** task 7/10 tip.
+**Needs:** nothing. **Base:** task 7/9 tip.
 
 **Files (floor). Mutable: 1.**
 - Modify: `src/transactions/repo/transactions.repo.ts` (`mccCountsQuery`, beside
@@ -339,13 +390,13 @@ mccCountsQuery: () => SQLQuery<{ mcc: number; rowCount: number }> // spec 4.1
 - [ ] **step 5/7 Drift (kiko:retrospect).** kiko-architecture's repository and live-query text.
 - [ ] **step 6/7 Scribe (kiko:scribe).**
 - [ ] **step 7/7 Ready.** Label `1.4-category-automation-task-8`, with the hand-measured numbers.
-  No merge into `next`: held for task 10/10 (merge rule).
+  Merge into `next` on this green verify (merge gate).
 
 ---
 
-## 1.4-category-automation task 9/10: the picker in the rule form
+## 1.4-category-automation task 9/9: the picker in the rule form
 
-**Needs:** tasks 7/10 and 8/10. **Base:** task 8/10 tip.
+**Needs:** tasks 7/9 and 8/9. **Base:** task 8/9 tip.
 
 **Files (floor). Mutable: 3** (`mcc-field.component.tsx`, `mcc-picker-rows.ts`,
 `matcher-row.component.tsx`; `e2e/` is not mutated).
@@ -442,8 +493,8 @@ export const mccPickerRows: (input: { own: readonly { mcc: number; rowCount: num
   src/screens/forms/category-rule-form src/i18n/locales --maxWorkers=2`. Run `npm run check:dup`
   (P6). Commit `feat(rules): the mcc condition opens the picker`.
 
-- [ ] **step 7/14 (SKIPPED: task 7/10 step 1 found the MCC column with a value on all 64 rows of
-  the kit statement) (kiko:qa, only if task 7/10 step 1 found no MCC column in the kit statement;
+- [ ] **step 7/14 (SKIPPED: task 7/9 step 1 found the MCC column with a value on all 64 rows of
+  the kit statement) (kiko:qa, only if task 7/9 step 1 found no MCC column in the kit statement;
   else mark skipped): demo pin.** `build-demo-snapshot.test.ts`: `gives a few Monobank rows a
   merchant code`: was: every demo row `mcc: null`; now: the named rows (a grocery and a cafe
   merchant of a Monobank holding, for example 5411 and 5812) hold their code, every other row null,
@@ -463,10 +514,11 @@ export const mccPickerRows: (input: { own: readonly { mcc: number; rowCount: num
   Commit `feat(demo): demo rows carry merchant codes`. The coordinator copies the fresh en file to
   the reviewer kit at release (release skill).
 
-- [ ] **step 9/14 (kiko:designer, read-only): picker look.** Against kiko-design-system: sheet
-  chrome, section headings, row second line, the typed field under the trigger, light and dark,
-  large Dynamic Type. Findings go to a fix step, not inline.
-- [ ] **step 10/14 (kiko:developer): designer fixes, if any.** Own commit.
+- [ ] **step 9/14 (kiko:designer, read-only): picker look and track-end consistency check** (user
+  rule 2026-11-06) of the picker diff from task 9/9's base to this tip. Against kiko-design-system:
+  sheet chrome, section headings, row second line, the typed field under the trigger, light and
+  dark, large Dynamic Type. Findings go to a fix step, not inline.
+- [ ] **step 10/14 (kiko:developer): designer fixes, if any.** Own commit; step 11 reviews them.
 - [ ] **step 11/14 Review (kiko:reviewer).** Top question: can the field show a value the save does
   not store, or store a code the user did not see. Check the pin edits against step 5's list (and
   step 7's when it ran).
@@ -475,96 +527,45 @@ export const mccPickerRows: (input: { own: readonly { mcc: number; rowCount: num
   kiko-compliance and the fixtures README if steps 7-8 ran.
 - [ ] **step 13/14 Scribe (kiko:scribe).**
 - [ ] **step 14/14 Ready.** Label `1.4-category-automation-task-9`. UI changes need the sim check
-  items below and the user's device confirm. No merge into `next`: held for task 10/10 (merge
-  rule).
-
----
-
-## 1.4-category-automation task 10/10: acknowledgements (Q-MCC2, default A)
-
-**Needs:** task 7/10. **Base:** task 9/10 tip. Other answers to Q-MCC2: "Pending defaults".
-
-**Files (floor). Mutable: 4.**
-- Create: `src/categories/mcc-names/mcc-names.notice.ts` (untranslated constants: per data set the
-  source URL and license name, and the Sominemo MIT text verbatim; spec 7),
-  `src/screens/settings/acknowledgements/acknowledgements.screen.tsx`, `index.ts`
-- Modify: `src/screens/settings/settings/settings.screen.tsx`,
-  `src/navigation/settings-stack/settings.stack.tsx`, `src/navigation/types/types.d.ts`
-  (`SettingsStackParamList`), `en.ts`, `uk.ts`, `title-keys.ts`
-- Tests: `acknowledgements.screen.test.tsx`, `settings.screen.test.tsx`, `settings.stack.test.tsx`
-
-**Strings (spec 9):** 5 new keys: `settings.acknowledgements`, `acknowledgements.title` (title
-key), `acknowledgements.intro`, `acknowledgements.mccNamesEnglish`,
-`acknowledgements.mccNamesUkrainian`.
-
-- [ ] **step 1/8 (kiko:qa): pins.**
-  - `acknowledgements.screen.test.tsx`: `shows the MIT notice verbatim` (equals the LICENSE text
-    task 7/10 step 1 kept, as a literal in the test); `shows it unchanged in Ukrainian`; `credits
-    both data sets with their source and license name` (the constants, the same in en and uk).
-  - `acknowledgements.screen.test.tsx`: `ships the licence text of every MIT entry of
-    MCC_SOURCES` (every `MCC_SOURCES` entry with licence `'MIT'` has its licence text in
-    `mcc-names.notice.ts`).
-  - `settings.screen.test.tsx`: `opens Acknowledgements from its own row` (pane-aware through
-    `useOpenInPane`, as the Help row); `shows the row with no data`.
-  - `settings.stack.test.tsx`: `registers the Acknowledgements page with its title`.
-  Red, named files. Commit `test(settings): pins for acknowledgements`.
-- [ ] **step 2/8 (kiko:developer): page, row, route.** Spec 7; model the page on
-  `help-topic.screen.tsx`; the row's card below Help, after the `settings-card-help` precedent, with
-  `icon="doc.text"` (SF Symbols 1.0, iOS 13.0+, under the 18.2 deployment target; kiko-design-
-  system "SF Symbol availability"); strings in both catalogues, `acknowledgements.title` in
-  `title-keys.ts`. Green: named files plus `src/i18n/locales src/navigation/settings-stack
-  __tests__/symbol-deployment-target.test.tsx`. Commit `feat(settings): acknowledgements page`.
-- [ ] **step 3/8 Review (kiko:reviewer).** Top question: does the shipped notice satisfy MIT's
-  "included in all copies or substantial portions" for the bundled uk names.
-- [ ] **step 4/8 Drift (kiko:retrospect).** kiko-compliance (licenses of bundled data), kiko-design-
-  system (a plain text page), kiko-architecture (Settings routes).
-- [ ] **step 5/8 Scribe (kiko:scribe).**
-- [ ] **step 6/8 (kiko:designer, read-only): track-end consistency check** of the picker diff from
-  task 9/10's base to this tip, plus the Acknowledgements page (user rule 2026-11-06).
-- [ ] **step 7/8 (kiko:developer): designer fixes, if any**, then a fresh review of that diff.
-- [ ] **step 8/8 Ready.** Label `1.4-category-automation-task-10`; the report says the texts went
-  to the user and names the answer used for Q-MCC2. Once this verify is green, tasks 7/10-10/10
-  merge into `next` together (merge rule).
+  items below and the user's device confirm. Merge into `next` on this green verify and the device
+  confirm (merge gate).
 
 ---
 
 ## Texts for the user
 
-Sent through the coordinator before any merge into `next`, in one message:
-1. The UI strings of spec 9: 17 rows (16 new keys, the plural group counted once: 11 for the picker,
-   5 for Acknowledgements; one changed copy `ruleForm.errorMcc` with its was: text). Also the
-   user-visible code constants: the label separator ` – ` (en dash, "5411 – Grocery Stores,
-   Supermarkets"; new, replaces nothing) and the notice constants (source URLs, license names, the
-   MIT text, shown untranslated in both languages).
+Sent through the coordinator; APPROVED by the user 2026-11-08 21:20 ("User answers"):
+1. The UI strings of spec 9: 12 rows (11 new keys, the plural group counted once, plus the changed
+   copy `ruleForm.errorMcc` with its was: text). Also the user-visible code constant: the label
+   separator ` – ` (en dash, "5411 – Grocery Stores, Supermarkets"; new, replaces nothing). The
+   notice constants (source URLs, license names, the MIT text) ship as bundled text and show on no
+   screen.
 2. The data review table `.superpowers/sdd/1.4-category-automation/mcc-names-review.tsv` (code, en,
-   uk), written by task 7/10 step 5.
-3. Open questions, each with its default and what a "no" changes (section "Pending defaults"):
-   Q-MCC1; Q-MCC2 (A, B, C); Q-MCC3: "The rule card on the category page shows the code with its
-   name, '5411 – Grocery Stores, Supermarkets', as the picker does. Keep? (default yes)"; Q-MCC4:
-   "Code names are shown as the sources write them: 419 of the 683 English names of codes
-   3000-3999 are in capitals, for example 3000 'UNITED AIRLINES' and 3501 'HOLIDAY INNS, HOLIDAY
-   INN EXPRESS', next to 3003 'Airlines'; in Ukrainian those codes read «Авіалінії» and «Готелі.
-   Курорти». Keep as written? (default yes)".
-4. Notes for Review draft line (plain text, for the release's Notes for Review; its import path is
+   uk), written by task 7/9 step 5; names as the sources write them (Q-MCC4).
+3. Notes for Review draft line (plain text, for the release's Notes for Review; its import path is
    checked against the build when the Notes are written): "Category rules: the Merchant code (MCC)
    condition now opens a searchable list. 'Your codes' lists the codes found in your transactions
    with their counts; import the Monobank statement from the reviewer kit to see them. 'All codes'
-   lists every code with its name in the app's language (English or Ukrainian), and 'Other code' accepts any four digits.
-   Settings > Acknowledgements shows the licenses of the bundled code names." If task 9/10 steps
-   7-8 ran, the own-codes sentence reads: "The demo data already holds a few codes."
+   lists every code with its name in the app's language (English or Ukrainian), and 'Other code'
+   accepts any four digits." If task 9/9 steps 7-8 ran, the own-codes sentence reads: "The demo
+   data already holds a few codes."
 A changed text goes back through the step that wrote it, then the pins rerun.
 
 ## Closing steps (track end)
 
-- [ ] Review: each task's `kiko:reviewer` step done; a whole-diff read of tasks 7-10 for a
+- [ ] Review: each task's `kiko:reviewer` step done; a whole-diff read of tasks 7-9 for a
   divergent label (field, card, sheet must use `mccLabelOf`).
 - [ ] Checks: the coordinator's queued verify per task, green; owed checks per the coordinator's
   power mode; mutation gate per task only when the user lifts the pause, base = that task's base.
-- [ ] Merge: tasks 7/10-10/10 into `next` together, only after task 10/10's verify is green and the
-  texts are approved (merge rule); if an answer dropped task 10/10, after the green verify of the
-  tip that holds the revert commits.
+- [ ] Merge: each task into `next` on its own green verify, in order 7/9, 8/9, 9/9 (merge gate;
+  task 9/9 also after the device confirm). Texts approved 2026-11-08 21:20.
 - [ ] Retro: `kiko:retrospect` + `kiko:scribe` per task (sha or "no drift found" in each READY).
-- [ ] Designer: task 10/10 step 6 consistency check of the picker diff.
+- [ ] Designer: task 9/9 step 9 track-end consistency check of the picker diff.
+- [ ] Bundle proof of the notice (coordinator, on AC only: it needs a Release build): at the next
+  device deploy, `make deploy EXPECT='Copyright (c) 2020 Sominemo'` (`scripts/deploy-device.sh` runs
+  `scripts/bundle-contains.js`, which searches `main.jsbundle` as UTF-8 and UTF-16LE; exit 0 found,
+  1 not found). Not found is a stop before any release; the jest pin of task 7/9 step 11 is the
+  per-task proof.
 - [ ] Sim check (iPhone simulator, then shut it down):
   - New rule, Merchant code: the sheet shows "Other code", "Your codes" (empty text on a manual-only
     ledger), "All codes"; scroll is smooth through the full list; closing the sheet shows no empty
@@ -579,7 +580,6 @@ A changed text goes back through the step that wrote it, then the pins rerun.
   - Edit a stored rule with an unlisted code: "0042" on the trigger and on the card.
   - Light and dark scheme; largest Dynamic Type; VoiceOver reads headings, rows with counts, the
     trigger value.
-  - iPad split window: the sheet and the Acknowledgements page in a pane.
-  - Settings, Acknowledgements: the `doc.text` icon, the MIT notice in full, en and uk.
+  - iPad split window: the sheet in a pane.
 - [ ] READY: each task's READY to the coordinator; the final report lists the user's device-confirm
-  items (the sim list above) and the texts' approval state.
+  items (the sim list above) and the bundle proof result.
