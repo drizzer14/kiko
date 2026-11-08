@@ -180,7 +180,7 @@ renderMccNamesJson(entries): string
 renderReviewTable(entries): string // TSV: code, en, uk, uk source
 ```
 
-- [ ] **step 1/11 (kiko:developer): fetch and measure.** In a new, empty scratch directory per file,
+- [x] **step 1/11 (kiko:developer): fetch and measure.** In a new, empty scratch directory per file,
   fetch greggles `mcc_codes.json` and the Sominemo uk file from
   `raw.githubusercontent.com/<owner>/<repo>/<commit>/<file>` at the commits of spec 3.1. Read only
   with a scratch Node script kept in another directory, passing the paths as arguments. Record in
@@ -443,14 +443,16 @@ export const mccPickerRows: (input: { own: readonly { mcc: number; rowCount: num
   src/screens/forms/category-rule-form src/i18n/locales --maxWorkers=2`. Run `npm run check:dup`
   (P6). Commit `feat(rules): the mcc condition opens the picker`.
 
-- [ ] **step 7/14 (kiko:qa, only if task 7/10 step 1 found no MCC column in the kit statement;
+- [ ] **step 7/14 (SKIPPED: task 7/10 step 1 found the MCC column with a value on all 64 rows of
+  the kit statement) (kiko:qa, only if task 7/10 step 1 found no MCC column in the kit statement;
   else mark skipped): demo pin.** `build-demo-snapshot.test.ts`: `gives a few Monobank rows a
   merchant code`: was: every demo row `mcc: null`; now: the named rows (a grocery and a cafe
   merchant of a Monobank holding, for example 5411 and 5812) hold their code, every other row null,
   and no rule-demo row (`KFC`, `Sushi Master`) holds one, so the rule demo's pinned count stays.
   Red: named file. Commit `test(demo): a few demo rows carry a merchant code`.
 
-- [ ] **step 8/14 (kiko:developer, same condition): demo rows and regeneration.** In
+- [ ] **step 8/14 (SKIPPED, same reason as step 7/14) (kiko:developer, same condition): demo rows
+  and regeneration.** In
   `build-demo-snapshot.ts`, set `mcc` on those rows (stored categories unchanged); regenerate both
   demo files: `KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts`, then
   that test plain (writes `kiko-demo-en.kiko`, `kiko-demo-uk.kiko`); then

@@ -49,8 +49,16 @@ and re-pins (with the "was:" pin edits): plan section "Pending defaults".
 | codes, en names | `https://github.com/greggles/mcc-codes`, `mcc_codes.json` | `df792275c567946119a8903d36dbd33e44a248bf` | Unlicense (public domain), no attribution required |
 | uk names | `https://github.com/Sominemo/MCC-Localize-Dataset`, file named in the research as `mcc-loc.json` | `7b3cbceeb3fbbd6a27dbe489b25abe82552ddff2` | MIT, "Copyright (c) 2020 Sominemo"; the notice must ship |
 
-File names, field shapes and SHA-256 of each raw file are confirmed by plan task 7/10 step 1 and
-written into this table and into the generator header in the same step. Each file is fetched from
+Measured by plan task 7/10 step 1 (fetched 2026-11-08 from
+`raw.githubusercontent.com/<owner>/<repo>/<commit>/<file>`, read by path with `JSON.parse` only):
+
+| File (exact name) | Bytes | SHA-256 | Shape |
+|---|---|---|---|
+| greggles `mcc_codes.json` | 265156 | `60fff0a4457e18dd03731a8971f219f2d1e4b22a13c1d930aaac07badbfe8e68` | JSON array of objects; every object has the seven fields `mcc` (string, four digits, leading zeros kept, for example `"0742"`), `edited_description`, `combined_description`, `usda_description`, `irs_description`, `irs_reportable` (strings) and `id` (number) |
+| Sominemo `mcc-loc.json` (the name the research gave is right) | 69063 | `ed32d9bfca87862580d3228b1a23203a07e9a9152b4b1cca6bd2f0c765a01347` | one JSON object keyed by the four-character code string; each value `{ "uk": string, "ru": string }`; no short-name or full-name field, only one uk name per code; file order is by code, but `Object.keys` lists non-padded keys first, so the generator sorts and never relies on key order |
+| Sominemo `LICENSE` (kept for task 10/10) | 1065 | `ea371db4627976fe5c82dacb744ed2deb0391e6d4a23a6aecc9ea64f4858626a` | the standard MIT text, "Copyright (c) 2020 Sominemo": the same text as the research quote |
+
+The generator header (task 7/10 step 3) carries these SHA-256 values. Each file is fetched from
 `raw.githubusercontent.com/<owner>/<repo>/<commit>/<file>` into its own new, empty scratch
 directory; the generator reads it by path with `JSON.parse` only and refuses a file whose SHA-256
 differs from the pinned one. Nothing from ISO 18245, Visa or Mastercard documents is copied
@@ -76,15 +84,63 @@ differs from the pinned one. Nothing from ISO 18245, Visa or Mastercard document
   section 5.2).
 - Output sorted by code.
 
-### 3.3 Measured counts (filled by task 7/10 step 1 and step 5)
+### 3.3 Measured counts (step 1 below; step 5 adds the data file size)
 
-The research could not count greggles (file read truncated). The 2026-11-03 check of greggles'
-`mcc_codes.csv` found 981 rows (plan `docs/superpowers/plans/2026-11-03-category-automation.md`,
-task 1 step 3). Task 7/10 step 1 writes here: greggles rows, Sominemo rows, codes in the output,
-Sominemo-only codes dropped, uk by Sominemo / brand rule / own file, three examples of the brand
-codes' en casing (for Q-MCC4), and confirms 5411, 5812, 4829, 6011 and 0742 present. A missing one
-of the first four is a stop-and-report. Task 7/10 step 5 writes the byte size of
-`mcc-names.data.json`.
+Measured by plan task 7/10 step 1 on 2026-11-08 with a scratch Node script (`JSON.parse` of the two
+pinned files; code padded to four digits, en = trimmed `edited_description`, else
+`combined_description`). The research could not count greggles; the 2026-11-03 CSV check of 981 rows
+(plan `docs/superpowers/plans/2026-11-03-category-automation.md`, task 1 step 3) matches.
+
+| Count | Value |
+|---|---|
+| greggles rows | 981 (981 distinct codes, no duplicate code, no blank en, every `mcc` four digits as written) |
+| Sominemo rows | 981 (every key four digits; no blank uk) |
+| Codes in the output (greggles codes) | 981 |
+| Overlap (in both files) | 981 |
+| Sominemo-only (dropped, no en) | 0 |
+| greggles codes with no Sominemo uk name | 0, so 0 in the brand range 3000-3999 and 0 outside it |
+| uk by Sominemo / brand rule / own file | 981 / 0 / 0 |
+| greggles codes in 3000-3999 | 683 (all 683 have a Sominemo uk name) |
+| Distinct Sominemo uk texts | 256 of 981 (the brand ranges share generic nouns: 3000, 3001, 3003 and 3299 all read «Авіалінії»; 3351 «Оренда авто»; 3501 «Готелі. Курорти») |
+| Longest en / longest uk | 142 / 37 characters |
+| greggles `edited_description` differing from `combined_description` | 8 rows |
+| en text with leading, trailing or double space | 1 (`5599` "Miscellaneous Auto Dealers " has a trailing space; the trim rule applies) |
+| en text with an apostrophe | 16 (for example `3299` "WIDERO’S FLYVESELSKAP" with U+2019, `3563` "JOURNEY’S END MOTLS") |
+| uk text with an ASCII `'` between Cyrillic letters | 7 (`4215` «Кур'єри», `4814` «Мобільний зв'язок», `5045`, `5422` «М'ясо», `5734`, `7298`, `7379`); none with U+2019 or U+02BC, so the apostrophe rewrite touches exactly these 7 |
+
+The research said Sominemo has gaps in 3300-3350, 3442-3500, 3791-3815 and 3836-3999. At the pinned
+commit each of those gaps is also absent from greggles, so no greggles code lacks a uk name (3350,
+3500 and 3999 are in neither file). The brand rule (3.2) and `uk-own-names.json` therefore name no
+code from this data: the generator still carries both, for a later source refresh, and the plan's
+brand-rule pins use inline inputs. Brand en casing as written (Q-MCC4), for the user:
+419 of the 683 brand texts are all capitals, 264 are not; examples: `3000` "UNITED AIRLINES",
+`3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", `3351` "AFFILIATED AUTO RENTAL", and `3003`
+"Airlines" (a generic text, 3003 is one of many such codes).
+
+Presence: `5411` "Grocery Stores, Supermarkets" / «Продукти»; `5812` "Eating places and
+Restaurants" / «Кафе. Ресторани»; `4829` "Money Orders – Wire Transfer" (U+2013 in the en text) /
+«Переказ»; `6011` "Financial Institutions – Manual Cash Disbursements" / «Каси»; `0742` "Veterinary
+Services" / «Ветеринари». All five present in both files.
+
+Five-row samples, in file order:
+
+| greggles `mcc` | `edited_description` |
+|---|---|
+| `0742` | Veterinary Services |
+| `0763` | Agricultural Co-operatives |
+| `0780` | Horticultural Services, Landscaping Services |
+| `1520` | General Contractors-Residential and Commercial |
+| `1711` | Air Conditioning Contractors – Sales and Installation, Heating Contractors – Sales, Service, Installation |
+
+| Sominemo key | `uk` |
+|---|---|
+| `0742` | Ветеринари |
+| `0763` | Сільскогосподарські кооперативи |
+| `0780` | Садівництво. Ландшафтний дизайн |
+| `1520` | Будівництво. Підрядники |
+| `1711` | Кондиціонери. Встановлення |
+
+Task 7/10 step 5 writes the byte size of `mcc-names.data.json`.
 
 ### 3.4 Shape and display
 
@@ -204,6 +260,17 @@ codes" heading and rows; a no-match line when a query empties both sections.
 | Sheet closing (fade) | n/a | own heading only, no empty text |
 | User with no MCC rows (manual only) | n/a | own section heading + empty text; full list usable |
 | App Store reviewer | n/a | own codes after importing the kit's Monobank statement (MCC column checked in plan task 7/10 step 1); else seeded demo rows (plan task 9/10, conditional steps) |
+
+Reviewer kit check (plan task 7/10 step 1, 2026-11-08, read only): the kit folder is
+`memory/refs/reviewer-kit/` in the main checkout (one folder, untracked). Its
+`kiko-demo-statement-monobank.csv` (64 data rows, a header row, 65 lines) HAS an MCC column: the
+third column, headed `MCC`, with a four-digit value on every one of the 64 rows (14 distinct codes:
+5411 x9, 5814 x7, 5732 x7, 4814 x7, 4121 x7, 5912 x5, 5811 x5, 4829 x4, 4111 x4, 5812 x3, 5818 x2,
+5541 x2, 5815 x1, 4899 x1). The importer reads that column (`COLUMN.mcc: 2` in
+`monobank-csv.format.ts`, mapped in `mapping.ts`), so the reviewer's "Your codes" section fills after
+`Monobank` > Import statement. Result: plan task 9/10 steps 7-8 are skipped. The kit's
+`HOW-TO-IMPORT.txt` names the statement but not its MCC column; the Notes for Review (plan "Texts for
+the user") name the path.
 
 ## 6. Rule card (Q-MCC3)
 
