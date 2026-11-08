@@ -1,6 +1,8 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
+import { markColor } from '@kiko/design-system/entity-tint';
 import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
 
 import Box from '../box';
@@ -59,7 +61,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
               name={icon}
               size={theme.iconSizes.body}
               tone="textSecondary"
-              color={iconColor}
+              color={foldMap(maybe(iconColor), (color) => markColor(color, theme.colorScheme))}
             />
           )}
 
