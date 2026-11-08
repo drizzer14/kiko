@@ -2,7 +2,6 @@ import { match } from 'ts-pattern';
 import {
   monthsOfPeriod,
   resolveTablePeriod,
-  type TablePeriod,
   tablePeriodOptions,
 } from '@kiko/statistics/table-period';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +29,7 @@ import type { TablesParams, TransactionFormParams } from '@kiko/navigation/types
 import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useIsScreenVisible, useSettledLayoutMode } from '@kiko/navigation/pane-stack';
+import { useTablesPeriodSelection } from '@kiko/statistics/use-tables-period-selection';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import { styles } from './tables.styles';
@@ -62,9 +62,9 @@ const HAS_CATEGORY_FILTER: Record<TablesView, boolean> = {
 /**
  * The monthly tables behind the Statistics charts. It reads the same sources, ledger and account
  * and category picks as the Statistics screen, so a table cell is the number its donut shows for
- * that month, and a pick made in either holds in both. The period is its own, held in the route
- * params (not in the shared date range, which it neither reads nor changes), so a fold or a
- * resize that remounts the screen keeps it, and a new push opens on this year.
+ * that month, and a pick made in either holds in both. The period is its own (not the shared date
+ * range, which it neither reads nor changes), held in a session store so a fold or a resize that
+ * remounts the screen keeps it, and so does Back: a new push opens on the period last picked.
  */
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
@@ -84,6 +84,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
 
   const { selectedAccounts, selectedCategories, toggleAccount, toggleCategory } =
     useStatisticsFilterSelection();
+  const { selectedPeriod, selectPeriod } = useTablesPeriodSelection();
   const now = useVisibleRefreshedNow(isVisible);
   const {
     accounts,
@@ -137,7 +138,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const isPeriodBesideFilters = verticalBarEdge !== 'none' && layoutMode === 'columns';
 
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);
-  const period = resolveTablePeriod(route.params?.period, periodOptions, now);
+  const period = resolveTablePeriod(selectedPeriod, periodOptions, now);
   const months = useMemo(() => monthsOfPeriod(period, spanStart, now), [period, spanStart, now]);
   const view = route.params?.view ?? 'categories';
   const hasCategoryFilter = HAS_CATEGORY_FILTER[view];
@@ -189,10 +190,6 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     () => excludedCategoryKeysOf(periodSlices, visibleSelectedCategories),
     [periodSlices, visibleSelectedCategories],
   );
-
-  const selectPeriod = (next: TablePeriod): void => {
-    navigation.setParams({ period: next });
-  };
 
   const selectView = (next: TablesView): void => {
     navigation.setParams({ view: next });

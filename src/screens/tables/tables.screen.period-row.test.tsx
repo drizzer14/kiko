@@ -5,6 +5,7 @@ import { relativeTablePeriodsOf } from '@kiko/statistics/table-period';
 import { act, fireEvent, within } from '@testing-library/react-native';
 import { reportWindow, resizeWindow } from '@kiko/test-support/window-size';
 import { FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
+import { pickTablesPeriod } from '@kiko/test-support/tables-period-selection';
 import type { HorizontalSizeClass, VerticalBarEdge } from '@kiko/display-regions';
 
 import { renderTables, setUpTablesWorld } from './__fixtures__/tables-screen-world';
@@ -60,8 +61,10 @@ describe('the period field on the Tables screen', () => {
       expect(getAllByTestId('tables-period')).toHaveLength(1);
     });
 
-    it('keeps the route period and an open filter sheet when the Duo unfolded turns to portrait', async () => {
-      const rendered = await renderTables({ period: THIS_QUARTER });
+    it('keeps the period and an open filter sheet when the Duo unfolded turns to portrait', async () => {
+      await pickTablesPeriod(THIS_QUARTER);
+
+      const rendered = await renderTables();
       const { getByTestId, queryAllByTestId } = rendered;
 
       await act(async () => {

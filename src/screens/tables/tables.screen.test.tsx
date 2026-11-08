@@ -1,4 +1,3 @@
-import type { ComponentProps } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -15,9 +14,9 @@ import {
 import { darkTheme } from '@kiko/design-system/theme';
 import Screen from '@kiko/design-system/components/screen';
 import { reportWindow } from '@kiko/test-support/window-size';
-import { paramsAfter } from '@kiko/test-support/navigation-props';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
+import { pickTablesPeriod } from '@kiko/test-support/tables-period-selection';
 import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
@@ -35,7 +34,6 @@ import {
   SPENT_IN,
   spokenValue,
 } from './__fixtures__/tables-screen-world';
-import type TablesScreen from './tables.screen';
 import { monthTitle } from './month-column-label';
 
 jest.mock('@kiko/navigation/pane-stack', () =>
@@ -47,8 +45,6 @@ jest.mock('@kiko/navigation/pane-stack', () =>
 // The data of the world starts two days before the fixed clock, so this quarter is the period that
 // is always offered besides this year.
 const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
-
-type Props = ComponentProps<typeof TablesScreen>;
 
 describe('TablesScreen', () => {
   setUpTablesWorld();
@@ -399,25 +395,45 @@ describe('TablesScreen', () => {
   });
 
   describe('the period', () => {
-    it('opens on this year when the route carries no period', async () => {
+    it('opens on this year when no period was picked', async () => {
       const { getByTestId } = await renderTables();
 
       expect(getByTestId('tables-period')).toHaveTextContent('This year', { exact: false });
     });
 
-    it('shows the period the route carries', async () => {
-      const { getByTestId } = await renderTables({ period: THIS_QUARTER });
+    it('shows the period picked on an earlier open', async () => {
+      await pickTablesPeriod(THIS_QUARTER);
+
+      const { getByTestId } = await renderTables();
 
       expect(getByTestId('tables-period')).toHaveTextContent('This quarter', { exact: false });
     });
 
-    it('reads a year the data does not reach as this year', async () => {
-      const { getByTestId } = await renderTables({ period: { kind: 'year', year: 1999 } });
+    it('reads a kept year the data does not reach as this year', async () => {
+      await pickTablesPeriod({ kind: 'year', year: 1999 });
+
+      const { getByTestId } = await renderTables();
 
       expect(getByTestId('tables-period')).toHaveTextContent('This year', { exact: false });
     });
 
-    it('writes a pick to the route params, so a remount opens on it', async () => {
+    it('keeps a pick for the next open, which a remount or a new push is', async () => {
+      const first = await renderTables();
+
+      await fireEvent.press(first.getByTestId('tables-period'));
+      await fireEvent.press(
+        first.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
+      );
+      await first.unmount();
+
+      const second = await renderTables();
+
+      expect(second.getByTestId('tables-period')).toHaveTextContent('This quarter', {
+        exact: false,
+      });
+    });
+
+    it('writes a picked period to no route param', async () => {
       const first = await renderTables();
 
       await fireEvent.press(first.getByTestId('tables-period'));
@@ -425,16 +441,7 @@ describe('TablesScreen', () => {
         first.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
       );
 
-      expect(first.navigation.setParams).toHaveBeenCalledWith({ period: THIS_QUARTER });
-      await first.unmount();
-
-      const second = await renderTables(
-        paramsAfter(first.navigation, {}) as Props['route']['params'],
-      );
-
-      expect(second.getByTestId('tables-period')).toHaveTextContent('This quarter', {
-        exact: false,
-      });
+      expect(first.navigation.setParams).not.toHaveBeenCalled();
     });
   });
 

@@ -4,6 +4,7 @@ import { reportWindow } from '@kiko/test-support/window-size';
 import { act, fireEvent } from '@testing-library/react-native';
 import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { resetTablesPeriodSelection } from '@kiko/test-support/tables-period-selection';
 import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
@@ -16,7 +17,6 @@ import {
   pickThisQuarter,
   renderRoot,
   setLayout,
-  THIS_QUARTER,
 } from './__fixtures__/tables-navigator-world';
 import { layout } from './__fixtures__/mock-layout';
 
@@ -44,7 +44,7 @@ jest.mock('@bottom-tabs/react-navigation', () =>
 type StackRoute = {
   key: string;
   name: string;
-  params?: { period?: { kind: string; year?: number }; transactionId?: string };
+  params?: { transactionId?: string };
 };
 type StackState = { key: string; routes: StackRoute[]; panes: Record<string, string | undefined> };
 
@@ -202,6 +202,7 @@ describe('Tables is in a layer over both panes', () => {
 
   afterEach(async () => {
     await resetStatisticsFilterSelection();
+    await resetTablesPeriodSelection();
     reportWindow('compact', 393, 852);
     jest.useRealTimers();
   });
@@ -632,6 +633,7 @@ describe('Tables is in a layer over both panes', () => {
         const [formRoute] = formsOf('StatisticsTab');
 
         await pressTables(rendered);
+        await pickThisQuarter(rendered);
         await openRow(rendered);
 
         expect(formsOf('StatisticsTab')).toEqual([formRoute]);
@@ -640,6 +642,10 @@ describe('Tables is in a layer over both panes', () => {
         expect(placeOf(form)).toBe(COMPANION);
         expect(allOf(rendered, TABLES)).toHaveLength(0);
         expect(isLayerAtRest(rendered)).toBe(true);
+
+        await pressTables(rendered);
+
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', { exact: false });
       });
 
       // A form opened from that form (a template or a create form) is above it. Back from Tables
@@ -705,12 +711,33 @@ describe('Tables is in a layer over both panes', () => {
         expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', {
           exact: false,
         });
-        expect(stackOf(tab).routes.at(-1)?.params?.period).toEqual(THIS_QUARTER);
 
         await goBack();
 
         expect(isLayerAtRest(rendered)).toBe(true);
         expect(allOf(rendered, TABLES)).toHaveLength(0);
+      },
+    );
+  });
+
+  describe('a reopen after Back', () => {
+    it.each(['HomeTab', 'StatisticsTab'])(
+      'opens Tables on the period last picked on the %s',
+      async (tab) => {
+        const rendered = await renderRoot();
+
+        await goToTab(tab);
+        await pressTables(rendered);
+        await pickThisQuarter(rendered);
+        await goBack();
+
+        expect(allOf(rendered, TABLES)).toHaveLength(0);
+
+        await pressTables(rendered);
+
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', {
+          exact: false,
+        });
       },
     );
   });

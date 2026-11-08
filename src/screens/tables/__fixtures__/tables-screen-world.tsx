@@ -5,6 +5,7 @@ import { render } from '@testing-library/react-native';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { resetTablesPeriodSelection } from '@kiko/test-support/tables-period-selection';
 import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
@@ -19,7 +20,7 @@ export const SPENT_IN = monthTitle(calendarMonthOf(SPENT_AT), i18n.t);
 
 /**
  * Registers what each test of a Tables screen suite starts and ends with: the fixed clock, the
- * data of the world, and the Statistics picks put back on "all".
+ * data of the world, and the Statistics picks put back on "all" and the Tables period on none.
  */
 export const setUpTablesWorld = () => {
   beforeEach(() => {
@@ -29,6 +30,7 @@ export const setUpTablesWorld = () => {
 
   afterEach(async () => {
     await resetStatisticsFilterSelection();
+    await resetTablesPeriodSelection();
     jest.useRealTimers();
   });
 };
