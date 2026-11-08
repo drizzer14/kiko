@@ -10,6 +10,7 @@ import type { FC } from 'react';
 import { LockGate } from '@kiko/auth';
 import { useAutoSync } from '@kiko/sync/use-auto-sync';
 import { useLotRecost } from '@kiko/holdings/lot-recost';
+import { useCsvExportCleanup } from '@kiko/data-transfer';
 import RootNavigator from '@kiko/navigation/root-navigator';
 import MigrationsGate from '@kiko/migration/migrations-gate';
 import { NavigationContainer } from '@react-navigation/native';
@@ -31,6 +32,8 @@ import { useSyncAppearanceWithSettings } from '@kiko/appearance/use-sync-appeara
  * render. `useReminderScheduler` re-plans the pending reminder notifications.
  * `useLotRecost` costs every stored sale again once, in the one lot order.
  * `useMccBackfill` files the rows a newly mapped MCC code leaves in `other`, once.
+ * `useCsvExportCleanup` deletes the CSV files an earlier run left in the temporary folder: an app
+ * killed with the share sheet open leaves its file behind, and the export screen may never open.
  */
 const AppRoot: FC = () => {
   useSyncLanguageWithSettings();
@@ -42,6 +45,8 @@ const AppRoot: FC = () => {
   useReminderScheduler();
 
   useLotRecost();
+
+  useCsvExportCleanup();
 
   useMccBackfill();
 

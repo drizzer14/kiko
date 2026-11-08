@@ -357,6 +357,7 @@ export type SettingsStackParamList = {
   // No `ruleId`: a new rule for the category.
   CategoryRuleForm: { categoryKey: string; ruleId?: string; draft?: CategoryRuleFormDraft };
   ExportData: undefined;
+  ExportCsv: undefined;
   ImportData: undefined;
   Reminders: undefined;
   ReminderForm: ReminderFormParams;

@@ -101,6 +101,13 @@ describe('SettingsStack', () => {
     expect(titles.ImportData).toBe('Import Data');
   });
 
+  it('registers the CSV export screen with its localized title', () => {
+    const title = i18n.t('settings.csvExport.title');
+
+    expect(title).not.toBe('settings.csvExport.title');
+    expect(titleByScreen().ExportCsv).toBe(title);
+  });
+
   it('registers one category screen, titled "New Category" until it is opened for a category', () => {
     const names = screenElements().map((screen) => screen.props.name);
 

@@ -499,6 +499,27 @@ describe('SettingsScreen', () => {
     expect(mockOpenInPane).toHaveBeenCalledWith('ExportData');
   });
 
+  it('puts the CSV export row beside the backup export row in the same card, after it', async () => {
+    const { getByTestId } = await renderScreen();
+    const card = getByTestId('settings-card-data-transfer');
+
+    expect(within(card).getByTestId('settings-row-export-csv')).toBeTruthy();
+    expect(within(card).getByText(i18n.t('settings.csvExport.rowLabel'))).toBeTruthy();
+    expect(
+      within(card)
+        .getAllByTestId(/^settings-row-export-(data|csv)$/)
+        .map((node) => node.props.testID as string),
+    ).toEqual(['settings-row-export-data', 'settings-row-export-csv']);
+  });
+
+  it('opens the ExportCsv sub-screen when the CSV export row is pressed', async () => {
+    const { findByTestId } = await renderScreen(navigationSpy());
+
+    await fireEvent.press(await findByTestId('settings-row-export-csv'));
+
+    expect(mockOpenInPane).toHaveBeenCalledWith('ExportCsv');
+  });
+
   it('navigates to the ImportData sub-screen when the Import Data row is pressed', async () => {
     const navigation = navigationSpy();
     const { findByTestId } = await renderScreen(navigation);
@@ -667,6 +688,7 @@ describe('SettingsScreen — the selected row', () => {
     ['Reminders', GROUP_CARD, 'settings-row-reminders', false],
     ['ImportData', 'settings-card-data-transfer', 'settings-row-import-data', false],
     ['ExportData', 'settings-card-data-transfer', 'settings-row-export-data', false],
+    ['ExportCsv', 'settings-card-data-transfer', 'settings-row-export-csv', false],
     ['TransactionTemplates', GROUP_CARD, 'settings-row-transaction-templates', false],
     ['Categories', GROUP_CARD, 'settings-row-categories', false],
     ['RecurringCharges', GROUP_CARD, 'settings-row-recurring-charges', false],
