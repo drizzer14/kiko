@@ -47,11 +47,11 @@ anyone with the file can read it: it holds your transactions (dates, amounts,
 currencies, categories, descriptions and comments, with each transaction's type,
 whether it is pending, and its source, such as a bank or an exchange) and the
 names of your accounts and holdings, and no tokens or keys. A holding name can
-hold a card number mask, and a description can name another person. On a device that has a passcode, Kiko asks you
-to confirm with Face ID or your device passcode before it writes a CSV file, and
-it deletes the file from the app's temporary storage once you finish sharing it,
-or at the next app launch. Kiko never uploads an export anywhere; you choose
-where to save or share it. Keep the backup file and its key safe, and share a
+hold a card number mask, and a description can name another person. On a device
+that has a passcode, Kiko asks you to confirm with Face ID or your device
+passcode before it writes a CSV file, and it deletes the file from the app's
+temporary storage once you finish sharing it, or at the next app launch. Kiko
+never uploads an export anywhere; you choose where to save or share it. Keep the backup file and its key safe, and share a
 CSV file only with people and apps you trust.
 
 ## 3. Connections to third-party services
