@@ -124,7 +124,7 @@ export const en = {
         exchange: 'Exchange',
         expense: 'Expense',
         income: 'Income',
-        loan: 'Loan',
+        loan: 'Loan payment',
         transfer: 'Transfer',
       },
       warning:

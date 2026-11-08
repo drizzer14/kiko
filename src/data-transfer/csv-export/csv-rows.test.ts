@@ -198,6 +198,15 @@ describe('buildCsvText cells', () => {
     expect(singleRowOf({ transactions }, UKRAINIAN, ukrainian)[COLUMN.type]).toBe(inUkrainian);
   });
 
+  it('names a loan payment row by the loan payment wording of the app in both languages', () => {
+    const transactions = [transactionRow({ ...CARD_ROW, id: 'rate', loanHoldingId: 'loan' })];
+
+    expect(singleRowOf({ transactions })[COLUMN.type]).toBe('Loan payment');
+    expect(singleRowOf({ transactions }, UKRAINIAN, ukrainian)[COLUMN.type]).toBe(
+      'Платіж за кредитом',
+    );
+  });
+
   it('writes the amount in the holding currency with the dialect decimal', () => {
     expect(singleRowOf({}, UKRAINIAN, ukrainian)[COLUMN.amount]).toBe('-150,75');
   });
@@ -579,8 +588,7 @@ describe('csvTransactionType feed order', () => {
   const at = (seconds: number) => BASE_TIME + seconds * 1_000;
   const SAVINGS = holdingRow({ id: 'savings', accountId: 'bank' });
   // Two debits compete for one credit, every pair inside the two-minute window: which debit the
-  // credit pairs with depends on the order the rows arrive in. Ids run with the time, so a feed
-  // by id and the app's time-descending feed disagree.
+  // credit pairs with depends on the order the rows arrive in.
   const DEBIT_A = transactionRow({
     id: 'a',
     holdingId: 'card',
@@ -600,34 +608,28 @@ describe('csvTransactionType feed order', () => {
     time: at(90),
   });
   const HOLDINGS = [...WORLD.holdings, SAVINGS];
+  const NEWEST_FIRST = [CREDIT_C, DEBIT_B, DEBIT_A];
 
-  // What the app marks: the order of `listAllQuery`, `ORDER BY time DESC`.
-  const appExcludedIds = buildSpendingLedger({
-    transactions: [DEBIT_A, DEBIT_B, CREDIT_C].sort((first, second) => second.time - first.time),
+  const ledgerExcludedIds = buildSpendingLedger({
+    transactions: NEWEST_FIRST,
     holdings: HOLDINGS,
     accounts: WORLD.accounts,
     shownHoldings: HOLDINGS,
   }).excludedTransactionIds;
 
-  it('is the review scenario: the app pairs the credit with the later debit', () => {
-    expect([...appExcludedIds].sort()).toEqual(['b', 'c']);
+  it('pairs the credit with the later debit when the rows arrive newest first', () => {
+    expect([...ledgerExcludedIds].sort()).toEqual(['b', 'c']);
   });
 
-  it.each([
-    ['by id', [DEBIT_A, DEBIT_B, CREDIT_C]],
-    ['reversed', [CREDIT_C, DEBIT_B, DEBIT_A]],
-  ])('types each row as the app marks it, rows arriving %s', (_name, rows) => {
+  it('types each row as the ledger marks it for the rows it is given', () => {
     const typeOf = csvTransactionType({
-      transactions: rows,
+      transactions: NEWEST_FIRST,
       holdings: HOLDINGS,
       accounts: WORLD.accounts,
     });
 
-    expect([DEBIT_A, DEBIT_B, CREDIT_C].map((row) => [row.id, typeOf(row)])).toEqual(
-      [DEBIT_A, DEBIT_B, CREDIT_C].map((row) => [
-        row.id,
-        appExcludedIds.has(row.id) ? 'transfer' : 'expense',
-      ]),
+    expect(NEWEST_FIRST.map((row) => [row.id, typeOf(row)])).toEqual(
+      NEWEST_FIRST.map((row) => [row.id, ledgerExcludedIds.has(row.id) ? 'transfer' : 'expense']),
     );
   });
 });

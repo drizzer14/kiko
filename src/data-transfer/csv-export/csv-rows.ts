@@ -75,19 +75,16 @@ const byTimeThenId = (
  * pair is structural; a transfer is only inferred from an amount, a code or a wording. A row
  * none of them catches reads by its sign.
  *
- * The rows are handed to the matchers newest first, as the app's own reads do (`listAllQuery`
- * orders by time descending): the transfer matcher claims greedily in the order it is given, so
- * with two debits competing for one credit another order would pair a different one.
+ * The rows are handed to the matchers in the order they arrive, which must be the app's own read
+ * (`readCsvSnapshot`): the transfer matcher claims greedily in the order it is given, so with two
+ * debits competing for one credit another order would pair a different one.
  */
 export const csvTransactionType = ({
   transactions,
   holdings,
   accounts,
 }: LedgerFacts): ((row: Pick<TransactionRow, 'id' | 'amountMinorUnits'>) => CsvTransactionType) => {
-  const ledger = ledgerRowsOf(
-    [...transactions].sort((first, second) => byTimeThenId(second, first)),
-    holdings,
-  );
+  const ledger = ledgerRowsOf(transactions, holdings);
   const rules: readonly (readonly [CsvTransactionType, ReadonlySet<string>])[] = [
     ['balance', balanceSetIdsOf(ledger)],
     ['loan', loanPaymentExcludedTransactionIds(ledger, loanHoldingsOf(holdings))],

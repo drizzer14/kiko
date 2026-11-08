@@ -102,7 +102,7 @@ export const uk: typeof en = {
         exchange: 'Обмін',
         expense: 'Витрата',
         income: 'Дохід',
-        loan: 'Кредит',
+        loan: 'Платіж за кредитом',
         transfer: 'Переказ',
       },
       warning:

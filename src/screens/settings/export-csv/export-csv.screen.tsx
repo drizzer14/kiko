@@ -2,7 +2,7 @@ import {
   buildCsvText,
   csvDialectOf,
   deleteCsvExportsIfIdle,
-  readDataSnapshot,
+  readCsvSnapshot,
   shareCsvExport,
   writeCsvExport,
 } from '@kiko/data-transfer';
@@ -55,7 +55,7 @@ const ExportCsvScreen: FC<ExportCsvScreenProps> = () => {
     }
 
     try {
-      const snapshot = await readDataSnapshot();
+      const snapshot = await readCsvSnapshot();
       const text = buildCsvText({ snapshot, dialect: csvDialectOf(i18n.language), t });
 
       await shareCsvExport(

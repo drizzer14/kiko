@@ -38,8 +38,8 @@ const mockSnapshot = () => ({
   categories: [],
   settings: [],
 });
-jest.mock('@kiko/data-transfer/snapshot/read-snapshot', () => ({
-  readDataSnapshot: async () => mockSnapshot(),
+jest.mock('@kiko/data-transfer/csv-export/read-csv-snapshot', () => ({
+  readCsvSnapshot: async () => mockSnapshot(),
 }));
 
 // Under Jest `findNodeHandle` is always null; this gives each host its own number so the anchor a
