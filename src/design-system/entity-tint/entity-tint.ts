@@ -7,6 +7,7 @@ import {
   entityColorsDark,
   entityColorsLight,
 } from '../palette';
+import { lightTheme } from '../theme';
 
 // Entity-color derivations shared across the design system: resolving an
 // account/holding/category's effective hue (`resolveEntityColor`), the two
@@ -199,6 +200,138 @@ export const isLightEntityColor = (colorHex: string): boolean =>
 // two-hex comparison.
 export const wcagContrastRatio = (hexA: string, hexB: string): number =>
   contrastRatio(relativeLuminance(hexA), relativeLuminance(hexB));
+
+// The weakest contrast a light mark may have on the page and the card; 0.05 above the 3:1 floor of
+// WCAG 1.4.11 so rounding to bytes cannot drop it under.
+const MINIMUM_MARK_CONTRAST = 3.05;
+const MARK_LIGHTNESS_STEP = 0.25;
+const MARK_LIGHTNESS_FLOOR = 5;
+const GAMUT_BISECTION_ROUNDS = 14;
+const GAMUT_TOLERANCE = 0.0005;
+const WHITE_POINT_X = 0.95047;
+const WHITE_POINT_Z = 1.08883;
+const LAB_EPSILON = 216 / 24389;
+const LAB_KAPPA = 24389 / 27;
+
+const linearToSRGBChannel = (linear: number): number =>
+  linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055;
+
+const labPivot = (ratio: number): number =>
+  ratio > LAB_EPSILON ? Math.cbrt(ratio) : (LAB_KAPPA * ratio + 16) / 116;
+
+const labPivotInverse = (pivot: number): number =>
+  pivot ** 3 > LAB_EPSILON ? pivot ** 3 : (116 * pivot - 16) / LAB_KAPPA;
+
+// CIE LCH(ab) of a `#RRGGBB` hex, against the standard daylight white point.
+const lchOfHex = (hex: string): { lightness: number; chroma: number; hue: number } => {
+  const [red, green, blue] = parseHex(hex).map(sRGBChannelToLinear);
+  const pivotX = labPivot((0.4124564 * red + 0.3575761 * green + 0.1804375 * blue) / WHITE_POINT_X);
+  const pivotY = labPivot(0.2126729 * red + 0.7151522 * green + 0.072175 * blue);
+  const pivotZ = labPivot((0.0193339 * red + 0.119192 * green + 0.9503041 * blue) / WHITE_POINT_Z);
+  const a = 500 * (pivotX - pivotY);
+  const b = 200 * (pivotY - pivotZ);
+
+  return {
+    lightness: 116 * pivotY - 16,
+    chroma: Math.hypot(a, b),
+    hue: ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360,
+  };
+};
+
+// The sRGB hex of an LCH color, channels clamped into the gamut, with whether it fit before the
+// clamp.
+const hexOfLch = (
+  lightness: number,
+  chroma: number,
+  hue: number,
+): { hex: string; inGamut: boolean } => {
+  const a = chroma * Math.cos((hue * Math.PI) / 180);
+  const b = chroma * Math.sin((hue * Math.PI) / 180);
+  const pivotY = (lightness + 16) / 116;
+  const x = labPivotInverse(pivotY + a / 500) * WHITE_POINT_X;
+  const y = labPivotInverse(pivotY);
+  const z = labPivotInverse(pivotY - b / 200) * WHITE_POINT_Z;
+  const linear = [
+    3.2404542 * x - 1.5371385 * y - 0.4985314 * z,
+    -0.969266 * x + 1.8760108 * y + 0.041556 * z,
+    0.0556434 * x - 0.2040259 * y + 1.0572252 * z,
+  ];
+
+  return {
+    hex: `#${linear
+      .map((channel) =>
+        Math.round(linearToSRGBChannel(Math.min(1, Math.max(0, channel))) * 255)
+          .toString(16)
+          .padStart(2, '0')
+          .toUpperCase(),
+      )
+      .join('')}`,
+    inGamut: linear.every(
+      (channel) => channel >= -GAMUT_TOLERANCE && channel <= 1 + GAMUT_TOLERANCE,
+    ),
+  };
+};
+
+// The largest chroma at or below `chroma` that stays inside sRGB at this lightness and hue, found
+// by bisection.
+const clampChromaToGamut = (lightness: number, chroma: number, hue: number): number => {
+  if (hexOfLch(lightness, chroma, hue).inGamut) {
+    return chroma;
+  }
+
+  const narrow = (low: number, high: number, round: number): number => {
+    if (round === GAMUT_BISECTION_ROUNDS) {
+      return low;
+    }
+
+    const middle = (low + high) / 2;
+
+    return hexOfLch(lightness, middle, hue).inGamut
+      ? narrow(middle, high, round + 1)
+      : narrow(low, middle, round + 1);
+  };
+
+  return narrow(0, chroma, 0);
+};
+
+const holdsMarkContrast = (hex: string): boolean =>
+  Math.min(
+    wcagContrastRatio(hex, lightTheme.colors.background),
+    wcagContrastRatio(hex, lightTheme.colors.surface),
+  ) >= MINIMUM_MARK_CONTRAST;
+
+// A light hex that fails the mark contrast keeps its hue and chroma and loses CIE lightness in
+// quarter steps, the chroma clamped into the gamut at every step: lowering lightness at full chroma
+// leaves sRGB for saturated pale hues like yellow, and skipping those steps would never darken
+// them. Falls back to the input when no step passes before the floor.
+const lightMark = (hex: string): string => {
+  if (holdsMarkContrast(hex)) {
+    return hex;
+  }
+
+  const { lightness, chroma, hue } = lchOfHex(hex);
+  const lowered = (current: number): string => {
+    if (current <= MARK_LIGHTNESS_FLOOR) {
+      return hex;
+    }
+
+    const { hex: candidate } = hexOfLch(current, clampChromaToGamut(current, chroma, hue), hue);
+
+    return holdsMarkContrast(candidate) ? candidate : lowered(current - MARK_LIGHTNESS_STEP);
+  };
+
+  return lowered(lightness);
+};
+
+// The shade a LINE or a bare SF Symbol tint paints for a display color: the tile hex itself when it
+// already holds 3.05:1 on the page and the card, else a darker shade of the same hue. A tile, slice
+// or bar keeps the tile hex; only strokes and glyphs without a tile behind them need this. Dark is
+// the identity.
+export const markColor = (hex: string, scheme: ColorScheme): string =>
+  match(scheme)
+    .with('dark', () => hex)
+    .with('light', () => lightMark(hex))
+    .exhaustive();
 
 // Lowest contrast to a white card that a stored hex outside the 14 swatches may keep in the light
 // scheme: a tile below it reads as a hole in the card. Taken from the approved palette file's
