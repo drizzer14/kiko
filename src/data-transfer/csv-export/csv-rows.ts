@@ -63,19 +63,31 @@ const COLUMNS = [
 const union = (...sets: ReadonlySet<string>[]): ReadonlySet<string> =>
   new Set(sets.flatMap((set) => [...set]));
 
+const byTimeThenId = (
+  first: Pick<TransactionRow, 'id' | 'time'>,
+  second: Pick<TransactionRow, 'id' | 'time'>,
+): number => first.time - second.time || (first.id > second.id ? 1 : -1);
+
 /**
  * What a row is, as a label over the rules Statistics already applies, over the WHOLE ledger so a
  * partner under an archived account still counts. The strongest rule wins: a stored balance mark
  * is the app's own correction; a linked loan payment is a deliberate link; an exchange marker or
  * pair is structural; a transfer is only inferred from an amount, a code or a wording. A row
  * none of them catches reads by its sign.
+ *
+ * The rows are handed to the matchers newest first, as the app's own reads do (`listAllQuery`
+ * orders by time descending): the transfer matcher claims greedily in the order it is given, so
+ * with two debits competing for one credit another order would pair a different one.
  */
 export const csvTransactionType = ({
   transactions,
   holdings,
   accounts,
 }: LedgerFacts): ((row: Pick<TransactionRow, 'id' | 'amountMinorUnits'>) => CsvTransactionType) => {
-  const ledger = ledgerRowsOf(transactions, holdings);
+  const ledger = ledgerRowsOf(
+    [...transactions].sort((first, second) => byTimeThenId(second, first)),
+    holdings,
+  );
   const rules: readonly (readonly [CsvTransactionType, ReadonlySet<string>])[] = [
     ['balance', balanceSetIdsOf(ledger)],
     ['loan', loanPaymentExcludedTransactionIds(ledger, loanHoldingsOf(holdings))],
@@ -111,11 +123,6 @@ const dateTimeOf = (time: number): string => {
 
   return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
-
-const byTimeThenId = (
-  first: Pick<TransactionRow, 'id' | 'time'>,
-  second: Pick<TransactionRow, 'id' | 'time'>,
-): number => first.time - second.time || (first.id > second.id ? 1 : -1);
 
 /**
  * The CSV file's text: every row of every non-archived account, oldest first, with a byte order
@@ -156,9 +163,9 @@ export const buildCsvText = (input: {
       csvTextCell(category.title),
       csvTextCell(transaction.description),
       csvTextCell(transaction.comment ?? ''),
-      typeOf(transaction),
-      String(transaction.hold === true),
-      transaction.source,
+      t(`settings.csvExport.types.${typeOf(transaction)}`),
+      t(`settings.csvExport.pending.${transaction.hold === true ? 'yes' : 'no'}`),
+      t(`settings.csvExport.sources.${transaction.source}`),
     ];
   };
 
@@ -168,5 +175,5 @@ export const buildCsvText = (input: {
     cells.join(dialect.delimiter),
   );
 
-  return '﻿'.concat(lines.join('\r\n'), '\r\n');
+  return '\uFEFF'.concat(lines.join('\r\n'), '\r\n');
 };

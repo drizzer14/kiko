@@ -95,16 +95,38 @@ export const en = {
         type: 'Type',
       },
       contents:
-        'It holds the date, amount, category, description and comment of every transaction in your accounts, with the names of the accounts and holdings. A holding name can hold a card number mask, and a Binance Pay description can name another person. Archived accounts are left out.',
+        'It holds the date, amount, currency, category, description and comment of every transaction in your accounts, and for each one its type, whether it is pending, and where it came from, such as a bank or an exchange. It also holds the names of the accounts and holdings. A holding name can hold a card number mask, and a description can name another person. Archived accounts are left out.',
       errorMessage: 'Please try again.',
       errorTitle: 'Export failed',
       notBackup:
         'This is not a backup. It leaves out balances, prices and settings, and Kiko cannot restore your data from it. To back up your data, export a .kiko file instead.',
+      // The values of the `pending` column: a row that is still on hold at the bank, or not.
+      pending: {
+        no: 'No',
+        yes: 'Yes',
+      },
       // The Settings row that opens this screen. Title Case by the same ruling as
       // `dataExport.rowLabel`, so it reads the same as `title` below (the nav header).
       rowLabel: 'Export to CSV',
       shareButton: 'Share CSV file',
+      // The values of the `source` column, one per `transactions.source`.
+      sources: {
+        binance: 'Binance',
+        btc_wallet: 'Bitcoin wallet',
+        import: 'Statement import',
+        manual: 'Manual',
+        monobank: 'Monobank',
+      },
       title: 'Export to CSV',
+      // The values of the `type` column, one per `CsvTransactionType`.
+      types: {
+        balance: 'Balance',
+        exchange: 'Exchange',
+        expense: 'Expense',
+        income: 'Income',
+        loan: 'Loan',
+        transfer: 'Transfer',
+      },
       warning:
         'This file is not encrypted. Anyone who gets it can read it, so share it only with people and apps you trust.',
     },

@@ -165,7 +165,6 @@ const withoutQuotedTitles = (value: string): string =>
 const BINANCE_PRODUCT_PHRASES = new RegExp(
   `\\b(?:${[
     'Binance Card',
-    'Binance Pay',
     'Auto-Invest',
     'Dual Investment',
     'Simple Earn',

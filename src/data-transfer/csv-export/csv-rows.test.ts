@@ -2,6 +2,7 @@ import Papa from 'papaparse';
 import { i18n } from '@kiko/i18n/init';
 import type { SettingsRow } from '@kiko/db';
 import { detectFormat } from '@kiko/statement-import/registry';
+import { buildSpendingLedger } from '@kiko/statistics/spending-ledger';
 import {
   accountRow,
   BANK,
@@ -97,8 +98,8 @@ describe('buildCsvText file shape', () => {
   const text = buildCsvText({ snapshot: snapshotOf(), dialect: ENGLISH, t: english });
 
   it('starts with a byte order mark', () => {
-    expect(text.startsWith('﻿')).toBe(true);
-    expect(text.indexOf('﻿', 1)).toBe(-1);
+    expect(text.startsWith('\uFEFF')).toBe(true);
+    expect(text.indexOf('\uFEFF', 1)).toBe(-1);
   });
 
   it('ends every record with CRLF and uses no bare line feed', () => {
@@ -162,10 +163,39 @@ describe('buildCsvText cells', () => {
       'Groceries',
       'Coffee, big',
       'with milk',
-      'expense',
-      'true',
-      'monobank',
+      'Expense',
+      'Yes',
+      'Monobank',
     ]);
+  });
+
+  it('writes the type, pending and source values in the Ukrainian app language', () => {
+    const row = singleRowOf({}, UKRAINIAN, ukrainian);
+
+    expect(row.slice(COLUMN.type)).toEqual(['Витрата', 'Так', 'Monobank']);
+  });
+
+  it.each([
+    ['manual', 'Manual', 'Вручну'],
+    ['monobank', 'Monobank', 'Monobank'],
+    ['btc_wallet', 'Bitcoin wallet', 'Гаманець Bitcoin'],
+    ['binance', 'Binance', 'Binance'],
+    ['import', 'Statement import', 'Імпорт виписки'],
+  ] as const)('names the %s source in both languages', (source, inEnglish, inUkrainian) => {
+    const transactions = [transactionRow({ ...CARD_ROW, id: 'sourced', source })];
+
+    expect(singleRowOf({ transactions })[COLUMN.source]).toBe(inEnglish);
+    expect(singleRowOf({ transactions }, UKRAINIAN, ukrainian)[COLUMN.source]).toBe(inUkrainian);
+  });
+
+  it.each([
+    ['expense', -100, 'Expense', 'Витрата'],
+    ['income', 100, 'Income', 'Дохід'],
+  ])('names a %s row by its type in both languages', (id, amount, inEnglish, inUkrainian) => {
+    const transactions = [transactionRow({ ...CARD_ROW, id, amountMinorUnits: amount })];
+
+    expect(singleRowOf({ transactions })[COLUMN.type]).toBe(inEnglish);
+    expect(singleRowOf({ transactions }, UKRAINIAN, ukrainian)[COLUMN.type]).toBe(inUkrainian);
   });
 
   it('writes the amount in the holding currency with the dialect decimal', () => {
@@ -181,12 +211,15 @@ describe('buildCsvText cells', () => {
     expect(row[COLUMN.currency]).toBe('BTC');
   });
 
-  it('writes pending false for a settled row and for a row with no flag', () => {
+  it('writes pending No for a settled row and for a row with no flag', () => {
     const settled = transactionRow({ ...CARD_ROW, id: 'settled', hold: false });
     const unflagged = transactionRow({ ...CARD_ROW, id: 'unflagged', hold: null });
 
-    expect(singleRowOf({ transactions: [settled] })[COLUMN.pending]).toBe('false');
-    expect(singleRowOf({ transactions: [unflagged] })[COLUMN.pending]).toBe('false');
+    expect(singleRowOf({ transactions: [settled] })[COLUMN.pending]).toBe('No');
+    expect(singleRowOf({ transactions: [unflagged] })[COLUMN.pending]).toBe('No');
+    expect(singleRowOf({ transactions: [settled] }, UKRAINIAN, ukrainian)[COLUMN.pending]).toBe(
+      'Ні',
+    );
   });
 
   it('folds a row with no category into the default category title', () => {
@@ -338,7 +371,7 @@ describe('buildCsvText archived accounts', () => {
   });
 
   it('classes a row whose transfer partner sits under an archived account as a transfer', () => {
-    expect(cellsOf(snapshot)[1][COLUMN.type]).toBe('transfer');
+    expect(cellsOf(snapshot)[1][COLUMN.type]).toBe('Transfer');
   });
 });
 
@@ -369,9 +402,9 @@ describe('buildCsvText read back', () => {
       'Other',
       'Milk, bread; "fresh"\r\nsecond line',
       "'-not a formula",
-      'expense',
-      'false',
-      'manual',
+      'Expense',
+      'No',
+      'Manual',
     ]);
   });
 
@@ -539,5 +572,75 @@ describe('csvTransactionType', () => {
     });
 
     expect(handTypeOf(rowOf('funding-debit'))).toBe('expense');
+  });
+});
+
+describe('csvTransactionType feed order', () => {
+  const at = (seconds: number) => BASE_TIME + seconds * 1_000;
+  const SAVINGS = holdingRow({ id: 'savings', accountId: 'bank' });
+  // Two debits compete for one credit, every pair inside the two-minute window: which debit the
+  // credit pairs with depends on the order the rows arrive in. Ids run with the time, so a feed
+  // by id and the app's time-descending feed disagree.
+  const DEBIT_A = transactionRow({
+    id: 'a',
+    holdingId: 'card',
+    amountMinorUnits: -10_000,
+    time: at(0),
+  });
+  const DEBIT_B = transactionRow({
+    id: 'b',
+    holdingId: 'cash',
+    amountMinorUnits: -10_000,
+    time: at(60),
+  });
+  const CREDIT_C = transactionRow({
+    id: 'c',
+    holdingId: 'savings',
+    amountMinorUnits: 10_000,
+    time: at(90),
+  });
+  const HOLDINGS = [...WORLD.holdings, SAVINGS];
+
+  // What the app marks: the order of `listAllQuery`, `ORDER BY time DESC`.
+  const appExcludedIds = buildSpendingLedger({
+    transactions: [DEBIT_A, DEBIT_B, CREDIT_C].sort((first, second) => second.time - first.time),
+    holdings: HOLDINGS,
+    accounts: WORLD.accounts,
+    shownHoldings: HOLDINGS,
+  }).excludedTransactionIds;
+
+  it('is the review scenario: the app pairs the credit with the later debit', () => {
+    expect([...appExcludedIds].sort()).toEqual(['b', 'c']);
+  });
+
+  it.each([
+    ['by id', [DEBIT_A, DEBIT_B, CREDIT_C]],
+    ['reversed', [CREDIT_C, DEBIT_B, DEBIT_A]],
+  ])('types each row as the app marks it, rows arriving %s', (_name, rows) => {
+    const typeOf = csvTransactionType({
+      transactions: rows,
+      holdings: HOLDINGS,
+      accounts: WORLD.accounts,
+    });
+
+    expect([DEBIT_A, DEBIT_B, CREDIT_C].map((row) => [row.id, typeOf(row)])).toEqual(
+      [DEBIT_A, DEBIT_B, CREDIT_C].map((row) => [
+        row.id,
+        appExcludedIds.has(row.id) ? 'transfer' : 'expense',
+      ]),
+    );
+  });
+});
+
+describe('buildCsvText rows of one time', () => {
+  it('orders them by id, whatever order they arrive in', () => {
+    const rows = ['b', 'c', 'a'].map((id) =>
+      transactionRow({ id, holdingId: 'card', description: `row ${id}`, time: BASE_TIME }),
+    );
+    const descriptions = cellsOf(snapshotOf({ transactions: rows }))
+      .slice(1)
+      .map((cells) => cells[COLUMN.description]);
+
+    expect(descriptions).toEqual(['row a', 'row b', 'row c']);
   });
 });
