@@ -4,6 +4,7 @@ import { walkStateFake } from '@kiko/test-support/walk-marks';
 import { BybitRefusalError } from './bybit.client';
 import { isBybitCoolingDown } from './bybit.cooldown';
 import { silencedWarnings } from './bybit.log-test-fixtures';
+import { BYBIT_RESCAN_WINDOWS_MS } from './bybit.rescan-window';
 import { fundingLedgerRow } from './bybit.history-test-fixtures';
 import { NOW, answerWith, envelopeOf } from './bybit.client-test-fixtures';
 import { BybitHistoryParseError, fetchFundingLedgerPage } from './bybit.history-client';
@@ -13,7 +14,8 @@ import { fundingLedgerWalkOf, ledgerAt, ledgerKeyOf } from './bybit.funding-ledg
 const CURSOR = NOW - 3 * DAY_MS;
 const AT = NOW - 2 * DAY_MS;
 const SECOND_MS = 1_000;
-const WINDOW_MS = 7 * DAY_MS;
+const HOUR_MS = 3_600_000;
+const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.fundingLedger;
 
 type StateWorld = Parameters<typeof walkStateFake>[0];
 
@@ -93,6 +95,32 @@ describe('the Funding ledger walk: windows, pages and marks', () => {
     const walk = newWalk();
 
     expect(await walk.run()).toEqual({ imported: 0, complete: true });
+  });
+
+  // The route rounds each bound out to a whole second and refuses a span past 604,800 seconds, so
+  // a clock inside a second must still send no more than that, from its first window on.
+  it('every span the walk sends is 604,800 seconds or less, from a clock inside a second', async () => {
+    const walk = newWalk({ now: NOW + 500 }, ACCOUNT_ID, {});
+    const days = [700, 500, 300, 100, 30, 1];
+
+    walk.world.fundingLedger = days.map((age) =>
+      ledgerAt(NOW - age * DAY_MS, { currcCursor: `age-${age}` }),
+    );
+
+    let runs = 0;
+    let isComplete = false;
+
+    while (runs < 20 && !isComplete) {
+      runs += 1;
+      isComplete = (await walk.run()).complete;
+      walk.clock.now += HOUR_MS + 1;
+    }
+
+    expect(isComplete).toBe(true);
+    expect(walk.ledgerKeys()).toHaveLength(days.length);
+    expect(
+      Math.max(...walk.reads.map((read) => read.endTime - read.startTime)),
+    ).toBeLessThanOrEqual(604_800_000);
   });
 
   it('a span commits the same records whatever the page order', async () => {
@@ -213,7 +241,7 @@ describe('the Funding ledger walk: windows, pages and marks', () => {
       expect(walk.ledgerKeys()).toEqual([ledgerKeyOf('next-window')]);
       expect(walk.marks().cursor).toBe(NOW);
       expect(walk.marks().pending).toEqual([
-        { start: NOW - 10 * DAY_MS, end: NOW - 3 * DAY_MS, series: 'fundingLedger' },
+        { start: NOW - 10 * DAY_MS, end: NOW - 10 * DAY_MS + WINDOW_MS, series: 'fundingLedger' },
       ]);
       expect(result.complete).toBe(false);
       expect(warned.codes()).toContain('bybit-page-drift');

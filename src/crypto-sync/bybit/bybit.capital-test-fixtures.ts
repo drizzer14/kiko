@@ -1,3 +1,4 @@
+import { DAY_MS } from '@kiko/dates';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import type { FundingMatchRow, HoldingRow } from '@kiko/db';
 import type { ExchangeStateDeps } from '@kiko/crypto-sync/exchange/walk';
@@ -120,6 +121,12 @@ export const fakeBybit = (options: FakeOptions = {}) => {
   };
 
   const bodyOf = (series: BybitSeries, startTime: number, endTime: number, offset: number) => {
+    // The three list routes refuse a span past 7 days with 131203 at HTTP 200; the ledger's edges
+    // are whole seconds, so its span is the one that the walk sends after the rounding.
+    if (LIST_SERIES.includes(series) && endTime - startTime > 7 * DAY_MS) {
+      return envelopeOf(131203);
+    }
+
     if (options.refuse?.series === series) {
       return envelopeOf(options.refuse.retCode);
     }

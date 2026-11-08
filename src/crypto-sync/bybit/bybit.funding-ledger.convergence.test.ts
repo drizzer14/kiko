@@ -136,9 +136,10 @@ describe.each(GAPS)('the Funding ledger walk over bursts, at a clock gap of %i m
 });
 
 // Seeds of an account from its first read: the route serves 100 rows a page, as the walk asks for,
-// and the floor trails the clock by 729 days. A window of 7 days costs one call and one more per
-// page past the first, so each floor comes from the windows and the pages of the short last
-// window: 104 windows of 7 days and a last window of 1 day.
+// and the floor trails the clock by 729 days. A window of 7 days less a second costs one call and
+// one more per page past the first, so each floor comes from the windows and the pages of the
+// short last window: 104 windows of 7 days less a second and a last window of 1 day and 104
+// seconds.
 const FLOOR_MS = NOW - 729 * DAY_MS;
 const REAL_PAGE_SIZE = 100;
 const WINDOWS = 105;

@@ -12,6 +12,7 @@ import {
 
 const NOW = 1_704_326_400_000;
 const HOUR_MS = 60 * 60 * 1000;
+const SECOND_MS = 1_000;
 
 const stateOf = (seeds: Partial<Record<WalkName, WalkMarkSeed>>) =>
   parseExchangeState(JSON.stringify(withWalkMarkSeeds({}, 'acc-1', seeds)));
@@ -253,13 +254,20 @@ describe('historyOwesRange', () => {
       ['capital', 29],
       ['transfer', 7],
       ['log', 7],
-      ['fundingLedger', 7],
     ] as const)('reads the window of the %s walk as %i days', (walkName, days) => {
       const inside = { start: NOW - days * DAY_MS, end: NOW - DAY_MS };
       const outside = { start: NOW - days * DAY_MS - 1, end: NOW - DAY_MS };
 
       expect(owesOn('bybit', walkName, inside)).toBe(false);
       expect(owesOn('bybit', walkName, outside)).toBe(true);
+    });
+
+    // The ledger's bounds round out to whole seconds, so its window is a second short of 7 days.
+    it('reads the window of the fundingLedger walk as 7 days less 1 second', () => {
+      const start = NOW - (7 * DAY_MS - SECOND_MS);
+
+      expect(owesOn('bybit', 'fundingLedger', { start, end: NOW - DAY_MS })).toBe(false);
+      expect(owesOn('bybit', 'fundingLedger', { start: start - 1, end: NOW - DAY_MS })).toBe(true);
     });
 
     it('owes to the caption while the account has never synced', () => {

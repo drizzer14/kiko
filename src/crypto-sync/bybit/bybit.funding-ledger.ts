@@ -44,7 +44,10 @@ import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun } from './bybit.history-budg
  */
 const LEDGER_SERIES = 'fundingLedger';
 
-/** The ledger route answers a window of at most 7 days. */
+/**
+ * The ledger route refuses a span past 7 days, and its bounds round out to whole seconds, so the
+ * window is 7 days less a second.
+ */
 const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.fundingLedger;
 
 /** A window costs one call at least, and the lane spends its calls on windows and pages. */

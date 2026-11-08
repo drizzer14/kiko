@@ -1,6 +1,8 @@
 import { DAY_MS } from '@kiko/dates';
 import type { BinancePendingRange, WalkId } from '@kiko/crypto-sync/exchange/walk-state';
 
+const SECOND_MS = 1_000;
+
 /**
  * The window of each Bybit walk that the re-scan reads again behind the balance sync, and the span
  * the walk asks the route for: one source for the walk and for the caption.
@@ -9,7 +11,9 @@ export const BYBIT_RESCAN_WINDOWS_MS = {
   capital: 29 * DAY_MS,
   transfer: 7 * DAY_MS,
   log: 7 * DAY_MS,
-  fundingLedger: 7 * DAY_MS,
+  // The ledger rounds each bound out to a whole second, so a span of 7 days less a second sends
+  // at most 7 days, the most the route accepts.
+  fundingLedger: 7 * DAY_MS - SECOND_MS,
 } as const;
 
 const WINDOW_OF: Record<WalkId, number | undefined> = {
