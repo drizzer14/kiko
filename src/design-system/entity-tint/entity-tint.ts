@@ -311,7 +311,7 @@ const holdsMarkContrast = (hex: string): boolean =>
 // quarter steps, the chroma clamped into the gamut at every step: lowering lightness at full chroma
 // leaves sRGB for saturated pale hues like yellow, and skipping those steps would never darken
 // them. Falls back to the input when no step passes before the floor.
-const lightMark = (hex: string): string => {
+const computeLightMark = (hex: string): string => {
   if (holdsMarkContrast(hex)) {
     return hex;
   }
@@ -328,6 +328,25 @@ const lightMark = (hex: string): string => {
   };
 
   return lowered(lightness);
+};
+
+// A pale hex costs about a thousand LCH conversions to darken, and every list row asks for its mark
+// on each render; the input set is closed (the 14 swatches and the stored hexes), so the map stays
+// small.
+const lightMarkByHex = new Map<string, string>();
+
+const lightMark = (hex: string): string => {
+  const cached = lightMarkByHex.get(hex);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const mark = computeLightMark(hex);
+
+  lightMarkByHex.set(hex, mark);
+
+  return mark;
 };
 
 // The shade a LINE or a bare SF Symbol tint paints for a display color: the tile hex itself when it

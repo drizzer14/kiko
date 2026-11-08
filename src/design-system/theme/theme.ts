@@ -237,8 +237,8 @@ export const darkTheme = {
     // `scrim`.
     scrimFallback: 'rgba(0,0,0,0.55)',
     entityColors: entityColorsDark,
-    // Dark has one swatch set for accounts, holdings and categories alike, so the category
-    // set is the entity set; light splits them (see `categoryColorsLight`).
+    // One swatch set for accounts, holdings and categories alike, so the category set is the
+    // entity set; light does the same through `categoryColorsLight`.
     categoryColors: entityColorsDark,
     chartSeries: chartSeriesDark,
     glyphOnLightTile,

@@ -70,30 +70,13 @@ export const entityColorsLight: Record<SwatchName, string> = {
   gray: '#9BA1AF',
 };
 
-// The same values as the entity set on purpose: one light hue per name, so an account tile and a
-// category tile of one color match. Kept as its own export so a set can diverge later without a
-// consumer change.
-export const categoryColorsLight: Record<SwatchName, string> = {
-  white: '#47434F',
-  khaki: '#757650',
-  brown: '#453725',
-  yellow: '#E8B33B',
-  blue: '#074FB0',
-  green: '#056407',
-  mint: '#ADE1D6',
-  violet: '#D7A9FE',
-  red: '#B9040E',
-  orange: '#AA7023',
-  teal: '#3D7E92',
-  pink: '#FF6A82',
-  indigo: '#7D67D6',
-  gray: '#9BA1AF',
-};
+// The approved light set is one set for accounts, holdings and categories, so an account tile and a
+// category tile of one color match. Kept as its own export so a consumer names the set it means.
+export const categoryColorsLight = entityColorsLight;
 
-// The same eight hues in the same order as chartSeriesDark, read from the category set. The subset
-// invariant above is about entityColors and does not carry over: a light chart hue is a subset of
-// categoryColorsLight (by construction here, pinned by palette.contrast.test.ts), not of
-// entityColorsLight.
+// The same eight hues in the same order as chartSeriesDark, read from the category set. Both light
+// sets are one set, so a light chart hue is a subset of either (pinned by
+// palette.contrast.test.ts).
 export const chartSeriesLight: readonly string[] = (
   ['blue', 'green', 'orange', 'violet', 'teal', 'pink', 'yellow', 'indigo'] as const
 ).map((name) => categoryColorsLight[name]);
