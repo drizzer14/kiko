@@ -56,15 +56,15 @@ const ExportCsvScreen: FC<ExportCsvScreenProps> = () => {
 
     try {
       const snapshot = await readDataSnapshot();
-      const path = await writeCsvExport(
-        buildCsvText({ snapshot, dialect: csvDialectOf(i18n.language), t }),
-      );
+      const text = buildCsvText({ snapshot, dialect: csvDialectOf(i18n.language), t });
 
-      await shareCsvExport(path, () =>
-        Share.share(
-          { url: toFileShareUrl(path) },
-          { anchor: shareAnchorOf(shareButtonRef.current) },
-        ),
+      await shareCsvExport(
+        () => writeCsvExport(text),
+        (path) =>
+          Share.share(
+            { url: toFileShareUrl(path) },
+            { anchor: shareAnchorOf(shareButtonRef.current) },
+          ),
       );
     } catch {
       alertOnCatch(t, 'settings.csvExport.errorTitle', 'settings.csvExport.errorMessage');

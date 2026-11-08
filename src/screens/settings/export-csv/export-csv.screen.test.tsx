@@ -192,7 +192,7 @@ describe('ExportCsvScreen', () => {
       { url: `file://${writtenPath}` },
       { anchor: findNodeHandle(screen.getByTestId('settings-button-export-csv')) },
     );
-    expect(text.startsWith('﻿')).toBe(true);
+    expect(text.startsWith('\uFEFF')).toBe(true);
     expect(text).toContain('Coffee');
   });
 
@@ -262,6 +262,32 @@ describe('ExportCsvScreen', () => {
       share.finish();
     });
 
+    await waitFor(() => expect(csvFilesLeft()).toEqual([]));
+  });
+
+  it('keeps the file for a write still open when the screen mounts again, then shares and deletes it', async () => {
+    const write = pendingShare();
+    mockWriteFile.mockImplementation(async (path: string) => {
+      mockDirectory.push(path.replace('/tmp/', ''));
+      await write.promise;
+    });
+    const first = await renderScreen();
+    await waitFor(() => expect(csvFilesLeft()).toEqual([]));
+    await pressShare(first);
+    await waitFor(() => expect(mockWriteFile).toHaveBeenCalledTimes(1));
+    await first.unmount();
+    const writtenName = (mockWriteFile.mock.calls[0][0] as string).replace('/tmp/', '');
+
+    await renderScreen();
+    await act(async () => {});
+
+    expect(mockDirectory).toContain(writtenName);
+
+    await act(async () => {
+      write.finish();
+    });
+
+    await waitFor(() => expect(mockShare).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(csvFilesLeft()).toEqual([]));
   });
 

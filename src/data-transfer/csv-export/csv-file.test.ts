@@ -47,10 +47,10 @@ describe('writeCsvExport', () => {
   });
 
   it('writes the text as UTF-8 to a kiko-transactions file in the temporary directory', async () => {
-    const path = await writeCsvExport('﻿Date\r\n');
+    const path = await writeCsvExport('\uFEFFDate\r\n');
 
     expect(path).toMatch(/^\/tmp\/kiko-transactions-\d+\.csv$/);
-    expect(mockWriteFile).toHaveBeenCalledWith(path, '﻿Date\r\n', 'utf8');
+    expect(mockWriteFile).toHaveBeenCalledWith(path, '\uFEFFDate\r\n', 'utf8');
   });
 
   it('joins the path when the directory constant has no trailing slash', async () => {
@@ -83,6 +83,8 @@ describe('writeCsvExport', () => {
 });
 
 describe('the CSV file lifecycle', () => {
+  const written = (name: string) => async () => `/tmp/${name}`;
+
   beforeEach(() => {
     mockTemporaryDirectoryPath = '/tmp/';
     mockDirectory = [LEFTOVER, OTHER_LEFTOVER, 'kiko-export-1.kiko', 'notes.csv', 'photo.jpg'];
@@ -138,14 +140,22 @@ describe('the CSV file lifecycle', () => {
 
   describe('shareCsvExport', () => {
     it('deletes its file when the share resolves', async () => {
-      await shareCsvExport(`/tmp/${LEFTOVER}`, async () => undefined);
+      await shareCsvExport(written(LEFTOVER), async () => undefined);
 
       expect(mockDirectory).not.toContain(LEFTOVER);
     });
 
+    it('shares the path the write returned', async () => {
+      const share = jest.fn().mockResolvedValue(undefined);
+
+      await shareCsvExport(written(LEFTOVER), share);
+
+      expect(share).toHaveBeenCalledWith(`/tmp/${LEFTOVER}`);
+    });
+
     it('deletes its file and rejects with the error when the share rejects', async () => {
       await expect(
-        shareCsvExport(`/tmp/${LEFTOVER}`, async () => {
+        shareCsvExport(written(LEFTOVER), async () => {
           throw new Error('share failed');
         }),
       ).rejects.toThrow('share failed');
@@ -153,9 +163,31 @@ describe('the CSV file lifecycle', () => {
       expect(mockDirectory).not.toContain(LEFTOVER);
     });
 
+    it('rejects with the error and shares nothing when the write rejects', async () => {
+      const share = jest.fn();
+
+      await expect(
+        shareCsvExport(async () => {
+          throw new Error('disk full');
+        }, share),
+      ).rejects.toThrow('disk full');
+
+      expect(share).not.toHaveBeenCalled();
+    });
+
+    it('goes on to delete every leftover when the write rejects', async () => {
+      await expect(
+        shareCsvExport(async () => {
+          throw new Error('disk full');
+        }, jest.fn()),
+      ).rejects.toThrow('disk full');
+
+      expect(mockDirectory).toEqual(['kiko-export-1.kiko', 'notes.csv', 'photo.jpg']);
+    });
+
     it('keeps the file while the share is pending', async () => {
       const share = pendingShare();
-      const running = shareCsvExport(`/tmp/${LEFTOVER}`, () => share.promise);
+      const running = shareCsvExport(written(LEFTOVER), () => share.promise);
       await flush();
 
       expect(mockDirectory).toContain(LEFTOVER);
@@ -164,8 +196,30 @@ describe('the CSV file lifecycle', () => {
       await running;
     });
 
+    it('counts the share as open while the file is still being written', async () => {
+      const write = pendingShare();
+      const running = shareCsvExport(
+        async () => {
+          await write.promise;
+
+          return `/tmp/${LEFTOVER}`;
+        },
+        async () => undefined,
+      );
+
+      await deleteCsvExportsIfIdle();
+
+      expect(mockDirectory).toContain(LEFTOVER);
+      expect(mockDirectory).toContain(OTHER_LEFTOVER);
+
+      write.resolve();
+      await running;
+
+      expect(mockDirectory).toEqual(['kiko-export-1.kiko', 'notes.csv', 'photo.jpg']);
+    });
+
     it('deletes every leftover once the last share settles', async () => {
-      await shareCsvExport(`/tmp/${LEFTOVER}`, async () => undefined);
+      await shareCsvExport(written(LEFTOVER), async () => undefined);
 
       expect(mockDirectory).toEqual(['kiko-export-1.kiko', 'notes.csv', 'photo.jpg']);
     });
@@ -173,8 +227,8 @@ describe('the CSV file lifecycle', () => {
     it('deletes the leftovers only when the second of two pending shares settles', async () => {
       const first = pendingShare();
       const second = pendingShare();
-      const runningFirst = shareCsvExport(`/tmp/${LEFTOVER}`, () => first.promise);
-      const runningSecond = shareCsvExport(`/tmp/${OTHER_LEFTOVER}`, () => second.promise);
+      const runningFirst = shareCsvExport(written(LEFTOVER), () => first.promise);
+      const runningSecond = shareCsvExport(written(OTHER_LEFTOVER), () => second.promise);
       mockDirectory.push('kiko-transactions-1700000000002.csv');
 
       first.resolve();
@@ -198,7 +252,7 @@ describe('the CSV file lifecycle', () => {
       mockUnlink.mockRejectedValue(new Error('busy'));
 
       await expect(
-        shareCsvExport(`/tmp/${LEFTOVER}`, async () => undefined),
+        shareCsvExport(written(LEFTOVER), async () => undefined),
       ).resolves.toBeUndefined();
     });
   });
@@ -212,7 +266,8 @@ describe('the CSV file lifecycle', () => {
 
     it('deletes nothing while a share is pending, and everything after it settles', async () => {
       const share = pendingShare();
-      const running = shareCsvExport(`/tmp/${LEFTOVER}`, () => share.promise);
+      const running = shareCsvExport(written(LEFTOVER), () => share.promise);
+      await flush();
 
       await deleteCsvExportsIfIdle();
 

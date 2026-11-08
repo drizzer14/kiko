@@ -49,21 +49,33 @@ export const deleteCsvExportsIfIdle = async (): Promise<void> => {
 };
 
 /**
- * Runs the share and deletes the file when it settles, even if the screen that started it has
- * unmounted since. The share's own rejection is passed on after the delete. Leftover files go
- * only once no other share is open.
+ * Writes the file and shares it, then deletes it when the share settles, even if the screen that
+ * started it has unmounted since. The share counts as open before the write starts, so a screen
+ * mounted again while the file is being written cannot delete it as a leftover. The write's or
+ * the share's own rejection is passed on after the delete. Leftover files go only once no other
+ * share is open.
  */
 export const shareCsvExport = async (
-  path: string,
-  share: () => Promise<unknown>,
+  write: () => Promise<string>,
+  share: (path: string) => Promise<unknown>,
 ): Promise<void> => {
   sharesInFlight += 1;
 
+  let path: string | undefined;
+
   try {
-    await share();
+    path = await write();
+
+    await share(path);
   } finally {
     sharesInFlight -= 1;
-    await either(async () => RNFS.unlink(path));
+
+    const written = path;
+
+    if (written !== undefined) {
+      await either(async () => RNFS.unlink(written));
+    }
+
     await deleteCsvExportsIfIdle();
   }
 };
