@@ -15,7 +15,10 @@ export type RecurringMerchantChoice = {
   marks?: RecurringMark[];
 };
 
-/** Whether two marks select the same chain: its currency and amount, never its period. */
+/**
+ * Whether two marks select the same chain: its currency and amount, never its period or the row
+ * it was tapped on.
+ */
 export const isSameChain = (mark: RecurringMark, other: RecurringMark): boolean =>
   mark.currency === other.currency && mark.amountMinorUnits === other.amountMinorUnits;
 
@@ -37,22 +40,32 @@ const markOf = (stored: unknown): RecurringMark[] => {
     return [];
   }
 
-  const { currency, amountMinorUnits, period } = stored;
+  const { currency, amountMinorUnits, period, transactionId } = stored;
   const knownPeriod = RECURRING_PERIODS.find((known) => known === period);
 
+  // The id is optional, so a bad one is dropped and never costs the mark.
   return typeof currency === 'string' &&
     isCurrency(currency) &&
     knownPeriod !== undefined &&
     typeof amountMinorUnits === 'number' &&
     Number.isSafeInteger(amountMinorUnits) &&
     amountMinorUnits > 0
-    ? [{ currency, amountMinorUnits, period: knownPeriod }]
+    ? [
+        {
+          currency,
+          amountMinorUnits,
+          period: knownPeriod,
+          ...(typeof transactionId === 'string' && transactionId !== '' ? { transactionId } : {}),
+        },
+      ]
     : [];
 };
 
 /**
- * Keeps one mark per currency and amount, the earlier period of the picker's order, and sorts by
- * amount, that order and currency, so no stored order changes what is read.
+ * Keeps one mark per currency and amount, the earlier period of the picker's order with its own
+ * tapped row, and sorts by amount, that order and currency. The stored order changes nothing but
+ * which tapped row is read when two marks of one chain at the same period hold different ones
+ * (the first stored wins; only a hand-edited backup holds that).
  */
 const marksOf = (stored: unknown): RecurringMark[] => {
   const chains = new Map<string, RecurringMark>();

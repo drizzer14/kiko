@@ -55,6 +55,170 @@ const APPLES_DETECTED: ExpectedSeries[] = [
 
 const usdExtras = { holdings: [holdingOf('usd', 'USD')] };
 
+// Six 100s on the 5th, May (charge-5) to Oct (charge-0), with a 98 on 20 Aug and a 102 on 12 Oct.
+const worldARows = (): Ledger =>
+  ledgerOf([
+    ...monthly(6, 5, 100),
+    chargeOf('extra-aug', at(2026, 8, 20), 98),
+    chargeOf('extra-oct', at(2026, 10, 12), 102),
+  ]);
+
+const worldAShown = [
+  marked('monthly', 6, onDay(5), { from: 'charge', lastCharge: at(2026, 10, 5), lastAmount: 100 }),
+];
+
+const NONE_READ = { kind: 'none' } as const;
+
+// Three charges inside one month: the edges at their amounts, the middle one the row to tap.
+const monthRows = (middleAmount: number, edgeAmounts: readonly [number, number]): Ledger =>
+  ledgerOf(
+    chargesAt('month', [
+      [2026, 9, 1, edgeAmounts[0]],
+      [2026, 9, 15, middleAmount],
+      [2026, 9, 30, edgeAmounts[1]],
+    ]),
+  );
+
+// A mark tapped on a row keeps that row in its series and drops the rows half a step or less from
+// it. A mark without the id, or with an id no row holds, reads by the other keys alone.
+const TAPPED_ROW_WORLDS: readonly MarkedWorld[] = [
+  {
+    title: 'world A marked at 102, tapped 12 Oct: the tapped row stays and 5 Oct drops',
+    ledger: worldARows,
+    marks: [['monthly', 102, 'UAH', 'extra-oct']],
+    noEntry: [series('monthly', 6, onDay(5), { from: 'charge' })],
+    shown: [
+      marked('monthly', 6, onDay(5), {
+        from: 'charge+extra',
+        lastCharge: at(2026, 10, 12),
+        lastAmount: 102,
+      }),
+    ],
+    dropped: { rowIds: ['charge-0', 'extra-aug'], reads: NONE_READ, paidSoFar: 602 },
+  },
+  {
+    title: 'world A marked at 98, tapped 20 Aug: the tapped row stays and 5 Aug drops',
+    ledger: worldARows,
+    marks: [['monthly', 98, 'UAH', 'extra-aug']],
+    noEntry: [series('monthly', 6, onDay(5), { from: 'charge' })],
+    shown: [
+      marked('monthly', 6, MARKED_LINE, {
+        from: 'charge+extra',
+        lastCharge: at(2026, 10, 5),
+        lastAmount: 100,
+      }),
+    ],
+    dropped: { rowIds: ['charge-2', 'extra-oct'], reads: NONE_READ, paidSoFar: 598 },
+  },
+  {
+    title: 'world A marked at 100, tapped a 100: the tapped row is kept already',
+    ledger: worldARows,
+    marks: [['monthly', 100, 'UAH', 'charge-3']],
+    noEntry: [series('monthly', 6, onDay(5), { from: 'charge' })],
+    shown: worldAShown,
+    dropped: { rowIds: ['extra-aug', 'extra-oct'], reads: NONE_READ, paidSoFar: 600 },
+  },
+  {
+    title: 'world A marked at 102, tapped a row that is gone: the id changes nothing',
+    ledger: worldARows,
+    marks: [['monthly', 102, 'UAH', 'deleted-row']],
+    noEntry: [series('monthly', 6, onDay(5), { from: 'charge' })],
+    shown: worldAShown,
+    dropped: { rowIds: ['extra-aug', 'extra-oct'], reads: NONE_READ, paidSoFar: 600 },
+  },
+  {
+    title: 'world A, 100 tapped 5 Oct and 102 tapped 12 Oct: 5 Oct stays, 12 Oct drops',
+    ledger: worldARows,
+    marks: [
+      ['monthly', 100, 'UAH', 'charge-0'],
+      ['monthly', 102, 'UAH', 'extra-oct'],
+    ],
+    noEntry: [series('monthly', 6, onDay(5), { from: 'charge' })],
+    shown: worldAShown,
+    dropped: { rowIds: ['extra-aug', 'extra-oct'], reads: NONE_READ, paidSoFar: 600 },
+  },
+  {
+    title: 'an FX series, tapped 21 Sep: the tapped charge stays and 5 Oct drops',
+    ledger: () =>
+      ledgerOf(
+        chargesAt('fx', [
+          [2026, 4, 5, 412],
+          [2026, 5, 5, 415],
+          [2026, 6, 6, 410],
+          [2026, 7, 5, 417],
+          [2026, 8, 5, 413],
+          [2026, 9, 21, 414],
+          [2026, 10, 5, 415],
+        ]),
+      ),
+    marks: [['monthly', 414, 'UAH', 'fx-5']],
+    noEntry: [],
+    shown: [
+      marked('monthly', 6, onDay(5), {
+        lastCharge: at(2026, 9, 21),
+        lastAmount: 414,
+        isStopped: true,
+      }),
+    ],
+    dropped: { rowIds: ['fx-6'], reads: NONE_READ, paidSoFar: 2481 },
+  },
+  {
+    title: 'a month with a 100, a 103 and a 100, marked 103 with no tapped row: the 103 drops',
+    ledger: () => monthRows(103, [100, 100]),
+    marks: [['monthly', 103]],
+    noEntry: [],
+    shown: [marked('monthly', 2, MARKED_LINE, { lastCharge: at(2026, 9, 30), lastAmount: 100 })],
+    dropped: { rowIds: ['month-1'], reads: NONE_READ, paidSoFar: 200 },
+  },
+  {
+    title: 'a month with a 100, a 103 and a 100, marked 103 tapped on the 103: it stays alone',
+    ledger: () => monthRows(103, [100, 100]),
+    marks: [['monthly', 103, 'UAH', 'month-1']],
+    noEntry: [],
+    shown: [
+      marked('monthly', 1, MARKED_LINE, {
+        lastCharge: at(2026, 9, 15),
+        lastAmount: 103,
+        isStopped: true,
+      }),
+    ],
+    dropped: { rowIds: ['month-0', 'month-2'], reads: NONE_READ, paidSoFar: 103 },
+  },
+  {
+    title: 'a month with a 101, a 100 and a 120, marked 100 with no tapped row: the 100 drops',
+    ledger: () => monthRows(100, [101, 120]),
+    marks: [['monthly', 100]],
+    noEntry: [],
+    shown: [marked('monthly', 2, MARKED_LINE, { lastCharge: at(2026, 9, 30), lastAmount: 120 })],
+    dropped: { rowIds: ['month-1'], reads: NONE_READ, paidSoFar: 221 },
+  },
+  {
+    title: 'a month with a 101, a 100 and a 120, marked 100 tapped on the 100: it stays alone',
+    ledger: () => monthRows(100, [101, 120]),
+    marks: [['monthly', 100, 'UAH', 'month-1']],
+    noEntry: [],
+    shown: [
+      marked('monthly', 1, MARKED_LINE, {
+        lastCharge: at(2026, 9, 15),
+        lastAmount: 100,
+        isStopped: true,
+      }),
+    ],
+    dropped: { rowIds: ['month-0', 'month-2'], reads: NONE_READ, paidSoFar: 100 },
+  },
+  {
+    title: 'two detected series at one price, marked at 99 tapped on a 5th: the fifths win',
+    ledger: () => twoApples(99),
+    name: 'Apple',
+    marks: [['monthly', 99, 'UAH', 'a-4']],
+    noEntry: APPLES_DETECTED,
+    shown: [
+      marked('monthly', 10, onDay(5), { from: 'a' }),
+      detected('monthly', 10, onDay(20), { from: 'b' }),
+    ],
+  },
+];
+
 /** Worlds whose rows hold several amounts under one name, or none at the stored amount. */
 export const AMOUNT_CHAIN_WORLDS: readonly MarkedWorld[] = [
   {
@@ -645,4 +809,5 @@ export const AMOUNT_CHAIN_WORLDS: readonly MarkedWorld[] = [
     shown: [marked('monthly', 6, onDay(5), { lastCharge: at(2026, 10, 5), lastAmount: 415 })],
     dropped: { rowIds: ['fx-5'], reads: { kind: 'none' }, paidSoFar: 2482 },
   },
+  ...TAPPED_ROW_WORLDS,
 ];

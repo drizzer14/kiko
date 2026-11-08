@@ -187,6 +187,37 @@ describe('restoring the recurring merchant choices', () => {
       ]);
     });
 
+    it('brings a mark back with the id of the row it was tapped on', async () => {
+      const tapped = { ...monthlyAt99, transactionId: 'row-1' };
+      const backup = await exportWith(
+        JSON.stringify({ apple: { name: 'Apple', marks: [tapped, yearlyAt400Dollars] } }),
+      );
+
+      await restoreOnto(backup, LIVE_TEXT);
+
+      expect(storedChoices()).toEqual([
+        ['apple', { name: 'Apple', marks: [tapped, yearlyAt400Dollars] }],
+      ]);
+    });
+
+    it('restores a file mark with a bad id without the id and keeps the mark', async () => {
+      const backup = withValue(await exportWith(null), {
+        apple: {
+          name: 'Apple',
+          marks: [
+            { ...monthlyAt99, transactionId: 7 },
+            { ...yearlyAt400Dollars, transactionId: '' },
+          ],
+        },
+      });
+
+      await restoreOnto(backup, null);
+
+      expect(storedChoices()).toEqual([
+        ['apple', { name: 'Apple', marks: [monthlyAt99, yearlyAt400Dollars] }],
+      ]);
+    });
+
     it('keeps a mark under a __proto__ key through a round trip', async () => {
       const backup = await exportWith(
         JSON.stringify({ ['__proto__']: { name: 'Proto', marks: [monthlyAt99] } }),
