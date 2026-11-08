@@ -136,14 +136,22 @@ const MatcherRow: FC<MatcherRowProps> = ({
       </>
     ))
     .with('mcc', () => (
-      <TextField
-        label={t('ruleForm.mcc')}
-        value={draft.mccText}
-        onChangeText={(text) => onChange({ mccText: text.replace(/\D/g, '').slice(0, MCC_DIGITS) })}
-        keyboardType="number-pad"
-        required
-        error={error}
-      />
+      <>
+        <TextField
+          label={t('ruleForm.mcc')}
+          value={draft.mccText}
+          onChangeText={(text) =>
+            onChange({ mccText: text.replace(/\D/g, '').slice(0, MCC_DIGITS) })
+          }
+          keyboardType="number-pad"
+          required
+          error={error}
+        />
+
+        <Text variant="caption" tone="textSecondary">
+          {t('ruleForm.mccHint')}
+        </Text>
+      </>
     ))
     .with('account', () => (
       <SelectField<string>
@@ -160,15 +168,21 @@ const MatcherRow: FC<MatcherRowProps> = ({
       />
     ))
     .with('counterIban', () => (
-      <TextField
-        label={t('ruleForm.counterIban')}
-        value={draft.ibanText}
-        onChangeText={(ibanText) => onChange({ ibanText })}
-        autoCapitalize="characters"
-        autoCorrect={false}
-        required
-        error={error}
-      />
+      <>
+        <TextField
+          label={t('ruleForm.counterIban')}
+          value={draft.ibanText}
+          onChangeText={(ibanText) => onChange({ ibanText })}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          required
+          error={error}
+        />
+
+        <Text variant="caption" tone="textSecondary">
+          {t('ruleForm.counterIbanHint')}
+        </Text>
+      </>
     ))
     .exhaustive();
 
