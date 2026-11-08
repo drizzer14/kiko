@@ -58,7 +58,7 @@ const HAS_CATEGORY_FILTER: Record<TablesView, boolean> = {
  * and category picks as the Statistics screen, so a table cell is the number its donut shows for
  * that month, and a pick made in either holds in both. The period is its own, held in the route
  * params (not in the shared date range, which it neither reads nor changes), so a fold or a
- * resize that remounts the screen keeps it, and a new push opens on the last 12 months.
+ * resize that remounts the screen keeps it, and a new push opens on this year.
  */
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
@@ -122,7 +122,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const describeRow = useMemo(() => rowDescriberOf(holdings, t), [holdings, t]);
 
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);
-  const period = resolveTablePeriod(route.params?.period, periodOptions);
+  const period = resolveTablePeriod(route.params?.period, periodOptions, now);
   const months = useMemo(() => monthsOfPeriod(period, spanStart, now), [period, spanStart, now]);
   const view = route.params?.view ?? 'categories';
   const hasCategoryFilter = HAS_CATEGORY_FILTER[view];
@@ -231,6 +231,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
         key={`period-${sheetGeneration}`}
         period={period}
         options={periodOptions}
+        now={now}
         onSelect={selectPeriod}
         testID="tables-period"
       />

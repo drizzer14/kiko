@@ -122,6 +122,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `mock-statistics-data-layer.ts`, `statistics-filter-data.ts`: the mocked data layer a real
   Statistics screen (or Home) mounts on, and its filter fixtures (`answerFilterData`,
   `pressFilterOption`, `transactionRowOf` (a transaction row with defaults), the filter testIDs).
+  `FILTER_DATA_CLOCK` is the fixed clock: set it before the first answer, since a wall-clock
+  fixture breaks when a default period changes. Worlds on it:
+  `src/navigation/root-navigator/__fixtures__/{mock-layout.ts,tables-navigator-world.tsx}` and
+  `src/screens/tables/__fixtures__/tables-screen-world.tsx`.
 - `reset-statistics-filter-selection.ts`: `resetStatisticsFilterSelection`, an `afterEach` that
   puts the session-long Statistics account and category picks back on "all".
 - `light-theme-registered.ts`: `registerLightThemeFirst` and `restoreThemeOrder`, which put the

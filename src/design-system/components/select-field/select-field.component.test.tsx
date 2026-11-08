@@ -1,7 +1,8 @@
+import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
-
 import '@kiko/design-system/unistyles';
 import SelectField from '.';
 import type { SelectFieldProps } from './select-field.props';
@@ -52,6 +53,20 @@ const finishClosing = async (sheet: { props: Record<string, unknown> }): Promise
 
 describe('SelectField', () => {
   const modal = spyOnModalAnimationPerTest('kind-field-sheet-modal');
+
+  it('leaves the trigger uncapped unless it is told to cap', async () => {
+    const { getByTestId } = await setup();
+
+    expect(StyleSheet.flatten(getByTestId('kind-field').props.style)?.maxWidth).toBeUndefined();
+  });
+
+  it('caps the trigger at the select trigger width when told to', async () => {
+    const { getByTestId } = await setup({ capped: true });
+
+    expect(StyleSheet.flatten(getByTestId('kind-field').props.style).maxWidth).toBe(
+      darkTheme.layout.selectTriggerMaxWidth,
+    );
+  });
 
   it("shows the selected option's label in the trigger", async () => {
     const { getByTestId } = await setup();

@@ -16,6 +16,14 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(3),
     paddingHorizontal: theme.spacing(3),
   },
+  // A capped trigger is the column's width up to the shared cap, whatever its label, so a long
+  // value wraps inside the cap (`valueCapped` lets the text shrink to it), not widening the field.
+  fieldCapped: {
+    maxWidth: theme.layout.selectTriggerMaxWidth,
+  },
+  valueCapped: {
+    flexShrink: 1,
+  },
   // A read-only trigger: the SAME shared treatment as the disabled TextField /
   // DateField (`disabledFieldStyle` — border darkens to `surfaceHigh`, fills
   // with `surface`, dims to 0.5 opacity), so a field the domain forbids

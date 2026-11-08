@@ -179,8 +179,8 @@ type HoldingFormParams = (
 
 /**
  * The Tables screen's period and view. They live in the route params, so a fold or a resize that
- * remounts the screen keeps them, and a new push has none, which reads as the last 12 months of
- * the category table.
+ * remounts the screen keeps them, and a new push has none, which reads as this year of the
+ * category table.
  */
 export type TablesParams = { period?: TablePeriod; view?: TablesView };
 
