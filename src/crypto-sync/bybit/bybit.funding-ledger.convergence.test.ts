@@ -134,3 +134,134 @@ describe.each(GAPS)('the Funding ledger walk over bursts, at a clock gap of %i m
     expect(await denseMarkOf(walk)).toBeUndefined();
   }, 120_000);
 });
+
+// Seeds of an account from its first read: the route serves 100 rows a page, as the walk asks for,
+// and the floor trails the clock by 729 days. A window of 7 days costs one call and one more per
+// page past the first, so each floor comes from the windows and the pages of the short last
+// window: 104 windows of 7 days and a last window of 1 day.
+const FLOOR_MS = NOW - 729 * DAY_MS;
+const REAL_PAGE_SIZE = 100;
+const WINDOWS = 105;
+
+const freshWalk = (beforeWrite?: () => void) =>
+  fundingLedgerWalkOf({
+    state: walkStateFake({ accountId: ACCOUNT_ID }),
+    fake: { pageSize: REAL_PAGE_SIZE },
+    beforeWrite,
+  });
+
+/** `count` rows spread evenly from the start of the history to a day before the clock. */
+const evenRows = (count: number, coins: readonly string[] = ['USDT']) => {
+  const step = Math.floor((728 * DAY_MS - DAY_MS) / count);
+
+  return Array.from({ length: count }, (_unused, index) =>
+    ledgerAt(Math.floor((FLOOR_MS + DAY_MS + index * step) / SECOND_MS) * SECOND_MS, {
+      currcCursor: `even-${index}`,
+      currency: coins[index % coins.length],
+    }),
+  );
+};
+
+const SEEDS_BY_ROWS = [
+  {
+    name: 'a small account, under 100 rows a window',
+    rows: () => evenRows(300),
+    floor: WINDOWS,
+    measured: [
+      [0, 6, 105],
+      [DAY_MS, 6, 105],
+    ],
+  },
+  {
+    name: 'a day of 150 rows, over 100 in a day, in a small account',
+    rows: () => [
+      ...evenRows(300),
+      ...Array.from({ length: 150 }, (_unused, index) =>
+        ledgerAt(NOW - 10 * DAY_MS + index * SECOND_MS, { currcCursor: `day-${index}` }),
+      ),
+    ],
+    floor: WINDOWS + 1,
+    measured: [
+      [0, 6, 106],
+      [DAY_MS, 6, 106],
+    ],
+  },
+  {
+    name: 'hourly yield on 1 coin, 168 rows a window',
+    rows: () => evenRows(729 * 24 - 48),
+    floor: WINDOWS + 104,
+    measured: [
+      [0, 11, 209],
+      [DAY_MS, 11, 210],
+    ],
+  },
+  {
+    name: 'hourly yield on 5 coins, 840 rows a window',
+    rows: () => evenRows(5 * (729 * 24 - 48), ['USDT', 'BTC', 'ETH', 'EUR', 'USD']),
+    floor: WINDOWS + 104 * 8 + 1,
+    // Over the floor: a window of 9 pages does not fit the calls a run has left, so it splits.
+    measured: [
+      [0, 52, 1040],
+      [DAY_MS, 53, 1047],
+    ],
+  },
+];
+
+// `measured` is each run count and call count the walk reached, by clock gap (fake route).
+describe.each(SEEDS_BY_ROWS)(
+  'the Funding ledger over the seed: $name',
+  ({ rows, floor, measured }) => {
+    it.each(measured)(
+      'reaches the end at a clock gap of %i ms in %i runs and %i calls, with every row stored',
+      async (gap, runs, calls) => {
+        const walk = freshWalk();
+
+        walk.world.fundingLedger = rows();
+
+        const outcome = await settle(walk, gap);
+
+        expect({
+          isFinished: outcome.isFinished,
+          isWithinFloor: walk.reads.length >= floor,
+          runs: outcome.runs,
+          calls: walk.reads.length,
+          stored: walk.ledgerKeys().length,
+        }).toEqual({
+          isFinished: true,
+          isWithinFloor: true,
+          runs,
+          calls,
+          stored: rows().length,
+        });
+      },
+      600_000,
+    );
+  },
+);
+
+describe('the Funding ledger walk, killed and started again', () => {
+  it('stores the same rows after a run is killed before each of its first writes', async () => {
+    for (const killWrite of [1, 2, 3, 4]) {
+      let writes = 0;
+      const walk = freshWalk(() => {
+        writes += 1;
+
+        if (writes === killWrite) {
+          throw new Error('run killed by the test');
+        }
+      });
+
+      walk.world.fundingLedger = evenRows(300);
+
+      await expect(walk.run()).rejects.toThrow('run killed by the test');
+
+      const outcome = await settle(walk, 0);
+
+      expect({
+        killWrite,
+        isFinished: outcome.isFinished,
+        stored: walk.ledgerKeys().length,
+      }).toEqual({ killWrite, isFinished: true, stored: 300 });
+    }
+  }, 600_000);
+});
