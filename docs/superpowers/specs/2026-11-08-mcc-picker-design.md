@@ -34,8 +34,7 @@ statistics); runtime download of any list; a migration or an index.
 | Q-MCC1 | Accept community sources (low provenance risk) | PENDING USER, default yes | greggles + Sominemo, section 3 |
 | Q-MCC2 | Where the MIT notice ships | PENDING USER, default A | A: Settings row "Acknowledgements" + plain text page. B: own uk names for every code, no notice. C: a credit line in the picker |
 | Q-MCC3 | The rule card on the category page shows "5411 – Grocery Stores, Supermarkets" too | PENDING USER, default yes | yes: one label everywhere a stored code shows (section 6) |
-| Q-MCC4 | en and uk names shown as the sources write them (source casing and punctuation), for example «Авіакомпанія UNITED AIRLINES» if the brand text is in capitals | PENDING USER, default yes | yes: data, not UI copy (section 3.4) |
-| nouns | The three brand-rule uk nouns (section 3.2) | PENDING USER | «Авіакомпанія», «Прокат авто», «Готель» |
+| Q-MCC4 | en and uk names shown as the sources write them (source casing and punctuation): 419 of the 683 en names in 3000-3999 are all capitals, for example `3000` "UNITED AIRLINES", `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", next to `3003` "Airlines"; in uk those codes read «Авіалінії», «Готелі. Курорти» (section 3.3) | PENDING USER, default yes | yes: data, not UI copy (section 3.4) |
 
 The plan builds on every default and does not wait for the answers. What each "no" keeps, drops
 and re-pins (with the "was:" pin edits): plan section "Pending defaults".
@@ -71,13 +70,10 @@ differs from the pinned one. Nothing from ISO 18245, Visa or Mastercard document
   stops the generator.
 - en: greggles `edited_description`, trimmed; when blank, `combined_description`, trimmed; both blank
   stops the generator with the code named.
-- uk, in order: Sominemo's uk name for the code; else the brand rule for the brand ranges
-  (3000-3350 airlines «Авіакомпанія», 3351-3500 car rental «Прокат авто», 3501-3999 lodging
-  «Готель»: uk = `<noun> <en brand text>`); else the own uk file
-  (`scripts/mcc-names/uk-own-names.json`, hand-written per kiko-translator). A code with no uk
-  after all three stops the generator, listing every such code. If Sominemo holds both a short and a
-  full uk name, the short one is used (fits a row); task 7/10 step 1 records which field.
-- Sominemo-only codes (no en) are dropped and counted in the run report.
+- uk: Sominemo's uk name for the code, its only uk field (Sominemo has no short-name field; 3.1).
+  A greggles code with no Sominemo uk name stops the generator, listing every such code
+  (measured: none, 3.3). Sominemo keys are read by code, never by key order.
+- Sominemo-only codes (no en) are dropped and listed in the run report.
 - Text tidy: whitespace collapsed to one space; in uk text, an ASCII `'` or U+2019 between two
   Cyrillic letters becomes U+02BC (the catalogue rule of `src/i18n/locales/uk.catalog-rules.test.ts`
   applied to data). en text keeps its apostrophes as the source writes them (search folds them,
@@ -98,10 +94,10 @@ pinned files; code padded to four digits, en = trimmed `edited_description`, els
 | Codes in the output (greggles codes) | 981 |
 | Overlap (in both files) | 981 |
 | Sominemo-only (dropped, no en) | 0 |
-| greggles codes with no Sominemo uk name | 0, so 0 in the brand range 3000-3999 and 0 outside it |
-| uk by Sominemo / brand rule / own file | 981 / 0 / 0 |
+| greggles codes with no Sominemo uk name | 0, in 3000-3999 and outside it |
+| uk by Sominemo | 981 of 981 |
 | greggles codes in 3000-3999 | 683 (all 683 have a Sominemo uk name) |
-| Distinct Sominemo uk texts | 256 of 981 (the brand ranges share generic nouns: 3000, 3001, 3003 and 3299 all read «Авіалінії»; 3351 «Оренда авто»; 3501 «Готелі. Курорти») |
+| Distinct Sominemo uk texts | 256 of 981 (codes 3000-3999 share generic nouns: 3000, 3001, 3003 and 3299 all read «Авіалінії»; 3351 «Оренда авто»; 3501 «Готелі. Курорти») |
 | Longest en / longest uk | 142 / 37 characters |
 | greggles `edited_description` differing from `combined_description` | 8 rows |
 | en text with leading, trailing or double space | 1 (`5599` "Miscellaneous Auto Dealers " has a trailing space; the trim rule applies) |
@@ -110,10 +106,10 @@ pinned files; code padded to four digits, en = trimmed `edited_description`, els
 
 The research said Sominemo has gaps in 3300-3350, 3442-3500, 3791-3815 and 3836-3999. At the pinned
 commit each of those gaps is also absent from greggles, so no greggles code lacks a uk name (3350,
-3500 and 3999 are in neither file). The brand rule (3.2) and `uk-own-names.json` therefore name no
-code from this data: the generator still carries both, for a later source refresh, and the plan's
-brand-rule pins use inline inputs. Brand en casing as written (Q-MCC4), for the user:
-419 of the 683 brand texts are all capitals, 264 are not; examples: `3000` "UNITED AIRLINES",
+3500 and 3999 are in neither file). Sominemo names every code, including all 683 in 3000-3999
+(«Авіалінії», «Оренда авто», «Готелі. Курорти»), so the generator takes uk from Sominemo only
+(3.2). En casing in 3000-3999 as written (Q-MCC4), for the user:
+419 of the 683 en texts are all capitals, 264 are not; examples: `3000` "UNITED AIRLINES",
 `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", `3351` "AFFILIATED AUTO RENTAL", and `3003`
 "Airlines" (a generic text, 3003 is one of many such codes).
 
@@ -298,7 +294,8 @@ warranty paragraph) verbatim from the LICENSE file at the pinned commit. Legal t
 translated, and the MIT text's straight quotes would break the uk catalogue rules. The greggles
 entry (name, source, license name) is the courtesy line: the Unlicense asks for none.
 
-B: the generator drops the Sominemo input, the own uk file covers every code, no notice and no page.
+B: the generator drops the Sominemo input; a new hand-written uk file (kiko-translator) covers all
+981 codes; no notice and no page.
 C: one caption row at the end of the picker list crediting the uk names, with the MIT text reachable
 from it. What each changes: plan section "Pending defaults".
 
@@ -313,7 +310,7 @@ from it. What each changes: plan section "Pending defaults".
   every install. No demo or seed import from `src/`.
 - No network call, SDK or permission; the list is bundled data (2.5.2 not touched). App Privacy
   unchanged.
-- Trademarks: brand-range names (airlines, hotels, car rental) are the sources' descriptive text, no
+- Trademarks: the en names of codes 3000-3999 (airlines, hotels, car rental) are the sources' descriptive text, no
   logo, no partnership claim; reviewer judgment item.
 - `.kiko` export and import: unchanged; a rule stores only the code. No migration, no
   `EXPORT_VERSION` change, no owed state, so no upgrade world changes.
@@ -349,5 +346,5 @@ from it. What each changes: plan section "Pending defaults".
 | `acknowledgements.mccNamesEnglish` | Merchant code names in English | Назви кодів продавців англійською |
 | `acknowledgements.mccNamesUkrainian` | Merchant code names in Ukrainian | Назви кодів продавців українською |
 
-Data texts for the user: every uk name (Sominemo, brand rule, own file) and the en names, as one
-review table written by the regeneration run (plan task 7/10), plus the three brand-rule nouns.
+Data texts for the user: every uk name (Sominemo) and the en names, as one review table written
+by the regeneration run (plan task 7/10).

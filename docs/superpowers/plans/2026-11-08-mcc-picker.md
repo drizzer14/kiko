@@ -92,7 +92,7 @@ picker creates nothing).
 | P1 | Task labels continue the track: `1.4-category-automation task 7/10` to `10/10`; verify labels `1.4-category-automation-task-7` and so on. Tasks stack in this worktree, each base the previous task's tip. | The base plan used 1/6 to 6/6; distinct labels keep the run log and queue apart. |
 | P2 | The data file is `mcc-names.data.json`, a JSON array sorted by code, written as `JSON.stringify(entries, null, 2)` plus a newline. `mcc-names.ts` imports it and exports `MCC_NAMES: readonly MccName[]`. No format step: the renderer's output must pass `./node_modules/.bin/biome check` on that one file as written (a finding is fixed in `renderMccNamesJson`, never by a format run or an ignore). | Stryker mutates `.ts`/`.tsx` only (`stryker.conf.json` `mutate`; `mutation.sh` diffs `'*.ts' '*.tsx'`), so the data makes no static mutants and the per-task gate stays bounded. JSON import precedent: `package.json` in `settings.screen.tsx` (`resolveJsonModule` from `@react-native/typescript-config`; jest and Metro already load it). |
 | P3 | `scripts/mcc-names/generate-mcc-names.js` exports pure functions (`MCC_SOURCES`, `verifySource`, `buildMccNames`, `renderMccNamesJson`, `renderReviewTable`). Its header comment names the URLs, commits, SHA-256, licenses and the regeneration command (JSON holds no comment). The write is in `__tests__/generate-mcc-names.test.ts` under `KIKO_REGEN_MCC=1` with `KIKO_MCC_GREGGLES`, `KIKO_MCC_SOMINEMO`, `KIKO_MCC_REVIEW_OUT` paths. | A shell write into `src/` is denied by kill-guard; a test-process write has the demo precedent. Knip sees the script through the test. |
-| P4 | Brand-range uk names by rule (spec 3.2); every other gap from `scripts/mcc-names/uk-own-names.json`. | Hundreds of brand codes need no translation, only a noun; the user approves three nouns. |
+| P4 | uk names come from Sominemo only (spec 3.2); a greggles code without one makes the run refuse. No fallback rule and no hand-written uk file. | Measured (spec 3.3): Sominemo names all 981 greggles codes, including all 683 in 3000-3999; a fallback would name no code (strict scope, no dead code). |
 | P5 | `MccField` lives in the screen folder, reads `ruleForm.*` keys, and owns its own `useLiveQuery`. `MatcherRow` passes `draft.mccText`, `onChange`, `error`, `position`. | `check:component-i18n-namespace` binds design-system components only; a field-local read keeps the read off the screen for non-mcc rules. |
 | P6 | If `npm run check:dup` flags `MccField` against `CurrencyField`, stop and report; no `dup-ceilings.tsv` entry and no ignore without a coordinator ruling. The fix is extracting the pinned-search sheet into the design system with a `kiko:designer` step. | Standing rule; no ceiling raised to pass. |
 | P7 | The data file is not in `.jscpd.json` `ignore` (jscpd scans JSON too). If jscpd flags it, stop and report. | An ignore entry needs a documented exception and a ruling. |
@@ -107,13 +107,12 @@ affected tasks' verify is queued again. Pin edits name the old (was:) and new va
 
 | Question | Default applied now | If "no": stays | If "no": goes | Tasks and steps that change | "was:" pin edits |
 |---|---|---|---|---|---|
-| Q-MCC1 community sources | greggles + Sominemo | task 8/10 read; `MccField` with "Your codes" (digits only) and "Other code"; `errorMcc` | generator, `uk-own-names.json`, `mcc-names.data.json`, `MCC_NAMES` and lookups; "All codes" section and `ruleForm.mccAllSection`; names on trigger, rows, card; task 10/10 (no bundled data, no notice) | 7/10 steps 1-7 reverted by new commits; 9/10 steps 1-6; 10/10 dropped | `rule-summary.test.ts` mcc value was: `'5411 – <name>'`, now: `'5411'`. `mcc-picker-rows.test.ts` lists was: Other, own, all; now: Other, own only. `category-rule-form.screen.test.tsx` trigger was: `5411 – <name>`, now: `5411`. `mcc-picker-rows.test.ts` name pins (`a text query matches the name by substring, any case`, `folds an ASCII apostrophe, U+2019 and U+02BC to one character in the query and the name`, `an en name with an apostrophe matches a typed apostrophe`, `names each code in the current language`) was: present, now: deleted. `mcc-field.component.test.tsx` `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>`, now: `5411`. `rule-summary.test.ts` `shows the mcc name in Ukrainian` and `category-form.screen.test.tsx` `shows a merchant-code rule with its name on the card` was: present, now: deleted (as Q-MCC3). Copy `ruleForm.mccSearchPlaceholder` was: "Search by code or name" / «Пошук за кодом або назвою», now: "Search by code" / «Пошук за кодом» (draft, back to the user). Notes line: the 'All codes' sentence and the Acknowledgements sentence was: present, now: deleted. Generator and data test files deleted |
+| Q-MCC1 community sources | greggles + Sominemo | task 8/10 read; `MccField` with "Your codes" (digits only) and "Other code"; `errorMcc` | generator, `mcc-names.data.json`, `MCC_NAMES` and lookups; "All codes" section and `ruleForm.mccAllSection`; names on trigger, rows, card; task 10/10 (no bundled data, no notice) | 7/10 steps 1-7 reverted by new commits; 9/10 steps 1-6; 10/10 dropped | `rule-summary.test.ts` mcc value was: `'5411 – <name>'`, now: `'5411'`. `mcc-picker-rows.test.ts` lists was: Other, own, all; now: Other, own only. `category-rule-form.screen.test.tsx` trigger was: `5411 – <name>`, now: `5411`. `mcc-picker-rows.test.ts` name pins (`a text query matches the name by substring, any case`, `folds an ASCII apostrophe, U+2019 and U+02BC to one character in the query and the name`, `an en name with an apostrophe matches a typed apostrophe`, `names each code in the current language`) was: present, now: deleted. `mcc-field.component.test.tsx` `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>`, now: `5411`. `rule-summary.test.ts` `shows the mcc name in Ukrainian` and `category-form.screen.test.tsx` `shows a merchant-code rule with its name on the card` was: present, now: deleted (as Q-MCC3). Copy `ruleForm.mccSearchPlaceholder` was: "Search by code or name" / «Пошук за кодом або назвою», now: "Search by code" / «Пошук за кодом» (draft, back to the user). Notes line: the 'All codes' sentence and the Acknowledgements sentence was: present, now: deleted. Generator and data test files deleted |
 | Q-MCC2 notice place | A: Settings row + page | tasks 7/10-9/10 | — | — | — |
-| Q-MCC2 answer B | — | tasks 7/10-9/10 with greggles en; brand rule; own uk file | Sominemo input; task 10/10 page, row, route, notice; keys `settings.acknowledgements`, `acknowledgements.*` (5); the Notes line's Acknowledgements part | 7/10 step 2 (pins), 3 (generator), 5 (own uk names for every non-brand code, regenerate); 10/10 dropped | `MCC_SOURCES` pin was: greggles and sominemo, now: greggles only. `takes the Sominemo uk name first, then the brand rule, then the own file` was: three sources, now: `takes the brand rule, then the own file`. `drops a Sominemo-only code and reports it` was: present, now: deleted; report `bySominemo` was: a count, now: no field. Data pins unchanged |
+| Q-MCC2 answer B | — | tasks 7/10-9/10 with greggles en | Sominemo input; task 10/10 page, row, route, notice; keys `settings.acknowledgements`, `acknowledgements.*` (5); the Notes line's Acknowledgements part | new commits: a hand-written uk file for all 981 codes (kiko-translator, U+02BC) becomes the generator's uk input; 7/10 step 2 (pins), 3 (generator), 5 (regenerate, re-send the review table); 10/10 dropped | `MCC_SOURCES` pin was: greggles and sominemo, now: greggles only. `buildMccNames` input was: `{ greggles, sominemo }`, now: `{ greggles, ukNames }`. `refuses a run with a code that has no uk name, listing every such code` was: no Sominemo uk name, now: no entry in the hand-written file. `drops a Sominemo-only code and reports it` was: present, now: deleted; report `dropped` was: a list, now: no field. Data pins unchanged |
 | Q-MCC2 answer C | — | tasks 7/10-9/10; `mcc-names.notice.ts`; `acknowledgements.title` (now the credit sheet's title, stays in `title-keys.ts`); `acknowledgements.intro`, `acknowledgements.mccNamesEnglish`, `acknowledgements.mccNamesUkrainian` (shown on the credit sheet, texts unchanged) | Settings row, page, route; `settings.acknowledgements`; the Notes line's "Settings > Acknowledgements" sentence (replaced by one naming the credit row in the picker, drafted for the user) | 9/10 steps 1-2 (`mccPickerRows` gains a last `{ type: 'credit' }` row); 10/10 steps 1-2 become: the credit row opens a sheet with the notice; one new key for the caption, drafted for the user | every `toEqual` list in `mcc-picker-rows.test.ts` was: ends at the last code or `noMatch` row, now: plus `{ type: 'credit' }` last. 10/10 settings and stack pins replaced by a sheet pin. Notes line was: "Settings > Acknowledgements shows the licenses of the bundled code names.", now: the credit-row sentence |
 | Q-MCC3 card label | yes | data and picker | `mccLabelOf` option on `RuleSummaryOptions` and its wiring | 7/10 steps 6-7 reverted by new commits | `rule-summary.test.ts` mcc value was: `'5411 – Grocery Stores, Supermarkets'`, now: `'5411'`; `shows the mcc name in Ukrainian` deleted; `category-form.screen.test.tsx` `shows a merchant-code rule with its name on the card` deleted. `'0042'` stays |
-| Q-MCC4 source casing | yes, verbatim | everything | verbatim casing; the user's rule (for example sentence case of a brand text) applies in the generator | 7/10 steps 2-3 (a casing pin and rule), 5 (regenerate, re-send the review table), 6 (card pin value) | `names a brand code by its range noun` expected texts was: `<noun> <source brand text>` (for example «Авіакомпанія UNITED AIRLINES»), now: re-cased. `rule-summary.test.ts` mcc value was: source casing, now: re-cased. Task 9/10 step 3 `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>` in source casing, now: re-cased. Task 9/10 step 5 `keeps a typed merchant code when the type of the row is changed and changed back` trigger was: `5411 – <name>` in source casing, now: re-cased |
-| uk nouns (3) | «Авіакомпанія», «Прокат авто», «Готель» | everything | the replaced noun | 7/10 steps 2, 3, 5 (regenerate, re-send the review table) | `names a brand code by its range noun` was: the draft noun, now: the user's noun. Data pins unchanged |
+| Q-MCC4 source casing | yes, verbatim | everything | verbatim casing; the user's rule (for example sentence case of an all-capitals en text) applies in the generator. Measured (spec 3.3): 419 of the 683 en names in 3000-3999 are all capitals, for example `3000` "UNITED AIRLINES", `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", next to `3003` "Airlines"; in uk those codes read «Авіалінії», «Готелі. Курорти» (no capitals) | 7/10 steps 2-3 (a casing pin and rule), 5 (regenerate, re-send the review table), 6 (card pin value) | new pin `re-cases an all-capitals en name` (3000 "UNITED AIRLINES" in, the user's casing out) was: absent, now: present. `rule-summary.test.ts` mcc value was: source casing, now: re-cased. Task 9/10 step 3 `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>` in source casing, now: re-cased. Task 9/10 step 5 `keeps a typed merchant code when the type of the row is changed and changed back` trigger was: `5411 – <name>` in source casing, now: re-cased |
 
 ## Conflict surface
 
@@ -152,8 +151,7 @@ list below, and the texts to the user (section "Texts for the user").
 
 **Files (floor). Mutable: 3** (`mcc-names.ts`, `rule-summary.ts`, `category-form.screen.tsx`;
 `mcc-names.data.json` is not mutated, P2).
-- Create: `scripts/mcc-names/generate-mcc-names.js`, `scripts/mcc-names/uk-own-names.json`,
-  `src/categories/mcc-names/mcc-names.data.json` (generated), `src/categories/mcc-names/mcc-names.ts`,
+- Create: `scripts/mcc-names/generate-mcc-names.js`, `src/categories/mcc-names/mcc-names.data.json` (generated), `src/categories/mcc-names/mcc-names.ts`,
   `src/categories/mcc-names/index.ts`
 - Modify: `src/screens/forms/category-form/rule-summary/rule-summary.ts`,
   `src/screens/forms/category-form/category-form.screen.tsx`,
@@ -175,9 +173,9 @@ mccLabelOf: (mccText: string) => string;
 // scripts/mcc-names/generate-mcc-names.js (CommonJS)
 MCC_SOURCES: { greggles: { url, commit, sha256, license }, sominemo: { url, commit, sha256, license } }
 verifySource(text, expectedSha256): void // throws on mismatch
-buildMccNames({ greggles, sominemo, ukOwn }): { entries: MccName[]; report: { dropped: string[]; bySominemo: number; byBrand: number; byOwn: number } }
+buildMccNames({ greggles, sominemo }): { entries: MccName[]; report: { dropped: string[] } } // dropped: Sominemo-only codes
 renderMccNamesJson(entries): string
-renderReviewTable(entries): string // TSV: code, en, uk, uk source
+renderReviewTable(entries): string // TSV: code, en, uk
 ```
 
 - [x] **step 1/11 (kiko:developer): fetch and measure.** In a new, empty scratch directory per file,
@@ -187,7 +185,7 @@ renderReviewTable(entries): string // TSV: code, en, uk, uk source
   spec 3.1 and 3.3 (Edit): exact file names, field names (greggles `mcc`, `edited_description`,
   `combined_description`; Sominemo's uk shape and whether it has a short name), SHA-256 of each
   file, the counts listed in spec 3.3, a five-row sample of each, the presence of 5411, 5812,
-  4829, 6011, 0742, and three brand-code en texts as written (their casing, for the Q-MCC4
+  4829, 6011, 0742, and three en texts of codes 3000-3999 as written (their casing, for the Q-MCC4
   question). A missing one of the first four, or a license file that differs from the research
   quote, is a stop-and-report. Also read the Sominemo LICENSE at the commit and keep its exact text
   for task 10/10. Reviewer kit: read (read only) the header and a few rows of the fake Monobank
@@ -199,18 +197,17 @@ renderReviewTable(entries): string // TSV: code, en, uk, uk source
 
 - [ ] **step 2/11 (kiko:qa): generator pins.** Create `__tests__/generate-mcc-names.test.ts`, tiny
   inline inputs only, no download:
-  - `takes the edited description and falls back to the combined one`; `trims and collapses spaces`.
+  - `takes the edited description and falls back to the combined one`; `trims and collapses spaces`
+    (a real case: `5599` "Miscellaneous Auto Dealers " with its trailing space).
   - `pads a code to four digits and keeps leading zeros` (`742` and `"742"` give `"0742"`).
   - `refuses a code that is not four digits after padding`; `refuses a duplicate code with a
     different name`, `accepts a duplicate with the same name once`.
-  - `takes the Sominemo uk name first, then the brand rule, then the own file` (one code each).
-  - `names a brand code by its range noun`: 3000 «Авіакомпанія», 3351 «Прокат авто», 3501 «Готель»;
-    3350 and 3500 and 3999 at the range ends.
   - `refuses a run with a code that has no uk name, listing every such code`.
-  - `rewrites an ASCII or right-quote apostrophe inside a Cyrillic word to U+02BC` and `leaves a
-    quote outside a word`.
+  - `rewrites an ASCII or right-quote apostrophe inside a Cyrillic word to U+02BC` (a real case:
+    `4215` «Кур'єри», one of the 7 measured codes 4215, 4814, 5045, 5422, 5734, 7298, 7379) and
+    `leaves a quote outside a word`.
   - `drops a Sominemo-only code and reports it`.
-  - `sorts the entries by code`.
+  - `sorts the entries by code` (Sominemo's key order is not code order; spec 3.1).
   - `refuses a source whose SHA-256 differs from the pinned one`.
   - `renders the entries as a JSON array with only code, en and uk, ending in a newline` (parse the
     output, `toEqual` the entries) and `renders a review table with one line per code`.
@@ -245,8 +242,8 @@ renderReviewTable(entries): string // TSV: code, en, uk, uk source
   Red: `npx jest src/categories/mcc-names --maxWorkers=2`. Commit `test(category): MCC names data
   pins`.
 
-- [ ] **step 5/11 (kiko:developer): own uk names and the data.** Write `uk-own-names.json` for every
-  non-brand gap the generator lists (kiko-translator; U+02BC). Run
+- [ ] **step 5/11 (kiko:developer): the data.** Regenerate (no hand-written uk names: Sominemo names every
+  code, spec 3.3; a refusal listing codes is a stop-and-report). Run
   `KIKO_REGEN_MCC=1 KIKO_MCC_GREGGLES=<path> KIKO_MCC_SOMINEMO=<path>
   KIKO_MCC_REVIEW_OUT=.superpowers/sdd/1.4-category-automation/mcc-names-review.tsv npx jest
   __tests__/generate-mcc-names.test.ts --maxWorkers=2`. Then, on the written file:
@@ -534,16 +531,16 @@ Sent through the coordinator before any merge into `next`, in one message:
    user-visible code constants: the label separator ` – ` (en dash, "5411 – Grocery Stores,
    Supermarkets"; new, replaces nothing) and the notice constants (source URLs, license names, the
    MIT text, shown untranslated in both languages).
-2. The three brand-rule nouns (spec 3.2).
-3. The data review table `.superpowers/sdd/1.4-category-automation/mcc-names-review.tsv` (code, en,
-   uk, uk source), written by task 7/10 step 5.
-4. Open questions, each with its default and what a "no" changes (section "Pending defaults"):
+2. The data review table `.superpowers/sdd/1.4-category-automation/mcc-names-review.tsv` (code, en,
+   uk), written by task 7/10 step 5.
+3. Open questions, each with its default and what a "no" changes (section "Pending defaults"):
    Q-MCC1; Q-MCC2 (A, B, C); Q-MCC3: "The rule card on the category page shows the code with its
    name, '5411 – Grocery Stores, Supermarkets', as the picker does. Keep? (default yes)"; Q-MCC4:
-   "Code names are shown as the sources write them, for example <three examples from task 7/10
-   step 1>, possibly «Авіакомпанія UNITED AIRLINES» for a brand code in capitals. Keep as written?
-   (default yes)".
-5. Notes for Review draft line (plain text, for the release's Notes for Review; its import path is
+   "Code names are shown as the sources write them: 419 of the 683 English names of codes
+   3000-3999 are in capitals, for example 3000 'UNITED AIRLINES' and 3501 'HOLIDAY INNS, HOLIDAY
+   INN EXPRESS', next to 3003 'Airlines'; in Ukrainian those codes read «Авіалінії» and «Готелі.
+   Курорти». Keep as written? (default yes)".
+4. Notes for Review draft line (plain text, for the release's Notes for Review; its import path is
    checked against the build when the Notes are written): "Category rules: the Merchant code (MCC)
    condition now opens a searchable list. 'Your codes' lists the codes found in your transactions
    with their counts; import the Monobank statement from the reviewer kit to see them. 'All codes'
