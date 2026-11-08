@@ -504,3 +504,7 @@ the forms are the patterns of `kiko-rejects-to-throw-needs-error` in `rules/semg
 
 Pin the exact message the call produces, read from jest's Received output, never a guessed
 message or a loosened regex: a guess that happens to pass proves nothing about the real failure.
+
+A synchronous throw follows the same rule: `toThrow(<message fragment>)` or a refusal helper pins
+the message, never `expect.any(String)` or a bare `toThrow()`. A red-phase runtime lookup of a
+missing module becomes a static import in the commit that adds the module.

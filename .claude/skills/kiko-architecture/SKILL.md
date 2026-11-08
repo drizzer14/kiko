@@ -1082,6 +1082,12 @@ have their own, older, pre-existing chunking — don't assume they use
   first `src/` reader lands, an interim entry in
   `DOCUMENTED_READERLESS_COLUMNS` (`src/db/settings-columns.test.ts`)
   that the task adding that reader removes.
+- Bundled generated data: `src/categories/mcc-names/mcc-names.data.json` is committed JSON from
+  `scripts/mcc-names/generate-mcc-names.js` (provenance in its header). Regenerate with
+  `KIKO_REGEN_MCC=1 KIKO_MCC_GREGGLES=<path> KIKO_MCC_SOMINEMO=<path> KIKO_MCC_REVIEW_OUT=<path>
+  npx jest __tests__/generate-mcc-names.test.ts --maxWorkers=2`. Stryker globs `.ts`/`.tsx`, and
+  neither the pre-write guard nor guard-replay reads JSON, so check the file with
+  `./node_modules/.bin/biome check <file>` and the data pins in `mcc-names.test.ts`.
 
 ## Repository module shape
 

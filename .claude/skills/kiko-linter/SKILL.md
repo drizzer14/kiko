@@ -306,7 +306,9 @@ Each runs as `node scripts/checks/<name>.js <file>`, as a guard
 `check:all` (`plural-count.js`: a Jest invariant instead, see its bullet). Every checker and the shared scanner stay reachable for
 knip only through `knip.json`'s `ignore` (read the list there; it
 includes `feature-imports.js` and `specifier-scanner.js`). None has a
-report or JSON mode.
+report or JSON mode. A dependency-free Node script under `scripts/` that a test imports
+statically needs no knip ignore entry; a computed `require` or `jest.requireActual` hides the
+import from knip.
 
 A Node checker never pre-filters RAW source text with a pattern that can span a comment
 leader: test the name alone, or the leader-stripped text, or the filter fails open. A test
@@ -658,6 +660,8 @@ they land.
   floor does not slide, so a failed first replay resumed days later
   still fails. See `docs/harness/checks-internals.md` for the ref
   layout.
+- **Extensions.** guard-replay reads only `.ts`/`.tsx` (`REPLAYED_EXTENSION` in
+  `scripts/checks/guard-replay.js`), so a JSON or `.sh` write is not replayed.
 - **Files and BEFORE.** Every `.ts`/`.tsx` file changed in the working
   tree against HEAD (tracked and untracked, staged renames followed),
   plus every file a session commit touched. BEFORE is the file at the

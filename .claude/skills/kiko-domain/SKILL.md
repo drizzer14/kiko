@@ -1007,8 +1007,15 @@ A Semgrep rule (`kiko-no-bare-lowercase-category-fold`,
 
 Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
-(`src/monobank/`) emits the slug, not a display title,
-and migration `0014_lowercase_categories` lowercased the legacy rows a
+(`src/monobank/`) emits the slug, not a display title.
+An MCC is a 4-digit string (`describeMatcher` in
+`src/screens/forms/category-form/rule-summary/rule-summary.ts` pads it; the generator
+in `scripts/mcc-names/generate-mcc-names.js` pads with `CODE_DIGITS`).
+`mccLabelOf(code, language)` in `src/categories/mcc-names/mcc-names.ts`
+is code + `MCC_NAME_SEPARATOR` + name; a code with no source name shows its
+digits alone (208 mapped codes today: 3791-3999 except 3816 and 3835, and
+6540; re-verify in the data).
+Migration `0014_lowercase_categories` lowercased the legacy rows a
 capitalized-title era had already written. Neither
 `transactions.category` nor `category_rules.category` is COLLATE NOCASE;
 `categoriesRepo.delete`'s reassignment compares case-insensitively on both

@@ -251,8 +251,7 @@ renderReviewTable(entries): string // TSV: code, en, uk
   KIKO_MCC_REVIEW_OUT=.superpowers/sdd/1.4-category-automation/mcc-names-review.tsv npx jest
   __tests__/generate-mcc-names.test.ts --maxWorkers=2`. Then, on the written file:
   `./node_modules/.bin/biome check src/categories/mcc-names/mcc-names.data.json` (no `--write`; a
-  finding is fixed in `renderMccNamesJson` and regenerated, P2) and `npm run check:guard-replay`
-  (the test-process write skipped the pre-write guard). Write `mcc-names.ts` (imports the JSON,
+  finding is fixed in `renderMccNamesJson` and regenerated, P2). Write `mcc-names.ts` (imports the JSON,
   `MCC_NAME_SEPARATOR`, lookups; a doc comment names the generator and the regeneration command)
   and `index.ts` (barrel). No catalogue key in this task (P9). Record the JSON's byte size in spec
   3.3. Green: step 2 and step 4 commands. Run `npm run check:dup`; a finding on the data file is
