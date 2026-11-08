@@ -32,6 +32,23 @@ export const resolveColumnWidths = (
   padding: number,
 ) => columns.map((column) => (textWidths[column.key] ?? 0) + padding);
 
+// Columns that all fit share the room left over evenly, so the grid reaches the right edge. The
+// last column takes what the others leave, so the widths add up to the room without a float gap;
+// columns that overflow, or a room not yet measured, keep their natural widths.
+export const fillColumnWidths = (naturalWidths: number[], availableWidth: number) => {
+  const slack = availableWidth - naturalWidths.reduce((sum, width) => sum + width, 0);
+
+  if (slack <= 0 || naturalWidths.length === 0) {
+    return naturalWidths;
+  }
+
+  const share = slack / naturalWidths.length;
+  const filled = naturalWidths.map((width) => width + share);
+  const leading = filled.slice(0, -1).reduce((sum, width) => sum + width, 0);
+
+  return [...filled.slice(0, -1), availableWidth - leading];
+};
+
 // A row is as tall as the taller of its two parts: the fixed label and the tallest scrolled cell.
 export const resolveRowHeights = (
   rows: DataTableRow[],

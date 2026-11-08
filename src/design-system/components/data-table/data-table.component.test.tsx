@@ -236,7 +236,8 @@ describe('DataTable', () => {
   describe('column widths', () => {
     it('sizes each column from its measured text plus padding', async () => {
       const rendered = await renderTable();
-      await setContainerWidth(rendered, 1000);
+      // Narrow enough that the columns overflow: a room they fit in would be shared out.
+      await setContainerWidth(rendered, 300);
       await measureColumn(rendered, 'jan', 80);
       await measureColumn(rendered, 'feb', 40);
       await measureColumn(rendered, 'total', 120);
@@ -929,6 +930,69 @@ describe('DataTable', () => {
 
       expect(colorsIn(literal).filter((color) => !tokens.has(color))).toEqual(['#123456']);
       expect(colorsIn(rendered.getByText('120')).length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('filling the room', () => {
+    const HAIRLINE = darkTheme.layout.hairline;
+    const LABEL_TEXT = 60;
+    const FIXED_WIDTH = LABEL_TEXT + HORIZONTAL_PADDING + HAIRLINE;
+
+    const widthsOf = (rendered: Rendered, kind: 'header' | 'cell') =>
+      columns.map(
+        (column) =>
+          flat(
+            rendered.getByTestId(
+              kind === 'header'
+                ? `${PREFIX}-header-${column.key}`
+                : `${PREFIX}-cell-groceries-${column.key}`,
+              { includeHiddenElements: true },
+            ),
+          ).width as number,
+      );
+
+    const renderMeasured = async (containerWidth: number, textWidth: number) => {
+      const rendered = await renderTable();
+      await setContainerWidth(rendered, containerWidth);
+      await measureLabels(rendered, LABEL_TEXT);
+      await measureAllColumns(rendered, textWidth);
+
+      return rendered;
+    };
+
+    it('fills the room beside the fixed column exactly when every column fits', async () => {
+      for (const containerWidth of [1000, 1001, 777.3]) {
+        const rendered = await renderMeasured(containerWidth, 50);
+        const widths = widthsOf(rendered, 'cell');
+
+        expect(FIXED_WIDTH + widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(
+          containerWidth,
+          9,
+        );
+        expect(Math.min(...widths)).toBeGreaterThan(50 + HORIZONTAL_PADDING);
+      }
+    });
+
+    it('adds the same share to every column', async () => {
+      const rendered = await renderMeasured(1000, 50);
+      const share = (1000 - FIXED_WIDTH - 3 * (50 + HORIZONTAL_PADDING)) / 3;
+
+      for (const width of widthsOf(rendered, 'cell')) {
+        expect(width).toBeCloseTo(50 + HORIZONTAL_PADDING + share, 9);
+      }
+    });
+
+    it('adds no share when the columns overflow, so each keeps its natural width', async () => {
+      const rendered = await renderMeasured(300, 100);
+
+      expect(widthsOf(rendered, 'cell')).toEqual(Array(3).fill(100 + HORIZONTAL_PADDING));
+      expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(true);
+    });
+
+    it('gives a header cell the width of its body cell at fill', async () => {
+      const rendered = await renderMeasured(1000, 50);
+
+      expect(widthsOf(rendered, 'header')).toEqual(widthsOf(rendered, 'cell'));
     });
   });
 });

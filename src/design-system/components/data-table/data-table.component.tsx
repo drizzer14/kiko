@@ -17,6 +17,7 @@ import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CELL_PADDING_UNITS,
   cellHeightKey,
+  fillColumnWidths,
   labelHeightKey,
   resolveColumnWidths,
   resolveFixedWidth,
@@ -75,7 +76,11 @@ const DataTable: FC<DataTableProps> = ({
 
   const padding = theme.spacing(CELL_PADDING_UNITS * 2);
   const fixedWidth = resolveFixedWidth(labelWidth, containerWidth, padding, theme.layout.hairline);
-  const columnWidths = resolveColumnWidths(columns, columnTextWidths, padding);
+  const availableWidth = Math.max(containerWidth - fixedWidth, 0);
+  const columnWidths = fillColumnWidths(
+    resolveColumnWidths(columns, columnTextWidths, padding),
+    availableWidth,
+  );
   const rowHeights = useMemo(
     () => resolveRowHeights(rows, columns, textHeights, padding),
     [rows, columns, textHeights, padding],
@@ -90,7 +95,6 @@ const DataTable: FC<DataTableProps> = ({
         columnWidths.slice(0, columnIndex + 1).reduce((sum, width) => sum + width, 0) -
         theme.layout.hairline,
     );
-  const availableWidth = Math.max(containerWidth - fixedWidth, 0);
   const overflows = containerWidth > 0 && contentWidth > availableWidth;
   const isMeasured =
     containerWidth > 0 &&

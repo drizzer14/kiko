@@ -125,7 +125,8 @@ describe('DataTable rows and column lines', () => {
     it('is a full-height hairline of the border colour at each running column edge', async () => {
       const rendered = await renderTable();
 
-      await fireEvent(rendered.getByTestId(PREFIX), 'layout', layoutEvent(400, 600));
+      // Narrow enough that the columns overflow: a room they fit in would be shared out.
+      await fireEvent(rendered.getByTestId(PREFIX), 'layout', layoutEvent(300, 600));
       await fireEvent(
         rendered.getByTestId(`${PREFIX}-measure-labels`, hidden),
         'layout',
@@ -174,7 +175,8 @@ describe('DataTable rows and column lines', () => {
     it('leaves the column and the first-column widths as they were', async () => {
       const rendered = await renderTable();
 
-      await fireEvent(rendered.getByTestId(PREFIX), 'layout', layoutEvent(400, 600));
+      // Narrow enough that the columns overflow: a room they fit in would be shared out.
+      await fireEvent(rendered.getByTestId(PREFIX), 'layout', layoutEvent(200, 600));
       await fireEvent(
         rendered.getByTestId(`${PREFIX}-measure-labels`, hidden),
         'layout',
