@@ -25,6 +25,7 @@ export const en = {
     // sheet with (`confirmOwner(reason)`), one per sensitive action.
     reason: {
       disableLock: 'Turn off app lock',
+      exportCsv: 'Export your transactions',
       exportSecrets: 'Export your saved passwords & keys',
     },
     reauth: {
@@ -79,6 +80,34 @@ export const en = {
     baseCurrency: 'Base currency',
     baseCurrencySheetTitle: 'Base Currency',
     categories: 'Categories',
+    csvExport: {
+      columns: {
+        account: 'Account',
+        amount: 'Amount',
+        category: 'Category',
+        comment: 'Comment',
+        currency: 'Currency',
+        date: 'Date',
+        description: 'Description',
+        holding: 'Holding',
+        pending: 'Pending',
+        source: 'Source',
+        type: 'Type',
+      },
+      contents:
+        'It holds the date, amount, category, description and comment of every transaction in your accounts, with the names of the accounts and holdings. A holding name can hold a card number mask, and a Binance Pay description can name another person. Archived accounts are left out.',
+      errorMessage: 'Please try again.',
+      errorTitle: 'Export failed',
+      notBackup:
+        'This is not a backup. It leaves out balances, prices and settings, and Kiko cannot restore your data from it. To back up your data, export a .kiko file instead.',
+      // The Settings row that opens this screen. Title Case by the same ruling as
+      // `dataExport.rowLabel`, so it reads the same as `title` below (the nav header).
+      rowLabel: 'Export to CSV',
+      shareButton: 'Share CSV file',
+      title: 'Export to CSV',
+      warning:
+        'This file is not encrypted. Anyone who gets it can read it, so share it only with people and apps you trust.',
+    },
     dataExport: {
       copied: 'Copied',
       copyKey: 'Copy key',
@@ -1215,6 +1244,7 @@ export const en = {
           '2': 'To keep syncing after a restore, turn on "Include saved passwords & keys".',
           '3': 'Tap "Export data", then "Share file" to save the .kiko file.',
           '4': 'Tap "Copy key" and keep the key somewhere safe. It is shown only once, and the file cannot be opened without it.',
+          '5': 'To save your transactions as a spreadsheet file, tap "Export to CSV" in "Settings". A CSV file is not a backup: it is not encrypted, and Kiko cannot restore your data from it.',
         },
         title: 'Back Up Your Data',
       },

@@ -164,7 +164,7 @@ describe('help topic registry', () => {
     ['categoryRules', 6],
     ['viewStatistics', 12],
     ['viewRecurringCharges', 5],
-    ['backupData', 4],
+    ['backupData', 5],
     ['restoreData', 4],
     ['systemSettings', 5],
   ] as const)('gives the %s topic %i steps', (topicId, count) => {

@@ -3,6 +3,8 @@ export * from './import-data';
 export * from './export-data';
 export * from './crypto/envelope';
 export * from './crypto/generate-key';
+export * from './csv-export';
+export { readDataSnapshot } from './snapshot/read-snapshot';
 export { USDT_RESCALE_BOUND_MINOR_UNITS } from './snapshot/with-usdt-rescaled';
 export { FROZEN_1_0_CRYPTO_CODES, restoreDataSnapshot } from './snapshot/restore-snapshot';
 export type { ExportPayload } from './payload';
