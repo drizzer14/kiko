@@ -461,6 +461,20 @@ describe('the choices a help step names', () => {
     },
   );
 
+  it.each([
+    ['en', enValues, en.tables.period, '"', '12 months'],
+    ['uk', ukValues, uk.tables.period, '«', '12 місяців'],
+  ] as const)(
+    'names in %s the period it starts on, and no longer the last 12 months',
+    (_language, values, period, openQuote, removedPeriod) => {
+      const step = stepOf(values, 'viewStatistics', 9);
+
+      expect(step).toContain(`${openQuote}${period.label}`);
+      expect(step).toContain(period.thisYear);
+      expect(step).not.toContain(removedPeriod);
+    },
+  );
+
   // The step names where the button is, so it must follow the screen: first, above the filters.
   it.each([
     ['en', enValues, 'Above the filters', 'Below the filters'],
@@ -635,6 +649,13 @@ describe('the choices a help step names', () => {
       expect(step).toContain(newestFirst);
     },
   );
+
+  it('names the table, not the filter, that the cells of step 12 are in', () => {
+    const step = stepOf(enValues, 'viewStatistics', 12);
+
+    expect(step).toContain(`In the "${en.tables.view.categories}" table, tap`);
+    expect(step).toContain(`in the "${en.tables.view.cashFlow}" table, tap`);
+  });
 
   it.each([
     ['en', enValues, /\bonly\b/i, 'Loan interest'],

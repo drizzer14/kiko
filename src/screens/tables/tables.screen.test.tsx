@@ -8,7 +8,7 @@ import {
   restoreThemeOrder,
 } from '@kiko/test-support/light-theme-registered';
 import {
-  answerFilterData,
+  FILTER_DATA_CLOCK,
   pressFilterOption,
   transactionRowOf,
 } from '@kiko/test-support/statistics-filter-data';
@@ -20,15 +20,16 @@ import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
+import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
 import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { act, fireEvent, render, renderHook, within } from '@testing-library/react-native';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
-import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import {
   answerWith,
   renderTables,
   screenElement,
+  setUpTablesWorld,
   SPENT_AT,
   SPENT_IN,
   spokenValue,
@@ -38,14 +39,14 @@ import { monthTitle } from './month-column-label';
 
 jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
 
+// The data of the world starts two days before the fixed clock, so this quarter is the period that
+// is always offered besides this year.
+const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
+
 type Props = ComponentProps<typeof TablesScreen>;
 
 describe('TablesScreen', () => {
-  beforeEach(() => {
-    mockUseLiveQuery.mockImplementation(answerFilterData);
-  });
-
-  afterEach(resetStatisticsFilterSelection);
+  setUpTablesWorld();
 
   describe('the category table', () => {
     it('shows each category of the data in the month it was spent, with the full amount spoken', async () => {
@@ -346,42 +347,40 @@ describe('TablesScreen', () => {
   });
 
   describe('the period', () => {
-    it('opens on the last 12 months when the route carries no period', async () => {
+    it('opens on this year when the route carries no period', async () => {
       const { getByTestId } = await renderTables();
 
-      expect(getByTestId('tables-period')).toHaveTextContent('Last 12 months', { exact: false });
+      expect(getByTestId('tables-period')).toHaveTextContent('This year', { exact: false });
     });
 
-    it('shows the year the route carries', async () => {
-      const year = new Date().getFullYear();
-      const { getByTestId } = await renderTables({ period: { kind: 'year', year } });
+    it('shows the period the route carries', async () => {
+      const { getByTestId } = await renderTables({ period: THIS_QUARTER });
 
-      expect(getByTestId('tables-period')).toHaveTextContent(String(year), { exact: false });
+      expect(getByTestId('tables-period')).toHaveTextContent('This quarter', { exact: false });
     });
 
-    it('reads a year the data does not reach as the last 12 months', async () => {
+    it('reads a year the data does not reach as this year', async () => {
       const { getByTestId } = await renderTables({ period: { kind: 'year', year: 1999 } });
 
-      expect(getByTestId('tables-period')).toHaveTextContent('Last 12 months', { exact: false });
+      expect(getByTestId('tables-period')).toHaveTextContent('This year', { exact: false });
     });
 
     it('writes a pick to the route params, so a remount opens on it', async () => {
-      const year = new Date().getFullYear();
       const first = await renderTables();
 
       await fireEvent.press(first.getByTestId('tables-period'));
-      await fireEvent.press(first.getByTestId(`tables-period-option-year-${year}`));
+      await fireEvent.press(
+        first.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
+      );
 
-      expect(first.navigation.setParams).toHaveBeenCalledWith({
-        period: { kind: 'year', year },
-      });
+      expect(first.navigation.setParams).toHaveBeenCalledWith({ period: THIS_QUARTER });
       await first.unmount();
 
       const second = await renderTables(
         paramsAfter(first.navigation, {}) as Props['route']['params'],
       );
 
-      expect(second.getByTestId('tables-period')).toHaveTextContent(String(year), {
+      expect(second.getByTestId('tables-period')).toHaveTextContent('This quarter', {
         exact: false,
       });
     });
@@ -604,7 +603,7 @@ describe('TablesScreen', () => {
         rendered.getAllByText('Разом', { includeHiddenElements: true }).length,
       ).toBeGreaterThan(0);
       expect(rendered.queryByText('Total', { includeHiddenElements: true })).toBeNull();
-      expect(rendered.getByTestId('tables-period')).toHaveTextContent('Останні 12 місяців', {
+      expect(rendered.getByTestId('tables-period')).toHaveTextContent('Цей рік', {
         exact: false,
       });
     });

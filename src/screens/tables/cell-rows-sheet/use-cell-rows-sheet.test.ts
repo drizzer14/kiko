@@ -90,6 +90,41 @@ describe('useCellRowsSheet', () => {
     expect(result.current.sheet?.rows).toEqual([COFFEE]);
   });
 
+  it('does not compute the rows while the sheet is hidden, and keeps the last ones', async () => {
+    const { result, rerender } = await hookOf();
+
+    await act(async () => {
+      result.current.open('Groceries, January 2025', 'groceries', JANUARY);
+    });
+    await act(async () => {
+      result.current.sheet?.onDismiss();
+    });
+
+    const whileHidden = jest.fn<readonly CellRow[], [string, CellRange]>(() => [COFFEE, BREAD]);
+
+    await rerender({ generation: 0, rowsOf: whileHidden });
+
+    expect(whileHidden).not.toHaveBeenCalled();
+    expect(result.current.sheet?.rows).toEqual([COFFEE]);
+  });
+
+  it('computes the rows afresh when a dismissed sheet is opened again', async () => {
+    const { result, rerender } = await hookOf();
+
+    await act(async () => {
+      result.current.open('Groceries, January 2025', 'groceries', JANUARY);
+    });
+    await act(async () => {
+      result.current.sheet?.onDismiss();
+    });
+    await rerender({ generation: 0, rowsOf: () => [COFFEE, BREAD] });
+    await act(async () => {
+      result.current.open('Groceries, January 2025', 'groceries', JANUARY);
+    });
+
+    expect(result.current.sheet?.rows).toEqual([COFFEE, BREAD]);
+  });
+
   it('hides the sheet when the generation moves on, and shows it when opened again', async () => {
     const { result, rerender } = await hookOf();
 

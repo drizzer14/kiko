@@ -110,16 +110,10 @@ describe('expenseRowsOf', () => {
     expect(idsOf(rows)).toEqual(['coffee']);
   });
 
-  it('has no paymentId on a row that is not derived from a loan payment', () => {
-    const [row] = expenseRows([rowOf('coffee', -1_500)]);
-
-    expect(row).not.toHaveProperty('paymentId');
-  });
-
   describe('a loan payment', () => {
     const payment = { ...LOAN_PAYMENT, description: 'Mortgage payment' };
 
-    it('shows the interest it is derived into, and names its payment', () => {
+    it('shows the interest it is derived into', () => {
       const rows = expenseRows([payment]);
 
       // The loan's one installment: 900_000 at 1% a month is 9_000 of interest.
@@ -130,7 +124,6 @@ describe('expenseRowsOf', () => {
           description: 'Mortgage payment',
           native: Money.of('UAH', 9_000),
           base: Money.of('UAH', 9_000),
-          paymentId: 'loan-payment',
           loanPart: 'interest',
         },
       ]);
@@ -140,15 +133,13 @@ describe('expenseRowsOf', () => {
       expect(idsOf(expenseRows([payment]))).not.toContain('loan-payment');
     });
 
-    it('names its payment on the fee of a payment that exceeds its installment', () => {
+    it('splits a payment that exceeds its installment into its fee and its interest', () => {
       const withFee = { ...payment, amountMinorUnits: -(909_000 + 300) };
 
-      expect(
-        expenseRows([withFee]).map((row) => [row.id, row.base.minorUnits, row.paymentId]),
-      ).toEqual([
+      expect(expenseRows([withFee]).map((row) => [row.id, row.base.minorUnits])).toEqual([
         // Both entries take the payment's time, so they are ordered by id.
-        ['loan-excess:loan-payment', 300, 'loan-payment'],
-        ['loan-interest:loan-payment', 9_000, 'loan-payment'],
+        ['loan-excess:loan-payment', 300],
+        ['loan-interest:loan-payment', 9_000],
       ]);
     });
 
@@ -178,8 +169,8 @@ describe('expenseRowsOf', () => {
 
   describe('a row with no description', () => {
     const cashExpense = rowOf('cash-coffee', -1_500, { holdingId: 'cash', description: '' });
-    const defaultLabel = (lng: string) =>
-      i18n.t('transactions.defaultDescriptionExpense', { name: CASH.name, lng });
+    const defaultLabel = (language: string) =>
+      i18n.t('transactions.defaultDescriptionExpense', { name: CASH.name, lng: language });
 
     it('reads as Home reads it: the default label of its holding', () => {
       const [row] = expenseRows([cashExpense]);

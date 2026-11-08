@@ -4,16 +4,34 @@ import { calendarMonthOf } from '@kiko/dates';
 import { render } from '@testing-library/react-native';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
-import { answerFilterData } from '@kiko/test-support/statistics-filter-data';
+import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
+import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
 import TablesScreen from '../tables.screen';
 import { monthTitle } from '../month-column-label';
 
 type Props = ComponentProps<typeof TablesScreen>;
 
-export const SPENT_AT = localDaysFrom(Date.now(), -2);
+export const SPENT_AT = localDaysFrom(FILTER_DATA_CLOCK, -2);
 export const SPENT_IN = monthTitle(calendarMonthOf(SPENT_AT), i18n.t);
+
+/**
+ * Registers what each test of a Tables screen suite starts and ends with: the fixed clock, the
+ * data of the world, and the Statistics picks put back on "all".
+ */
+export const setUpTablesWorld = () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: FILTER_DATA_CLOCK });
+    mockUseLiveQuery.mockImplementation(answerFilterData);
+  });
+
+  afterEach(async () => {
+    await resetStatisticsFilterSelection();
+    jest.useRealTimers();
+  });
+};
 
 export const answerWith =
   (override: (tables: string[], answer: ReturnType<typeof answerFilterData>) => unknown) =>

@@ -8,7 +8,12 @@ import { localDaysFrom } from './local-days-from';
 export const ACCOUNT_FILTER = 'statistics-account-filter';
 export const CATEGORY_FILTER = 'statistics-category-filter';
 
-const now = Date.now();
+/**
+ * A mid-year clock for a suite that reads a calendar period (a quarter, a year): on the real
+ * clock the data of the world is in the year before for the first days of January. Set it with
+ * `jest.useFakeTimers({ now })` before the first answer, which reads the clock once.
+ */
+export const FILTER_DATA_CLOCK = new Date(2026, 5, 15, 12).getTime();
 
 const ACCOUNTS = [
   { id: 'a', name: 'Cash', kind: 'cash', color: null },
@@ -78,39 +83,56 @@ export const transactionRowOf = (
     Partial<FilterTransaction>,
 ): FilterTransaction => ({ ...PLAIN_ROW, ...row });
 
-// Each row is a categorized spending on one account, so the pie and the trend have both to show.
-const TRANSACTIONS = [
-  transactionRowOf({
-    id: 'e1',
-    holdingId: 'h1',
-    time: localDaysFrom(now, -2),
-    amountMinorUnits: -300_00,
-    category: 'groceries',
-  }),
-  transactionRowOf({
-    id: 'e2',
-    holdingId: 'h2',
-    time: localDaysFrom(now, -2),
-    amountMinorUnits: -100_00,
-    category: 'transport',
-  }),
-];
+const worldOf = (now: number) => {
+  // Each row is a categorized spending on one account, so the pie and the trend have both to show.
+  const transactions = [
+    transactionRowOf({
+      id: 'e1',
+      holdingId: 'h1',
+      time: localDaysFrom(now, -2),
+      amountMinorUnits: -300_00,
+      category: 'groceries',
+    }),
+    transactionRowOf({
+      id: 'e2',
+      holdingId: 'h2',
+      time: localDaysFrom(now, -2),
+      amountMinorUnits: -100_00,
+      category: 'transport',
+    }),
+  ];
 
-const HISTORY = [
-  { base: 'USD', quote: 'UAH', day: toUtcMidnight(now) - 5 * DAY_MS, rate: '40', source: 'nbu' },
-];
+  return {
+    span: [{ earliest: transactions[0].time, latest: transactions[0].time }],
+    byTable: {
+      accounts: ACCOUNTS,
+      holdings: HOLDINGS,
+      currency_rates: [],
+      settings: [{ baseCurrency: 'UAH' }],
+      transactions,
+      currency_rate_history: [
+        {
+          base: 'USD',
+          quote: 'UAH',
+          day: toUtcMidnight(now) - 5 * DAY_MS,
+          rate: '40',
+          source: 'nbu',
+        },
+      ],
+      categories: CATEGORIES,
+      price_points: [],
+    } as Record<string, unknown[]>,
+  };
+};
 
-const SPAN = [{ earliest: TRANSACTIONS[0].time, latest: TRANSACTIONS[0].time }];
+// Built at the first answer, not at import, so a suite can set its clock first; a rebuilt world
+// would hand a live query new rows on every render.
+let world: ReturnType<typeof worldOf> | undefined;
 
-const BY_TABLE: Record<string, unknown[]> = {
-  accounts: ACCOUNTS,
-  holdings: HOLDINGS,
-  currency_rates: [],
-  settings: [{ baseCurrency: 'UAH' }],
-  transactions: TRANSACTIONS,
-  currency_rate_history: HISTORY,
-  categories: CATEGORIES,
-  price_points: [],
+const currentWorld = () => {
+  world ??= worldOf(Date.now());
+
+  return world;
 };
 
 /**
@@ -118,7 +140,10 @@ const BY_TABLE: Record<string, unknown[]> = {
  * categorized spending on each, keyed by the first table the query watches.
  */
 export const answerFilterData = (query: { kind?: string }, tables: string[]) => ({
-  data: tables[0] === 'transactions' && query.kind === 'span' ? SPAN : (BY_TABLE[tables[0]] ?? []),
+  data:
+    tables[0] === 'transactions' && query.kind === 'span'
+      ? currentWorld().span
+      : (currentWorld().byTable[tables[0]] ?? []),
   isLoading: false,
   isFresh: true,
 });

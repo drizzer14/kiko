@@ -313,7 +313,10 @@
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
-  `BottomSheet`. `CategoryField`, `HoldingSelectField`,
+  `BottomSheet`. Optional `capped` caps the trigger at
+  `theme.layout.selectTriggerMaxWidth` (`src/design-system/theme/theme.ts`), trigger =
+  min(column, cap), for a short one-phrase value; larger Dynamic Type wraps inside the cap.
+  `CategoryField`, `HoldingSelectField`,
   `ModeSelectField`, `BankTypeField`, `ExchangeTypeField` (`src/screens/forms/`),
   `SelectField` (component-set.md) and `CurrencyField` below all compose this rather than
   re-implementing the same bordered-row JSX. Lives in

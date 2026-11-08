@@ -10,7 +10,7 @@ import { transactionRowDescription } from '@kiko/transactions/row-description';
 
 import { incomeAmountOf } from '../cash-flow';
 import { spendingContributionsOf } from '../category-breakdown';
-import { loanEntryPartOf, loanPaymentIdOf } from '../loan-payments';
+import { type LoanEntryPart, loanEntryPartOf, loanPaymentIdOf } from '../loan-payments';
 import { type LedgerRow, type SpendingLedger, spendingRowsIn } from '../spending-ledger';
 
 /** One row of the list a table cell opens; the rows' base amounts add up to the cell. */
@@ -22,10 +22,8 @@ export type CellRow = {
   native: Money;
   /** The same in the base currency, converted as the table converts it. */
   base: Money;
-  /** For an entry derived from a loan payment (its interest, its fee), the payment's id. */
-  paymentId?: string;
-  /** Which part of its payment a derived entry is; set whenever `paymentId` is. */
-  loanPart?: 'interest' | 'fee';
+  /** Set on an entry derived from a loan payment: which part of the payment it is. */
+  loanPart?: LoanEntryPart;
 };
 
 /** The time span a table cell covers: a month's, or the whole period's for a Total. */
@@ -107,7 +105,6 @@ export const expenseRowsOf = (
           transaction.description,
         native: Money.of(transaction.currency, netMagnitude),
         base: Money.of(display.baseCurrency, baseMinorUnits),
-        ...foldMap(maybe(paymentId), (id) => ({ paymentId: id })),
         ...foldMap(maybe(loanEntryPartOf(transaction.id)), (part) => ({ loanPart: part })),
       };
     })

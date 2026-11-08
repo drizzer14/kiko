@@ -30,6 +30,7 @@ const SelectField = <Option extends string>({
   placeholder,
   required,
   disabled,
+  capped,
   error,
   emptyAction,
   emptyOption,
@@ -93,6 +94,7 @@ const SelectField = <Option extends string>({
         label={label}
         required={required}
         disabled={disabled}
+        capped={capped}
         onPress={handleOpen}
         icon={foldMap(selectedOption, (option) => icons?.[option])}
         value={foldMap(selectedOption, (option) => labels[option]) ?? placeholder}

@@ -131,10 +131,15 @@ must fit: `labelVariant: 'caption'` is the first step. Measure at large sizes; i
 the text silently.
 
 Period, ruled (Decision 2): the screen has its own date filter, separate from the shared date filter, which it neither reads nor
-changes. Whole calendar months. Default "Last 12 months", plus each calendar year that has data. Reason: the shared filter defaults
+changes. Whole calendar months. Reason: the shared filter defaults
 to the last 30 days (`default-range.ts:13`), which gives 2 columns, and a day-grain range cuts months in two. A month column equals
-the donut when the shared date filter is set to the same whole month. Ruled: whole months, the last 12 months or a calendar year,
-with no free range picker.
+the donut when the shared date filter is set to the same whole month. Ruled: whole months, with no free range picker.
+
+User ruling 2026-11-07 (replaces the first ruling, default "Last 12 months" plus each calendar year with data):
+the options are This quarter, Last quarter, the other started quarters of this year, First half, Second half
+(from 1 July), This year and Last year. The default and the fallback is This year. "Last 12 months" and
+older years are removed. The option list and its builder are in the period code under `src/screens/tables/`;
+read them there.
 
 Filters on Tables: accounts for all three tables, and categories for C1 only, both from the shared store
 (`use-statistics-filter-selection.ts`), so a pick in Statistics holds on Tables. C2 and C3 hide the category filter. A category
@@ -358,7 +363,7 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 | # | Decision | Ruling |
 |---|---|---|
 | 1 | Where the tables live | Own screen |
-| 2 | Which months | Own date filter, default last 12 months; whole months, the last 12 months or a calendar year, with no free range picker |
+| 2 | Which months | Own date filter; whole months, with no free range picker; options and default replaced by the ruling of 2026-11-07 (section 5) |
 | 3 | Column order | Oldest to newest |
 | 4 | Amounts in cells | Whole units, currency in the caption |
 | 5 | Tap on a cell | Opens the rows behind the number, in Categories and Cash flow |
