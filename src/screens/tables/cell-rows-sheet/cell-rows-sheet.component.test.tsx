@@ -12,6 +12,7 @@ const COIN_TIME = new Date(2025, 0, 10, 12).getTime();
 
 const COFFEE: CellRow = {
   id: 'coffee',
+  transactionId: 'coffee',
   time: COFFEE_TIME,
   description: 'Coffee',
   native: Money.of('UAH', 1_500),
@@ -19,6 +20,7 @@ const COFFEE: CellRow = {
 };
 const COIN: CellRow = {
   id: 'coin',
+  transactionId: 'coin',
   time: COIN_TIME,
   description: 'Coin purchase',
   native: Money.of('USDT', 250_000_000),
@@ -26,6 +28,7 @@ const COIN: CellRow = {
 };
 const INTEREST: CellRow = {
   id: 'loan-interest:payment',
+  transactionId: 'payment',
   time: COIN_TIME - 1,
   description: 'Mortgage payment',
   native: Money.of('UAH', 9_000),
@@ -34,6 +37,7 @@ const INTEREST: CellRow = {
 };
 const FEE: CellRow = {
   id: 'loan-excess:payment',
+  transactionId: 'payment',
   time: COIN_TIME - 1,
   description: 'Mortgage payment',
   native: Money.of('UAH', 300),

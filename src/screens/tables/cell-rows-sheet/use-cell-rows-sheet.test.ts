@@ -6,6 +6,7 @@ import { useCellRowsSheet } from './use-cell-rows-sheet';
 
 const rowOf = (id: string, minorUnits: number): CellRow => ({
   id,
+  transactionId: id,
   time: 1,
   description: id,
   native: Money.of('UAH', minorUnits),
