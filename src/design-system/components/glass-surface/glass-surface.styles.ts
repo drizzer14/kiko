@@ -25,8 +25,9 @@ export const styles = StyleSheet.create((theme) => ({
   //     samples a PARTIALLY-pinned color and the screen behind reads through;
   //   - the flat fill on the non-glass fallback branch, so that path is
   //     see-through too rather than a solid block.
-  // The `surfaceTranslucent` token composites over the true-black background to
-  // a very dark tone, so white body text stays legible on it.
+  // The `surfaceTranslucent` token composites over the scheme's background (true black in the
+  // dark scheme, near white in the light one) to a tone on the same side as that background, so
+  // the scheme's body text (white in dark, black in light) stays legible on it.
   translucentBase: {
     backgroundColor: theme.colors.surfaceTranslucent,
   },

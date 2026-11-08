@@ -77,8 +77,8 @@ export const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: 0,
   },
-  // The Done label: white (`textPrimary` — pure white on this dark theme, see
-  // its own doc in `theme.ts`), not the blue `accent` tone, because Done is a
+  // The Done label: the primary text color (`textPrimary` — white in the dark scheme, black in
+  // the light one, see its own doc in `theme.ts`), not the blue `accent` tone, because Done is a
   // neutral glass pill rather than a tinted link-style action.
   // `textPrimary`, not `onAccent`: this pill carries no filled accent/
   // destructive background (`onAccent` is reserved for text on THAT kind of
