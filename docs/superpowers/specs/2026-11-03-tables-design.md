@@ -234,6 +234,13 @@ all C3 cells do not open (no rows sum to them). This also answers the HIG line o
 exact value behind a rounded cell. With a held category pick, the All cell of C1 lists only the picked categories, so its
 total equals the cell; C2's expense cell ignores the pick, as the C2 column does.
 
+User ruling 2026-11-08, replacing "read-only" above: a tap on a row of the list closes it and opens
+that transaction's form, as a row on Home does (a loan interest or fee row opens its payment, and a
+synced row opens read-only). The form opens once the list has finished closing. If a form of that
+transaction is already open under Tables, Tables closes and that form shows as it was, so no second
+form holds the old values. A row has no touch-and-hold menu. The Tables help topic says it in one
+sentence.
+
 ## 9. The table component (kiko:designer owns it)
 
 `src/design-system/components/data-table/`. Its props are strings and display flags, plus two `ReactNode` props of the
