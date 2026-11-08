@@ -47,8 +47,8 @@ export const setLayout = async (mode: 'single' | 'columns'): Promise<void> => {
   });
 };
 
-// This quarter is on offer for any data, and it is not the period a new push opens on.
-export const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
+// This quarter is on offer for any data, and it is not the default period.
+const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 
 export const pickThisQuarter = async (rendered: Awaited<ReturnType<typeof renderRoot>>) => {
   await fireEvent.press(rendered.getByTestId('tables-period'));
