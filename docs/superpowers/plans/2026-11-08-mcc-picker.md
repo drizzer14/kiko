@@ -58,7 +58,9 @@ symbol, not a line: re-grep each fact on the actual base before building on it.
 - **Merge rule (binding):** tasks 7/10, 8/10 and 9/10 do NOT merge into `next` until task 10/10's
   verify is green; the four tasks merge into `next` together, after the texts' approval. Task 7/10
   bundles MIT-licensed uk names whose notice ships in task 10/10, so a tip without task 10/10 never
-  reaches `next` or a release. Each task still gets its own READY FOR VERIFY and verify.
+  reaches `next` or a release. Each task still gets its own READY FOR VERIFY and verify. If an
+  answer drops task 10/10 (Q-MCC1 "no", Q-MCC2 B), the gate is the green verify of the tip that
+  holds the revert commits.
 - No duration estimate anywhere; whoever needs one uses `kiko:estimator`.
 
 Run-log gaps (`run-log.mjs stats --gaps --repo kiko`, read 2026-11-08): this plan closes none and
@@ -105,12 +107,12 @@ affected tasks' verify is queued again. Pin edits name the old (was:) and new va
 
 | Question | Default applied now | If "no": stays | If "no": goes | Tasks and steps that change | "was:" pin edits |
 |---|---|---|---|---|---|
-| Q-MCC1 community sources | greggles + Sominemo | task 8/10 read; `MccField` with "Your codes" (digits only) and "Other code"; `errorMcc` | generator, `uk-own-names.json`, `mcc-names.data.json`, `MCC_NAMES` and lookups; "All codes" section and `ruleForm.mccAllSection`; names on trigger, rows, card; task 10/10 (no bundled data, no notice) | 7/10 steps 1-7 reverted by new commits; 9/10 steps 1-6; 10/10 dropped | `rule-summary.test.ts` mcc value was: `'5411 – <name>'`, now: `'5411'`. `mcc-picker-rows.test.ts` lists was: Other, own, all; now: Other, own only. `category-rule-form.screen.test.tsx` trigger was: `5411 – <name>`, now: `5411`. Generator and data test files deleted |
+| Q-MCC1 community sources | greggles + Sominemo | task 8/10 read; `MccField` with "Your codes" (digits only) and "Other code"; `errorMcc` | generator, `uk-own-names.json`, `mcc-names.data.json`, `MCC_NAMES` and lookups; "All codes" section and `ruleForm.mccAllSection`; names on trigger, rows, card; task 10/10 (no bundled data, no notice) | 7/10 steps 1-7 reverted by new commits; 9/10 steps 1-6; 10/10 dropped | `rule-summary.test.ts` mcc value was: `'5411 – <name>'`, now: `'5411'`. `mcc-picker-rows.test.ts` lists was: Other, own, all; now: Other, own only. `category-rule-form.screen.test.tsx` trigger was: `5411 – <name>`, now: `5411`. `mcc-picker-rows.test.ts` name pins (`a text query matches the name by substring, any case`, `folds an ASCII apostrophe, U+2019 and U+02BC to one character in the query and the name`, `an en name with an apostrophe matches a typed apostrophe`, `names each code in the current language`) was: present, now: deleted. `mcc-field.component.test.tsx` `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>`, now: `5411`. `rule-summary.test.ts` `shows the mcc name in Ukrainian` and `category-form.screen.test.tsx` `shows a merchant-code rule with its name on the card` was: present, now: deleted (as Q-MCC3). Copy `ruleForm.mccSearchPlaceholder` was: "Search by code or name" / «Пошук за кодом або назвою», now: "Search by code" / «Пошук за кодом» (draft, back to the user). Notes line: the 'All codes' sentence and the Acknowledgements sentence was: present, now: deleted. Generator and data test files deleted |
 | Q-MCC2 notice place | A: Settings row + page | tasks 7/10-9/10 | — | — | — |
 | Q-MCC2 answer B | — | tasks 7/10-9/10 with greggles en; brand rule; own uk file | Sominemo input; task 10/10 page, row, route, notice; keys `settings.acknowledgements`, `acknowledgements.*` (5); the Notes line's Acknowledgements part | 7/10 step 2 (pins), 3 (generator), 5 (own uk names for every non-brand code, regenerate); 10/10 dropped | `MCC_SOURCES` pin was: greggles and sominemo, now: greggles only. `takes the Sominemo uk name first, then the brand rule, then the own file` was: three sources, now: `takes the brand rule, then the own file`. `drops a Sominemo-only code and reports it` was: present, now: deleted; report `bySominemo` was: a count, now: no field. Data pins unchanged |
-| Q-MCC2 answer C | — | tasks 7/10-9/10; `mcc-names.notice.ts` | Settings row, page, route; `settings.acknowledgements`, `acknowledgements.title` | 9/10 steps 1-2 (`mccPickerRows` gains a last `{ type: 'credit' }` row); 10/10 steps 1-2 become: the credit row opens a sheet with the notice; one new key for the caption, drafted for the user | every `toEqual` list in `mcc-picker-rows.test.ts` was: ends at the last code or `noMatch` row, now: plus `{ type: 'credit' }` last. 10/10 settings and stack pins replaced by a sheet pin |
+| Q-MCC2 answer C | — | tasks 7/10-9/10; `mcc-names.notice.ts`; `acknowledgements.title` (now the credit sheet's title, stays in `title-keys.ts`); `acknowledgements.intro`, `acknowledgements.mccNamesEnglish`, `acknowledgements.mccNamesUkrainian` (shown on the credit sheet, texts unchanged) | Settings row, page, route; `settings.acknowledgements`; the Notes line's "Settings > Acknowledgements" sentence (replaced by one naming the credit row in the picker, drafted for the user) | 9/10 steps 1-2 (`mccPickerRows` gains a last `{ type: 'credit' }` row); 10/10 steps 1-2 become: the credit row opens a sheet with the notice; one new key for the caption, drafted for the user | every `toEqual` list in `mcc-picker-rows.test.ts` was: ends at the last code or `noMatch` row, now: plus `{ type: 'credit' }` last. 10/10 settings and stack pins replaced by a sheet pin. Notes line was: "Settings > Acknowledgements shows the licenses of the bundled code names.", now: the credit-row sentence |
 | Q-MCC3 card label | yes | data and picker | `mccLabelOf` option on `RuleSummaryOptions` and its wiring | 7/10 steps 6-7 reverted by new commits | `rule-summary.test.ts` mcc value was: `'5411 – Grocery Stores, Supermarkets'`, now: `'5411'`; `shows the mcc name in Ukrainian` deleted; `category-form.screen.test.tsx` `shows a merchant-code rule with its name on the card` deleted. `'0042'` stays |
-| Q-MCC4 source casing | yes, verbatim | everything | verbatim casing; the user's rule (for example sentence case of a brand text) applies in the generator | 7/10 steps 2-3 (a casing pin and rule), 5 (regenerate, re-send the review table), 6 (card pin value) | `names a brand code by its range noun` expected texts was: `<noun> <source brand text>` (for example «Авіакомпанія UNITED AIRLINES»), now: re-cased. `rule-summary.test.ts` mcc value was: source casing, now: re-cased |
+| Q-MCC4 source casing | yes, verbatim | everything | verbatim casing; the user's rule (for example sentence case of a brand text) applies in the generator | 7/10 steps 2-3 (a casing pin and rule), 5 (regenerate, re-send the review table), 6 (card pin value) | `names a brand code by its range noun` expected texts was: `<noun> <source brand text>` (for example «Авіакомпанія UNITED AIRLINES»), now: re-cased. `rule-summary.test.ts` mcc value was: source casing, now: re-cased. Task 9/10 step 3 `shows the placeholder, a listed code with its name, and an unlisted code as its digits` listed code was: `5411 – <name>` in source casing, now: re-cased. Task 9/10 step 5 `keeps a typed merchant code when the type of the row is changed and changed back` trigger was: `5411 – <name>` in source casing, now: re-cased |
 | uk nouns (3) | «Авіакомпанія», «Прокат авто», «Готель» | everything | the replaced noun | 7/10 steps 2, 3, 5 (regenerate, re-send the review table) | `names a brand code by its range noun` was: the draft noun, now: the user's noun. Data pins unchanged |
 
 ## Conflict surface
@@ -119,7 +121,7 @@ affected tasks' verify is queued again. Pin edits name the old (was:) and new va
 |---|---|---|
 | 7 | `rule-summary.ts`, `category-form.screen.tsx` | none expected |
 | 8 | `transactions.repo.ts` (one added member) | `1.4-tables` may add reads beside it; additive |
-| 9 | `matcher-row.component.tsx`, `en.ts`, `uk.ts`, `title-keys.ts`; conditional: `build-demo-snapshot.ts`, both demo `.kiko` files | `1.4-small` edits both catalogues; added lines only. A demo conflict: base plan S22, regenerate, never hand-merge |
+| 9 | `matcher-row.component.tsx`, `en.ts`, `uk.ts`, `title-keys.ts`; conditional: `build-demo-snapshot.ts`, both demo `.kiko` files, `kiko-category-check-en.kiko` | `1.4-small` edits both catalogues; added lines only. A demo conflict: base plan S22, regenerate, never hand-merge |
 | 10 | `settings.screen.tsx`, `settings.stack.tsx`, `src/navigation/types/types.d.ts`, `en.ts`, `uk.ts`, `title-keys.ts` | `1.4-small` rewrites `settings.screen.tsx`: merge `next` first, then add the card |
 
 ## Closing steps (every task, same order)
@@ -138,7 +140,7 @@ Each task's last steps, named by number in the task:
   until green. Merge: the merge rule (Global Constraints): tasks 7/10-9/10 wait for task 10/10's
   green verify, then all four merge into `next` together.
 
-Track end, after task 10/10 READY and before the final merge: the `kiko:designer` read-only
+Track end, before task 10/10 READY (its step 6) and the final merge: the `kiko:designer` read-only
 consistency check of the picker diff (tasks 9/10 and 10/10 against task 9/10's base), the sim check
 list below, and the texts to the user (section "Texts for the user").
 
@@ -168,8 +170,8 @@ export const MCC_NAMES: readonly MccName[]; // from mcc-names.data.json
 export const MCC_NAME_SEPARATOR: ' – ';
 export const mccNameOf: (code: string, language: string) => string | undefined;
 export const mccLabelOf: (code: string, language: string) => string; // "5411 – ..." or "0042"
-// rule-summary.ts RuleSummaryOptions gains
-mccLabelOf: (code: number) => string;
+// rule-summary.ts RuleSummaryOptions gains (describeMatcher keeps the four-digit pad)
+mccLabelOf: (mccText: string) => string;
 // scripts/mcc-names/generate-mcc-names.js (CommonJS)
 MCC_SOURCES: { greggles: { url, commit, sha256, license }, sominemo: { url, commit, sha256, license } }
 verifySource(text, expectedSha256): void // throws on mismatch
@@ -260,12 +262,15 @@ renderReviewTable(entries): string // TSV: code, en, uk, uk source
   - was: `{ label: 'Merchant code (MCC)', value: '5411' }`; now `value: '5411 – Grocery Stores,
     Supermarkets'` (the measured en name). `value: '0042'` for code 42 stays.
   - Add `shows the mcc name in Ukrainian` and `shows an unlisted code as its digits`.
+  - Add `passes a stored code to the label option padded to four digits`: a spy option gets
+    `'0042'` for code 42 (and `'5411'` for 5411).
   - `category-form.screen.test.tsx`: `shows a merchant-code rule with its name on the card`.
   Red, named files. Commit `test(category): the rule card names the merchant code`.
 
-- [ ] **step 7/11 (kiko:developer): the card.** `mccLabelOf: (code: number) => string` option on
-  `RuleSummaryOptions` (spec 6); the `.with({ type: 'mcc' }, ...)` branch of `describeMatcher` uses
-  it as the value. Resolved in `category-form.screen.tsx` with the data module's `mccLabelOf` and
+- [ ] **step 7/11 (kiko:developer): the card.** `mccLabelOf: (mccText: string) => string` option on
+  `RuleSummaryOptions` (spec 6); the `.with({ type: 'mcc' }, ...)` branch of `describeMatcher` keeps
+  its `padStart(MCC_DIGITS, '0')` and passes the padded text to the option, whose result is the
+  value. Resolved in `category-form.screen.tsx` with the data module's `mccLabelOf` and
   `i18n.language` (P8); every caller of the summary passes it (grep the callers). Green: named
   files plus `src/categories/mcc-names`. Commit `feat(category): rule card shows the merchant code
   name`.
@@ -349,7 +354,8 @@ mccCountsQuery: () => SQLQuery<{ mcc: number; rowCount: number }> // spec 4.1
   `mcc-field.props.d.ts`, `mcc-field.styles.ts`, `index.ts`, `mcc-picker-rows.ts`
 - Modify: `src/screens/forms/category-rule-form/matcher-row/matcher-row.component.tsx`,
   `src/i18n/locales/en.ts`, `uk.ts`, `src/i18n/locales/title-keys.ts`; conditional (steps 7-8):
-  `e2e/screenshot/fixtures/build-demo-snapshot.ts`, `kiko-demo-en.kiko`, `kiko-demo-uk.kiko`
+  `e2e/screenshot/fixtures/build-demo-snapshot.ts`, `kiko-demo-en.kiko`, `kiko-demo-uk.kiko`,
+  `kiko-category-check-en.kiko`
 - Tests: `mcc-field/mcc-picker-rows.test.ts`, `mcc-field/mcc-field.component.test.tsx`,
   `matcher-row/matcher-row.component.test.tsx`, `category-rule-form.screen.test.tsx`; conditional:
   `e2e/screenshot/fixtures/build-demo-snapshot.test.ts`
@@ -447,10 +453,12 @@ export const mccPickerRows: (input: { own: readonly { mcc: number; rowCount: num
 - [ ] **step 8/14 (kiko:developer, same condition): demo rows and regeneration.** In
   `build-demo-snapshot.ts`, set `mcc` on those rows (stored categories unchanged); regenerate both
   demo files: `KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts`, then
-  that test plain (writes `kiko-demo-en.kiko`, `kiko-demo-uk.kiko`); if
-  `build-category-check-snapshot.ts` reads the demo rows, also `KIKO_REGEN_CATEGORY_CHECK=1` on the
-  same test (the developer measures). `kiko-demo-en-1.1.kiko` and the kit statement are not
-  touched. `npm run check:guard-replay`. Green: `npx jest e2e/screenshot/fixtures --maxWorkers=2`.
+  that test plain (writes `kiko-demo-en.kiko`, `kiko-demo-uk.kiko`); then
+  `KIKO_REGEN_CATEGORY_CHECK=1` on the same test (`build-category-check-snapshot.ts` spreads
+  `demo.transactions` with `mccCategoriesBackfilled: false`; writes `kiko-category-check-en.kiko`).
+  The seeded rows keep a real category, so the back-fill (`mccBackfillRowsQuery`, `noRealCategorySql`
+  in `backfill-mcc-categories.ts`) moves none of them and the category-check pins stay unchanged.
+  `kiko-demo-en-1.1.kiko` and the kit statement are not touched. `npm run check:guard-replay`. Green: `npx jest e2e/screenshot/fixtures --maxWorkers=2`.
   Commit `feat(demo): demo rows carry merchant codes`. The coordinator copies the fresh en file to
   the reviewer kit at release (release skill).
 
@@ -537,7 +545,7 @@ Sent through the coordinator before any merge into `next`, in one message:
    checked against the build when the Notes are written): "Category rules: the Merchant code (MCC)
    condition now opens a searchable list. 'Your codes' lists the codes found in your transactions
    with their counts; import the Monobank statement from the reviewer kit to see them. 'All codes'
-   lists every code with its English and Ukrainian name, and 'Other code' accepts any four digits.
+   lists every code with its name in the app's language (English or Ukrainian), and 'Other code' accepts any four digits.
    Settings > Acknowledgements shows the licenses of the bundled code names." If task 9/10 steps
    7-8 ran, the own-codes sentence reads: "The demo data already holds a few codes."
 A changed text goes back through the step that wrote it, then the pins rerun.
@@ -549,7 +557,8 @@ A changed text goes back through the step that wrote it, then the pins rerun.
 - [ ] Checks: the coordinator's queued verify per task, green; owed checks per the coordinator's
   power mode; mutation gate per task only when the user lifts the pause, base = that task's base.
 - [ ] Merge: tasks 7/10-10/10 into `next` together, only after task 10/10's verify is green and the
-  texts are approved (merge rule).
+  texts are approved (merge rule); if an answer dropped task 10/10, after the green verify of the
+  tip that holds the revert commits.
 - [ ] Retro: `kiko:retrospect` + `kiko:scribe` per task (sha or "no drift found" in each READY).
 - [ ] Designer: task 10/10 step 6 consistency check of the picker diff.
 - [ ] Sim check (iPhone simulator, then shut it down):

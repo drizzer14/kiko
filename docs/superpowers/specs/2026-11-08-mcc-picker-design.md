@@ -208,10 +208,12 @@ codes" heading and rows; a no-match line when a query empties both sections.
 ## 6. Rule card (Q-MCC3)
 
 `describeMatcher` in `src/screens/forms/category-form/rule-summary/rule-summary.ts` gains an option
-`mccLabelOf: (code: number) => string` on `RuleSummaryOptions`, resolved by the caller
+`mccLabelOf: (mccText: string) => string` on `RuleSummaryOptions`, resolved by the caller
 (`category-form.screen.tsx`) with `mccLabelOf` of `@kiko/categories/mcc-names` in the current
-language, as `accountNameOf` is resolved today. The summary builds no label of its own: the value is
-exactly the field's label, built once.
+language, as `accountNameOf` is resolved today. `describeMatcher` keeps its four-digit pad
+(`padStart(MCC_DIGITS, '0')`) and passes the padded text, so a stored code 42 reaches the option as
+"0042" (section 5.4). The summary builds no label of its own: the value is exactly the field's
+label, built once.
 
 ## 7. Notice (Q-MCC2)
 
