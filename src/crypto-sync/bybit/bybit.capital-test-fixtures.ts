@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import type { FundingMatchRow, HoldingRow } from '@kiko/db';
@@ -63,6 +64,8 @@ export type SentRead = {
 
 const SCRAMBLE = 7_919;
 
+const SECOND_MS = 1_000;
+
 // A cursor token no other field of a test can equal, so a test can look for it in stored state.
 export const CURSOR_PREFIX = 'next-page-';
 
@@ -121,9 +124,19 @@ export const fakeBybit = (options: FakeOptions = {}) => {
   };
 
   const bodyOf = (series: BybitSeries, startTime: number, endTime: number, offset: number) => {
-    // The three list routes refuse a span past 7 days with 131203 at HTTP 200; the ledger's edges
-    // are whole seconds, so its span is the one that the walk sends after the rounding.
-    if (LIST_SERIES.includes(series) && endTime - startTime > 7 * DAY_MS) {
+    // The three list routes refuse a span past 7 days with 131203 at HTTP 200. The ledger's edges
+    // are whole seconds, so its span is the one that the walk sends after the rounding. Transfer
+    // and log may read a start at its whole second, so their span counts from there.
+    const isPastLimit = match(series)
+      .with(
+        'transfer',
+        'log',
+        () => endTime - Math.floor(startTime / SECOND_MS) * SECOND_MS > 7 * DAY_MS,
+      )
+      .with('fundingLedger', () => endTime - startTime > 7 * DAY_MS)
+      .otherwise(() => false);
+
+    if (isPastLimit) {
       return envelopeOf(131203);
     }
 

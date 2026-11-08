@@ -3,9 +3,10 @@ import { walkStateFake } from '@kiko/test-support/walk-marks';
 
 import { NOW } from './bybit.client-test-fixtures';
 import { ACCOUNT_ID } from './bybit.capital-test-fixtures';
+import { BYBIT_RESCAN_WINDOWS_MS } from './bybit.rescan-window';
 import { logWalkOf, silencedWarnings, spotAt } from './bybit.log-test-fixtures';
 
-const WINDOW_MS = 7 * DAY_MS;
+const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.log;
 const CATCH_UP_CURSOR = NOW - 100 * DAY_MS;
 
 const walkOf = (marks: Record<string, unknown>, beforeWrite?: (writes: number) => void) =>

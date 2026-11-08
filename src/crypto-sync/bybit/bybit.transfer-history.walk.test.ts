@@ -6,13 +6,15 @@ import { BybitRefusalError } from './bybit.client';
 import { isBybitCoolingDown } from './bybit.cooldown';
 import { BybitHoldingMissingError } from './bybit.walk-run';
 import { BybitHistoryParseError } from './bybit.history-client';
+import { BYBIT_RESCAN_WINDOWS_MS } from './bybit.rescan-window';
 import { transferAt, transferWalkOf } from './bybit.transfer-test-fixtures';
 import { ACCOUNT_ID, CURSOR_PREFIX, readsOf, served } from './bybit.capital-test-fixtures';
 
 const CURSOR = NOW - 3 * DAY_MS;
 const AT = NOW - 2 * DAY_MS;
 const SECOND_MS = 1_000;
-const WINDOW_MS = 7 * DAY_MS;
+const HOUR_MS = 3_600_000;
+const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.transfer;
 
 const newWalk = (
   options: Partial<Parameters<typeof transferWalkOf>[0]> = {},
@@ -65,6 +67,26 @@ describe('the transfer walk: windows, pages and marks', () => {
     const walk = newWalk();
 
     expect(await walk.run()).toEqual({ imported: 0, complete: true });
+  });
+
+  // The route may read a start inside a second as the second before it, so no span may be wider
+  // than 7 days less a second.
+  it('every span the walk sends is 7 days less a second or less, from a clock inside a second', async () => {
+    const walk = newWalk({ now: NOW + 500 }, ACCOUNT_ID, {});
+
+    let runs = 0;
+    let isComplete = false;
+
+    while (runs < 20 && !isComplete) {
+      runs += 1;
+      isComplete = (await walk.run()).complete;
+      walk.clock.now += HOUR_MS + 1;
+    }
+
+    expect(isComplete).toBe(true);
+    expect(
+      Math.max(...walk.reads.map((read) => read.endTime - read.startTime)),
+    ).toBeLessThanOrEqual(7 * DAY_MS - SECOND_MS);
   });
 
   it('a span commits the same rows whatever the page order', async () => {
@@ -221,7 +243,11 @@ describe('the transfer walk: windows, pages and marks', () => {
       ]);
       expect(walk.marks().cursor).toBe(NOW);
       expect(walk.marks().pending).toEqual([
-        { start: NOW - 10 * DAY_MS, end: NOW - 3 * DAY_MS, series: 'transfer' },
+        {
+          start: NOW - 10 * DAY_MS,
+          end: NOW - 10 * DAY_MS + WINDOW_MS,
+          series: 'transfer',
+        },
       ]);
       expect(result.complete).toBe(false);
       expect(loggedCodes(warn)).toContain('bybit-page-drift');

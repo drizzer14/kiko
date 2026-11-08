@@ -19,10 +19,10 @@ import {
   serveSlots,
 } from './bybit.convergence-test-fixtures';
 import { NOW } from './bybit.client-test-fixtures';
-import { isBybitRescannedRange } from './bybit.rescan-window';
 import { BYBIT_LANE_CALL_CAPS } from './bybit.history-budget';
 import { withdrawalRow } from './bybit.history-test-fixtures';
 import { ACCOUNT_ID, capitalWalkOf, served } from './bybit.capital-test-fixtures';
+import { BYBIT_RESCAN_WINDOWS_MS, isBybitRescannedRange } from './bybit.rescan-window';
 
 // Every row of this suite is built from the docs pages' samples: no page with a row was read live.
 // The walks are the real ones, through the real `planWalkPasses` and `runWalkPlan`, over a fake
@@ -35,7 +35,7 @@ const SEEDS = sweep(Array.from({ length: 20 }, (_unused, position) => 23 + posit
 const SEED_SPREAD = 1_000_003;
 
 const HOUR_MS = 3_600_000;
-const WINDOW_MS = 7 * DAY_MS;
+const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.transfer;
 const CLOCK_GAPS = [0, HOUR_MS, DAY_MS];
 const MAX_RUNS = 300;
 const KILLED = 'run killed by the test';
@@ -711,7 +711,9 @@ type BurstSeed = {
   ends: [number, number, number];
 };
 
-const BURST_START = NOW - 10 * DAY_MS;
+// The burst starts 5/7 of the way into the 103rd window, where every halving edge near it falls as
+// it did at 7-day windows.
+const BURST_START = FLOOR + 102 * WINDOW_MS + Math.floor((5 * WINDOW_MS) / 7);
 
 type RunsAndCalls = [runs: number, calls: number];
 
@@ -761,13 +763,48 @@ type FreshBurst = {
   rowsIn: [number | undefined, number | undefined, number | undefined];
 };
 
+// The last window starts 1 day and 104 seconds before `NOW`: the 104 windows before it are each a
+// second short of 7 days.
+const LAST_WINDOW_START = FLOOR + 104 * WINDOW_MS;
+const LAST_WINDOW_AGE_MS = NOW - LAST_WINDOW_START;
+
 const FRESH_SUB_SECOND_BURSTS: FreshBurst[] = [
-  { name: '700 ms, 1 day old', span: 700, age: DAY_MS, rowsIn: [24, undefined, undefined] },
-  { name: '800 ms, 1 day old', span: 800, age: DAY_MS, rowsIn: [24, 24, undefined] },
-  { name: '900 ms, 1 day old', span: 900, age: DAY_MS, rowsIn: [24, 24, undefined] },
-  { name: '700 ms, 12 hours old', span: 700, age: DAY_MS / 2, rowsIn: [24, 34, 34] },
-  { name: '800 ms, 12 hours old', span: 800, age: DAY_MS / 2, rowsIn: [24, 34, 34] },
-  { name: '900 ms, 12 hours old', span: 900, age: DAY_MS / 2, rowsIn: [24, 34, 34] },
+  {
+    name: '700 ms at the start of the last window',
+    span: 700,
+    age: LAST_WINDOW_AGE_MS,
+    rowsIn: [24, undefined, undefined],
+  },
+  {
+    name: '800 ms at the start of the last window',
+    span: 800,
+    age: LAST_WINDOW_AGE_MS,
+    rowsIn: [24, 24, undefined],
+  },
+  {
+    name: '900 ms at the start of the last window',
+    span: 900,
+    age: LAST_WINDOW_AGE_MS,
+    rowsIn: [24, 24, undefined],
+  },
+  {
+    name: '700 ms in the middle of the last window',
+    span: 700,
+    age: LAST_WINDOW_AGE_MS / 2,
+    rowsIn: [24, 29, 35],
+  },
+  {
+    name: '800 ms in the middle of the last window',
+    span: 800,
+    age: LAST_WINDOW_AGE_MS / 2,
+    rowsIn: [24, 29, 35],
+  },
+  {
+    name: '900 ms in the middle of the last window',
+    span: 900,
+    age: LAST_WINDOW_AGE_MS / 2,
+    rowsIn: [24, 29, 35],
+  },
 ];
 
 const FRESH_BURST_RUNS = 200;
@@ -951,12 +988,13 @@ describe('Bybit convergence of the log and the convert walk', () => {
 
   // The floor of a run moves on by a day when the runs are a day apart, so a burst 50 days from
   // the oldest end of the history is stuck for a while and then passed by the floor, and the commit
-  // past it takes its mark with it.
+  // past it takes its mark with it. The burst starts 1/7 of the way into the 8th window, where
+  // every halving edge near it falls as it did at 7-day windows.
   it('the mark of a burst no span can hold goes when the floor passes it', async () => {
     const account = newLogAndConvertAccount();
 
     serveLogAndConvert(account, {
-      log: burstOfRows(1_001, FLOOR + 50 * DAY_MS, 50),
+      log: burstOfRows(1_001, FLOOR + 7 * WINDOW_MS + Math.floor(WINDOW_MS / 7), 50),
       converts: [],
     });
 
@@ -1105,7 +1143,7 @@ describe('Bybit convergence of the log and the convert walk', () => {
     // caption must not call the range "not imported yet": every range left owed inside the re-scan
     // window is one the caption skips. At a gap over 0 the clock moves past the burst and the walk
     // completes. At gap 0 the clock never moves, so the overlap day and the re-scan hold the burst
-    // on every run and the walk does not complete.
+    // on every run and the walk may not complete.
     it.each(FRESH_SUB_SECOND_BURSTS)(
       'a fresh burst inside one second imports every row and leaves no caption range, or keeps its mark: $name',
       async ({ span, age, rowsIn }) => {

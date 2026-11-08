@@ -250,25 +250,25 @@ describe('historyOwesRange', () => {
       expect(owesOn('binance', 'capital', rescanned)).toBe(true);
     });
 
-    it.each([
-      ['capital', 29],
-      ['transfer', 7],
-      ['log', 7],
-    ] as const)('reads the window of the %s walk as %i days', (walkName, days) => {
-      const inside = { start: NOW - days * DAY_MS, end: NOW - DAY_MS };
-      const outside = { start: NOW - days * DAY_MS - 1, end: NOW - DAY_MS };
+    it('reads the window of the capital walk as 29 days', () => {
+      const inside = { start: NOW - 29 * DAY_MS, end: NOW - DAY_MS };
+      const outside = { start: NOW - 29 * DAY_MS - 1, end: NOW - DAY_MS };
 
-      expect(owesOn('bybit', walkName, inside)).toBe(false);
-      expect(owesOn('bybit', walkName, outside)).toBe(true);
+      expect(owesOn('bybit', 'capital', inside)).toBe(false);
+      expect(owesOn('bybit', 'capital', outside)).toBe(true);
     });
 
-    // The ledger's bounds round out to whole seconds, so its window is a second short of 7 days.
-    it('reads the window of the fundingLedger walk as 7 days less 1 second', () => {
-      const start = NOW - (7 * DAY_MS - SECOND_MS);
+    // The routes accept 7 days at most, and the walks ask for a second less: the ledger's bounds
+    // round out to whole seconds, and the route may read a start of transfer or log at its second.
+    it.each(['transfer', 'log', 'fundingLedger'] as const)(
+      'reads the window of the %s walk as 7 days less 1 second',
+      (walkName) => {
+        const start = NOW - (7 * DAY_MS - SECOND_MS);
 
-      expect(owesOn('bybit', 'fundingLedger', { start, end: NOW - DAY_MS })).toBe(false);
-      expect(owesOn('bybit', 'fundingLedger', { start: start - 1, end: NOW - DAY_MS })).toBe(true);
-    });
+        expect(owesOn('bybit', walkName, { start, end: NOW - DAY_MS })).toBe(false);
+        expect(owesOn('bybit', walkName, { start: start - 1, end: NOW - DAY_MS })).toBe(true);
+      },
+    );
 
     it('owes to the caption while the account has never synced', () => {
       expect(owesOn('bybit', 'log', rescanned, null)).toBe(true);

@@ -52,7 +52,7 @@ import { BYBIT_LANE_CALL_CAPS, type BybitHistoryRun } from './bybit.history-budg
  */
 const LOG_SERIES = 'log';
 
-/** The log route answers a window of at most 7 days. */
+/** The log route refuses a window past 7 days, so the walk asks for a second less. */
 const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.log;
 
 /** A window costs one call at least, and the lane spends its calls on windows and pages. */

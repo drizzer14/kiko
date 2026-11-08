@@ -9,10 +9,11 @@ const SECOND_MS = 1_000;
  */
 export const BYBIT_RESCAN_WINDOWS_MS = {
   capital: 29 * DAY_MS,
-  transfer: 7 * DAY_MS,
-  log: 7 * DAY_MS,
-  // The ledger rounds each bound out to a whole second, so a span of 7 days less a second sends
-  // at most 7 days, the most the route accepts.
+  // The three routes accept 7 days at most. The ledger rounds each bound out to a whole second, so
+  // a span of 7 days less a second sends at most 7 days. Transfer and log send milliseconds, and
+  // the route may read a start at its whole second, so they ask for a second less as well.
+  transfer: 7 * DAY_MS - SECOND_MS,
+  log: 7 * DAY_MS - SECOND_MS,
   fundingLedger: 7 * DAY_MS - SECOND_MS,
 } as const;
 

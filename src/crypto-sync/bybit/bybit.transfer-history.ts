@@ -51,7 +51,7 @@ import { type BybitWallet, exchangePairIdOf, holdingKeyOf } from './bybit.holdin
  */
 const TRANSFER_SERIES = 'transfer';
 
-/** The transfer route answers a window of at most 7 days and refuses one second more. */
+/** The transfer route refuses a window past 7 days, so the walk asks for a second less. */
 const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.transfer;
 
 /** A window costs one call, and the lane spends its calls on windows. */
