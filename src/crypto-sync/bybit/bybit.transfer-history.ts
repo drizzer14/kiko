@@ -124,7 +124,7 @@ type BybitTransferRow = Omit<PlannedTransferRow, 'wallet' | 'counterpartWallet' 
 type PlacedTransferRow = BybitTransferRow & { funding?: FundingSourcePlan };
 
 type BybitTransferHistoryDeps = BybitRowWalkDeps<BybitTransferRow> &
-  BybitFundingSourceDeps & {
+  BybitFundingSourceDeps<BybitTransferRow> & {
     fetchTransferPage: typeof fetchTransferPage;
   };
 

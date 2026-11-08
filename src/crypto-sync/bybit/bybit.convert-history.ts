@@ -107,7 +107,7 @@ type BybitConvertRow = Omit<PlannedConvertRow, 'wallet' | 'counterpartWallet' | 
 type PlacedConvertRow = BybitConvertRow & { funding?: FundingSourcePlan };
 
 type BybitConvertHistoryDeps = BybitRowWalkDeps<BybitConvertRow> &
-  BybitFundingSourceDeps & {
+  BybitFundingSourceDeps<BybitConvertRow> & {
     fetchConvertPage: typeof fetchConvertPage;
   };
 

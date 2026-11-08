@@ -186,6 +186,85 @@ describe('the source walks on real SQLite: the records of the Funding ledger', (
     expect(storedRowKeys()).toEqual(['acc-1:deposit:kept:BTC']);
   });
 
+  describe('a row write or delete that fails takes the record with it (one transaction)', () => {
+    // A trigger makes the engine itself refuse the statement, so the proof does not depend on how
+    // the code under test splits its writes.
+    // The driver wraps the engine's error: the trigger's text is the cause of the one it throws.
+    const REFUSED = { cause: { message: 'refused' } };
+
+    const refuse = (event: 'INSERT' | 'DELETE', table: string) =>
+      mockDatabase.exec(
+        `CREATE TRIGGER refuse BEFORE ${event} ON ${table}
+         BEGIN SELECT RAISE(ABORT, 'refused'); END`,
+      );
+
+    it('a deposit whose row write fails leaves no record', async () => {
+      const bybit = fakeBybit();
+      bybit.world.deposit = [served(AT, depositRow({ coin: 'BTC', successAt: String(AT) }))];
+      refuse('INSERT', 'transactions');
+
+      await expect(capitalOver(bybit)).rejects.toMatchObject(REFUSED);
+
+      expect(storedRowKeys()).toEqual([]);
+      expect(storedRecords()).toEqual([]);
+    });
+
+    it('a transfer whose row write fails leaves no record', async () => {
+      const bybit = fakeBybit();
+      bybit.world.transfer = [
+        transferAt(AT, { fromAccountType: 'UNIFIED', toAccountType: 'FUND', amount: '2' }),
+      ];
+      refuse('INSERT', 'transactions');
+
+      await expect(transferOver(bybit)).rejects.toMatchObject(REFUSED);
+
+      expect(storedRowKeys()).toEqual([]);
+      expect(storedRecords()).toEqual([]);
+    });
+
+    it('a convert whose row write fails leaves no record', async () => {
+      refuse('INSERT', 'transactions');
+
+      await expect(
+        convertOver([convertAt(AT, { accountType: 'funding' }, 'on-funding')]),
+      ).rejects.toMatchObject(REFUSED);
+
+      expect(storedRowKeys()).toEqual([]);
+      expect(storedRecords()).toEqual([]);
+    });
+
+    describe('a rolled back deposit whose delete fails', () => {
+      const walkRollback = async () => {
+        const bybit = fakeBybit();
+        bybit.world.deposit = [
+          served(AT, depositRow({ id: 'gone', coin: 'BTC', successAt: String(AT) })),
+        ];
+        await capitalOver(bybit);
+
+        bybit.world.deposit = [
+          served(AT, depositRow({ id: 'gone', coin: 'BTC', status: 70011, successAt: String(AT) })),
+        ];
+
+        return bybit;
+      };
+
+      it.each([
+        ['the row delete', 'transactions'],
+        ['the record delete', 'funding_match_rows'],
+      ])('keeps the row and its record when %s fails', async (_title, table) => {
+        const bybit = await walkRollback();
+        refuse('DELETE', table);
+
+        await expect(capitalOver(bybit)).rejects.toMatchObject(REFUSED);
+
+        expect(storedRowKeys()).toEqual(['acc-1:deposit:gone:BTC']);
+        expect(storedRecords().map(({ recordKey }) => recordKey)).toEqual([
+          'acc-1:deposit:gone:BTC',
+        ]);
+      });
+    });
+  });
+
   it('a transfer into Funding writes one record, and a transfer between two Unified wallets none', async () => {
     const bybit = fakeBybit();
     bybit.world.transfer = [

@@ -194,6 +194,39 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
     worldOptions.beforeWrite?.(writes);
   };
 
+  const addTransactions = jest.fn(async (rows: StoredRow[]) => {
+    record('add');
+
+    return rows.filter((row) => {
+      const isNew = !stored.has(row.externalId);
+
+      stored.set(row.externalId, row);
+
+      return isNew;
+    }).length;
+  });
+  const removeTransactions = jest.fn(async (externalIds: readonly string[]) => {
+    record('remove');
+
+    return externalIds.filter((externalId) => stored.delete(externalId)).length;
+  });
+  const writeFundingSources = jest.fn(async (records: FundingMatchRow[]) => {
+    sequence.push('source-add');
+
+    for (const row of records) {
+      sources.set(row.recordKey, row);
+    }
+  });
+  const removeFundingSources = jest.fn(
+    async (_accountId: string, recordKeys: readonly string[]) => {
+      sequence.push('source-remove');
+
+      for (const recordKey of recordKeys) {
+        sources.delete(recordKey);
+      }
+    },
+  );
+
   const deps = {
     ...state.deps,
     patchExchangeState: jest.fn(
@@ -219,31 +252,26 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
         } as unknown as HoldingRow);
       }
     }),
-    addTransactions: jest.fn(async (rows: StoredRow[]) => {
-      record('add');
+    addTransactions,
+    removeTransactions,
+    writeFundingSources,
+    removeFundingSources,
+    // The store double has no transaction to share: the one `add` and `remove` the walk makes is
+    // the row double's call and the record double's call, in the order the real write runs them.
+    addRowsAndFundingSources: jest.fn(async (rows: StoredRow[], records: FundingMatchRow[]) => {
+      await writeFundingSources(records);
 
-      return rows.filter((row) => {
-        const isNew = !stored.has(row.externalId);
-
-        stored.set(row.externalId, row);
-
-        return isNew;
-      }).length;
+      return addTransactions(rows);
     }),
-    writeFundingSources: jest.fn(async (records: FundingMatchRow[]) => {
-      sequence.push('source-add');
+    removeRowsAndFundingSources: jest.fn(
+      async (accountId: string, externalIds: readonly string[]) => {
+        const removed = await removeTransactions(externalIds);
 
-      for (const row of records) {
-        sources.set(row.recordKey, row);
-      }
-    }),
-    removeFundingSources: jest.fn(async (_accountId: string, recordKeys: readonly string[]) => {
-      sequence.push('source-remove');
+        await removeFundingSources(accountId, externalIds);
 
-      for (const recordKey of recordKeys) {
-        sources.delete(recordKey);
-      }
-    }),
+        return removed;
+      },
+    ),
   };
 
   return {
@@ -276,17 +304,9 @@ type WorldOptions = WalkWorldOptions & {
  */
 export const capitalWalkOf = (worldOptions: WorldOptions) => {
   const world = inMemoryWalkOf(worldOptions);
-  const { clock, record, stored } = world;
+  const { clock } = world;
 
-  const deps: SyncDeps = {
-    ...world.deps,
-    removeTransactions: jest.fn(async (externalIds: readonly string[]) => {
-      record('remove');
-
-      return externalIds.filter((externalId) => stored.delete(externalId)).length;
-    }),
-    ...worldOptions.overrides,
-  };
+  const deps = { ...world.deps, ...worldOptions.overrides };
 
   const run = (accountId = ACCOUNT_ID) =>
     syncBybitCapitalHistory({ targetAccountId: accountId, run: historyRunAt(clock) }, deps);

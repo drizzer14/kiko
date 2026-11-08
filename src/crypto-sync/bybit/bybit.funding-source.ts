@@ -1,3 +1,7 @@
+import {
+  addManyDedupDatabaseTransaction,
+  removeSyncedRowsDatabaseTransaction,
+} from '@kiko/transactions/repo';
 import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { type FundingMatchRow, write } from '@kiko/db';
@@ -58,23 +62,44 @@ export const fundingSourceOf = (input: FundingSourceInput): FundingSourcePlan | 
   };
 };
 
-/** What a walk that writes Funding records reads and writes them through. */
-export type BybitFundingSourceDeps = {
-  writeFundingSources: (records: FundingMatchRow[]) => Promise<void>;
-  removeFundingSources: (accountId: string, recordKeys: readonly string[]) => Promise<void>;
+/**
+ * What a walk that writes Funding records writes them through: each record goes in the SAME
+ * transaction as its row, so a failure of either leaves neither.
+ */
+export type BybitFundingSourceDeps<Row> = {
+  addRowsAndFundingSources: (rows: Row[], records: FundingMatchRow[]) => Promise<number>;
+  removeRowsAndFundingSources: (
+    accountId: string,
+    externalIds: readonly string[],
+  ) => Promise<number>;
 };
 
-export const defaultBybitFundingSourceDeps: BybitFundingSourceDeps = {
-  writeFundingSources: (records) =>
-    write((databaseTransaction) =>
-      bybitFundingMatchRepo.upsertDatabaseTransaction(databaseTransaction, records),
-    ),
-  removeFundingSources: (accountId, recordKeys) =>
-    write((databaseTransaction) =>
-      bybitFundingMatchRepo.removeDatabaseTransaction(databaseTransaction, accountId, 'source', [
-        ...recordKeys,
-      ]),
-    ),
+export const defaultBybitFundingSourceDeps: BybitFundingSourceDeps<
+  Parameters<typeof addManyDedupDatabaseTransaction>[1][number]
+> = {
+  addRowsAndFundingSources: (rows, records) =>
+    write(async (databaseTransaction) => {
+      await bybitFundingMatchRepo.upsertDatabaseTransaction(databaseTransaction, records);
+
+      return addManyDedupDatabaseTransaction(databaseTransaction, rows);
+    }),
+  removeRowsAndFundingSources: (accountId, externalIds) =>
+    write(async (databaseTransaction) => {
+      const removed = await removeSyncedRowsDatabaseTransaction(
+        databaseTransaction,
+        'bybit',
+        externalIds,
+      );
+
+      await bybitFundingMatchRepo.removeDatabaseTransaction(
+        databaseTransaction,
+        accountId,
+        'source',
+        [...externalIds],
+      );
+
+      return removed;
+    }),
 };
 
 type PlacedSource = { externalId: string; funding?: FundingSourcePlan };
@@ -85,17 +110,16 @@ const withoutFunding = <Placed extends PlacedSource>(placed: Placed): Omit<Place
   return row;
 };
 
-type FundingSourceContext = { accountId: string; deps: BybitFundingSourceDeps };
+type FundingSourceContext<Row> = { accountId: string; deps: BybitFundingSourceDeps<Row> };
 
 /**
- * Write the records of the placed rows, then the rows (`addRows` gets them with no record plan).
- * A crash between the two leaves a record whose row is not written, never a row with no record,
- * and the marks have not moved, so the next run writes both again. A record that outlives its
- * row only ever pairs a ledger row with a source (a lost row, the safe reading of rule 51), and a
- * row with no record would list it too (a double count).
+ * Write the placed rows with the records of the rows that have one, in one transaction (`addRows`
+ * writes a batch that has no record). A failure of the row write takes the record back, so a
+ * record never outlives its row: a row with no record would be listed as a ledger row's missing
+ * partner (a double count), and the marks have not moved, so the next run writes both again.
  */
 export const addWithFundingSources = async <Placed extends PlacedSource>(
-  context: FundingSourceContext,
+  context: FundingSourceContext<Omit<Placed, 'funding'>>,
   placed: Placed[],
   addRows: (rows: Omit<Placed, 'funding'>[]) => Promise<number>,
 ): Promise<number> => {
@@ -112,22 +136,7 @@ export const addWithFundingSources = async <Placed extends PlacedSource>(
       ]) ?? [],
   );
 
-  if (records.length > 0) {
-    await context.deps.writeFundingSources(records);
-  }
+  const rows = placed.map(withoutFunding);
 
-  return addRows(placed.map(withoutFunding));
-};
-
-/** Take back the rows of the given keys, then their records: the record outlives the row. */
-export const removeWithFundingSources = async (
-  context: FundingSourceContext,
-  externalIds: readonly string[],
-  removeRows: (externalIds: readonly string[]) => Promise<number>,
-): Promise<number> => {
-  const removed = await removeRows(externalIds);
-
-  await context.deps.removeFundingSources(context.accountId, externalIds);
-
-  return removed;
+  return records.length > 0 ? context.deps.addRowsAndFundingSources(rows, records) : addRows(rows);
 };

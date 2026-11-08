@@ -91,7 +91,7 @@ export const convertWalkOf = (options: WalkOptions) => {
     now: options.now,
     beforeWrite: options.beforeWrite,
   });
-  const deps: SyncDeps = { ...world.deps, fetchImpl: route.fetchImpl, ...options.overrides };
+  const deps = { ...world.deps, fetchImpl: route.fetchImpl, ...options.overrides };
 
   const run = (accountId = ACCOUNT_ID) =>
     syncBybitConvertHistory({ targetAccountId: accountId, run: historyRunAt(world.clock) }, deps);

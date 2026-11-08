@@ -2146,6 +2146,53 @@ const afterPrefixOf = (prefix: string): string =>
 // terms go out in chunks well under that.
 const ORDER_PREFIX_CHUNK_SIZE = 250;
 
+type SyncedSource = Exclude<TransactionRow['source'], 'manual' | 'import'>;
+
+/**
+ * The write of `transactionsRepo.removeSyncedRows` on the caller's transaction, for a sync that
+ * takes a row back together with a record of its own, so a failure rolls both back.
+ */
+export const removeSyncedRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  source: SyncedSource,
+  externalIds: readonly string[],
+): Promise<number> => {
+  let removed = 0;
+
+  for (const externalIdChunk of chunkRows([...new Set(externalIds)], IN_CLAUSE_CHUNK_SIZE)) {
+    const deleted = await databaseTransaction
+      .delete(transactions)
+      .where(
+        and(eq(transactions.source, source), inArray(transactions.externalId, externalIdChunk)),
+      )
+      .returning({ id: transactions.id });
+
+    removed += deleted.length;
+  }
+
+  return removed;
+};
+
+/**
+ * The write of `transactionsRepo.addManyDedup` on the caller's transaction, for a sync that adds
+ * a record of its own with its rows, so a failure rolls both back.
+ */
+export const addManyDedupDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  inputs: NewTransaction[],
+): Promise<number> => {
+  const batch = dedupByConflictKey(inputs);
+  const newRows = await partitionNewRows(databaseTransaction, batch);
+  const adopted = await adoptImportTwinsDatabaseTransaction(databaseTransaction, newRows);
+
+  await upsertDedupRowsDatabaseTransaction(
+    databaseTransaction,
+    batch.filter((input) => !adopted.has(input)),
+  );
+
+  return newRows.length - adopted.size;
+};
+
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
@@ -2838,26 +2885,10 @@ export const transactionsRepo = {
    * again. The newest synced row sets `importRows`'s boundary, so deleting it can lower that
    * boundary on an account that was disconnected from the exchange and then given a statement.
    */
-  removeSyncedRows: (
-    source: Exclude<TransactionRow['source'], 'manual' | 'import'>,
-    externalIds: readonly string[],
-  ): Promise<number> =>
-    write(async (databaseTransaction) => {
-      let removed = 0;
-
-      for (const externalIdChunk of chunkRows([...new Set(externalIds)], IN_CLAUSE_CHUNK_SIZE)) {
-        const deleted = await databaseTransaction
-          .delete(transactions)
-          .where(
-            and(eq(transactions.source, source), inArray(transactions.externalId, externalIdChunk)),
-          )
-          .returning({ id: transactions.id });
-
-        removed += deleted.length;
-      }
-
-      return removed;
-    }),
+  removeSyncedRows: (source: SyncedSource, externalIds: readonly string[]): Promise<number> =>
+    write((databaseTransaction) =>
+      removeSyncedRowsDatabaseTransaction(databaseTransaction, source, externalIds),
+    ),
   /**
    * What deleting these holdings (one holding, or every holding of an account)
    * would take from OTHER holdings, for the delete confirm's text: nothing
@@ -3056,18 +3087,7 @@ export const transactionsRepo = {
    * place and is not inserted, so it is not counted, like a refresh.
    */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async (databaseTransaction) => {
-      const batch = dedupByConflictKey(inputs);
-      const newRows = await partitionNewRows(databaseTransaction, batch);
-      const adopted = await adoptImportTwinsDatabaseTransaction(databaseTransaction, newRows);
-
-      await upsertDedupRowsDatabaseTransaction(
-        databaseTransaction,
-        batch.filter((input) => !adopted.has(input)),
-      );
-
-      return newRows.length - adopted.size;
-    }),
+    write((databaseTransaction) => addManyDedupDatabaseTransaction(databaseTransaction, inputs)),
   /**
    * Statement import's ONE write: upsert the parsed rows (the same
    * `(source, external_id)` dedup as `addManyDedup`) AND move the target

@@ -37,7 +37,7 @@ export const transferAt = (time: number, overrides: Record<string, unknown> = {}
 export const transferWalkOf = (worldOptions: WorldOptions) => {
   const world = inMemoryWalkOf(worldOptions);
   const { clock } = world;
-  const deps: SyncDeps = { ...world.deps, ...worldOptions.overrides };
+  const deps = { ...world.deps, ...worldOptions.overrides };
 
   const run = (accountId = ACCOUNT_ID) =>
     syncBybitTransferHistory(

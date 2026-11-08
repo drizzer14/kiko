@@ -15,7 +15,6 @@ import {
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
-import { transactionsRepo } from '@kiko/transactions/repo';
 
 import {
   BYBIT_PAGE_DRIFT,
@@ -42,7 +41,6 @@ import {
   addWithFundingSources,
   defaultBybitFundingSourceDeps,
   fundingSourceOf,
-  removeWithFundingSources,
 } from './bybit.funding-source';
 import { holdingKeyOf } from './bybit.holding-keys';
 import { readCursorSpan } from './bybit.cursor-span';
@@ -163,8 +161,7 @@ type CapitalOutcome =
   | { kind: 'removal'; externalId: string };
 
 type BybitCapitalHistoryDeps = BybitRowWalkDeps<BybitCapitalRow> &
-  BybitFundingSourceDeps & {
-    removeTransactions: (externalIds: readonly string[]) => Promise<number>;
+  BybitFundingSourceDeps<BybitCapitalRow> & {
     fetchDepositPage: typeof fetchDepositPage;
     fetchInternalDepositPage: typeof fetchInternalDepositPage;
     fetchWithdrawalPage: typeof fetchWithdrawalPage;
@@ -173,7 +170,6 @@ type BybitCapitalHistoryDeps = BybitRowWalkDeps<BybitCapitalRow> &
 const defaultBybitCapitalHistoryDeps: BybitCapitalHistoryDeps = {
   ...defaultBybitRowWalkDeps,
   ...defaultBybitFundingSourceDeps,
-  removeTransactions: (externalIds) => transactionsRepo.removeSyncedRows('bybit', externalIds),
   fetchDepositPage,
   fetchInternalDepositPage,
   fetchWithdrawalPage,
@@ -587,7 +583,7 @@ const commitSpan = (
     series: window.series,
     forwardOwes: CAPITAL_FORWARD_OWES,
     remove: (externalIds) =>
-      removeWithFundingSources(context, externalIds, context.deps.removeTransactions),
+      context.deps.removeRowsAndFundingSources(context.accountId, externalIds),
   });
 
 /**
