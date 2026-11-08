@@ -167,6 +167,58 @@ describe('TablesScreen', () => {
 
         expect(queryByTestId('cell-rows-sheet')).toBeNull();
       });
+
+      describe('then a tap on a row of its sheet', () => {
+        // The routes the stack holds under this screen, which it reads when a row is pressed.
+        const FORM_OF_GROCERIES = { name: 'TransactionForm', params: { transactionId: 'e1' } };
+
+        const rowPressed = async (stack: object[] = []) => {
+          const rendered = await tapped(`Groceries, ${SPENT_IN}`);
+
+          rendered.navigation.getState.mockReturnValue({ routes: [...stack, { name: 'Tables' }] });
+          // The Modal leaves the tree once the sheet is hidden, and an event is not fired on an
+          // unmounted element, so its dismiss handler is read before the press: the native side
+          // calls it when the close has finished.
+          const { onDismiss } = rendered.getByTestId('cell-rows-sheet-modal').props;
+
+          await fireEvent.press(rendered.getByTestId('cell-row-e1'));
+          await act(async () => {
+            onDismiss();
+          });
+
+          return rendered.navigation;
+        };
+
+        it('opens the transaction form for a row of a cell, with its id', async () => {
+          const navigation = await rowPressed();
+
+          expect(navigation.navigate).toHaveBeenCalledTimes(1);
+          expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {
+            transactionId: 'e1',
+          });
+          expect(navigation.goBack).not.toHaveBeenCalled();
+        });
+
+        // A second form of one transaction would hold the old values below the edited one, and a
+        // Save there would write them back.
+        it('goes back to the form of a row that is already open, and opens no second one', async () => {
+          const navigation = await rowPressed([FORM_OF_GROCERIES]);
+
+          expect(navigation.goBack).toHaveBeenCalledTimes(1);
+          expect(navigation.navigate).not.toHaveBeenCalled();
+        });
+
+        it("opens a new form when the open form is another transaction's", async () => {
+          const navigation = await rowPressed([
+            { name: 'TransactionForm', params: { transactionId: 'e2' } },
+          ]);
+
+          expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {
+            transactionId: 'e1',
+          });
+          expect(navigation.goBack).not.toHaveBeenCalled();
+        });
+      });
     });
   });
 

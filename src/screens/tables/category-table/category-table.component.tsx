@@ -86,6 +86,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
   excludedCategories,
   describeRow,
   sheetGeneration,
+  onOpenTransaction,
   topContent,
 }) => {
   const { t } = useTranslation();
@@ -120,7 +121,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
       describeRow,
     ],
   );
-  const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf);
+  const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf, onOpenTransaction);
   const currentIsPartial = (months.at(-1)?.end ?? 0) >= now;
   const table = useMemo(
     () =>

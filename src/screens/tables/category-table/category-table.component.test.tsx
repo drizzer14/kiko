@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
@@ -10,6 +10,7 @@ import type DataTable from '@kiko/design-system/components/data-table';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import {
   CARD,
+  LOAN_PAYMENT,
   transactionRow,
   worldInput,
 } from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
@@ -61,6 +62,8 @@ const WORLD = [
   spend('g-jun', 'groceries', 50_00, JUNE.start + 1_000),
 ];
 
+const onOpenTransaction = jest.fn();
+
 const propsOf = (
   transactions: ReturnType<typeof transactionRow>[],
   overrides: Partial<CategoryTableProps> = {},
@@ -75,6 +78,7 @@ const propsOf = (
   excludedCategories: new Set<string>(),
   describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
   sheetGeneration: 0,
+  onOpenTransaction,
   topContent: <View testID="table-controls" />,
   ...overrides,
 });
@@ -462,6 +466,60 @@ describe('CategoryTable', () => {
       await rendered.rerender(<CategoryTable {...props} sheetGeneration={1} />);
 
       expect(rendered.queryByText('Groceries, February 2025')).toBeNull();
+    });
+
+    describe('a pressed row', () => {
+      // The Modal leaves the tree once the sheet is hidden, and an event is not fired on an
+      // unmounted element, so its dismiss handler is read before the press: the native side calls
+      // it when the close has finished.
+      const pressRow = async (
+        rendered: Awaited<ReturnType<typeof shown>>['rendered'],
+        rowId: string,
+      ) => {
+        const { onDismiss } = rendered.getByTestId('cell-rows-sheet-modal').props;
+
+        await fireEvent.press(rendered.getByTestId(`cell-row-${rowId}`));
+
+        return async () => {
+          await act(async () => {
+            onDismiss();
+          });
+        };
+      };
+
+      it('opens the transaction of a pressed row after the sheet closes', async () => {
+        const { rendered } = await pressed(propsOf(WORLD), 'category-groceries', 1);
+        const closeSheet = await pressRow(rendered, 'g-feb');
+
+        expect(onOpenTransaction).not.toHaveBeenCalled();
+
+        await closeSheet();
+
+        expect(onOpenTransaction).toHaveBeenCalledTimes(1);
+        expect(onOpenTransaction).toHaveBeenCalledWith('g-feb');
+      });
+
+      it('opens the payment of a pressed loan interest row', async () => {
+        // The loan of the shared world is the one of January 2024.
+        const { rendered } = await pressed(
+          propsOf([], {
+            ledger: buildSpendingLedger(worldInput({ transactions: [LOAN_PAYMENT] })),
+            months: calendarMonthsBetween(
+              new Date(2024, 0, 1).getTime(),
+              new Date(2024, 5, 30).getTime(),
+            ),
+            now: new Date(2024, 5, 15, 12).getTime(),
+          }),
+          'all',
+          0,
+        );
+
+        const closeSheet = await pressRow(rendered, 'loan-interest:loan-payment');
+
+        await closeSheet();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith('loan-payment');
+      });
     });
   });
 

@@ -1,10 +1,10 @@
 import type { FC } from 'react';
 import { sumOf } from '@kiko/numbers';
-import { FlatList } from 'react-native';
 import { formatDate } from '@kiko/dates';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
+import { FlatList, Pressable } from 'react-native';
 import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
@@ -26,10 +26,11 @@ const LOAN_PART_KEYS = {
 } as const;
 
 /**
- * The rows behind one table cell, read-only: no press and no menu on a row, since the table is a
- * view of the ledger and an edit belongs to the screen that owns the row. The total is the sum of
- * the rows' base amounts, which is the cell by the same conversions. The rows are a virtualized
- * list of the sheet's own (`scrollable={false}`), so the total below them stays in view.
+ * The rows behind one table cell. A tap on a row opens its transaction, as a row on Home does: the
+ * sheet is told which row, and `onClosed` says when it has finished closing, so the screen opens
+ * the form only then. There is no touch-and-hold menu on a row. The total is the sum of the rows'
+ * base amounts, which is the cell by the same conversions. The rows are a virtualized list of the
+ * sheet's own (`scrollable={false}`), so the total below them stays in view.
  */
 const CellRowsSheet: FC<CellRowsSheetProps> = ({
   visible,
@@ -37,6 +38,8 @@ const CellRowsSheet: FC<CellRowsSheetProps> = ({
   rows,
   baseCurrency,
   onDismiss,
+  onPressRow,
+  onClosed,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
@@ -46,6 +49,7 @@ const CellRowsSheet: FC<CellRowsSheetProps> = ({
     <BottomSheet
       visible={visible}
       onDismiss={onDismiss}
+      onClosed={onClosed}
       gap={2}
       scrollable={false}
       header={
@@ -59,18 +63,20 @@ const CellRowsSheet: FC<CellRowsSheetProps> = ({
         data={rows}
         keyExtractor={(row) => row.id}
         renderItem={({ item: row }) => (
-          <EntryCard
-            testID={`cell-row-${row.id}`}
-            label={row.description}
-            // The base amount is the one that adds up to the cell; the row's own is under the
-            // description only when it is another currency's.
-            subtitle={
-              row.native.currency === baseCurrency ? undefined : formatMoney(row.native, locale)
-            }
-            amount={<MoneyText money={row.base} />}
-            amountCaption={formatDate(row.time)}
-            footerLines={foldMap(maybe(row.loanPart), (part) => [t(LOAN_PART_KEYS[part])]) ?? []}
-          />
+          <Pressable accessibilityRole="button" onPress={() => onPressRow(row)}>
+            <EntryCard
+              testID={`cell-row-${row.id}`}
+              label={row.description}
+              // The base amount is the one that adds up to the cell; the row's own is under the
+              // description only when it is another currency's.
+              subtitle={
+                row.native.currency === baseCurrency ? undefined : formatMoney(row.native, locale)
+              }
+              amount={<MoneyText money={row.base} />}
+              amountCaption={formatDate(row.time)}
+              footerLines={foldMap(maybe(row.loanPart), (part) => [t(LOAN_PART_KEYS[part])]) ?? []}
+            />
+          </Pressable>
         )}
         windowSize={WINDOW_SCREENS}
         showsVerticalScrollIndicator={false}

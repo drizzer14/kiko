@@ -15,18 +15,18 @@ import {
 import Box from '@kiko/design-system/components/box';
 import Screen from '@kiko/design-system/components/screen';
 import { useVerticalBarEdge } from '@kiko/display-regions';
-import type { TablesParams } from '@kiko/navigation/types';
 import { rowDescriberOf } from '@kiko/statistics/cell-rows';
-import { type FC, useEffect, useMemo, useState } from 'react';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
+import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
 import { TABLES_VIEWS, type TablesView } from '@kiko/statistics/tables-view';
 import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import type { TablesParams, TransactionFormParams } from '@kiko/navigation/types';
 import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { useIsScreenVisible, useSettledLayoutMode } from '@kiko/navigation/pane-stack';
@@ -39,11 +39,16 @@ import NetWorthTable from './net-worth-table';
 import TablePeriodField from './table-period-field';
 
 // This screen is registered in the Home and the Statistics stacks (the Statistics screen that
-// opens it shows in either), so it binds no stack's param list: it needs the route's params and
-// `setParams`, which both stacks' generated props satisfy.
+// opens it shows in either), so it binds no stack's param list: it needs the route's params,
+// `setParams`, and what it opens a transaction with, which both stacks' generated props satisfy.
 type TablesScreenProps = {
   route: { params?: TablesParams };
-  navigation: { setParams: (params: TablesParams) => void };
+  navigation: {
+    setParams: (params: TablesParams) => void;
+    navigate: (name: 'TransactionForm', params: TransactionFormParams) => void;
+    goBack: () => void;
+    getState: () => { routes: { name: string; params?: object }[] };
+  };
 };
 
 // A table without a category column has no use for the category filter, and a view added to the
@@ -191,6 +196,30 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     navigation.setParams({ view: next });
   };
 
+  // A form of this transaction can be open under this screen (in the second pane, or kept by a
+  // fold). A second one would show the old values under the edited one, and a Save there would
+  // write them back, so this screen closes and the one that is open shows as it was.
+  const openTransaction = useCallback(
+    (transactionId: string): void => {
+      const isFormOpen = navigation
+        .getState()
+        .routes.some(
+          ({ name, params }) =>
+            name === 'TransactionForm' &&
+            params !== undefined &&
+            'transactionId' in params &&
+            params.transactionId === transactionId,
+        );
+
+      if (isFormOpen) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('TransactionForm', { transactionId });
+      }
+    },
+    [navigation],
+  );
+
   if (!isReady) {
     return (
       <Screen belowHeader uncapped>
@@ -283,6 +312,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               excludedCategories={excludedCategories}
               describeRow={describeRow}
               sheetGeneration={sheetGeneration}
+              onOpenTransaction={openTransaction}
               topContent={controls}
             />
           ))
@@ -297,6 +327,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               defaultCategoryKey={defaultCategoryKey}
               describeRow={describeRow}
               sheetGeneration={sheetGeneration}
+              onOpenTransaction={openTransaction}
               topContent={controls}
             />
           ))

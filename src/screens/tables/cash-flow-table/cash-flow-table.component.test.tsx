@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
@@ -69,6 +69,8 @@ const WORLD = [
   entry('pay-jun', 100_00, JUNE.start + 1_000),
 ];
 
+const onOpenTransaction = jest.fn();
+
 const propsOf = (
   transactions: ReturnType<typeof transactionRow>[],
   overrides: Partial<CashFlowTableProps> = {},
@@ -82,6 +84,7 @@ const propsOf = (
   defaultCategoryKey: 'other',
   describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
   sheetGeneration: 0,
+  onOpenTransaction,
   topContent: <View testID="table-controls" />,
   ...overrides,
 });
@@ -425,6 +428,25 @@ describe('CashFlowTable', () => {
       await rendered.rerender(<CashFlowTable {...props} sheetGeneration={1} />);
 
       expect(rendered.queryByText('Income, January 2025')).toBeNull();
+    });
+
+    it('opens the credit of a pressed income row after the sheet closes', async () => {
+      const { rendered } = await pressed(propsOf(WORLD), 'income', 0);
+      // The Modal leaves the tree once the sheet is hidden, and an event is not fired on an
+      // unmounted element, so its dismiss handler is read before the press: the native side calls
+      // it when the close has finished.
+      const { onDismiss } = rendered.getByTestId('cell-rows-sheet-modal').props;
+
+      await fireEvent.press(rendered.getByTestId('cell-row-salary-jan'));
+
+      expect(onOpenTransaction).not.toHaveBeenCalled();
+
+      await act(async () => {
+        onDismiss();
+      });
+
+      expect(onOpenTransaction).toHaveBeenCalledTimes(1);
+      expect(onOpenTransaction).toHaveBeenCalledWith('salary-jan');
     });
   });
 
