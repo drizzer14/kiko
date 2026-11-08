@@ -7,7 +7,7 @@ import {
   entityColorsDark,
   entityColorsLight,
 } from '../palette';
-import { darkTheme } from '../theme';
+import { darkTheme, lightTheme } from '../theme';
 
 import {
   darkenHex,
@@ -311,4 +311,63 @@ describe('categoryDisplayColor', () => {
     expect(shown).toBe(entityDisplayColor(stored, 'light'));
     expect(wcagContrastRatio(shown, '#FFFFFF')).toBeGreaterThanOrEqual(MINIMUM_LIGHT_CONTRAST);
   });
+});
+
+describe('markColor', () => {
+  const MINIMUM_MARK_CONTRAST = 3.05;
+  const { background, surface } = lightTheme.colors;
+  // markColor is read at run time: the red is the missing function or a wrong shade, not a failed
+  // import.
+  const { markColor } = jest.requireActual('./entity-tint') as {
+    markColor: (hex: string, scheme: 'dark' | 'light') => string;
+  };
+  const tiles = [
+    ...Object.entries(lightTheme.colors.entityColors),
+    ...Object.entries(lightTheme.colors.categoryColors),
+  ];
+  const weakestContrast = (hex: string): number =>
+    Math.min(wcagContrastRatio(hex, background), wcagContrastRatio(hex, surface));
+
+  it('is exported', () => {
+    expect(markColor).toBeInstanceOf(Function);
+  });
+
+  it.each(tiles)('light mark of the %s tile holds 3.05:1 on page and card: %s', (_name, tile) => {
+    expect(weakestContrast(markColor(tile, 'light'))).toBeGreaterThanOrEqual(MINIMUM_MARK_CONTRAST);
+  });
+
+  it.each(['blue', 'red'] as const)('light returns the passing %s tile unchanged', (name) => {
+    const tile = lightTheme.colors.entityColors[name];
+
+    expect(weakestContrast(tile)).toBeGreaterThanOrEqual(MINIMUM_MARK_CONTRAST);
+    expect(markColor(tile, 'light')).toBe(tile);
+  });
+
+  // Both fall outside sRGB when lowered at full chroma, so a clamp that skips those steps never
+  // darkens them.
+  it.each([
+    ['#E8B33B', 1.72],
+    ['#FFD60A', 1.27],
+  ])('light darkens the out-of-gamut %s (%s:1 raw) to 3.05:1', (hex, rawContrast) => {
+    const mark = markColor(hex, 'light');
+
+    expect(weakestContrast(hex)).toBeCloseTo(rawContrast, 1);
+    expect(mark).not.toBe(hex);
+    expect(weakestContrast(mark)).toBeGreaterThanOrEqual(MINIMUM_MARK_CONTRAST);
+  });
+
+  it.each([...tiles.map(([, tile]) => tile), '#E8B33B', '#112233'])(
+    'dark returns %s verbatim',
+    (hex) => {
+      expect(markColor(hex, 'dark')).toBe(hex);
+      expect(markColor(hex.toLowerCase(), 'dark')).toBe(hex.toLowerCase());
+    },
+  );
+
+  it.each([...tiles.map(([, tile]) => tile), '#E8B33B', '#FFD60A', '#FFFF00'])(
+    'light output for %s is a #RRGGBB hex',
+    (hex) => {
+      expect(markColor(hex, 'light')).toMatch(/^#[0-9a-f]{6}$/i);
+    },
+  );
 });
