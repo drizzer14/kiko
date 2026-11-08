@@ -292,6 +292,20 @@ describe('transactionRowDescription', () => {
     expect(labelOf({ amountMinorUnits, untrackedCounterpart })).toBe(label);
   });
 
+  it('a ledger marker renders its fixed label and no server text', () => {
+    const marker = 'ledger:funding';
+
+    for (const amountMinorUnits of [10_000, -10_000]) {
+      expect(labelOf({ amountMinorUnits, untrackedCounterpart: marker })).toBe(
+        'Funding wallet move',
+      );
+    }
+
+    // Text after the marker is no code this build knows, so it reads as no code, never as a label
+    // built from that text.
+    expect(labelOf({ untrackedCounterpart: `${marker}:Interest` })).toBe('Black card expense');
+  });
+
   describe('in Ukrainian', () => {
     beforeEach(async () => {
       await i18n.changeLanguage('uk');
@@ -321,6 +335,18 @@ describe('transactionRowDescription', () => {
       ],
     ])('reads the label of %o in Ukrainian', (overrides, label) => {
       expect(labelOf(overrides)).toBe(label);
+    });
+
+    it('a ledger marker renders its fixed label and no server text', () => {
+      for (const amountMinorUnits of [10_000, -10_000]) {
+        expect(labelOf({ amountMinorUnits, untrackedCounterpart: 'ledger:funding' })).toBe(
+          'Рух коштів у гаманці Funding',
+        );
+      }
+
+      expect(labelOf({ untrackedCounterpart: 'ledger:funding:Interest' })).toBe(
+        labelOf({ untrackedCounterpart: null }),
+      );
     });
   });
 

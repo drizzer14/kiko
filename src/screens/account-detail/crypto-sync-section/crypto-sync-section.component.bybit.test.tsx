@@ -534,6 +534,100 @@ describe('the left-out line of a Bybit account', () => {
   });
 });
 
+describe('the Funding lines of a Bybit account', () => {
+  const HELD_START = 'Kiko did not list';
+  const NO_ID_LINE = 'Bybit gave some Funding moves no ID, so Kiko did not list them.';
+
+  it('the held count and the no-id line read persisted state', async () => {
+    const one = await renderState('bybit', { walks: {}, fundingHeld: 1 });
+    const several = await renderState('bybit', { walks: {}, fundingHeld: 2, fundingLeftOut: true });
+
+    expect(
+      one.getByText(
+        'Kiko did not list 1 Funding move, because it looks like a move Kiko already has but does not match it exactly.',
+      ),
+    ).toBeTruthy();
+    expect(one.queryByText(NO_ID_LINE)).toBeNull();
+    expect(
+      several.getByText(
+        'Kiko did not list 2 Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+      ),
+    ).toBeTruthy();
+    expect(several.getByText(NO_ID_LINE)).toBeTruthy();
+  });
+
+  it('shows no line for a state with no count and no mark, for a count of none, or for a state that cannot be read', async () => {
+    for (const state of [{ walks: {} }, { walks: {}, fundingHeld: 0 }, '{not json']) {
+      const { queryByText } = await renderState('bybit', state);
+
+      expect(queryByText(HELD_START, { exact: false })).toBeNull();
+      expect(queryByText(NO_ID_LINE)).toBeNull();
+    }
+  });
+
+  it('shows no line for a Binance account, whatever its state holds', async () => {
+    const { queryByText } = await renderState('binance', {
+      walks: {},
+      fundingHeld: 2,
+      fundingLeftOut: true,
+    });
+
+    expect(queryByText(HELD_START, { exact: false })).toBeNull();
+    expect(queryByText(NO_ID_LINE)).toBeNull();
+  });
+
+  it('is not shown while the state row is still loading', async () => {
+    mockSyncState = {
+      data: [
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            fundingHeld: 2,
+            fundingLeftOut: true,
+          }),
+        },
+      ],
+      isLoading: true,
+    };
+    const { queryByText } = await render(
+      <CryptoSyncSection account={accountOf('bybit')} holdings={[holdingOf('bybit')]} />,
+    );
+
+    expect(queryByText(HELD_START, { exact: false })).toBeNull();
+    expect(queryByText(NO_ID_LINE)).toBeNull();
+  });
+
+  describe('in Ukrainian', () => {
+    inUkrainian();
+
+    it('the held count and the no-id line read persisted state, in the form of each count', async () => {
+      const one = await renderState('bybit', { walks: {}, fundingHeld: 1, fundingLeftOut: true });
+      const few = await renderState('bybit', { walks: {}, fundingHeld: 3 });
+      const many = await renderState('bybit', { walks: {}, fundingHeld: 5 });
+
+      expect(
+        one.getByText(
+          'Кіко не показав 1 рух коштів у Funding, бо він схожий на вже наявний запис, але не збігається з ним точно.',
+        ),
+      ).toBeTruthy();
+      expect(
+        one.getByText('Bybit не надав ID деяким рухам коштів у Funding, тож Кіко їх не показав.'),
+      ).toBeTruthy();
+      expect(
+        few.getByText(
+          'Кіко не показав 3 рухи коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно.',
+        ),
+      ).toBeTruthy();
+      expect(
+        many.getByText(
+          'Кіко не показав 5 рухів коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно.',
+        ),
+      ).toBeTruthy();
+    });
+  });
+});
+
 describe('the dense line of a Bybit account', () => {
   const DENSE_START = Date.UTC(2024, 0, 20, 12);
   const DENSE_LINE =

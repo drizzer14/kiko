@@ -26,6 +26,7 @@ const codeCounterpartDescription = (
       .with({ kind: 'asset' }, ({ code }) =>
         exchangeLegDescription({ counterpartName: code, amountMinorUnits, sameCurrency: false, t }),
       )
+      .with({ kind: 'ledger' }, () => t('transactions.fundingLedgerMove'))
       .with({ kind: P.union('p2p', 'card', 'bank') }, ({ kind, fiat }) =>
         fiatCounterpartDescription({ kind, fiat, amountMinorUnits, t }),
       )
@@ -42,9 +43,10 @@ const codeCounterpartDescription = (
  * "Transfer to/from <counterpart>" when both holdings are in one currency;
  * failing that, a stored counterpart code (`untrackedCounterpart`) reads by its
  * kind: a wallet Kiko does not track is "Transfer to/from <product name>", an
- * asset is "Exchange to/from <coin>", and a P2P, card or bank code names its
- * fiat; failing that, the row falls back to its own holding's income/expense
- * default (an unknown code lands here too, never as a raw code).
+ * asset is "Exchange to/from <coin>", a P2P, card or bank code names its
+ * fiat, and a listed Funding ledger row is one fixed label; failing that, the
+ * row falls back to its own holding's income/expense default (an unknown code
+ * lands here too, never as a raw code).
  *
  * Shared by Home and Holding detail so both lists resolve the same row
  * identically — inlining the two-step `description || default` fallback

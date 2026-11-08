@@ -14,6 +14,7 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { type FundingMatchRow, write } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 import { exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
+import { FUNDING_LEDGER_CODE } from '@kiko/transactions/untracked-counterpart';
 import { type ParsedWalkMarks, parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
@@ -31,7 +32,7 @@ import { bybitFundingMatchRepo } from './bybit.funding-match.repo';
 import { type BybitRowWalkDeps, historyFloorOf, placeBybitRows } from './bybit.walk-run';
 
 /** The `untracked_counterpart` code of a listed Funding ledger row: it stays out of spending. */
-const FUNDING_LEDGER_MARKER = 'ledger:funding';
+const FUNDING_LEDGER_MARKER = FUNDING_LEDGER_CODE;
 
 const FUNDING_HOLDING_MISSING = 'funding-holding-missing';
 

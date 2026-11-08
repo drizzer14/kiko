@@ -24,6 +24,8 @@ import {
   balanceNotesOf,
   balanceSyncedAtOf,
   denseSpansOf,
+  fundingHeldOf,
+  fundingLeftOutOf,
   keyExpiryOf,
   logKindsOf,
   type NotImportedCount,
@@ -232,6 +234,34 @@ const LogLeftOutLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => 
     <Text variant="caption" tone="textSecondary">
       {t('accountDetail.bybitLogLeftOut', { kinds: kinds.join(', ') })}
     </Text>
+  );
+};
+
+// The Funding moves the last reconcile held back for looking like a move Kiko already has, and the
+// ledger rows Bybit gave no id. Both are standing facts of the stored state. Split out like
+// `CoinLines`.
+const FundingLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+  const heldCount = fundingHeldOf(walkState);
+
+  if (loading || !hasKeyLines(provider)) {
+    return null;
+  }
+
+  return (
+    <>
+      {heldCount > 0 && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitFundingHeld', { count: heldCount })}
+        </Text>
+      )}
+
+      {fundingLeftOutOf(walkState) && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitFundingNoId')}
+        </Text>
+      )}
+    </>
   );
 };
 
@@ -556,6 +586,12 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
           )}
 
           <LogLeftOutLine
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
+
+          <FundingLines
             provider={connectedProvider}
             loading={syncStateLoading}
             walkState={walkState}

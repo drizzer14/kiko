@@ -4,6 +4,8 @@ import {
   balanceNotesOf,
   balanceSyncedAtOf,
   denseSpansOf,
+  fundingHeldOf,
+  fundingLeftOutOf,
   keyExpiryOf,
   logKindsOf,
   notImportedCountsOf,
@@ -305,6 +307,24 @@ describe('logKindsOf', () => {
     expect(logKindsOf(stateWith({}))).toEqual([]);
     expect(logKindsOf(stateWith({ logKinds: 'transfer' }))).toEqual([]);
     expect(logKindsOf(parseExchangeState('not json'))).toEqual([]);
+  });
+});
+
+describe('fundingHeldOf and fundingLeftOutOf', () => {
+  it('give the stored count of held rows and the no-id mark', () => {
+    const state = stateWith({ fundingHeld: 3, fundingLeftOut: true });
+
+    expect(fundingHeldOf(state)).toBe(3);
+    expect(fundingLeftOutOf(state)).toBe(true);
+  });
+
+  it('give none for a state with none, for a value that is no count or mark, and for a state that cannot be read', () => {
+    expect(fundingHeldOf(stateWith({}))).toBe(0);
+    expect(fundingLeftOutOf(stateWith({}))).toBe(false);
+    expect(fundingHeldOf(stateWith({ fundingHeld: 'many' }))).toBe(0);
+    expect(fundingLeftOutOf(stateWith({ fundingLeftOut: 'yes' }))).toBe(false);
+    expect(fundingHeldOf(parseExchangeState('not json'))).toBe(0);
+    expect(fundingLeftOutOf(parseExchangeState('not json'))).toBe(false);
   });
 });
 

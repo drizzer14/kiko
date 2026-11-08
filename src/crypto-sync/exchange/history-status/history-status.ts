@@ -154,6 +154,22 @@ export const logKindsOf = (state: ParsedExchangeState): string[] =>
     .with({ kind: 'malformed' }, () => [])
     .exhaustive();
 
+/** How many Funding ledger rows the last reconcile held back; none when the state holds none. */
+export const fundingHeldOf = (state: ParsedExchangeState): number =>
+  match(state)
+    .returnType<number>()
+    .with({ kind: 'parsed' }, ({ fundingHeld }) => fundingHeld)
+    .with({ kind: 'malformed' }, () => 0)
+    .exhaustive();
+
+/** Whether a read met a Funding ledger row with no id, which it cannot store. */
+export const fundingLeftOutOf = (state: ParsedExchangeState): boolean =>
+  match(state)
+    .returnType<boolean>()
+    .with({ kind: 'parsed' }, ({ fundingLeftOut }) => fundingLeftOut)
+    .with({ kind: 'malformed' }, () => false)
+    .exhaustive();
+
 type DenseSpans = Extract<ParsedExchangeState, { kind: 'parsed' }>['denseSpans'];
 
 /**

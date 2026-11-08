@@ -876,6 +876,16 @@ export const en = {
       'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
     bybitForbidden:
       'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits before trying again, up to 10 minutes.',
+    // English defines every plural form so both catalogues carry the same keys.
+    bybitFundingHeld_one:
+      'Kiko did not list {{count}} Funding move, because it looks like a move Kiko already has but does not match it exactly.',
+    bybitFundingHeld_few:
+      'Kiko did not list {{count}} Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+    bybitFundingHeld_many:
+      'Kiko did not list {{count}} Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+    bybitFundingHeld_other:
+      'Kiko did not list {{count}} Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+    bybitFundingNoId: 'Bybit gave some Funding moves no ID, so Kiko did not list them.',
     bybitHistoryDense:
       'Bybit lists too many records within one second on {{date}}. Kiko cannot read past them, so later trades or Funding moves stay out, and the past of your net worth can be off by those amounts.',
     bybitKeyEnded:
@@ -1566,6 +1576,8 @@ export const en = {
     cardSale: 'Sale to card ({{currency}})',
     bankDeposit: 'Bank deposit ({{currency}})',
     bankWithdrawal: 'Bank withdrawal ({{currency}})',
+    // A listed Funding ledger row: Bybit's own text for it is never stored or shown.
+    fundingLedgerMove: 'Funding wallet move',
     // The same movement when both sides hold one currency: an own-wallet move,
     // not an exchange. Also names a wallet Kiko does not track.
     transferFrom: 'Transfer from {{name}}',
