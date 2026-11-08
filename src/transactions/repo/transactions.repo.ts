@@ -2309,6 +2309,29 @@ export const transactionsRepo = {
     return new Set(prefixes.filter((prefix) => stored.some((key) => key.startsWith(prefix))));
   },
   /**
+   * The external ids of the rows of `source` that carry the `untrackedCounterpart` code `marker`,
+   * on the holdings of one account: the rows a reconcile has already written.
+   */
+  markedExternalIdsQuery: async (
+    accountId: string,
+    source: TransactionRow['source'],
+    marker: string,
+  ): Promise<Set<string>> => {
+    const rows = await database
+      .select({ externalId: transactions.externalId })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .where(
+        and(
+          eq(holdings.accountId, accountId),
+          eq(transactions.source, source),
+          eq(transactions.untrackedCounterpart, marker),
+        ),
+      );
+
+    return new Set(rows.flatMap((row) => row.externalId ?? []));
+  },
+  /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
    * pending authorization: `source = 'monobank'` AND `hold = true`). The sync
    * fetches these cards even when their /client-info balance is unchanged,

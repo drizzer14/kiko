@@ -14,5 +14,6 @@ export { createBybitHistoryRun } from './bybit.history-budget';
 export { syncBybitLogHistory } from './bybit.log-history';
 export { syncBybitConvertHistory } from './bybit.convert-history';
 export { syncBybitFundingLedger } from './bybit.funding-ledger';
+export { reconcileBybitFundingLedger } from './bybit.funding-reconcile';
 export { syncBybitCapitalHistory } from './bybit.capital-history';
 export { syncBybitTransferHistory } from './bybit.transfer-history';

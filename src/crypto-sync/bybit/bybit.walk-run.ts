@@ -117,7 +117,10 @@ export const defaultBybitRowWalkDeps: BybitRowWalkDeps<
 export const placeBybitRows = <
   Planned extends { wallet: string; counterpartWallet?: string; externalId: string },
 >(
-  context: Pick<BybitWalkContext<BybitRowWalkDeps<never>>, 'accountId' | 'deps'>,
+  context: {
+    accountId: string;
+    deps: Pick<BybitRowWalkDeps<never>, 'listHoldings' | 'ensureHoldings'>;
+  },
   planned: Planned[],
   missingCode: string,
 ) =>

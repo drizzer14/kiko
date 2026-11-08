@@ -16,6 +16,7 @@ import {
   syncBybitFundingLedger,
   syncBybitConvertHistory,
   syncBybitTransferHistory,
+  reconcileBybitFundingLedger,
 } from '../bybit';
 import {
   type BinanceHistoryRun,
@@ -225,6 +226,11 @@ const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyn
   );
   await logOnFailure('[bybit sync] Funding ledger history failed', () =>
     syncBybitFundingLedger({ targetAccountId, run }),
+  );
+  // Last, and in its own log: it makes no call, so it needs no run, and it reads what every walk
+  // has stored by now, whether or not the ledger walk finished.
+  await logOnFailure('[bybit sync] Funding ledger reconcile failed', () =>
+    reconcileBybitFundingLedger({ targetAccountId }),
   );
 
   return { syncedHoldings };

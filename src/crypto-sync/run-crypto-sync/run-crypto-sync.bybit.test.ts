@@ -7,6 +7,7 @@ const mockSyncBybitTransferHistory = jest.fn();
 const mockSyncBybitLogHistory = jest.fn();
 const mockSyncBybitConvertHistory = jest.fn();
 const mockSyncBybitFundingLedger = jest.fn();
+const mockReconcileBybitFundingLedger = jest.fn();
 
 // `./sync` pulls the repos into the graph, and the Binance barrel loads every walk; replacing both
 // keeps this a pure dispatch test, and a walk that ran for a Bybit request would show here. The
@@ -26,6 +27,9 @@ jest.mock('@kiko/crypto-sync/bybit/bybit.convert-history', () => ({
 }));
 jest.mock('@kiko/crypto-sync/bybit/bybit.funding-ledger', () => ({
   syncBybitFundingLedger: (...args: unknown[]) => mockSyncBybitFundingLedger(...args),
+}));
+jest.mock('@kiko/crypto-sync/bybit/bybit.funding-reconcile', () => ({
+  reconcileBybitFundingLedger: (...args: unknown[]) => mockReconcileBybitFundingLedger(...args),
 }));
 jest.mock('@kiko/crypto-sync/sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
@@ -64,6 +68,7 @@ describe('runCryptoSync for Bybit', () => {
     mockSyncBybitLogHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBybitConvertHistory.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBybitFundingLedger.mockResolvedValue({ imported: 0, complete: true });
+    mockReconcileBybitFundingLedger.mockResolvedValue(undefined);
   });
 
   describe.each([
@@ -212,6 +217,55 @@ describe('runCryptoSync for Bybit', () => {
 
       expect(mockSyncBybitFundingLedger).toHaveBeenCalledTimes(1);
       warn.mockRestore();
+    });
+  });
+
+  describe('the Funding ledger reconcile', () => {
+    it('runs once after the ledger walk, on the account alone, as it makes no call', async () => {
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockReconcileBybitFundingLedger).toHaveBeenCalledTimes(1);
+      expect(mockReconcileBybitFundingLedger).toHaveBeenCalledWith({ targetAccountId: 'acc-1' });
+      expect(mockSyncBybitFundingLedger.mock.invocationCallOrder[0]).toBeLessThan(
+        mockReconcileBybitFundingLedger.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('still runs when the ledger walk fails', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockSyncBybitFundingLedger.mockRejectedValueOnce(new Error('Failed query: params SECRET'));
+
+      await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(mockReconcileBybitFundingLedger).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
+
+    it('still resolves with the balance result when it fails, logging only its name', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockReconcileBybitFundingLedger.mockRejectedValueOnce(
+        new Error('Failed query: params SECRET'),
+      );
+
+      const result = await runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' });
+
+      expect(result).toEqual({ syncedHoldings: 2 });
+      expect(warn).toHaveBeenCalledWith('[bybit sync] Funding ledger reconcile failed', {
+        name: 'Error',
+        code: undefined,
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+      warn.mockRestore();
+    });
+
+    it('does not run when the balance sync fails', async () => {
+      mockRunBalanceSync.mockRejectedValueOnce(new Error('read boom'));
+
+      await expect(
+        runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-1' }),
+      ).rejects.toThrow('read boom');
+
+      expect(mockReconcileBybitFundingLedger).not.toHaveBeenCalled();
     });
   });
 
