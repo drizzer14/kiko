@@ -51,42 +51,43 @@ export const chartSeriesDark = [
 // value. Keyed by the dark set, so a key can never exist on one side only. The dark blocks come
 // first because the palette check reads this file by text position.
 //
-// Tile fill for an account or holding: kept at least 3.8:1 against white, so even the lightened
-// top gradient stop holds a white glyph at 3:1.
+// Tile fill for an account or holding. The tile is not held to 3:1 against the page: the glyph on
+// it is picked per tile for contrast, and a bare glyph or line draws a darker mark instead.
 export const entityColorsLight: Record<SwatchName, string> = {
-  white: '#3A3A3C',
-  khaki: '#8A8434',
-  brown: '#8C6A43',
-  yellow: '#A67C00',
-  blue: '#0066E6',
-  green: '#1F8A3B',
-  mint: '#008A83',
-  violet: '#9B3FD1',
-  red: '#E0352B',
-  orange: '#C46A00',
-  teal: '#0A869E',
-  pink: '#D6204A',
-  indigo: '#3A38B8',
-  gray: '#6E6E73',
+  white: '#47434F',
+  khaki: '#757650',
+  brown: '#453725',
+  yellow: '#E8B33B',
+  blue: '#074FB0',
+  green: '#056407',
+  mint: '#ADE1D6',
+  violet: '#D7A9FE',
+  red: '#B9040E',
+  orange: '#AA7023',
+  teal: '#3D7E92',
+  pink: '#FF6A82',
+  indigo: '#7D67D6',
+  gray: '#9BA1AF',
 };
 
-// A separate set because a category hue is also a chart line and pie slice on a white card, and
-// the lightest passing hue keeps eight slices apart; the entity set keeps a safety margin instead.
+// The same values as the entity set on purpose: one light hue per name, so an account tile and a
+// category tile of one color match. Kept as its own export so a set can diverge later without a
+// consumer change.
 export const categoryColorsLight: Record<SwatchName, string> = {
-  white: '#48484A',
-  khaki: '#8B8535',
-  brown: '#A07A4B',
-  yellow: '#A67C00',
-  blue: '#0066E6',
-  green: '#1E8E3E',
-  mint: '#00958D',
-  violet: '#A546DB',
-  red: '#E5392F',
-  orange: '#C86C00',
-  teal: '#0C8CA6',
-  pink: '#E0305A',
-  indigo: '#4240C4',
-  gray: '#7C7C80',
+  white: '#47434F',
+  khaki: '#757650',
+  brown: '#453725',
+  yellow: '#E8B33B',
+  blue: '#074FB0',
+  green: '#056407',
+  mint: '#ADE1D6',
+  violet: '#D7A9FE',
+  red: '#B9040E',
+  orange: '#AA7023',
+  teal: '#3D7E92',
+  pink: '#FF6A82',
+  indigo: '#7D67D6',
+  gray: '#9BA1AF',
 };
 
 // The same eight hues in the same order as chartSeriesDark, read from the category set. The subset
