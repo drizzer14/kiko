@@ -676,6 +676,72 @@ describe('markedSeriesOf over random ledgers and marks', () => {
 
     expect(checkedCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
   });
+
+  const tappedOn = (entries: readonly MarkedEntry[], transactionId: string): MarkedEntry[] =>
+    entries.map((entry) => ({
+      ...entry,
+      marks: entry.marks.map((mark) => ({ ...mark, transactionId })),
+    }));
+
+  const unidentified = (marks: readonly RecurringMark[]) =>
+    marks.map(({ currency, amountMinorUnits, period }) => ({ currency, amountMinorUnits, period }));
+
+  // The marks carry the id, so the outcomes compare on everything else they hold.
+  const withoutMarkIds = ({ marked, withoutCharges }: Outcome) => ({
+    marked: marked.map((series) => ({
+      ...series,
+      marks: foldMap(maybe(series.marks), unidentified),
+    })),
+    withoutCharges: withoutCharges.map((chain) => ({ ...chain, marks: unidentified(chain.marks) })),
+  });
+
+  it('keeps the tapped charge of a one-mark chain, whichever charge of its piece it is', () => {
+    let checkedCount = 0;
+    let droppedWithoutIdCount = 0;
+
+    for (const { ledger, entries, outcome } of denseOutcomes()) {
+      const [series] = outcome.marked;
+
+      if (series === undefined) {
+        continue;
+      }
+
+      for (const { id } of pieceChargesOf(ledger, series)) {
+        const tapped = outcomeOf(ledger, tappedOn(entries, id), nowOf());
+
+        expect(idsOf(tapped.marked)).toContain(id);
+        droppedWithoutIdCount += Number(!series.chargeIds.includes(id));
+        checkedCount += 1;
+      }
+    }
+
+    expect(checkedCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
+    expect(droppedWithoutIdCount).toBeGreaterThanOrEqual(MIN_PER_RUN);
+  });
+
+  it('gives a deep-equal result with ids on the marks for any input order', () => {
+    for (const { seed, ledger, entries, outcome } of denseOutcomes()) {
+      const tapped = tappedOn(entries, outcome.marked.at(0)?.chargeIds.at(0) ?? 'none');
+      const original = outcomeOf(ledger, tapped, nowOf());
+
+      for (const rows of [
+        [...ledger.rows].reverse(),
+        shuffled(ledger.rows, seededRandom(seed * SEED_SPREAD)),
+      ]) {
+        expect(outcomeOf({ ...ledger, rows }, tapped, nowOf())).toEqual(original);
+      }
+
+      expect(outcomeOf(ledger, reversedEntries(tapped), nowOf())).toEqual(original);
+    }
+  });
+
+  it('reads a mark with an id no charge holds as the same mark without an id', () => {
+    for (const { ledger, entries } of [...outcomes(), ...denseOutcomes()]) {
+      expect(withoutMarkIds(outcomeOf(ledger, tappedOn(entries, 'no-such-row'), nowOf()))).toEqual(
+        withoutMarkIds(outcomeOf(ledger, entries, nowOf())),
+      );
+    }
+  });
 });
 
 describe('amountPiecesOf', () => {
@@ -929,6 +995,53 @@ describe('markedChainOfAmount', () => {
       period: 'monthly',
       marks: [marks[0]],
       holdsRow: true,
+    });
+  });
+
+  describe('a mark tapped on a row', () => {
+    const chargeAt = (id: string, month: number, day: number, amount: number): Charge => ({
+      id,
+      time: at(2026, month, day),
+      amount,
+      source: 'monobank',
+      holdingId: 'card',
+      holdingName: 'card',
+      description: 'Netflix',
+    });
+    const FIFTHS = [5, 6, 7, 8, 9, 10].map((month) => chargeAt(`fifth-${month}`, month, 5, 10_000));
+    const WORLD_A = [
+      ...FIFTHS,
+      chargeAt('extra-aug', 8, 20, 9800),
+      chargeAt('extra-oct', 10, 12, 10_200),
+    ];
+    const FIFTH_OF_OCTOBER = { id: 'fifth-10', amountMinorUnits: 10_000 };
+    const TWELFTH_OF_OCTOBER = { id: 'extra-oct', amountMinorUnits: 10_200 };
+    const markTappedOn = (transactionId?: string): RecurringMark => ({
+      ...markOf('monthly', 10_200),
+      ...foldMap(maybe(transactionId), (id) => ({ transactionId: id })),
+    });
+    const holdsOf = (mark: RecurringMark, row: { id: string; amountMinorUnits: number }) =>
+      markedChainOfRow(WORLD_A, [mark], row, 'UAH')?.holdsRow;
+
+    it('holds the tapped row and drops the charge 7 days before it', () => {
+      const mark = markTappedOn('extra-oct');
+
+      expect(markedChainOfRow(WORLD_A, [mark], TWELFTH_OF_OCTOBER, 'UAH')).toEqual({
+        period: 'monthly',
+        marks: [mark],
+        holdsRow: true,
+      });
+      expect(holdsOf(mark, FIFTH_OF_OCTOBER)).toBe(false);
+    });
+
+    it('drops the 12 Oct row when the mark holds no id', () => {
+      expect(holdsOf(markTappedOn(), TWELFTH_OF_OCTOBER)).toBe(false);
+      expect(holdsOf(markTappedOn(), FIFTH_OF_OCTOBER)).toBe(true);
+    });
+
+    it('reads a tapped id that no charge holds as a mark without an id', () => {
+      expect(holdsOf(markTappedOn('deleted-row'), TWELFTH_OF_OCTOBER)).toBe(false);
+      expect(holdsOf(markTappedOn('deleted-row'), FIFTH_OF_OCTOBER)).toBe(true);
     });
   });
 

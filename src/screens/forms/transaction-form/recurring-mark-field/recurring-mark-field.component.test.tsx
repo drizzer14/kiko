@@ -359,6 +359,7 @@ describe('RecurringMarkField', () => {
         currency: 'UAH',
         amountMinorUnits: 14_400,
         period: 'monthly',
+        transactionId: 'third',
       });
       expect(setRecurringChainPeriod).not.toHaveBeenCalled();
       expect(removeRecurringMarks).not.toHaveBeenCalled();
@@ -438,6 +439,7 @@ describe('RecurringMarkField', () => {
         currency: 'UAH',
         amountMinorUnits: 14_400,
         period: 'monthly',
+        transactionId: 'stored',
       });
       expect(setRecurringChainPeriod).not.toHaveBeenCalled();
       expect(removeRecurringMarks).not.toHaveBeenCalled();
@@ -452,6 +454,7 @@ describe('RecurringMarkField', () => {
         currency: 'UAH',
         amountMinorUnits: 39_900,
         period: 'weekly',
+        transactionId: 'stored',
       });
       expect(setRecurringChainPeriod).not.toHaveBeenCalled();
     });
@@ -504,6 +507,7 @@ describe('RecurringMarkField', () => {
         currency,
         amountMinorUnits: 14_400,
         period: 'yearly',
+        transactionId: 'stored',
       });
     });
   });

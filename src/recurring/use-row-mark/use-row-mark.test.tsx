@@ -368,6 +368,32 @@ describe('the chain of a row', () => {
     expect(extra.result.current.chain).toEqual({ period: 'monthly', marks, holdsRow: false });
     expect(kept.result.current.chain).toEqual({ period: 'monthly', marks, holdsRow: true });
   });
+
+  it('says a chain holds the tapped 98 and not the 100 a week before it', async () => {
+    const marks = [{ ...markOf('monthly', 9_800), transactionId: 'extra' }];
+
+    landSettings(netflixSettingsOf({ marks }));
+    landLedger(WITH_EXTRA_IN_MONTH);
+
+    const extra = await renderRowMark(-9_800, { rowId: 'extra' });
+    const dropped = await renderRowMark(-10_000, { rowId: 'monthly-1' });
+
+    expect(extra.result.current.chain).toEqual({ period: 'monthly', marks, holdsRow: true });
+    expect(dropped.result.current.chain).toEqual({ period: 'monthly', marks, holdsRow: false });
+  });
+
+  it('reads a tapped id that no row holds as a mark without an id', async () => {
+    const marks = [{ ...markOf('monthly', 9_800), transactionId: 'deleted-row' }];
+
+    landSettings(netflixSettingsOf({ marks }));
+    landLedger(WITH_EXTRA_IN_MONTH);
+
+    const extra = await renderRowMark(-9_800, { rowId: 'extra' });
+    const kept = await renderRowMark(-10_000, { rowId: 'monthly-1' });
+
+    expect(extra.result.current.chain?.holdsRow).toBe(false);
+    expect(kept.result.current.chain?.holdsRow).toBe(true);
+  });
 });
 
 // Four monthly charges at 99 and four at 399 under one name, and a monthly Spotify beside them.
