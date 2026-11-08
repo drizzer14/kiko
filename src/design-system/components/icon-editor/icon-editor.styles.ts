@@ -9,6 +9,7 @@ export const styles = StyleSheet.create((theme) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.fieldBackground,
     padding: theme.spacing(2),
     // A fixed square pinned to the shared control height (the iOS 44pt minimum
     // tap target): explicit, equal `width` and `height` rather than a

@@ -14,14 +14,14 @@ describe('AppearanceSwitch', () => {
     expect(onSelect).toHaveBeenCalledWith('light');
   });
 
-  it('renders the System, Light and Dark pills in that order', async () => {
+  it('renders the Light, System and Dark pills in that order', async () => {
     const { getAllByText } = await render(
       <AppearanceSwitch selected="system" onSelect={jest.fn()} />,
     );
 
     expect(getAllByText(/^(System|Light|Dark)$/).map((pill) => pill.props.children)).toEqual([
-      'System',
       'Light',
+      'System',
       'Dark',
     ]);
   });

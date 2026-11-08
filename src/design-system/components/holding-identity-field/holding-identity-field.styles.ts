@@ -38,6 +38,7 @@ export const styles = StyleSheet.create((theme) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.fieldBackground,
     padding: theme.spacing(2),
     height: theme.spacing(11),
     ...theme.typography.body,

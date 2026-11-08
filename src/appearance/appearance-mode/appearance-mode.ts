@@ -2,9 +2,10 @@ import type { SettingsRow } from '@kiko/db';
 
 export type AppearanceMode = SettingsRow['appearance'];
 
+// Chip order, left to right: System sits between the two pinned modes. Nothing reads an index.
 export const appearanceModes = [
-  'system',
   'light',
+  'system',
   'dark',
 ] as const satisfies readonly AppearanceMode[];
 

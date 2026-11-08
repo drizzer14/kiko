@@ -234,7 +234,7 @@ Each: fixture pair with `// EXPECT-FINDING`, `RULE_IDS_WITH_FIXTURES` entry, inv
 **Interfaces:**
 ```ts
 type AppearanceMode = SettingsRow['appearance'];         // 'system' | 'light' | 'dark'
-appearanceModes: readonly AppearanceMode[]               // order: system, light, dark
+appearanceModes: readonly AppearanceMode[]               // order: system, light, dark (since fix set 6b: Light, System, Dark, user ruling 2026-11-08)
 parseAppearanceMode(value: unknown): AppearanceMode      // anything else is 'system'
 windowOverrideOf(mode: AppearanceMode): 'light' | 'dark' | 'auto'
 APPEARANCE_MIRROR_KEY = 'kiko.appearanceMode'

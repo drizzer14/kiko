@@ -232,7 +232,12 @@
   elsewhere in the row, and it must then get `accessibilityLabel` so
   VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
-  theme tokens. It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
+  theme tokens; its fill is the `fieldBackground` token, as for `FieldTrigger`, `DateField`,
+  `TimeField`, the `HoldingIdentityField` name input and the `IconEditor` icon chip (white
+  in light, none in dark). In light a disabled field and an active one share a white fill;
+  the faded `surfaceHigh` border, the 0.5 opacity and the `textSecondary` text tell them
+  apart. `DateRangeField`, `FilterMenu` and `TrendFilterField` keep `surface`.
+  It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
   Screen's `onFieldBlur`. `HoldingIdentityField` calls `useFieldBlur(undefined)`; a text field
   outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity)
   comes from the shared `disabledFieldStyle(theme)` helper
@@ -310,7 +315,7 @@
   handler asks it after an await and drops its result when it is unmounted
   (the Connect fields do, so no credential is stored after a fold).
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
-  the shared "labeled field that opens a picker sheet" trigger: a
+  the shared "labeled field that opens a picker sheet" trigger (its fill is `fieldBackground`): a
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
   `BottomSheet`. Optional `capped` caps the trigger at
@@ -499,7 +504,8 @@
   there too; a screen-level consumer imports it from there like any
   other design-system component.
 - **AppearanceSwitch** (`src/design-system/components/appearance-switch/`)
-  — the System / Light / Dark control of the Settings system screen: a
+  — the Light / System / Dark control of the Settings system screen (chip order is user
+  ruling 2026-11-08; the parse fallback stays `system`): a
   `ChipRow` over `appearanceModes` with a label per mode from
   `appearance.*` (the active UI language, as a mode name is a word, not an
   endonym). It only reports the chosen mode; the screen writes the row
