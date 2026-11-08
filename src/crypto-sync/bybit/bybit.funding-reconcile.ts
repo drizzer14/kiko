@@ -31,9 +31,6 @@ import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { bybitFundingMatchRepo } from './bybit.funding-match.repo';
 import { type BybitRowWalkDeps, historyFloorOf, placeBybitRows } from './bybit.walk-run';
 
-/** The `untracked_counterpart` code of a listed Funding ledger row: it stays out of spending. */
-const FUNDING_LEDGER_MARKER = FUNDING_LEDGER_CODE;
-
 const FUNDING_HOLDING_MISSING = 'funding-holding-missing';
 
 const FUNDING_MARKS_UNREADABLE = 'funding-marks-unreadable';
@@ -76,8 +73,9 @@ const defaultBybitFundingReconcileDeps: BybitFundingReconcileDeps = {
   ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
   earnClause: SHIPPED_EARN_CLAUSE,
   readStoredSet: (accountId) => bybitFundingMatchRepo.readByAccount(accountId),
+  // The `untracked_counterpart` code of a listed Funding ledger row: it stays out of spending.
   readWrittenKeys: (accountId) =>
-    transactionsRepo.markedExternalIdsQuery(accountId, 'bybit', FUNDING_LEDGER_MARKER),
+    transactionsRepo.markedExternalIdsQuery(accountId, 'bybit', FUNDING_LEDGER_CODE),
   applyDifference: (accountId, { add, removeKeys, pruneBefore }) =>
     write(async (databaseTransaction) => {
       if (add.length > 0) {
@@ -161,7 +159,7 @@ const plannedRowsOf = (ledger: FundingMatchRow): PlannedLedgerRow[] => {
       time: ledger.timeStart,
       externalId: ledger.recordKey,
       description: '',
-      untrackedCounterpart: FUNDING_LEDGER_MARKER,
+      untrackedCounterpart: FUNDING_LEDGER_CODE,
     },
   ];
 };

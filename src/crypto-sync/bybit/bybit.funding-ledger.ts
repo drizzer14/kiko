@@ -12,8 +12,9 @@ import {
   type WalkResult,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
+import maybe, { foldMap } from 'fnts/maybe';
 import { type FundingMatchRow, write } from '@kiko/db';
-import { compareDecimal, normalizeDecimal } from '@kiko/currency/decimal';
+import { compareDecimal } from '@kiko/currency/decimal';
 
 import {
   BYBIT_PAGE_DRIFT,
@@ -148,7 +149,7 @@ const readingOf = (accountId: string, item: LedgerItem): Reading =>
     .with({ kind: 'unreadable' }, () => range(FUNDING_ROW_UNREADABLE))
     .with({ kind: 'untracked' }, () => ({ kind: 'counted' }))
     .with({ kind: 'row' }, ({ row }) => {
-      const amount = PLAIN_AMOUNT.test(row.amount) ? normalizeDecimal(row.amount) : null;
+      const amount = PLAIN_AMOUNT.test(row.amount) ? row.amount : null;
 
       if (row.time === undefined) {
         return range(FUNDING_TIME_MISSING);
@@ -184,9 +185,13 @@ const readingOf = (accountId: string, item: LedgerItem): Reading =>
 
 /** The key of an item as the cursor reader counts new keys: none for a row with no key. */
 const keyOfItem = (item: LedgerItem): string | undefined =>
-  item.kind === 'row' && item.row.currcCursor !== undefined
-    ? `${item.row.currcCursor}:${item.row.currency}`
-    : undefined;
+  match(item)
+    .returnType<string | undefined>()
+    .with({ kind: 'row' }, ({ row }) =>
+      foldMap(maybe(row.currcCursor), (cursor) => `${cursor}:${row.currency}`),
+    )
+    .with({ kind: 'unreadable' }, { kind: 'untracked' }, () => undefined)
+    .exhaustive();
 
 /** Two records of one key are one record when they hold the same move. */
 const isSameMove = (left: FundingMatchRow, right: FundingMatchRow): boolean =>
@@ -216,21 +221,21 @@ const conflictedKeysOf = (readings: readonly Reading[]): Set<string> => {
   return new Set([...movesByKey].filter(([, moves]) => moves.length > 1).map(([key]) => key));
 };
 
-const recordsOf = (reading: Reading, conflicted: ReadonlySet<string>): FundingMatchRow[] => {
-  if (reading.kind === 'range') {
-    throw new BinanceWalkStop(reading.code);
-  }
+const recordsOf = (reading: Reading, conflicted: ReadonlySet<string>): FundingMatchRow[] =>
+  match(reading)
+    .returnType<FundingMatchRow[]>()
+    .with({ kind: 'range' }, ({ code }) => {
+      throw new BinanceWalkStop(code);
+    })
+    .with({ kind: 'counted' }, { kind: 'keyless' }, () => [])
+    .with({ kind: 'record' }, ({ record }) => {
+      if (conflicted.has(record.recordKey)) {
+        throw new BinanceWalkStop(FUNDING_KEY_CONFLICT);
+      }
 
-  if (reading.kind !== 'record') {
-    return [];
-  }
-
-  if (conflicted.has(reading.record.recordKey)) {
-    throw new BinanceWalkStop(FUNDING_KEY_CONFLICT);
-  }
-
-  return [reading.record];
-};
+      return [record];
+    })
+    .exhaustive();
 
 /**
  * Where the rows of a span may sit before a page counts as drifted. The route compares whole
