@@ -62,7 +62,7 @@ describe('EntityIconTile', () => {
   });
 
   // A fixed white glyph fails WCAG AA on a
-  // light entity swatch (e.g. `white`, `yellow` — see `isLightEntityColor`'s
+  // light entity swatch (e.g. `white`, `yellow` — see `prefersDarkGlyph`'s
   // doc comment in `entity-tint.ts`). The glyph must switch to the dark
   // `theme.colors.background` token instead of staying white on a tile this
   // bright.

@@ -3,6 +3,12 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 
 import { KIKO_CATEGORIES_ICONS } from '../icon-pools';
 
@@ -141,6 +147,35 @@ describe('IconEditor', () => {
       const { getByLabelText } = await setup({ label: undefined });
 
       expect(getByLabelText('Змінити іконку')).toBeTruthy();
+    });
+  });
+
+  describe('chip glyph tint', () => {
+    const yellowTile = lightTheme.colors.entityColors.yellow;
+    const chipTintOf = async () => {
+      const { getByLabelText } = await setup({ icon: 'creditcard', iconColor: yellowTile });
+
+      return getByLabelText('Icon creditcard').props.tintColor;
+    };
+
+    it('keeps the tile on the glyph in the dark world', async () => {
+      expect(darkTheme.colors.entityColors.yellow).not.toBe(yellowTile);
+      expect(await chipTintOf()).toBe(yellowTile);
+    });
+
+    describe('in the light world', () => {
+      beforeEach(() => {
+        registerLightThemeFirst();
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('paints the light mark of the tile, not the tile', async () => {
+        expect(markColor(yellowTile, 'light')).not.toBe(yellowTile);
+        expect(await chipTintOf()).toBe(markColor(yellowTile, 'light'));
+      });
     });
   });
 });
