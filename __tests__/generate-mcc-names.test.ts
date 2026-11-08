@@ -21,14 +21,6 @@ type SominemoFile = Record<string, { uk: string; ru: string }>;
 const REPOSITORY_ROOT = join(__dirname, '..');
 const DATA_PATH = join(REPOSITORY_ROOT, 'src/categories/mcc-names/mcc-names.data.json');
 
-const generator = () => ({
-  MCC_SOURCES,
-  verifySource,
-  buildMccNames,
-  renderMccNamesJson,
-  renderReviewTable,
-});
-
 const row = (mcc: string | number, edited: string, combined: string = edited): GregglesRow => ({
   mcc,
   edited_description: edited,
@@ -39,13 +31,11 @@ const ukOf = (...pairs: [string, string][]): SominemoFile =>
   Object.fromEntries(pairs.map(([code, uk]) => [code, { uk, ru: `ru ${uk}` }]));
 
 const build = (greggles: GregglesRow[], sominemo: SominemoFile) =>
-  generator().buildMccNames({ greggles, sominemo });
+  buildMccNames({ greggles, sominemo });
 
-const refusalOf = (greggles: GregglesRow[], sominemo: SominemoFile): string | undefined => {
-  const { buildMccNames } = generator();
-
+const refusalOf = (run: () => unknown): string | undefined => {
   try {
-    buildMccNames({ greggles, sominemo });
+    run();
   } catch (error) {
     return (error as Error).message;
   }
@@ -69,7 +59,9 @@ describe('generate MCC names', () => {
     });
 
     it('refuses a code whose two descriptions are blank, naming the code', () => {
-      expect(refusalOf([row('5411', ' ', '')], ukOf(['5411', 'Продукти']))).toContain('5411');
+      expect(refusalOf(() => build([row('5411', ' ', '')], ukOf(['5411', 'Продукти'])))).toContain(
+        '5411',
+      );
     });
 
     it('trims and collapses spaces', () => {
@@ -110,15 +102,16 @@ describe('generate MCC names', () => {
     it.each(['12345', 'abcd', '', '-742', '74.2'])(
       'refuses a code that is not four digits after padding: %p',
       (code) => {
-        expect(refusalOf([row(code, 'Name')], ukOf(['0742', 'Ім’я']))).toEqual(expect.any(String));
+        expect(refusalOf(() => build([row(code, 'Name')], ukOf(['0742', 'Ім’я'])))).toContain(
+          'not four digits',
+        );
       },
     );
 
     it('refuses a duplicate code with a different name', () => {
       expect(
-        refusalOf(
-          [row('5411', 'Grocery'), row('5411', 'Supermarkets')],
-          ukOf(['5411', 'Продукти']),
+        refusalOf(() =>
+          build([row('5411', 'Grocery'), row('5411', 'Supermarkets')], ukOf(['5411', 'Продукти'])),
         ),
       ).toContain('5411');
     });
@@ -135,14 +128,16 @@ describe('generate MCC names', () => {
 
   describe('uk name', () => {
     it('refuses a run with a code that has no uk name, listing every such code', () => {
-      const message = refusalOf(
-        [
-          row('5411', 'Grocery'),
-          row('5812', 'Restaurants'),
-          row('4829', 'Wire'),
-          row('6011', 'Cash'),
-        ],
-        ukOf(['5411', 'Продукти'], ['4829', 'Переказ']),
+      const message = refusalOf(() =>
+        build(
+          [
+            row('5411', 'Grocery'),
+            row('5812', 'Restaurants'),
+            row('4829', 'Wire'),
+            row('6011', 'Cash'),
+          ],
+          ukOf(['5411', 'Продукти'], ['4829', 'Переказ']),
+        ),
       );
 
       expect(message).toContain('5812');
@@ -152,7 +147,9 @@ describe('generate MCC names', () => {
     });
 
     it('refuses a code whose uk name is blank', () => {
-      expect(refusalOf([row('5411', 'Grocery')], ukOf(['5411', '  ']))).toContain('5411');
+      expect(refusalOf(() => build([row('5411', 'Grocery')], ukOf(['5411', '  '])))).toContain(
+        '5411',
+      );
     });
 
     it('rewrites an ASCII or right-quote apostrophe inside a Cyrillic word to U+02BC', () => {
@@ -214,24 +211,15 @@ describe('generate MCC names', () => {
   describe('source check', () => {
     const text = '[{"mcc":"0742"}]';
     const sha256 = createHash('sha256').update(text).digest('hex');
-    const refusalOfSource = (changedText: string): string | undefined => {
-      const { verifySource } = generator();
-
-      try {
-        verifySource(changedText, sha256);
-      } catch (error) {
-        return (error as Error).message;
-      }
-
-      return undefined;
-    };
 
     it('accepts a source whose SHA-256 matches the pinned one', () => {
-      expect(() => generator().verifySource(text, sha256)).not.toThrow();
+      expect(() => verifySource(text, sha256)).not.toThrow();
     });
 
     it('refuses a source whose SHA-256 differs from the pinned one', () => {
-      expect(refusalOfSource(`${text} `)).toEqual(expect.any(String));
+      expect(refusalOf(() => verifySource(`${text} `, sha256))).toContain(
+        'differs from the pinned',
+      );
     });
   });
 
@@ -243,14 +231,14 @@ describe('generate MCC names', () => {
 
     it('renders the entries as a JSON array with only code, en and uk, ending in a newline', () => {
       const extended = entries.map((entry) => ({ ...entry, extra: 'x' }));
-      const rendered = generator().renderMccNamesJson(extended);
+      const rendered = renderMccNamesJson(extended);
 
       expect(JSON.parse(rendered)).toEqual(entries);
       expect(rendered).toBe(`${JSON.stringify(entries, null, 2)}\n`);
     });
 
     it('renders a review table with one line per code', () => {
-      const lines = generator().renderReviewTable(entries).split('\n').filter(Boolean);
+      const lines = renderReviewTable(entries).split('\n').filter(Boolean);
 
       expect(lines).toEqual([
         '0742\tVeterinary Services\tВетеринари',
@@ -261,7 +249,7 @@ describe('generate MCC names', () => {
 
   describe('sources', () => {
     it('MCC_SOURCES pins full forty-character commits and sixty-four-character SHA-256 values', () => {
-      const { greggles, sominemo } = generator().MCC_SOURCES;
+      const { greggles, sominemo } = MCC_SOURCES;
 
       for (const source of [greggles, sominemo]) {
         expect(source.commit).toMatch(/^[0-9a-f]{40}$/);
@@ -288,10 +276,24 @@ const regenerateSuite = process.env.KIKO_REGEN_MCC === '1' ? describe : describe
 
 regenerateSuite('regenerate the MCC names data', () => {
   it('verifies both downloads, then writes the data file and the review table', () => {
-    const { MCC_SOURCES, verifySource, buildMccNames, renderMccNamesJson, renderReviewTable } =
-      generator();
-    const gregglesText = readFileSync(process.env.KIKO_MCC_GREGGLES as string, 'utf8');
-    const sominemoText = readFileSync(process.env.KIKO_MCC_SOMINEMO as string, 'utf8');
+    const gregglesPath = process.env.KIKO_MCC_GREGGLES;
+    const sominemoPath = process.env.KIKO_MCC_SOMINEMO;
+    const reviewPath = process.env.KIKO_MCC_REVIEW_OUT;
+
+    if (gregglesPath === undefined) {
+      throw new Error('KIKO_MCC_GREGGLES is not set: the path of the greggles download');
+    }
+
+    if (sominemoPath === undefined) {
+      throw new Error('KIKO_MCC_SOMINEMO is not set: the path of the sominemo download');
+    }
+
+    if (reviewPath === undefined) {
+      throw new Error('KIKO_MCC_REVIEW_OUT is not set: the path to write the review table to');
+    }
+
+    const gregglesText = readFileSync(gregglesPath, 'utf8');
+    const sominemoText = readFileSync(sominemoPath, 'utf8');
 
     verifySource(gregglesText, MCC_SOURCES.greggles.sha256);
     verifySource(sominemoText, MCC_SOURCES.sominemo.sha256);
@@ -302,7 +304,7 @@ regenerateSuite('regenerate the MCC names data', () => {
     });
 
     writeFileSync(DATA_PATH, renderMccNamesJson(entries), 'utf8');
-    writeFileSync(process.env.KIKO_MCC_REVIEW_OUT as string, renderReviewTable(entries), 'utf8');
+    writeFileSync(reviewPath, renderReviewTable(entries), 'utf8');
 
     expect(entries.length).toBeGreaterThan(0);
   });

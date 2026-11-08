@@ -32,7 +32,9 @@ symbol, not a line: re-grep each fact on the actual base before building on it.
 - The generator is dependency-free Node (`require('node:...')` only). It never writes into a guarded
   tree from a shell: the data file lands through the regeneration test (`KIKO_REGEN_MCC=1`), the
   precedent of `KIKO_REGEN_DEMO` in `e2e/screenshot/fixtures/README.md`. A test-process write skips
-  the pre-write guard, so every regeneration is followed by `npm run check:guard-replay`.
+  the pre-write guard (guard-replay checks `.ts`/`.tsx` only), so every regeneration is followed by
+  `./node_modules/.bin/biome check src/categories/mcc-names/mcc-names.data.json` and the data pins
+  in `mcc-names.test.ts`.
 - UI: shared components and theme tokens only; no new design-system component; no import across
   screen folders. `1.4-light-scheme` then applies by itself.
 - Guideline 2.5.19: no flag; the picker and its empty state show with no data; the reviewer has a
@@ -235,7 +237,7 @@ renderReviewTable(entries): string // TSV: code, en, uk
   - `holds the common codes`: 5411, 5812, 4829, 6011, `0742` with its leading zero.
   - `names every code the category map knows except the codes the sources leave out`: the mapped
     codes 0-9999 (`categoryForMcc(code) !== 'other'`) with no entry `toEqual` 3791-3999 without
-    3816 and 3835, then 6540 (209 codes; they show as their digits, spec 3.3, 5.4).
+    3816 and 3835, then 6540 (208 codes; they show as their digits, spec 3.3, 5.4).
   - `mccNameOf gives the name per language and undefined for an unlisted code`; `treats a language
     other than uk as en`.
   - `mccLabelOf joins code and name with an en dash and shows an unlisted code as its digits`
@@ -500,6 +502,9 @@ key), `acknowledgements.intro`, `acknowledgements.mccNamesEnglish`,
   - `acknowledgements.screen.test.tsx`: `shows the MIT notice verbatim` (equals the LICENSE text
     task 7/10 step 1 kept, as a literal in the test); `shows it unchanged in Ukrainian`; `credits
     both data sets with their source and license name` (the constants, the same in en and uk).
+  - `acknowledgements.screen.test.tsx`: `ships the licence text of every MIT entry of
+    MCC_SOURCES` (every `MCC_SOURCES` entry with licence `'MIT'` has its licence text in
+    `mcc-names.notice.ts`).
   - `settings.screen.test.tsx`: `opens Acknowledgements from its own row` (pane-aware through
     `useOpenInPane`, as the Help row); `shows the row with no data`.
   - `settings.stack.test.tsx`: `registers the Acknowledgements page with its title`.

@@ -39,8 +39,6 @@ const CYRILLIC = 'А-Яа-яЁёІіЇїЄєҐґ';
 const QUOTE_INSIDE_CYRILLIC_WORD = new RegExp(`(?<=[${CYRILLIC}])['’](?=[${CYRILLIC}])`, 'g');
 const MODIFIER_LETTER_APOSTROPHE = 'ʼ';
 
-const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
-
 const tidy = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
 
 const padCode = (value) => {
@@ -64,7 +62,11 @@ const englishNameOf = (row, code) => {
 };
 
 const ukrainianNameOf = (sominemo, code) => {
-  if (!hasOwn(sominemo, code) || sominemo[code] === null || typeof sominemo[code] !== 'object') {
+  if (
+    !Object.hasOwn(sominemo, code) ||
+    sominemo[code] === null ||
+    typeof sominemo[code] !== 'object'
+  ) {
     return undefined;
   }
 
