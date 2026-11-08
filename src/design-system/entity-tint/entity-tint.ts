@@ -13,7 +13,7 @@ import { lightTheme } from '../theme';
 // account/holding/category's effective hue (`resolveEntityColor`), the two
 // channel-blend helpers (`lightenHex`/`darkenHex`), the squircle icon-tile
 // gradient stops (`entityIconTileGradient`), and the WCAG glyph-contrast test
-// (`isLightEntityColor`). Every entity-hue derivation lives here, in one place,
+// (`prefersDarkGlyph`). Every entity-hue derivation lives here, in one place,
 // per the design-system rule — never re-derived at a call site.
 
 const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
@@ -23,7 +23,7 @@ const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
 // hand-rolling a second copy — every entity-hue derivation lives here, in one
 // place, per the design-system rule. Not exported: nothing outside this
 // module needs a raw RGB triple, only the higher-level derivations built on
-// top of it (`entityIconTileGradient`, `isLightEntityColor`, `darkenHex`,
+// top of it (`entityIconTileGradient`, `prefersDarkGlyph`, `darkenHex`,
 // etc.). An unparsable input means the caller passed something that was
 // never a theme token — failing loudly beats silently rendering an
 // invisible or wrong tint.
@@ -59,7 +59,7 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 // 1. A stored color that is a non-null, non-undefined but still unusable
 //    value — an empty string, most concretely — which `??` lets straight
 //    through (it only guards `null`/`undefined`) and `entityIconTileGradient`/
-//    `isLightEntityColor` (both feeding `EntityIconTile`) then throw on.
+//    `prefersDarkGlyph` (both feeding `EntityIconTile`) then throw on.
 // 2. An unmapped kind/type default lookup. `defaultAccountColor` /
 //    `defaultHoldingColor` are typed `Record<Kind, string>`, which is only a
 //    COMPILE-time guarantee. SQLite enforces no CHECK constraint on the
@@ -69,7 +69,7 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 //    with no compiler in the way.
 //
 // Either gap, combined with a null/never-set stored color, would reach
-// `entityIconTileGradient`/`isLightEntityColor` with an unparsable value and
+// `entityIconTileGradient`/`prefersDarkGlyph` with an unparsable value and
 // throw mid-render — how "a card sometimes has no background at all"
 // manifests: not a silently blank tint, but the one throwing
 // card's whole row (its `EntityIconTile`) failing to render. This resolves
@@ -138,7 +138,7 @@ export const entityIconTileGradient = (colorHex: string): [top: string, bottom: 
 // gradient reads. Several palette swatches (`white`, `yellow`, `khaki`,
 // `mint`, `teal` — see `palette.ts`) are themselves light enough that a
 // white glyph on top of them fails WCAG contrast, reading as a
-// near-invisible icon. `isLightEntityColor` below
+// near-invisible icon. `prefersDarkGlyph` below
 // answers this with the REAL WCAG relative-luminance + contrast-ratio method
 // (https://www.w3.org/TR/WCAG21/#dfn-relative-luminance /
 // https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio), computed on the
@@ -184,18 +184,25 @@ const contrastRatio = (luminanceA: number, luminanceB: number): number => {
 // criterion rather than the stricter 4.5:1 text-contrast ratio.
 const GLYPH_CONTRAST_MINIMUM = 3;
 
-// Whether a resolved entity color is bright enough that the standard white
-// `onAccent` glyph on top of it would fail the 3:1 WCAG glyph-contrast floor
-// — if so, `EntityIconTile` must switch to the dark tint instead. See the
-// method note above.
-export const isLightEntityColor = (colorHex: string): boolean =>
-  contrastRatio(1, relativeLuminance(colorHex)) < GLYPH_CONTRAST_MINIMUM;
+// Whether the glyph on a tile of this hue is the dark tint rather than the white `onAccent`. Dark
+// scheme: only when white would fall under the 3:1 WCAG glyph-contrast floor, so a saturated
+// mid-tone tile keeps its white glyph. Light scheme: whichever of black and white contrasts more,
+// because its tiles are mid-tone and the floor rule would leave white glyphs where black reads
+// far stronger. See the method note above.
+export const prefersDarkGlyph = (colorHex: string, scheme: ColorScheme): boolean => {
+  const luminance = relativeLuminance(colorHex);
+
+  return match(scheme)
+    .with('dark', () => contrastRatio(1, luminance) < GLYPH_CONTRAST_MINIMUM)
+    .with('light', () => contrastRatio(0, luminance) > contrastRatio(1, luminance))
+    .exhaustive();
+};
 
 // The general-purpose WCAG contrast ratio between two `#RRGGBB` hex colors —
 // exported so a NON-entity contrast check (e.g. `SegmentedControl`'s
 // selected-segment-vs-track ratio) reuses this module's
 // one `relativeLuminance`/`contrastRatio` pair instead of a second hand-
-// rolled luminance implementation. `isLightEntityColor` above is the
+// rolled luminance implementation. `prefersDarkGlyph` above is the
 // entity-specific glyph-on-fill case; this is the same math for any other
 // two-hex comparison.
 export const wcagContrastRatio = (hexA: string, hexB: string): number =>
