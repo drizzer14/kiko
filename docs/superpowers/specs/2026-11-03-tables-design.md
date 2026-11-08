@@ -123,9 +123,12 @@ the Home stacks: on a wide window Statistics is Home's companion, and a name the
   `buildAccountOptions`, `visibleCategorySelection`, `excludedCategoryKeysOf`.
 
 A `SegmentedControl` at the top of Tables switches the tables, with three parts: Categories, Cash flow, Net worth (tabs-vs-chips
-rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. Selection and
-period are route params of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
-(`pane-stack-view`, "A switch between one pane and two"), keeps them; a new push still opens on Categories and the default period.
+rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. The selection is a
+route param of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
+(`pane-stack-view`, "A switch between one pane and two"), keeps it; a new push still opens on Categories. The period (user ruling
+2026-11-08) is held in the session store `use-tables-period-selection` (`src/statistics/`), so it also survives Back: a new push
+opens on the period last picked, until the app is closed, and on the default only before a first pick. A kept period that the options
+no longer offer reads as the default.
 `resetTabStackOnBlur` pops the screen on a tab change, as for any pushed screen. The uk labels ("Категорії", "Рух коштів", "Капітал")
 must fit: `labelVariant: 'caption'` is the first step. Measure at large sizes; if they do not fit, the builder reports it. Do not shrink
 the text silently.
