@@ -44,8 +44,10 @@ with a key that is shown only to you. The backup includes your saved tokens and
 keys only if you turn on "Include saved passwords & keys" (off by default) and
 confirm with Face ID or your device passcode. A CSV file is plain text, and
 anyone with the file can read it: it holds your transactions (dates, amounts,
-categories, descriptions and comments) with the names of your accounts and
-holdings, and no tokens or keys. On a device that has a passcode, Kiko asks you
+currencies, categories, descriptions and comments, with each transaction's type,
+whether it is pending, and its source, such as a bank or an exchange) and the
+names of your accounts and holdings, and no tokens or keys. A holding name can
+hold a card number mask, and a description can name another person. On a device that has a passcode, Kiko asks you
 to confirm with Face ID or your device passcode before it writes a CSV file, and
 it deletes the file from the app's temporary storage once you finish sharing it,
 or at the next app launch. Kiko never uploads an export anywhere; you choose
