@@ -99,9 +99,13 @@ describe('EntityIconTile', () => {
       restoreThemeOrder();
     });
 
-    it('tints the glyph on a light tile with the tile glyph token, not the page color', async () => {
+    it('tints the glyph on the light yellow tile with the tile glyph token, not the page color', async () => {
       const { getByLabelText } = await render(
-        <EntityIconTile name="banknote" color="#FFFF00" accessibilityLabel="Cash icon" />,
+        <EntityIconTile
+          name="banknote"
+          color={lightTheme.colors.entityColors.yellow}
+          accessibilityLabel="Cash icon"
+        />,
       );
       const tint = getByLabelText('Cash icon').props.tintColor;
 
@@ -109,9 +113,13 @@ describe('EntityIconTile', () => {
       expect(tint).not.toBe(lightTheme.colors.background);
     });
 
-    it('keeps the onAccent token on a dark tile', async () => {
+    it('keeps the onAccent token on the light red tile', async () => {
       const { getByLabelText } = await render(
-        <EntityIconTile name="banknote" color="#0066E6" accessibilityLabel="Checking icon" />,
+        <EntityIconTile
+          name="banknote"
+          color={lightTheme.colors.entityColors.red}
+          accessibilityLabel="Checking icon"
+        />,
       );
 
       expect(getByLabelText('Checking icon').props.tintColor).toBe(lightTheme.colors.onAccent);

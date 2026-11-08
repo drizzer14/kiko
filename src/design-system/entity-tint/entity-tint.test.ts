@@ -4,6 +4,7 @@ import { seededRandom } from '@kiko/test-support/seeded-random';
 import {
   type SwatchName,
   categoryColorsLight,
+  chartSeriesDark,
   entityColorsDark,
   entityColorsLight,
 } from '../palette';
@@ -14,7 +15,6 @@ import {
   categoryDisplayColor,
   entityDisplayColor,
   entityIconTileGradient,
-  isLightEntityColor,
   lightenHex,
   resolveEntityColor,
   wcagContrastRatio,
@@ -82,32 +82,90 @@ describe('entityIconTileGradient', () => {
   });
 });
 
-describe('isLightEntityColor', () => {
-  // The concrete swatches the review flagged as failing WCAG AA with a fixed
-  // white glyph — see `palette.ts`'s `entityColorsDark` and
-  // `entity-tint.ts`'s `LIGHT_TILE_BRIGHTNESS_THRESHOLD` doc comment for the
-  // brightness numbers behind each one.
-  it.each([
-    ['white', darkTheme.colors.entityColors.white],
-    ['yellow', darkTheme.colors.entityColors.yellow],
-    ['khaki', darkTheme.colors.entityColors.khaki],
-    ['mint', darkTheme.colors.entityColors.mint],
-    ['teal', darkTheme.colors.entityColors.teal],
-  ])('flags the light %s swatch as needing a dark glyph', (_name, hex) => {
-    expect(isLightEntityColor(hex)).toBe(true);
+describe('prefersDarkGlyph', () => {
+  // prefersDarkGlyph is read at run time: the red is the missing function, not a failed import.
+  const { prefersDarkGlyph } = jest.requireActual('./entity-tint') as {
+    prefersDarkGlyph: (hex: string, scheme: 'dark' | 'light') => boolean;
+  };
+  const BLACK_GLYPH_DARK: SwatchName[] = [
+    'white',
+    'khaki',
+    'yellow',
+    'green',
+    'mint',
+    'orange',
+    'teal',
+    'gray',
+  ];
+  const WHITE_GLYPH_DARK: SwatchName[] = ['brown', 'blue', 'violet', 'red', 'pink', 'indigo'];
+  const BLACK_GLYPH_LIGHT: SwatchName[] = [
+    'yellow',
+    'mint',
+    'violet',
+    'orange',
+    'teal',
+    'pink',
+    'indigo',
+    'gray',
+  ];
+  const WHITE_GLYPH_LIGHT: SwatchName[] = ['white', 'khaki', 'brown', 'blue', 'green', 'red'];
+  const WHITE = '#FFFFFF';
+  const GLYPH_FLOOR = 3;
+  const DARK_RULE_HEXES = [
+    ...Object.values(entityColorsDark),
+    ...chartSeriesDark,
+    '#112233',
+    '#00FF00',
+    '#FF453A',
+    '#0A84FF',
+  ];
+
+  it('is exported', () => {
+    expect(prefersDarkGlyph).toBeInstanceOf(Function);
   });
 
-  // A dark, already-legible-with-white-glyph swatch stays `false`, so
-  // `EntityIconTile` keeps painting its glyph with the standard white
-  // `onAccent` tint on it.
-  it.each([
-    ['blue', darkTheme.colors.entityColors.blue],
-    ['indigo', darkTheme.colors.entityColors.indigo],
-    ['pink', darkTheme.colors.entityColors.pink],
-    ['red', darkTheme.colors.entityColors.red],
-  ])('does not flag the dark %s swatch', (_name, hex) => {
-    expect(isLightEntityColor(hex)).toBe(false);
+  it.each(BLACK_GLYPH_DARK)('dark: the %s swatch takes a dark glyph', (name) => {
+    expect(prefersDarkGlyph(entityColorsDark[name], 'dark')).toBe(true);
   });
+
+  it.each(WHITE_GLYPH_DARK)('dark: the %s swatch keeps the white glyph', (name) => {
+    expect(prefersDarkGlyph(entityColorsDark[name], 'dark')).toBe(false);
+  });
+
+  it('dark tables cover all 14 swatches once', () => {
+    expect([...BLACK_GLYPH_DARK, ...WHITE_GLYPH_DARK].sort()).toEqual(
+      (Object.keys(entityColorsDark) as SwatchName[]).sort(),
+    );
+  });
+
+  it.each(DARK_RULE_HEXES)('dark: %s takes a dark glyph exactly when white is under 3:1', (hex) => {
+    expect(prefersDarkGlyph(hex, 'dark')).toBe(wcagContrastRatio(WHITE, hex) < GLYPH_FLOOR);
+  });
+
+  it.each(BLACK_GLYPH_LIGHT)('light: the %s tile takes a dark glyph', (name) => {
+    expect(prefersDarkGlyph(entityColorsLight[name], 'light')).toBe(true);
+    expect(prefersDarkGlyph(categoryColorsLight[name], 'light')).toBe(true);
+  });
+
+  it.each(WHITE_GLYPH_LIGHT)('light: the %s tile keeps the white glyph', (name) => {
+    expect(prefersDarkGlyph(entityColorsLight[name], 'light')).toBe(false);
+    expect(prefersDarkGlyph(categoryColorsLight[name], 'light')).toBe(false);
+  });
+
+  it('light tables cover all 14 swatches once', () => {
+    expect([...BLACK_GLYPH_LIGHT, ...WHITE_GLYPH_LIGHT].sort()).toEqual(
+      (Object.keys(entityColorsLight) as SwatchName[]).sort(),
+    );
+  });
+
+  it.each(Object.values(entityColorsLight))(
+    'light: %s takes whichever of white and black contrasts more',
+    (hex) => {
+      expect(prefersDarkGlyph(hex, 'light')).toBe(
+        wcagContrastRatio('#000000', hex) > wcagContrastRatio(WHITE, hex),
+      );
+    },
+  );
 });
 
 describe('resolveEntityColor', () => {
@@ -291,18 +349,15 @@ describe('categoryDisplayColor', () => {
     );
   });
 
-  it('the same dark hex differs by producer where the palette differs', () => {
-    const differing = SWATCHES.filter(
-      (name) => entityColorsLight[name] !== categoryColorsLight[name],
+  // The light sets are identical and dark has one set, so no hex differs by producer; the routing
+  // proof is that this producer reads the category table.
+  it.each(SWATCHES)('%s reads the category table in light and in dark', (name) => {
+    expect(categoryDisplayColor(entityColorsDark[name], 'light')).toBe(
+      lightTheme.colors.categoryColors[name],
     );
-
-    expect(differing.length).toBeGreaterThan(0);
-
-    for (const name of differing) {
-      expect(categoryDisplayColor(entityColorsDark[name], 'light')).not.toBe(
-        entityDisplayColor(entityColorsDark[name], 'light'),
-      );
-    }
+    expect(categoryDisplayColor(entityColorsDark[name], 'dark')).toBe(
+      darkTheme.colors.categoryColors[name],
+    );
   });
 
   it.each(OUT_OF_SET)('light out of set takes the entity lightness rule: %s', (stored) => {
