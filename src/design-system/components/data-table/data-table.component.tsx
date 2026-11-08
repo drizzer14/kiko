@@ -46,12 +46,12 @@ const HIDDEN_FROM_ACCESSIBILITY = {
  * and display flags, and one node of the caller's (`topContent`) to scroll above the caption; the
  * caller formats every amount and owns the vertical room.
  *
- * Every width comes from measured text, never from the window or the device type, so an amount
- * is never cut, shrunk or wrapped, and the table follows Dynamic Type. A row is as tall as the
- * taller of its fixed label and its scrolled cells, set as `minHeight` on both. The header sits
- * inside the vertical scroll after the caption and sticks while the caption scrolls away, so a
- * large type size cannot take the body's room; it follows the body's horizontal offset on the UI
- * thread.
+ * Every width comes from measured text, and columns that all fit share the measured room left
+ * over evenly, so an amount is never cut, shrunk or wrapped, and the table follows Dynamic Type.
+ * A row is as tall as the taller of its fixed label and its scrolled cells, set as `minHeight`
+ * on both. The header sits inside the vertical scroll after the caption and sticks while the
+ * caption scrolls away, so a large type size cannot take the body's room; it follows the body's
+ * horizontal offset on the UI thread.
  */
 const DataTable: FC<DataTableProps> = ({
   columns,
@@ -77,15 +77,12 @@ const DataTable: FC<DataTableProps> = ({
   const padding = theme.spacing(CELL_PADDING_UNITS * 2);
   const fixedWidth = resolveFixedWidth(labelWidth, containerWidth, padding, theme.layout.hairline);
   const availableWidth = Math.max(containerWidth - fixedWidth, 0);
-  const columnWidths = fillColumnWidths(
-    resolveColumnWidths(columns, columnTextWidths, padding),
-    availableWidth,
-  );
+  const naturalWidths = resolveColumnWidths(columns, columnTextWidths, padding);
+  const columnWidths = fillColumnWidths(naturalWidths, availableWidth);
   const rowHeights = useMemo(
     () => resolveRowHeights(rows, columns, textHeights, padding),
     [rows, columns, textHeights, padding],
   );
-  const contentWidth = columnWidths.reduce((sum, width) => sum + width, 0);
   // One line per column edge but the last, laid over the track: the edge less the hairline, so the
   // line sits inside its own column, not over the next one.
   const separatorOffsets = columnWidths
@@ -95,7 +92,10 @@ const DataTable: FC<DataTableProps> = ({
         columnWidths.slice(0, columnIndex + 1).reduce((sum, width) => sum + width, 0) -
         theme.layout.hairline,
     );
-  const overflows = containerWidth > 0 && contentWidth > availableWidth;
+  // Judged on the natural widths: a filled sum can edge past the room by a float, and the table
+  // then fits.
+  const naturalWidth = naturalWidths.reduce((sum, width) => sum + width, 0);
+  const overflows = containerWidth > 0 && naturalWidth > availableWidth;
   const isMeasured =
     containerWidth > 0 &&
     labelWidth > 0 &&
@@ -121,7 +121,7 @@ const DataTable: FC<DataTableProps> = ({
       return;
     }
 
-    const furthestOffset = Math.max(contentWidth - availableWidth, 0);
+    const furthestOffset = Math.max(naturalWidth - availableWidth, 0);
     const currentOffset = bodyOffset.value;
     const isNewIndex =
       initialColumnIndex !== undefined && scrolledToIndex.current !== initialColumnIndex;
@@ -146,7 +146,7 @@ const DataTable: FC<DataTableProps> = ({
     isEmpty,
     isMeasured,
     columnWidths,
-    contentWidth,
+    naturalWidth,
     availableWidth,
     bodyRef,
     bodyOffset,

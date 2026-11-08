@@ -938,17 +938,16 @@ describe('DataTable', () => {
     const LABEL_TEXT = 60;
     const FIXED_WIDTH = LABEL_TEXT + HORIZONTAL_PADDING + HAIRLINE;
 
+    const testIdOf: Record<'header' | 'cell', (key: string) => string> = {
+      header: (key) => `${PREFIX}-header-${key}`,
+      cell: (key) => `${PREFIX}-cell-groceries-${key}`,
+    };
+
     const widthsOf = (rendered: Rendered, kind: 'header' | 'cell') =>
       columns.map(
         (column) =>
-          flat(
-            rendered.getByTestId(
-              kind === 'header'
-                ? `${PREFIX}-header-${column.key}`
-                : `${PREFIX}-cell-groceries-${column.key}`,
-              { includeHiddenElements: true },
-            ),
-          ).width as number,
+          flat(rendered.getByTestId(testIdOf[kind](column.key), { includeHiddenElements: true }))
+            .width as number,
       );
 
     const renderMeasured = async (containerWidth: number, textWidth: number) => {
@@ -987,6 +986,27 @@ describe('DataTable', () => {
 
       expect(widthsOf(rendered, 'cell')).toEqual(Array(3).fill(100 + HORIZONTAL_PADDING));
       expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(true);
+    });
+
+    it('keeps the horizontal scroll off for columns whose float sum edges past the room', async () => {
+      const naturalWidths = [18.235351530199683, 55.72896582257684, 119.73653724505381];
+      const room = 233.1768291905029;
+      // A 1pt label keeps the container under 256, where the sum below is exact: the room beside
+      // the fixed column is then exactly `room`, the float whose filled sum edges past it.
+      const labelText = 1;
+      const fixedWidth = labelText + HORIZONTAL_PADDING + HAIRLINE;
+      const rendered = await renderTable();
+
+      expect(fixedWidth + room - fixedWidth).toBe(room);
+
+      await setContainerWidth(rendered, fixedWidth + room);
+      await measureLabels(rendered, labelText);
+
+      for (const [index, column] of columns.entries()) {
+        await measureColumn(rendered, column.key, naturalWidths[index] - HORIZONTAL_PADDING);
+      }
+
+      expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(false);
     });
 
     it('gives a header cell the width of its body cell at fill', async () => {

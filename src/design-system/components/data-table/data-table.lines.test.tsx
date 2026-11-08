@@ -163,6 +163,33 @@ describe('DataTable rows and column lines', () => {
       }
     });
 
+    it('puts the last line at the widths before the last column, less the hairline, at fit', async () => {
+      const rendered = await renderTable();
+
+      await fireEvent(rendered.getByTestId(PREFIX), 'layout', layoutEvent(1000, 600));
+      await fireEvent(
+        rendered.getByTestId(`${PREFIX}-measure-labels`, hidden),
+        'layout',
+        layoutEvent(60),
+      );
+
+      for (const column of columns) {
+        await fireEvent(
+          rendered.getByTestId(`${PREFIX}-measure-column-${column.key}`, hidden),
+          'layout',
+          layoutEvent(50),
+        );
+      }
+
+      const widthOf = (key: string) =>
+        flat(rendered.getByTestId(`${PREFIX}-header-${key}`, hidden)).width as number;
+
+      expect(flat(rendered.getByTestId(`${PREFIX}-separator-feb`)).left).toBeCloseTo(
+        widthOf('jan') + widthOf('feb') - darkTheme.layout.hairline,
+        9,
+      );
+    });
+
     it('never touches a pointer, so a cell press still reaches the cell', async () => {
       const rendered = await renderTable();
 
