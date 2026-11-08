@@ -82,7 +82,7 @@ const DataTable: FC<DataTableProps> = ({
   );
   const contentWidth = columnWidths.reduce((sum, width) => sum + width, 0);
   // One line per column edge but the last, laid over the track: the edge less the hairline, so the
-  // line sits inside its own column as the cell's right edge did.
+  // line sits inside its own column, not over the next one.
   const separatorOffsets = columnWidths
     .slice(0, -1)
     .map(

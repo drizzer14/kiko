@@ -216,7 +216,7 @@ export const darkTheme = {
     // `surface` of the fixed column and the screen background under the scrolled rows alike.
     rowBand: 'rgba(255,255,255,0.04)',
     // The ground of a table's sum columns (total, average): translucent, so the row band runs
-    // across them too; about the old opaque `sheetBackground` over the black screen.
+    // across them too; 0.10 keeps them as distinct from the months as a solid grey over black.
     sumTint: 'rgba(255,255,255,0.10)',
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet) on iOS 26+. NOT the opaque `background` token: a

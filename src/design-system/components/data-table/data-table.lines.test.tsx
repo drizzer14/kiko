@@ -94,6 +94,13 @@ describe('DataTable rows and column lines', () => {
       }
     });
 
+    it('keeps the scroll content growing to the room beside the fixed column', async () => {
+      const rendered = await renderTable();
+      const scroll = rendered.getByTestId(`${PREFIX}-body-scroll`);
+
+      expect(StyleSheet.flatten(scroll.props.contentContainerStyle).flexGrow).toBe(1);
+    });
+
     it('keeps the body content growing to the room beside the fixed column', async () => {
       const rendered = await renderTable();
 
