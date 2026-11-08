@@ -169,6 +169,27 @@ export const spotLogRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/**
+ * A Funding ledger row on the field words of the page's one sample (read 2026-11-04): the Earn
+ * interest row, with its two localized-key words. `memberId`, `afterAmt`, `showBusiTypeEn` and
+ * `descriptionEn` hold a sentinel: the client must read none of them. The page prints no value
+ * for the rest, so `txnAmt` and `createTime` (Unix seconds, 10 digits) are built.
+ */
+export const fundingLedgerRow = (overrides: Record<string, unknown> = {}) => ({
+  currency: 'USDT',
+  ioDirection: 'I',
+  txnAmt: '100',
+  createTime: '1742728163',
+  showBusiType: 'fundingAccountRecordEarn',
+  showBusiTypeEn: NEVER_READ,
+  description: 'fundingAccountRecordFlexSavingInterestDistribution',
+  descriptionEn: NEVER_READ,
+  currcCursor: 'ledger-1',
+  memberId: NEVER_READ,
+  afterAmt: NEVER_READ,
+  ...overrides,
+});
+
 // The convert page's two sample rows, as the page prints them (response example read 2026-11-06).
 export const CONVERT_PAGE_SAMPLE = [
   {

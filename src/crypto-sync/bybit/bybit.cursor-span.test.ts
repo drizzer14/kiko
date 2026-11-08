@@ -236,6 +236,86 @@ describe('readCursorSpan: page drift', () => {
   });
 });
 
+describe('readCursorSpan: a repeated cursor in a series with keys', () => {
+  const keyOf = (row: Row): string | undefined => (row.id === 'no-key' ? undefined : row.id);
+
+  it('ends the span with its rows when the page that repeats the cursor holds no new key', async () => {
+    const { readPage, asked } = pagesOf({
+      first: pageOf('a', rowAt('1', INSIDE)),
+      a: pageOf('a', rowAt('1', INSIDE)),
+    });
+
+    const read = await readOf(readPage, { keyOf });
+
+    expect(asked).toEqual([undefined, 'a']);
+    expect(read).toEqual(rowsPage(rowAt('1', INSIDE), rowAt('1', INSIDE)));
+  });
+
+  it('ends the same way when the page repeats a cursor used before the last one', async () => {
+    const { readPage } = pagesOf({
+      first: pageOf('a', rowAt('1', INSIDE)),
+      a: pageOf('b', rowAt('2', INSIDE)),
+      b: pageOf('a', rowAt('2', INSIDE), rowAt('1', INSIDE)),
+    });
+
+    expect(await readOf(readPage, { keyOf })).toEqual(
+      rowsPage(rowAt('1', INSIDE), rowAt('2', INSIDE), rowAt('2', INSIDE), rowAt('1', INSIDE)),
+    );
+  });
+
+  it('is a drift when the page that repeats the cursor holds a key no earlier page held', async () => {
+    const { readPage } = pagesOf({
+      first: pageOf('a', rowAt('1', INSIDE)),
+      a: pageOf('a', rowAt('1', INSIDE), rowAt('2', INSIDE)),
+    });
+
+    expect(await readOf(readPage, { keyOf })).toEqual(DRIFT);
+  });
+
+  it('counts the keys of the first page, the one asked with no cursor, as held', async () => {
+    const { readPage } = pagesOf({
+      first: pageOf('a', rowAt('1', INSIDE), rowAt('2', INSIDE)),
+      a: pageOf('a', rowAt('2', INSIDE)),
+    });
+
+    expect(await readOf(readPage, { keyOf })).toEqual(
+      rowsPage(rowAt('1', INSIDE), rowAt('2', INSIDE), rowAt('2', INSIDE)),
+    );
+  });
+
+  it('never counts a row with no key as a new one', async () => {
+    const { readPage } = pagesOf({
+      first: pageOf('a', rowAt('1', INSIDE)),
+      a: pageOf('a', rowAt('no-key', INSIDE)),
+    });
+
+    expect(await readOf(readPage, { keyOf })).toEqual(
+      rowsPage(rowAt('1', INSIDE), rowAt('no-key', INSIDE)),
+    );
+  });
+
+  it('keeps a series with no keys as it was: a repeated cursor is a drift', async () => {
+    const { readPage } = pagesOf({
+      first: pageOf('a', rowAt('1', INSIDE)),
+      a: pageOf('a', rowAt('1', INSIDE)),
+    });
+
+    expect(await readOf(readPage)).toEqual(DRIFT);
+  });
+
+  it('follows a page that gives a new cursor as before, with or without keys', async () => {
+    const { readPage, asked } = pagesOf({
+      first: pageOf('a', rowAt('1', INSIDE)),
+      a: pageOf(undefined, rowAt('1', INSIDE)),
+    });
+
+    expect(await readOf(readPage, { keyOf })).toEqual(
+      rowsPage(rowAt('1', INSIDE), rowAt('1', INSIDE)),
+    );
+    expect(asked).toEqual([undefined, 'a']);
+  });
+});
+
 describe('readCursorSpan: the budget', () => {
   it('returns undefined before the first page when the lane cannot afford it, and asks nothing', async () => {
     const run = runOf();

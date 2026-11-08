@@ -745,6 +745,7 @@ describe('CryptoSyncSection for a Bybit account', () => {
         transfer: { cursor: SYNCED_AT },
         log: { cursor: SYNCED_AT },
         convert: { cursor: SYNCED_AT },
+        fundingLedger: { cursor: SYNCED_AT },
         pay: { pending: [{ start: 1, end: 3 }] },
       },
     };

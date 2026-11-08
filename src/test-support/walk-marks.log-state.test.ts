@@ -29,6 +29,23 @@ describe('walkStateFake and the log walk', () => {
     });
   });
 
+  it('applies the Funding held count and the left-out flag, and seeds the ledger walk', async () => {
+    const fake = walkStateFake({ marks: { fundingLedger: { cursor: 8 } } });
+
+    await fake.deps.patchExchangeState('acc-1', [
+      { kind: 'fundingHeld', count: 2 },
+      { kind: 'fundingLeftOut' },
+    ]);
+
+    expect(fake.marksOf('fundingLedger')).toEqual({ cursor: 8 });
+    expect(await storedOf(fake)).toEqual({
+      version: 1,
+      walks: { fundingLedger: { cursor: 8 } },
+      fundingHeld: 2,
+      fundingLeftOut: true,
+    });
+  });
+
   it('still throws on a patch it does not own, so a mistyped mark shows', async () => {
     const fake = walkStateFake();
 

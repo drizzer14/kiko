@@ -37,8 +37,9 @@ type WalletNotes = { borrowed: string[]; openOrder?: string[]; refusedCoins?: st
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
  * trade symbol, the trades' rotation, balance snapshot or unread symbols, one coin list, the notes
  * of the wallets a balance read reached, or the balance sync stamp, or entries to add to the
- * not-imported list, or kinds to add to the log kinds, or one series' dense span. A patch names
- * fields, never whole entries, so a field it does not name is never written from a parse.
+ * not-imported list, or kinds to add to the log kinds, or one series' dense span, or the Funding
+ * ledger's held count or left-out flag. A patch names fields, never whole entries, so a field it
+ * does not name is never written from a parse.
  *
  * The oversized balance list has its own patch and no `coinList` form, so no write can set
  * `balance` apart from the wallet arrays it is derived from.
@@ -88,7 +89,13 @@ export type ExchangeStatePatch =
       series: DenseSeries;
       /** The start of the span the series could not read past; `null` drops the series' entry. */
       start: number | null;
-    };
+    }
+  | {
+      kind: 'fundingHeld';
+      /** How many ledger rows the reconcile holds back; 0 drops the key. */
+      count: number;
+    }
+  | { kind: 'fundingLeftOut' };
 
 const withWalkField = (
   stored: StoredExchangeState,
@@ -294,6 +301,15 @@ const withDenseSpan = (
   return { ...stored, denseSpans: entries.length > 0 ? Object.fromEntries(entries) : undefined };
 };
 
+/**
+ * A count replaces the stored one, and a count of none leaves the key undefined, which JSON drops,
+ * so the text is the one before the first count.
+ */
+const withFundingHeld = (
+  stored: StoredExchangeState,
+  { count }: Extract<ExchangeStatePatch, { kind: 'fundingHeld' }>,
+): StoredExchangeState => ({ ...stored, fundingHeld: count > 0 ? count : undefined });
+
 const patchedState = (
   stored: StoredExchangeState,
   patch: ExchangeStatePatch,
@@ -318,6 +334,8 @@ const patchedState = (
     .with({ kind: 'notImported' }, (notImportedPatch) => withNotImported(stored, notImportedPatch))
     .with({ kind: 'logKinds' }, (logKindsPatch) => withLogKinds(stored, logKindsPatch))
     .with({ kind: 'denseSpans' }, (denseSpansPatch) => withDenseSpan(stored, denseSpansPatch))
+    .with({ kind: 'fundingHeld' }, (fundingHeldPatch) => withFundingHeld(stored, fundingHeldPatch))
+    .with({ kind: 'fundingLeftOut' }, () => ({ ...stored, fundingLeftOut: true }))
     .exhaustive();
 
 /**

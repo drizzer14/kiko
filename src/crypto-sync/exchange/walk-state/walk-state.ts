@@ -21,6 +21,7 @@ export const WALK_IDS = [
   'fiatOrders',
   'fiatPayments',
   'log',
+  'fundingLedger',
 ] as const;
 
 export type WalkId = (typeof WALK_IDS)[number];
@@ -196,6 +197,10 @@ export type ExchangeState = {
   logKinds?: string[];
   /** One start per series whose read stopped inside one second of rows; Bybit only. */
   denseSpans?: DenseSpans;
+  /** How many Funding ledger rows the last reconcile held back, by count; Bybit only. */
+  fundingHeld?: number;
+  /** Set once a read met a Funding ledger row with no id, which it cannot store; Bybit only. */
+  fundingLeftOut?: true;
 };
 
 /**
@@ -253,6 +258,8 @@ export type ParsedExchangeState =
       notImported: string[];
       logKinds: string[];
       denseSpans: DenseSpans;
+      fundingHeld: number;
+      fundingLeftOut: boolean;
       unreadable: string[];
     };
 
@@ -534,6 +541,16 @@ const denseSpansEntryOf = (stored: unknown): ReadEntry<DenseSpans> => {
   };
 };
 
+/** A count that is stored is at least 1: none is the absent key, so a stored 0 is unreadable. */
+const heldCountOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+
+const trueOrUndefined = (value: unknown): true | undefined => (value === true ? true : undefined);
+
+const noCount = (): number => 0;
+
+const notSet = (): boolean => false;
+
 /** An end of a key is an instant after the epoch; the epoch itself is Bybit's "no date". */
 const instantOrUndefined = (value: unknown): number | undefined =>
   isNumber(value) && value > 0 ? value : undefined;
@@ -602,6 +619,13 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
   const notImported = notImportedOf(stored.notImported);
   const logKinds = logKindsEntryOf(stored.logKinds);
   const denseSpans = denseSpansEntryOf(stored.denseSpans);
+  const fundingHeld = entryOf('fundingHeld', stored.fundingHeld, heldCountOrUndefined, noCount);
+  const fundingLeftOut = entryOf<boolean>(
+    'fundingLeftOut',
+    stored.fundingLeftOut,
+    trueOrUndefined,
+    notSet,
+  );
 
   return {
     kind: 'parsed',
@@ -618,6 +642,8 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     notImported: notImported.value,
     logKinds: logKinds.value,
     denseSpans: denseSpans.value,
+    fundingHeld: fundingHeld.value,
+    fundingLeftOut: fundingLeftOut.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
       ...trades.unreadable,
@@ -630,6 +656,8 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...notImported.unreadable,
       ...logKinds.unreadable,
       ...denseSpans.unreadable,
+      ...fundingHeld.unreadable,
+      ...fundingLeftOut.unreadable,
     ],
   };
 };

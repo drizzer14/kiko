@@ -9,6 +9,7 @@ export const BYBIT_SIGNED_PATHS = [
   '/v5/asset/deposit/query-internal-record',
   '/v5/asset/deposit/query-record',
   '/v5/asset/exchange/query-convert-history',
+  '/v5/asset/fundinghistory',
   '/v5/asset/transfer/query-account-coins-balance',
   '/v5/asset/transfer/query-inter-transfer-list',
   '/v5/asset/withdraw/query-record',

@@ -9,6 +9,7 @@ export const BYBIT_RESCAN_WINDOWS_MS = {
   capital: 29 * DAY_MS,
   transfer: 7 * DAY_MS,
   log: 7 * DAY_MS,
+  fundingLedger: 7 * DAY_MS,
 } as const;
 
 const WINDOW_OF: Record<WalkId, number | undefined> = {

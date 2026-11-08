@@ -195,9 +195,11 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 
-// A Binance caption compares its 8 walks: the log walk is Bybit's, so ground it owes shows no
-// Binance caption.
-const BINANCE_CAPTION_WALKS = WALK_NAMES.filter((walkName) => walkName !== 'log');
+// A Binance caption compares its 8 walks: the log walk and the Funding ledger walk are Bybit's, so
+// ground they owe shows no Binance caption.
+const BINANCE_CAPTION_WALKS = WALK_NAMES.filter(
+  (walkName) => walkName !== 'log' && walkName !== 'fundingLedger',
+);
 
 const PAUSED_CAPTION =
   'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to fix this. Your holdings and transactions are kept.';

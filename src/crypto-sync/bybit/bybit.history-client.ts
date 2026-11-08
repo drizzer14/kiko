@@ -5,6 +5,7 @@ import { bifoldMap, eitherSync } from 'fnts/either';
 import { normalizeDecimal } from '@kiko/currency/decimal';
 import type { WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
+import { isEarnPrincipal } from './bybit.funding-words';
 import type { BybitSignedPath } from './bybit.endpoints';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_HISTORY_PAGE_SIZE } from './bybit.walk-config';
@@ -167,6 +168,10 @@ type Series<Row> = {
    * otherwise. A row of no such coin is read in full.
    */
   coinOf?: (fields: Record<string, unknown>) => unknown;
+  /** The parameters that carry a span: milliseconds as `startTime` and `endTime` unless it says. */
+  windowParamsOf?: (span: WalkWindow) => Record<string, string>;
+  /** The `limit` a page is asked for: the lane's shared size unless the route allows another. */
+  pageSize?: number;
   readRow: (fields: Record<string, unknown>) => Row;
 };
 
@@ -220,11 +225,15 @@ const pageOf =
 
 type PageRead = { span: WalkWindow; cursor: string | undefined };
 
-const queryOf = (series: Series<unknown>, { span, cursor }: PageRead): Record<string, string> => ({
-  ...series.params,
+const millisecondWindowOf = (span: WalkWindow): Record<string, string> => ({
   startTime: String(span.start),
   endTime: String(span.end),
-  limit: String(BYBIT_HISTORY_PAGE_SIZE),
+});
+
+const queryOf = (series: Series<unknown>, { span, cursor }: PageRead): Record<string, string> => ({
+  ...series.params,
+  ...(series.windowParamsOf ?? millisecondWindowOf)(span),
+  limit: String(series.pageSize ?? BYBIT_HISTORY_PAGE_SIZE),
   ...foldMap(maybe(cursor), (value) => ({ cursor: value })),
 });
 
@@ -377,6 +386,51 @@ export const fetchLogPage = fetcherOf({
   coinOf: (fields) =>
     kindOfLogRow(fields.type, fields.category) === 'spotTrade' ? fields.currency : undefined,
   readRow: readLogRow,
+});
+
+/** The rows asked of the Funding ledger per page: the most the page allows. */
+const LEDGER_PAGE_SIZE = 100;
+
+type LedgerDirection = 'I' | 'O';
+
+const ledgerDirection: Reader<LedgerDirection> = (value) =>
+  value === 'I' || value === 'O' ? value : parseFailure();
+
+/** A localized-key word as the page sent it, or none: a word that is no text names nothing. */
+const wordOf = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/**
+ * The ledger's bounds are whole seconds: a span is sent from its start rounded down to its end
+ * rounded up, so no row of the span is left out, and a row read twice is harmless by its key.
+ */
+const secondWindowOf = (span: WalkWindow): Record<string, string> => ({
+  createTimeFrom: String(Math.floor(span.start / SECOND_MS)),
+  createTimeTo: String(Math.ceil(span.end / SECOND_MS)),
+});
+
+/**
+ * The Funding wallet's ledger. A row is read by the named fields only: `memberId`, `afterAmt`,
+ * `showBusiTypeEn` and `descriptionEn` are never read, and the two words that are read go no
+ * further than the boolean `earnPrincipal`, so no server text is kept. `txnAmt` stays the text it
+ * came as: the walk judges its sign. A row with no `currcCursor` has no key and is read all the
+ * same.
+ */
+export const fetchFundingLedgerPage = fetcherOf({
+  path: '/v5/asset/fundinghistory',
+  list: 'list',
+  params: {},
+  timeFields: ['createTime'],
+  coinOf: (fields) => fields.currency,
+  windowParamsOf: secondWindowOf,
+  pageSize: LEDGER_PAGE_SIZE,
+  readRow: (fields) => ({
+    currcCursor: optionalIdentifier(fields.currcCursor),
+    currency: nonEmptyText(fields.currency),
+    direction: ledgerDirection(fields.ioDirection),
+    amount: text(fields.txnAmt),
+    earnPrincipal: isEarnPrincipal(wordOf(fields.showBusiType), wordOf(fields.description)),
+    time: timeOf(fields.createTime),
+  }),
 });
 
 /** The rows asked of the convert history per page: the most the page allows. */

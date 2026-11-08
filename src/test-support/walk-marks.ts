@@ -20,7 +20,8 @@ export type WalkName =
   | 'p2p'
   | 'fiatOrders'
   | 'fiatPayments'
-  | 'log';
+  | 'log'
+  | 'fundingLedger';
 
 /** Every mark a walk writes, read from the patch type so a new mark cannot be left out. */
 export type WalkField = WalkMarkPatch['field'];
@@ -36,6 +37,8 @@ export type ExchangeStateSeed = {
   notImported?: string[];
   logKinds?: string[];
   denseSpans?: Partial<Record<'log' | 'fundingLedger', number>>;
+  fundingHeld?: number;
+  fundingLeftOut?: true;
   /** Any value, because a test also seeds an unreadable stamp. */
   balanceSyncedAt?: unknown;
 };
@@ -80,6 +83,7 @@ export const WALK_NAMES: readonly WalkName[] = [
   'fiatOrders',
   'fiatPayments',
   'log',
+  'fundingLedger',
 ];
 
 const isNumberField = (field: WalkField): boolean =>
@@ -202,7 +206,9 @@ const isListPatch = (patch: ExchangeStatePatch): boolean =>
   isCoinListPatch(patch) ||
   isNotImportedPatch(patch) ||
   patch.kind === 'logKinds' ||
-  patch.kind === 'denseSpans';
+  patch.kind === 'denseSpans' ||
+  patch.kind === 'fundingHeld' ||
+  patch.kind === 'fundingLeftOut';
 
 /** The writes of one call, in the order of its patches: each a little after the call it is in. */
 const writesOfCall = (

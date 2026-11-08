@@ -10,8 +10,11 @@ export const ACCOUNT_ID = 'acc-1';
 
 export type CapitalSeries = 'deposit' | 'internal' | 'withdraw';
 
-/** The series the fake serves: the three capital routes, the transfer route and the log. */
-export type BybitSeries = CapitalSeries | 'transfer' | 'log';
+/**
+ * The series the fake serves: the three capital routes, the transfer route, the log and the
+ * Funding ledger.
+ */
+export type BybitSeries = CapitalSeries | 'transfer' | 'log' | 'fundingLedger';
 
 /**
  * A row the fake exchange holds, and the instant its window test uses for the row: the instant a
@@ -31,7 +34,11 @@ const SERIES_OF_PATH: Record<string, BybitSeries> = {
   '/v5/asset/withdraw/query-record': 'withdraw',
   '/v5/asset/transfer/query-inter-transfer-list': 'transfer',
   '/v5/account/transaction-log': 'log',
+  '/v5/asset/fundinghistory': 'fundingLedger',
 };
+
+// The routes that hold a list under `result.list` and not under `result.rows`.
+const LIST_SERIES: readonly BybitSeries[] = ['transfer', 'log', 'fundingLedger'];
 
 type PageOrder = 'ascending' | 'descending' | 'scrambled';
 
@@ -86,13 +93,30 @@ export const fakeBybit = (options: FakeOptions = {}) => {
     withdraw: [],
     transfer: [],
     log: [],
+    fundingLedger: [],
   };
   const reads: SentRead[] = [];
 
-  const inWindow = (held: ServedRow, startTime: number, endTime: number): boolean => {
+  // The ledger compares whole seconds, both bounds: a row sits in the window of its own second.
+  const inWindow = (
+    series: BybitSeries,
+    held: ServedRow,
+    startTime: number,
+    endTime: number,
+  ): boolean => {
+    if (held.at === undefined) {
+      return false;
+    }
+
+    if (series === 'fundingLedger') {
+      const second = Math.floor(held.at / 1_000) * 1_000;
+
+      return startTime <= second && second <= endTime;
+    }
+
     const from = secondLevelStart ? Math.floor(startTime / 1_000) * 1_000 : startTime;
 
-    return held.at !== undefined && from <= held.at && held.at <= endTime;
+    return from <= held.at && held.at <= endTime;
   };
 
   const bodyOf = (series: BybitSeries, startTime: number, endTime: number, offset: number) => {
@@ -105,13 +129,13 @@ export const fakeBybit = (options: FakeOptions = {}) => {
     }
 
     const held = orderedBy(
-      world[series].filter((row) => inWindow(row, startTime, endTime)),
+      world[series].filter((row) => inWindow(series, row, startTime, endTime)),
       order,
     );
     const next = offset + pageSize;
 
     return envelopeOf(0, {
-      [series === 'transfer' || series === 'log' ? 'list' : 'rows']: held
+      [LIST_SERIES.includes(series) ? 'list' : 'rows']: held
         .slice(offset, next)
         .map(({ row }) => row),
       nextPageCursor: next < held.length ? `${CURSOR_PREFIX}${next}` : '',
@@ -121,8 +145,14 @@ export const fakeBybit = (options: FakeOptions = {}) => {
   const fetchImpl = (async (input: string) => {
     const url = new URL(input);
     const series = SERIES_OF_PATH[url.pathname];
-    const startTime = Number(url.searchParams.get('startTime'));
-    const endTime = Number(url.searchParams.get('endTime'));
+    // The ledger's bounds are whole seconds; its read is recorded in milliseconds like the rest.
+    const [startTime, endTime] =
+      series === 'fundingLedger'
+        ? [
+            Number(url.searchParams.get('createTimeFrom')) * 1_000,
+            Number(url.searchParams.get('createTimeTo')) * 1_000,
+          ]
+        : [Number(url.searchParams.get('startTime')), Number(url.searchParams.get('endTime'))];
     const cursor = url.searchParams.get('cursor') ?? undefined;
 
     reads.push({ series, startTime, endTime, cursor });

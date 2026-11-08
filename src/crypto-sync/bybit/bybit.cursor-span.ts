@@ -6,6 +6,7 @@ import {
   type WalkWindow,
   type WindowOutcome,
 } from '@kiko/crypto-sync/exchange/walk';
+import maybe, { foldMap } from 'fnts/maybe';
 
 import {
   type BybitHistoryRun,
@@ -56,6 +57,26 @@ const isOutsideReach = (times: readonly number[], reach: WalkWindow): boolean =>
   times.length > 0 && times.every((time) => time < reach.start || time > reach.end);
 
 /**
+ * The keys of the pages of one span, for a series that keys its rows. It is given each page in
+ * turn and says whether the page holds only keys an earlier page held: false for a series with no
+ * keys, and for a page with a key it has not seen. A row with no key is never a new one.
+ */
+const heldKeysOf = <Row>(keyOf: ((row: Row) => string | undefined) | undefined) => {
+  const held = new Set<string>();
+
+  return (rows: readonly Row[]): boolean => {
+    const keys = rows.flatMap((row) => foldMap(maybe(keyOf?.(row)), (key) => [key]) ?? []);
+    const hasNewKey = keys.some((key) => !held.has(key));
+
+    for (const key of keys) {
+      held.add(key);
+    }
+
+    return keyOf !== undefined && !hasNewKey;
+  };
+};
+
+/**
  * Read one span of one series by following `nextPageCursor` to its end, at the `walkSpans` read
  * seam. The cursor lives only inside this read and is never stored. Every page is one call of the
  * lane, asked of the budget first (with `keep` calls left after it) and paced by the shared gate.
@@ -63,7 +84,9 @@ const isOutsideReach = (times: readonly number[], reach: WalkWindow): boolean =>
  * A span ends at a page with no row (whatever its cursor says), or at an absent or empty cursor.
  * A cursor already asked, or a row outside the `reach` of the span by all its readings, is a
  * drift. `reachOf` is the caller's because the window field differs by series: a deposit's has no
- * end, and a withdrawal's has two readings.
+ * end, and a withdrawal's has two readings. A series with a key per row (`keyOf`) ends the span at
+ * a repeated cursor when the page holds no new key, because every key was on an earlier page (a
+ * page past the end answers with the last rows again), and keeps the drift for a page that has one.
  *
  * When the budget is short before the end of the span, the rows read so far are dropped:
  * - before the first page: `undefined`, so a run with no calls left never narrows a hint;
@@ -82,11 +105,13 @@ export const readCursorSpan = async <Row>(input: {
   readPage: (cursor: string | undefined) => Promise<CursorPage<Row>>;
   timesOf: (row: Row) => readonly number[];
   reachOf: (span: WalkWindow) => WalkWindow;
+  keyOf?: (row: Row) => string | undefined;
   onFirstReadStuck?: (span: WalkWindow) => void;
 }): Promise<SpanRead<CursorSpanPage<Row>> | undefined> => {
   const { run, lane, span, keep, minSplitMs, readPage, timesOf, reachOf, onFirstReadStuck } = input;
   const reach = reachOf(span);
   const asked = new Set<string>();
+  const keysOfPages = heldKeysOf(input.keyOf);
   const rows: Row[] = [];
   let cursor: string | undefined;
   let hasReadPage = false;
@@ -121,6 +146,8 @@ export const readCursorSpan = async <Row>(input: {
       return { kind: 'page', page: { kind: 'drift' } };
     }
 
+    const isOnlyHeldKeys = keysOfPages(page.rows);
+
     rows.push(...page.rows);
 
     const next = page.nextPageCursor;
@@ -130,7 +157,9 @@ export const readCursorSpan = async <Row>(input: {
     }
 
     if (asked.has(next)) {
-      return { kind: 'page', page: { kind: 'drift' } };
+      return isOnlyHeldKeys
+        ? { kind: 'page', page: { kind: 'rows', rows } }
+        : { kind: 'page', page: { kind: 'drift' } };
     }
 
     asked.add(next);

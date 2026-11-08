@@ -6,6 +6,7 @@ export {
 } from './exchange-state-patch';
 export {
   type CoinLists,
+  type DenseSeries,
   type ExchangeTrades,
   NOT_IMPORTED_KINDS,
   type NotImportedKind,

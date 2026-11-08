@@ -16,7 +16,7 @@ const marksOf = (entry: unknown, walkId: 'convert' | 'log' = 'convert') =>
   readableOf({ walks: { [walkId]: entry } }).walks[walkId];
 
 describe('the walk ids', () => {
-  it('lists the eight walks of the Binance state, in order, then the log walk', () => {
+  it('lists the eight walks of the Binance state, in order, then the log walk and the Funding ledger walk', () => {
     expect(WALK_IDS).toEqual([
       'capital',
       'pay',
@@ -27,6 +27,7 @@ describe('the walk ids', () => {
       'fiatOrders',
       'fiatPayments',
       'log',
+      'fundingLedger',
     ]);
   });
 

@@ -9,7 +9,7 @@ import {
   recordBybitFailedCall,
 } from './bybit.history-budget';
 
-const LANES: readonly BybitLane[] = ['capital', 'transfer', 'log', 'convert'];
+const LANES: readonly BybitLane[] = ['capital', 'transfer', 'log', 'convert', 'fundingLedger'];
 
 const spendCalls = (budget: BybitRunBudget, lane: BybitLane, count: number): void => {
   for (let call = 0; call < count; call += 1) {
@@ -23,8 +23,14 @@ describe('the Bybit gate interval and lane caps', () => {
     expect(Math.ceil(60_000 / BYBIT_REQUEST_INTERVAL_MS)).toBeLessThanOrEqual(55);
   });
 
-  it('holds the per-run call cap of the four lanes: log 20 windows, convert 10 pages', () => {
-    expect(BYBIT_LANE_CALL_CAPS).toEqual({ capital: 30, transfer: 20, log: 20, convert: 10 });
+  it('holds the per-run call cap of the five lanes: log 20 windows, convert 10 pages, Funding ledger 20', () => {
+    expect(BYBIT_LANE_CALL_CAPS).toEqual({
+      capital: 30,
+      transfer: 20,
+      log: 20,
+      convert: 10,
+      fundingLedger: 20,
+    });
   });
 });
 
@@ -34,6 +40,7 @@ describe('createBybitRunBudget', () => {
     { lane: 'transfer', cap: 20 },
     { lane: 'log', cap: 20 },
     { lane: 'convert', cap: 10 },
+    { lane: 'fundingLedger', cap: 20 },
   ] as const)('allows call $cap of the $lane lane and refuses the next', ({ lane, cap }) => {
     const budget = createBybitRunBudget();
 

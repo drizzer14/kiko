@@ -17,8 +17,6 @@ import {
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Currency } from '@kiko/currency/currency';
 import { addDecimal, compareDecimal } from '@kiko/currency/decimal';
-import { denseSpansOf } from '@kiko/crypto-sync/exchange/history-status';
-import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { isAssetTicker, untrackedAssetCode } from '@kiko/transactions/untracked-counterpart';
 
 import {
@@ -30,12 +28,16 @@ import {
   driftOf,
   flooredStart,
   placeBybitWindowRows,
-  readUnderCooldown,
   runBybitWalk,
   taggedWith,
 } from './bybit.walk-run';
+import {
+  type DenseMark,
+  type DenseSpanRecords,
+  denseMarkOf,
+  readDenseSpan,
+} from './bybit.dense-read';
 import { holdingKeyOf } from './bybit.holding-keys';
-import { readCursorSpan } from './bybit.cursor-span';
 import type { BybitLogKind } from './bybit.log-types';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
@@ -345,110 +347,30 @@ const legsOf = (
  */
 const reachOf = (span: WalkWindow): WalkWindow => ({ start: flooredStart(span), end: span.end });
 
-type SpanRecords = { items: LogItem[]; drifted: boolean };
+type SpanRecords = DenseSpanRecords<LogItem>;
 
-/**
- * The walk's one mark of a dense span, read once per run and kept in step with what this run
- * writes: whether the stored mark stands decides every write, so a span that stays stuck writes
- * nothing after the first run.
- */
-const denseMarkOf = () => {
-  let stored: number | undefined;
-  let isRead = false;
-  let forwardReads = 0;
-
-  const startOf = async ({ deps, accountId }: LogContext): Promise<number | undefined> => {
-    if (!isRead) {
-      stored = denseSpansOf(parseExchangeState(await deps.readExchangeState(accountId))).log;
-      isRead = true;
-    }
-
-    return stored;
-  };
-
-  const write = async ({ deps, accountId }: LogContext, start: number | null): Promise<void> => {
-    await deps.patchExchangeState(accountId, [{ kind: 'denseSpans', series: LOG_SERIES, start }]);
-    stored = start ?? undefined;
-  };
-
-  return {
-    /**
-     * Whether this read is the first of the run's forward pass. Only there does a full lane that
-     * did not hold a span say the span is too dense: a read after another had less than the lane.
-     */
-    isFirstForwardRead: ({ plan }: LogContext, window: OwedWindow): boolean => {
-      if (!plan.forward.includes(window)) {
-        return false;
-      }
-
-      forwardReads += 1;
-
-      return forwardReads === 1;
-    },
-    mark: async (context: LogContext, start: number): Promise<void> => {
-      if ((await startOf(context)) !== start) {
-        await write(context, start);
-      }
-    },
-    /** A commit that ends past the mark's start has moved the cursor past the span. */
-    dropPast: async (context: LogContext, end: number): Promise<void> => {
-      const start = await startOf(context);
-
-      if (start !== undefined && end > start) {
-        await write(context, null);
-      }
-    },
-  };
-};
-
-type DenseMark = ReturnType<typeof denseMarkOf>;
-
-/**
- * One span read, a page at a time, in the log lane. `undefined` is a clean stop (the budget ran
- * out, or Bybit rate-limited and the account cools). A page that drifted is no one row's stop: it
- * gives no item and the span is owed.
- */
+/** The log lane's read of one span, with the dense mark of the walk (`readDenseSpan`). */
 const readSpan = (
   context: LogContext,
   span: WalkWindow,
   keep: number,
   window: OwedWindow,
   dense: { mark: DenseMark['mark']; isFirstForwardRead: boolean },
-): Promise<SpanRead<SpanRecords> | undefined> =>
-  readUnderCooldown(context, async () => {
-    const { deps, apiKey, secret, options } = context;
-    const stuck: WalkWindow[] = [];
-    const read = await readCursorSpan<LogItem>({
-      run: context.run,
-      lane: 'log',
-      span,
-      keep,
-      minSplitMs: context.plan.forward.includes(window)
-        ? LOG_MIN_SPLIT_MS
-        : LOG_REREAD_MIN_SPLIT_MS,
-      readPage: (cursor) => deps.fetchLogPage(apiKey, secret, { span, cursor }, options),
-      timesOf: (item) => item.times,
-      reachOf,
-      ...(dense.isFirstForwardRead
-        ? { onFirstReadStuck: (found: WalkWindow) => stuck.push(found) }
-        : {}),
-    });
+): Promise<SpanRead<SpanRecords> | undefined> => {
+  const { deps, apiKey, secret, options } = context;
 
-    await foldMap(maybe(stuck.at(0)), (found) => dense.mark(context, found.start));
-
-    if (read === undefined || read.kind === 'split') {
-      return read;
-    }
-
-    return {
-      kind: 'page',
-      page: match(read.page)
-        .returnType<SpanRecords>()
-        .with({ kind: 'drift' }, () => ({ items: [], drifted: true }))
-        .with({ kind: 'rows' }, ({ rows }) => ({ items: rows, drifted: false }))
-        .exhaustive(),
-    };
+  return readDenseSpan({
+    context,
+    lane: 'log',
+    span,
+    keep,
+    window,
+    minSplitMs: { forward: LOG_MIN_SPLIT_MS, reread: LOG_REREAD_MIN_SPLIT_MS },
+    readPage: (cursor) => deps.fetchLogPage(apiKey, secret, { span, cursor }, options),
+    reachOf,
+    dense,
   });
+};
 
 const sortKeyOf = (reading: Reading): string =>
   match(reading)
@@ -559,7 +481,7 @@ export const syncBybitLogHistory = (
   request: { targetAccountId: string; run: BybitHistoryRun },
   overrides: Partial<BybitLogHistoryDeps> = {},
 ): Promise<WalkResult> => {
-  const dense = denseMarkOf();
+  const dense = denseMarkOf(LOG_SERIES);
 
   return runBybitWalk({
     deps: { ...defaultBybitLogHistoryDeps, ...overrides },

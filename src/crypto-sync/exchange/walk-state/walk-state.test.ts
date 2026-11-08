@@ -43,6 +43,8 @@ const EMPTY_STATE: ReadableState = {
   notImported: [],
   logKinds: [],
   denseSpans: {},
+  fundingHeld: 0,
+  fundingLeftOut: false,
   unreadable: [],
 };
 

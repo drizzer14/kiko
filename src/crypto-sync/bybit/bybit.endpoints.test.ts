@@ -14,6 +14,7 @@ import {
   fetchDepositPage,
   fetchTransferPage,
   fetchWithdrawalPage,
+  fetchFundingLedgerPage,
   fetchInternalDepositPage,
 } from './bybit.history-client';
 import { BYBIT_SIGNED_PATHS } from './bybit.endpoints';
@@ -29,6 +30,7 @@ const READ_PATHS = [
   '/v5/asset/deposit/query-internal-record',
   '/v5/asset/deposit/query-record',
   '/v5/asset/exchange/query-convert-history',
+  '/v5/asset/fundinghistory',
   '/v5/asset/transfer/query-account-coins-balance',
   '/v5/asset/transfer/query-inter-transfer-list',
   '/v5/asset/withdraw/query-record',
@@ -84,6 +86,7 @@ describe('the closed list of Bybit reads', () => {
     await fetchTransferPage(API_KEY, SECRET, FIRST_PAGE);
     await fetchLogPage(API_KEY, SECRET, FIRST_PAGE);
     await fetchConvertPage(API_KEY, SECRET, { index: 1 });
+    await fetchFundingLedgerPage(API_KEY, SECRET, FIRST_PAGE);
     fetchSpy.mockRestore();
 
     expect(sent.map((request) => pathOf(request.url)).sort()).toEqual(READ_PATHS);
