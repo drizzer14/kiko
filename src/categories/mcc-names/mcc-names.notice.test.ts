@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { MCC_NAMES_NOTICE } from '@kiko/categories/mcc-names';
 
-import { MCC_SOURCES } from '../scripts/mcc-names/generate-mcc-names';
+import { MCC_SOURCES } from '../../../scripts/mcc-names/generate-mcc-names';
+
+import { MCC_NAMES_NOTICE } from './mcc-names.notice';
 
 const SOMINEMO_LICENSE_SHA256 = 'ea371db4627976fe5c82dacb744ed2deb0391e6d4a23a6aecc9ea64f4858626a';
 
