@@ -190,11 +190,20 @@ export const reconcileBybitFundingLedger = async (
     windowMs: FUNDING_MATCH_WINDOW_MS,
     holdMs: FUNDING_MATCH_HOLD_MS,
   });
+  const floor = historyFloorOf(now);
+  // No walk reads a record before the floor, so a verdict there moves only when the prune removes
+  // one side of a pair, and that is no news about a move: such a row stays as it was.
+  const live = new Set(rows.filter((row) => row.timeStart >= floor).map((row) => row.recordKey));
   const written = await deps.readWrittenKeys(accountId);
   const placed = await placeBybitRows(
     { accountId, deps },
     rows
-      .filter((row) => verdicts.get(row.recordKey) === 'listed' && !written.has(row.recordKey))
+      .filter(
+        (row) =>
+          live.has(row.recordKey) &&
+          verdicts.get(row.recordKey) === 'listed' &&
+          !written.has(row.recordKey),
+      )
       .flatMap(plannedRowsOf),
     FUNDING_HOLDING_MISSING,
   );
@@ -202,14 +211,17 @@ export const reconcileBybitFundingLedger = async (
   await deps.applyDifference(accountId, {
     add: placed,
     removeKeys: [...verdicts]
-      .filter(([key, verdict]) => REMOVING_VERDICTS.includes(verdict) && written.has(key))
+      .filter(
+        ([key, verdict]) =>
+          live.has(key) && REMOVING_VERDICTS.includes(verdict) && written.has(key),
+      )
       .map(([key]) => key),
     // A record that ends two windows before the walks' floor has no partner the walks can still
     // read, so it can move no verdict, and the table would otherwise grow for good.
-    pruneBefore: historyFloorOf(now) - 2 * FUNDING_MATCH_WINDOW_MS,
+    pruneBefore: floor - 2 * FUNDING_MATCH_WINDOW_MS,
   });
 
-  const held = [...verdicts.values()].filter((verdict) => verdict === 'held').length;
+  const held = [...verdicts].filter(([key, verdict]) => live.has(key) && verdict === 'held').length;
 
   if (held !== heldCount) {
     await deps.patchExchangeState(accountId, [{ kind: 'fundingHeld', count: held }]);

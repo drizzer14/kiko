@@ -34,6 +34,7 @@ import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import { type FundingMatchRow, accounts, database, write } from '@kiko/db';
 import { BinanceWalkStop, exchangeStateDepsOf } from '@kiko/crypto-sync/exchange/walk';
 
+import { historyFloorOf } from './bybit.walk-run';
 import { NOW } from './bybit.client-test-fixtures';
 import { FUNDING_MATCH_WINDOW_MS } from './bybit.funding-match';
 import { bybitFundingMatchRepo } from './bybit.funding-match.repo';
@@ -297,7 +298,9 @@ describe('the reconcile of the Funding ledger on real SQLite', () => {
       ledgerRowOf(ledgerKey('past'), pruneBefore - 1, { amount: '13' }),
     ]);
 
-    await reconcile();
+    // A row before the floor is never listed, so the first reconcile runs 20 days earlier, when
+    // every row is above its floor: the prune of the second one then meets listed rows.
+    await reconcile({ now: () => NOW - 20 * DAY_MS });
     const rowsAfterFirst = transactionRows();
     const stateAfterFirst = stateText();
     const writesAfterFirst = rowWrites();
@@ -314,6 +317,87 @@ describe('the reconcile of the Funding ledger on real SQLite', () => {
       [ledgerKey('a'), ledgerKey('b'), ledgerKey('edge'), ledgerKey('held')].sort(),
     );
     expect(storedKeys('source')).toEqual([`${ACCOUNT}:withdraw:free:USDT`]);
+  });
+
+  // No walk reads a record before the floor, so a verdict there changes only when the prune
+  // removes one side of a pair. A ledger row before the floor stays as it was when it crossed.
+  describe('a pair that the prune line splits', () => {
+    const SECOND_MS = 1_000;
+    const MINUTE_MS = 60_000;
+    const START = NOW - 800 * DAY_MS;
+    const atStart = (days: number, extra = 0): number => START + days * DAY_MS + extra;
+    const reconcileAt = (clock: number) => reconcile({ now: () => clock });
+
+    it('keeps the In row of a deposit pruned before it out of the list', async () => {
+      await store([
+        sourceRowOf(depositKey('1'), 'deposit', START),
+        ledgerRowOf(ledgerKey('in'), START + MINUTE_MS),
+      ]);
+
+      await reconcileAt(atStart(729));
+      expect(rowKeys()).toEqual([]);
+
+      // The prune line is 30 seconds after the deposit: the deposit goes, the ledger row stays.
+      await reconcileAt(atStart(743, 30 * SECOND_MS));
+      expect(storedKeys('source')).toEqual([]);
+      expect(storedKeys('ledger')).toEqual([ledgerKey('in')]);
+      expect(rowKeys()).toEqual([]);
+
+      await reconcileAt(atStart(743, 120 * SECOND_MS));
+      expect(storedKeys('ledger')).toEqual([]);
+      expect(rowKeys()).toEqual([]);
+    });
+
+    it("keeps a listed Out row with its note when a withdrawal's ledger row is pruned before its record", async () => {
+      await store([
+        sourceRowOf(`${ACCOUNT}:withdraw:1:USDT`, 'withdraw', START, {
+          until: START + 30 * MINUTE_MS,
+        }),
+        ledgerRowOf(ledgerKey('withdrawal'), START, { direction: 'O' }),
+        // Another amount than the withdrawal's, so the freed record holds this row and does not
+        // explain it.
+        ledgerRowOf(ledgerKey('stake'), atStart(3), { direction: 'O', amount: '99' }),
+      ]);
+
+      await reconcileAt(atStart(729));
+      expect(rowKeys()).toEqual([ledgerKey('stake')]);
+
+      mockDatabase
+        .prepare("UPDATE transactions SET comment = 'stake' WHERE external_id = ?")
+        .run(ledgerKey('stake'));
+      const countBefore = heldCount();
+
+      // The ledger row of the withdrawal is pruned, its record is kept and is now a free source.
+      await reconcileAt(atStart(743, 10 * MINUTE_MS));
+      expect(storedKeys('ledger')).toEqual([ledgerKey('stake')]);
+      expect(storedKeys('source')).toEqual([`${ACCOUNT}:withdraw:1:USDT`]);
+
+      // The verdict of this reconcile reads the set the prune left, so the freed record shows now.
+      await reconcileAt(atStart(743, 20 * MINUTE_MS));
+      expect(transactionRows()).toEqual([
+        expect.objectContaining({ external_id: ledgerKey('stake'), comment: 'stake' }),
+      ]);
+      expect(heldCount()).toBe(countBefore);
+
+      await reconcileAt(atStart(743, 2 * 60 * MINUTE_MS));
+      expect(storedKeys('source')).toEqual([]);
+      expect(transactionRows()).toEqual([
+        expect.objectContaining({ external_id: ledgerKey('stake'), comment: 'stake' }),
+      ]);
+    });
+
+    it('writes a row for a ledger row that starts at the floor, and none for one a millisecond older', async () => {
+      const floor = historyFloorOf(NOW);
+
+      await store([
+        ledgerRowOf(ledgerKey('at-floor'), floor),
+        ledgerRowOf(ledgerKey('before-floor'), floor - 1),
+      ]);
+
+      await reconcile();
+
+      expect(rowKeys()).toEqual([ledgerKey('at-floor')]);
+    });
   });
 
   it('patches the count of held rows only when it changes, and drops its key at zero', async () => {
