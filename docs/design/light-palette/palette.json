@@ -144,130 +144,145 @@
   "entitySwatches": {
     "white": {
       "dark": "#FFFFFF",
-      "light": "#3A3A3C",
-      "note": "Graphite (systemGray4 dark value). A white tile would vanish on a white card. Default for bank accounts and card holdings."
+      "light": "#47434F",
+      "note": "Graphite. A white tile would vanish on a white card. Default for bank accounts and card holdings."
     },
     "khaki": {
       "dark": "#BDB76B",
-      "light": "#8A8434",
+      "light": "#757650",
       "note": "Olive-khaki, lightness lowered."
     },
     "brown": {
       "dark": "#AC8E68",
-      "light": "#8C6A43"
+      "light": "#453725"
     },
     "yellow": {
       "dark": "#FFD60A",
-      "light": "#A67C00",
-      "note": "Deep gold. Bright yellow is 1.4:1 on white; no yellow above 3:1 stays bright."
+      "light": "#E8B33B",
+      "note": "Pale gold tile with a black glyph; its darker mark (markSwatches) carries lines and bare glyph tints."
     },
     "blue": {
       "dark": "#0A84FF",
-      "light": "#0066E6",
-      "note": "Equals the light accent, as dark blue equals the dark accent."
+      "light": "#074FB0"
     },
     "green": {
       "dark": "#30D158",
-      "light": "#1F8A3B"
+      "light": "#056407"
     },
     "mint": {
       "dark": "#66D4CF",
-      "light": "#008A83"
+      "light": "#ADE1D6"
     },
     "violet": {
       "dark": "#BF5AF2",
-      "light": "#9B3FD1"
+      "light": "#D7A9FE"
     },
     "red": {
       "dark": "#FF453A",
-      "light": "#E0352B"
+      "light": "#B9040E"
     },
     "orange": {
       "dark": "#FF9F0A",
-      "light": "#C46A00"
+      "light": "#AA7023"
     },
     "teal": {
       "dark": "#40C8E0",
-      "light": "#0A869E"
+      "light": "#3D7E92"
     },
     "pink": {
       "dark": "#FF375F",
-      "light": "#D6204A"
+      "light": "#FF6A82"
     },
     "indigo": {
       "dark": "#5E5CE6",
-      "light": "#3A38B8",
-      "note": "Deeper than Apple light indigo (#5856D6) so it stays apart from blue for color-blind users: lightness differs, not only hue."
+      "light": "#7D67D6",
+      "note": "Lighter than blue by about 15 L*, so the two stay apart for color-blind users."
     },
     "gray": {
       "dark": "#98989D",
-      "light": "#6E6E73"
+      "light": "#9BA1AF"
     }
   },
   "categorySwatches": {
     "white": {
       "dark": "#FFFFFF",
-      "light": "#48484A"
+      "light": "#47434F"
     },
     "khaki": {
       "dark": "#BDB76B",
-      "light": "#8B8535"
+      "light": "#757650"
     },
     "brown": {
       "dark": "#AC8E68",
-      "light": "#A07A4B"
+      "light": "#453725"
     },
     "yellow": {
       "dark": "#FFD60A",
-      "light": "#A67C00",
-      "note": "Same hex as the entity yellow: no lighter gold keeps a white glyph at 3:1 on the tile top."
+      "light": "#E8B33B",
+      "note": "Same hex as the entity yellow: one light set for entity and category tiles."
     },
     "blue": {
       "dark": "#0A84FF",
-      "light": "#0066E6"
+      "light": "#074FB0"
     },
     "green": {
       "dark": "#30D158",
-      "light": "#1E8E3E"
+      "light": "#056407"
     },
     "mint": {
       "dark": "#66D4CF",
-      "light": "#00958D"
+      "light": "#ADE1D6"
     },
     "violet": {
       "dark": "#BF5AF2",
-      "light": "#A546DB"
+      "light": "#D7A9FE"
     },
     "red": {
       "dark": "#FF453A",
-      "light": "#E5392F"
+      "light": "#B9040E"
     },
     "orange": {
       "dark": "#FF9F0A",
-      "light": "#C86C00"
+      "light": "#AA7023"
     },
     "teal": {
       "dark": "#40C8E0",
-      "light": "#0C8CA6"
+      "light": "#3D7E92"
     },
     "pink": {
       "dark": "#FF375F",
-      "light": "#E0305A"
+      "light": "#FF6A82"
     },
     "indigo": {
       "dark": "#5E5CE6",
-      "light": "#4240C4",
-      "note": "Deeper than the dark hex so it stays apart from blue under protanopia and deuteranopia."
+      "light": "#7D67D6",
+      "note": "Lighter than blue by about 15 L*, so the two stay apart for color-blind users."
     },
     "gray": {
       "dark": "#98989D",
-      "light": "#7C7C80"
+      "light": "#9BA1AF"
     }
   },
+  "markSwatches": {
+    "white": { "light": "#47434F" },
+    "khaki": { "light": "#757650" },
+    "brown": { "light": "#453725" },
+    "yellow": { "light": "#B18400" },
+    "blue": { "light": "#074FB0" },
+    "green": { "light": "#056407" },
+    "mint": { "light": "#63948A" },
+    "violet": { "light": "#A479CA" },
+    "red": { "light": "#B9040E" },
+    "orange": { "light": "#AA7023" },
+    "teal": { "light": "#3D7E92" },
+    "pink": { "light": "#EA5771" },
+    "indigo": { "light": "#7D67D6" },
+    "gray": { "light": "#858B99" }
+  },
   "swatchSets": {
-    "entityRule": "Tile fill. Contrast to white at least 3.8 on the base so the lightened top stop (15%) still holds a white glyph at 3:1 and the base clears 3:1 on the light page (#F2F2F7). Every entity tile therefore takes the white glyph.",
-    "categoryRule": "Glyph, line and slice hue on a white card and on the page (graphic, 3:1). Also used as an EntityIconTile fill on the category card, so the top gradient stop must still hold a white glyph at 3:1. The value is the lightest hue that passes that test, which keeps eight pie slices and trend lines apart; the entity set keeps a safety margin instead.",
-    "whatDiffers": "12 of 14 keys differ (all but yellow and blue). Where they differ, the category value is the lightest hue that passes the tile-glyph test (so it is 0.1 to 1.0 lighter in contrast terms: white #48484A vs #3A3A3C, brown #A07A4B vs #8C6A43, gray #7C7C80 vs #6E6E73, and so on), while the entity value keeps a safety margin; indigo is the reverse case, a deliberate pair chosen for color-blind separation from blue. The sets are separate in the file so one can be tuned without touching the other."
+    "entityRule": "Tile fill, v3.1: one light set for entity and category tiles. The glyph is computed (white or black, whichever contrasts more on the base), at least 4.5:1 on the base and 3:1 on the worst gradient stop. The tile need not clear 3:1 on the page (waived, ruling R6); lines and bare glyph tints use the mark shade instead.",
+    "categoryRule": "Same hexes as the entity set (ruling R1). Slices and bars paint the tile hex with no edge; a trend line, its legend dot and a bare glyph tint paint the mark shade, at least 3.05:1 on the page (#F2F2F7) and on the card (#FFFFFF).",
+    "whatDiffers": "Nothing: entitySwatches.light equals categorySwatches.light for all 14 keys. The mark shade (markSwatches) differs from the tile only for yellow, mint, violet, pink and gray, the pale tiles whose own hex is under 3.05:1 on the page or the card."
   },
   "chartSeries": {
     "keys": ["blue", "green", "orange", "violet", "teal", "pink", "yellow", "indigo"],
@@ -283,14 +298,14 @@
       "#5E5CE6"
     ],
     "light": [
-      "#0066E6",
-      "#1E8E3E",
-      "#C86C00",
-      "#A546DB",
-      "#0C8CA6",
-      "#E0305A",
-      "#A67C00",
-      "#4240C4"
+      "#074FB0",
+      "#056407",
+      "#AA7023",
+      "#D7A9FE",
+      "#3D7E92",
+      "#FF6A82",
+      "#E8B33B",
+      "#7D67D6"
     ],
     "invariant": "The light series is a subset of categorySwatches.light (same rule as dark: the category color picker rings the swatch of an uncolored category's fallback hue)."
   },
@@ -352,36 +367,36 @@
   "storedHexMap": {
     "rule": "Store the dark hex as the canonical value. Accounts and holdings read the entity map; categories read the category map. The two maps cannot be merged: the same dark hex has a different light hex per set.",
     "entity": {
-      "#FFFFFF": "#3A3A3C",
-      "#BDB76B": "#8A8434",
-      "#AC8E68": "#8C6A43",
-      "#FFD60A": "#A67C00",
-      "#0A84FF": "#0066E6",
-      "#30D158": "#1F8A3B",
-      "#66D4CF": "#008A83",
-      "#BF5AF2": "#9B3FD1",
-      "#FF453A": "#E0352B",
-      "#FF9F0A": "#C46A00",
-      "#40C8E0": "#0A869E",
-      "#FF375F": "#D6204A",
-      "#5E5CE6": "#3A38B8",
-      "#98989D": "#6E6E73"
+      "#FFFFFF": "#47434F",
+      "#BDB76B": "#757650",
+      "#AC8E68": "#453725",
+      "#FFD60A": "#E8B33B",
+      "#0A84FF": "#074FB0",
+      "#30D158": "#056407",
+      "#66D4CF": "#ADE1D6",
+      "#BF5AF2": "#D7A9FE",
+      "#FF453A": "#B9040E",
+      "#FF9F0A": "#AA7023",
+      "#40C8E0": "#3D7E92",
+      "#FF375F": "#FF6A82",
+      "#5E5CE6": "#7D67D6",
+      "#98989D": "#9BA1AF"
     },
     "category": {
-      "#FFFFFF": "#48484A",
-      "#BDB76B": "#8B8535",
-      "#AC8E68": "#A07A4B",
-      "#FFD60A": "#A67C00",
-      "#0A84FF": "#0066E6",
-      "#30D158": "#1E8E3E",
-      "#66D4CF": "#00958D",
-      "#BF5AF2": "#A546DB",
-      "#FF453A": "#E5392F",
-      "#FF9F0A": "#C86C00",
-      "#40C8E0": "#0C8CA6",
-      "#FF375F": "#E0305A",
-      "#5E5CE6": "#4240C4",
-      "#98989D": "#7C7C80"
+      "#FFFFFF": "#47434F",
+      "#BDB76B": "#757650",
+      "#AC8E68": "#453725",
+      "#FFD60A": "#E8B33B",
+      "#0A84FF": "#074FB0",
+      "#30D158": "#056407",
+      "#66D4CF": "#ADE1D6",
+      "#BF5AF2": "#D7A9FE",
+      "#FF453A": "#B9040E",
+      "#FF9F0A": "#AA7023",
+      "#40C8E0": "#3D7E92",
+      "#FF375F": "#FF6A82",
+      "#5E5CE6": "#7D67D6",
+      "#98989D": "#9BA1AF"
     },
     "legacyLightEraHex": {
       "note": "NOT BUILT (spec D3, C4). The old picker could store a light hex in the two-day window 2026-09-07 to 09-09. Such a value takes the cannotMap rule. This table stays for reference only.",
@@ -423,6 +438,10 @@
     "glyph": {
       "minimumContrast": {
         "dark": 3,
+        "light": 4.5
+      },
+      "worstGradientStopMinimumContrast": {
+        "dark": 3,
         "light": 3
       },
       "onFilledTile": {
@@ -433,7 +452,7 @@
         "dark": "#000000",
         "light": "#000000"
       },
-      "rule": "Unchanged math: white glyph unless contrast(white, base) < 3, then the dark glyph. Light change: the dark glyph is a fixed #000000 (a new constant), because the code reads theme.colors.background, which is #F2F2F7 on light and would put a pale glyph on a pale tile. All 14 light entity swatches and all 14 light category swatches pass the 3:1 test, so on the light set the dark glyph is reached only by an unmapped stored hex."
+      "rule": "Light (v3.1): computed, no per-swatch flag. The glyph is white (onAccent) or black (glyphOnLightTile #000000), whichever contrasts more on the base hue; at least 4.5:1 on the base and 3:1 on the worst gradient stop (+15% / -20%). Black on yellow, mint, violet, orange, teal, pink, indigo and gray; white on the rest. Dark keeps its rule: white glyph unless contrast(white, base) < 3, then black; the dark glyph choices do not change."
     }
   },
   "calendar": {
