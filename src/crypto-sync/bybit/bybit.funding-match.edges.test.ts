@@ -247,6 +247,17 @@ describe('the window W', () => {
 
     expect(verdictsOf(rows)).toEqual({ ledger: 'explained' });
   });
+
+  it('finds a source whose long extent starts before the sources after it', () => {
+    const rows = [
+      sourceRowOf('source-a', 'withdraw', atDay(0), { until: atDay(10) }),
+      sourceRowOf('source-b', 'withdraw', atDay(12)),
+      ledgerRowOf('ledger-1', atDay(17), { direction: 'O' }),
+      ledgerRowOf('ledger-2', atDay(17), { direction: 'O' }),
+    ];
+
+    expect(verdictsOf(rows)).toEqual({ 'ledger-1': 'explained', 'ledger-2': 'explained' });
+  });
 });
 
 describe('the pairing', () => {

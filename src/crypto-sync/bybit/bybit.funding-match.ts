@@ -1,8 +1,11 @@
 import { DAY_MS } from '@kiko/dates';
+import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { FundingMatchRow } from '@kiko/db';
 import type { BinancePendingRange } from '@kiko/crypto-sync/exchange/walk-state';
 import { addDecimal, compareDecimal, normalizeDecimal, trimDecimal } from '@kiko/currency/decimal';
+
+import { gapBetween } from './bybit.funding-gap';
 
 /** How far apart a ledger row and its source can be: no page states a delay, so one constant. */
 export const FUNDING_MATCH_WINDOW_MS = 7 * DAY_MS;
@@ -68,12 +71,17 @@ const byRecordKey = (first: FundingMatchRow, second: FundingMatchRow): number =>
 
 const LEADING_ZEROS = /^0+(?=\d)/;
 
+const PLAIN_AMOUNT = /^\d+(\.\d+)?$/;
+
+const plainKeyOf = (plain: string): string => trimDecimal(plain).replace(LEADING_ZEROS, '');
+
 /**
  * The text two equal amounts share, so a lookup finds a candidate and no compare runs per pair:
- * `100`, `100.00` and `0100` are one key. A string edit, never a float.
+ * `100`, `100.00` and `0100` are one key. A string edit, never a float. `normalizeDecimal`
+ * returns a text of the plain pattern unchanged, so skipping it for one gives the same key.
  */
 const amountKeyOf = (text: string): string | undefined =>
-  foldMap(maybe(normalizeDecimal(text)), (plain) => trimDecimal(plain).replace(LEADING_ZEROS, ''));
+  PLAIN_AMOUNT.test(text) ? plainKeyOf(text) : foldMap(maybe(normalizeDecimal(text)), plainKeyOf);
 
 const decimalOf = (text: string | null): string | undefined =>
   foldMap(maybe(text), (value) => normalizeDecimal(value) ?? undefined);
@@ -126,16 +134,71 @@ const formKeysOf = (source: FundingMatchRow, series: FundingSeries): string[] =>
 const lookupKeyOf = (coin: string, direction: string, amountKey: string): string =>
   `${coin}|${direction}|${amountKey}`;
 
+/** The first index of a sorted list whose value is at least `value`. */
+const lowerBound = (sorted: readonly number[], value: number): number => {
+  let low = 0;
+  let high = sorted.length;
+
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+
+    if ((sorted[middle] as number) < value) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  return low;
+};
+
+/** The first index of a sorted list whose value is over `value`. */
+const upperBound = (sorted: readonly number[], value: number): number => {
+  let low = 0;
+  let high = sorted.length;
+
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+
+    if ((sorted[middle] as number) <= value) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  return low;
+};
+
 type Candidate = { source: number; form: number };
+
+/** The candidates of one lookup key by the start of their source, with the longest extent. */
+type CandidateGroup = { members: Candidate[]; starts: number[]; longestExtent: number };
 
 type Edge = { ledger: number; source: number; form: number; distance: number };
 
-/** Zero inside an extent, and otherwise the gap to its nearer end. */
-const gapBetween = (time: number, start: number, end: number): number =>
-  Math.max(start - time, time - end, 0);
+const candidateGroupOf = (
+  members: Candidate[],
+  sources: readonly FundingMatchRow[],
+): CandidateGroup => {
+  const extentOf = ({ source }: Candidate): FundingMatchRow => sources[source] as FundingMatchRow;
 
-const candidateIndexOf = (sources: readonly FundingMatchRow[]): Map<string, Candidate[]> => {
-  const index = new Map<string, Candidate[]>();
+  members.sort(
+    (first, second) =>
+      extentOf(first).timeStart - extentOf(second).timeStart || first.source - second.source,
+  );
+
+  return {
+    members,
+    starts: members.map((member) => extentOf(member).timeStart),
+    longestExtent: maxOf(
+      members.map((member) => extentOf(member).timeEnd - extentOf(member).timeStart),
+    ),
+  };
+};
+
+const candidateIndexOf = (sources: readonly FundingMatchRow[]): Map<string, CandidateGroup> => {
+  const lists = new Map<string, Candidate[]>();
 
   for (const [sourceIndex, source] of sources.entries()) {
     const { series } = source;
@@ -146,34 +209,65 @@ const candidateIndexOf = (sources: readonly FundingMatchRow[]): Map<string, Cand
 
     for (const [form, amountKey] of formKeysOf(source, series).entries()) {
       const key = lookupKeyOf(source.coin, source.direction, amountKey);
+      const list = lists.get(key);
 
-      index.set(key, [...(index.get(key) ?? []), { source: sourceIndex, form }]);
+      if (list === undefined) {
+        lists.set(key, [{ source: sourceIndex, form }]);
+      } else {
+        list.push({ source: sourceIndex, form });
+      }
     }
   }
 
-  return index;
+  return new Map([...lists].map(([key, members]) => [key, candidateGroupOf(members, sources)]));
 };
 
+/**
+ * Every pair of a ledger row and a source of its amount, direction and coin that lies within a
+ * window. A source that starts before `time - window - the longest extent` ends before the window
+ * opens, and one that starts after `time + window` lies past it, so only the sources between
+ * those two starts are tested.
+ */
 const edgesOf = (
   ledgers: readonly FundingMatchRow[],
   sources: readonly FundingMatchRow[],
   windowMs: number,
 ): Edge[] => {
   const index = candidateIndexOf(sources);
+  const edges: Edge[] = [];
 
-  return ledgers.flatMap(
-    (ledger, ledgerIndex) =>
-      foldMap(maybe(amountKeyOf(ledger.amount)), (amountKey) =>
-        (index.get(lookupKeyOf(ledger.coin, ledger.direction, amountKey)) ?? []).flatMap(
-          ({ source, form }) => {
-            const extent = sources[source] as FundingMatchRow;
-            const distance = gapBetween(ledger.timeStart, extent.timeStart, extent.timeEnd);
+  for (const [ledgerIndex, ledger] of ledgers.entries()) {
+    const amountKey = amountKeyOf(ledger.amount);
 
-            return distance <= windowMs ? [{ ledger: ledgerIndex, source, form, distance }] : [];
-          },
-        ),
-      ) ?? [],
-  );
+    if (amountKey === undefined) {
+      continue;
+    }
+
+    const group = index.get(lookupKeyOf(ledger.coin, ledger.direction, amountKey));
+
+    if (group === undefined) {
+      continue;
+    }
+
+    const { timeStart: time } = ledger;
+    const end = upperBound(group.starts, time + windowMs);
+
+    for (
+      let position = lowerBound(group.starts, time - windowMs - group.longestExtent);
+      position < end;
+      position += 1
+    ) {
+      const { source, form } = group.members[position] as Candidate;
+      const extent = sources[source] as FundingMatchRow;
+      const distance = gapBetween(time, extent.timeStart, extent.timeEnd);
+
+      if (distance <= windowMs) {
+        edges.push({ ledger: ledgerIndex, source, form, distance });
+      }
+    }
+  }
+
+  return edges;
 };
 
 /** Form first, then distance, then the keys: ledgers and sources are indexed in key order. */
@@ -298,23 +392,6 @@ const pairingOf = (
 
 type FreeSources = { starts: number[]; furthestEnds: number[] };
 
-const upperBound = (sorted: readonly number[], value: number): number => {
-  let low = 0;
-  let high = sorted.length;
-
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-
-    if ((sorted[middle] as number) <= value) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
-
-  return low;
-};
-
 const groupKeyOf = (coin: string, direction: string): string => `${coin}|${direction}`;
 
 const freeSourceGroupOf = (members: readonly FundingMatchRow[]): FreeSources => {
@@ -349,7 +426,13 @@ const freeSourcesOf = (
   for (const source of free) {
     const key = groupKeyOf(source.coin, source.direction);
 
-    groups.set(key, [...(groups.get(key) ?? []), source]);
+    const members = groups.get(key);
+
+    if (members === undefined) {
+      groups.set(key, [source]);
+    } else {
+      members.push(source);
+    }
   }
 
   return new Map([...groups].map(([key, members]) => [key, freeSourceGroupOf(members)]));
