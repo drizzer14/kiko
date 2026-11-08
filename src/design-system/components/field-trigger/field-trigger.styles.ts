@@ -13,6 +13,7 @@ export const styles = StyleSheet.create((theme) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.fieldBackground,
     paddingVertical: theme.spacing(3),
     paddingHorizontal: theme.spacing(3),
   },

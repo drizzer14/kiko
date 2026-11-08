@@ -33,7 +33,7 @@ const palette = JSON.parse(
 const darkColors: Record<string, unknown> = darkTheme.colors;
 const lightColors: Record<string, unknown> = lightTheme.colors;
 
-const NEW_COLOR_KEYS = ['categoryColors', 'glyphOnLightTile'];
+const NEW_COLOR_KEYS = ['categoryColors', 'glyphOnLightTile', 'fieldBackground'];
 
 // Every key path of a plain object or array, so a missing nested key shows by name.
 const keyPaths = (value: unknown, prefix = ''): string[] =>

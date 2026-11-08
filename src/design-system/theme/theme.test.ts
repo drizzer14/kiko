@@ -1,6 +1,6 @@
 import { chartSeriesDark, entityColorsDark } from '../palette';
 
-import { darkTheme } from './theme';
+import { darkTheme, lightTheme } from './theme';
 
 describe('darkTheme iOS dark palette', () => {
   it('uses Apple dark system color values', () => {
@@ -185,5 +185,18 @@ describe('entity/chart palettes', () => {
       expect(hue).toMatch(/^#[0-9A-Fa-f]{6}$/);
     }
     expect(new Set(chartSeriesDark).size).toBe(chartSeriesDark.length);
+  });
+});
+
+describe('fieldBackground (the input fill)', () => {
+  // Dark keeps the approved look: a field has no fill over the dark page and sheet.
+  it('is transparent in dark, so dark inputs render exactly as approved', () => {
+    expect(darkTheme.colors.fieldBackground).toBe('transparent');
+  });
+
+  // The gray page and sheet (#F2F2F7) made an unfilled light field read heavy; white is lighter.
+  it('is white in light, lighter than the gray page and sheet', () => {
+    expect(lightTheme.colors.fieldBackground).toBe('#FFFFFF');
+    expect(lightTheme.colors.fieldBackground).not.toBe(lightTheme.colors.background);
   });
 });
