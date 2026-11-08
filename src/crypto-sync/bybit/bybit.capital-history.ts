@@ -36,6 +36,14 @@ import {
   fetchWithdrawalPage,
   timeOfItem,
 } from './bybit.history-client';
+import {
+  type BybitFundingSourceDeps,
+  type FundingSourcePlan,
+  addWithFundingSources,
+  defaultBybitFundingSourceDeps,
+  fundingSourceOf,
+  removeWithFundingSources,
+} from './bybit.funding-source';
 import { holdingKeyOf } from './bybit.holding-keys';
 import { readCursorSpan } from './bybit.cursor-span';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
@@ -55,6 +63,9 @@ const WINDOW_MS = BYBIT_RESCAN_WINDOWS_MS.capital;
 
 /** A window costs one call per series, and the lane spends its calls on windows. */
 const MAX_WINDOWS = BYBIT_LANE_CALL_CAPS.capital / CAPITAL_SERIES.length;
+
+/** The pages name no wallet for a deposit or a withdrawal, and Funding is where they place them. */
+const FUNDING_WALLET = 'fund';
 
 const CAPITAL_ROW_UNREADABLE = 'capital-row-unreadable';
 
@@ -131,31 +142,37 @@ type PlannedCapitalRow = {
   time: number;
   externalId: string;
   description: string;
+  funding?: FundingSourcePlan;
 };
 
 /**
  * The imported-transaction shape the walk hands to `transactionsRepo.addManyDedup`; the
  * `(source, external_id)` pair is what the upsert dedupes on.
  */
-type BybitCapitalRow = Omit<PlannedCapitalRow, 'wallet'> & {
+type BybitCapitalRow = Omit<PlannedCapitalRow, 'wallet' | 'funding'> & {
   holdingId: string;
   source: 'bybit';
 };
+
+/** A row placed on its holding, still with the record it writes to the Funding ledger. */
+type PlacedCapitalRow = BybitCapitalRow & { funding?: FundingSourcePlan };
 
 /** What a record comes to: a row to write, or the key of a row to take back. */
 type CapitalOutcome =
   | { kind: 'row'; row: PlannedCapitalRow }
   | { kind: 'removal'; externalId: string };
 
-type BybitCapitalHistoryDeps = BybitRowWalkDeps<BybitCapitalRow> & {
-  removeTransactions: (externalIds: readonly string[]) => Promise<number>;
-  fetchDepositPage: typeof fetchDepositPage;
-  fetchInternalDepositPage: typeof fetchInternalDepositPage;
-  fetchWithdrawalPage: typeof fetchWithdrawalPage;
-};
+type BybitCapitalHistoryDeps = BybitRowWalkDeps<BybitCapitalRow> &
+  BybitFundingSourceDeps & {
+    removeTransactions: (externalIds: readonly string[]) => Promise<number>;
+    fetchDepositPage: typeof fetchDepositPage;
+    fetchInternalDepositPage: typeof fetchInternalDepositPage;
+    fetchWithdrawalPage: typeof fetchWithdrawalPage;
+  };
 
 const defaultBybitCapitalHistoryDeps: BybitCapitalHistoryDeps = {
   ...defaultBybitRowWalkDeps,
+  ...defaultBybitFundingSourceDeps,
   removeTransactions: (externalIds) => transactionsRepo.removeSyncedRows('bybit', externalIds),
   fetchDepositPage,
   fetchInternalDepositPage,
@@ -176,14 +193,18 @@ const externalIdOf = (accountId: string, kind: string, id: string, coin: string)
  */
 const rowOutcomesOf = (input: {
   accountId: string;
-  kind: string;
+  kind: CapitalSeries;
   id: string;
   coin: string;
   amount: string;
   time: WalkWindow | undefined;
   direction: 1 | -1;
+  fee?: string;
+  tax?: string;
+  /** Every instant of the record's window fields: the extent of its Funding record. */
+  instants: readonly number[];
 }): CapitalOutcome[] => {
-  const { accountId, kind, id, coin, amount, time, direction } = input;
+  const { accountId, kind, id, coin, amount, time, direction, fee, tax, instants } = input;
 
   if (!isTrackedBybitAsset(coin)) {
     throw new BinanceWalkStop(CAPITAL_ROW_UNREADABLE);
@@ -207,19 +228,34 @@ const rowOutcomesOf = (input: {
     {
       kind: 'row',
       row: {
-        wallet: holdingKeyOf(coin, 'fund'),
+        wallet: holdingKeyOf(coin, FUNDING_WALLET),
         amountMinorUnits: direction * minorUnits,
         time: time.start,
         externalId: externalIdOf(accountId, kind, id, coin),
         // The stable, non-localized ticker, so the name rule matches and the category sheet
         // appears for a crypto row as it does for a card merchant.
         description: coin,
+        funding: fundingSourceOf({
+          wallet: FUNDING_WALLET,
+          series: kind,
+          coin,
+          direction: direction === 1 ? 'I' : 'O',
+          amount,
+          fee,
+          tax,
+          time,
+          instants,
+        }),
       },
     },
   ];
 };
 
-const depositOutcomesOf = (accountId: string, row: DepositRow): CapitalOutcome[] =>
+const depositOutcomesOf = (
+  accountId: string,
+  row: DepositRow,
+  instants: readonly number[],
+): CapitalOutcome[] =>
   match(row.status)
     .returnType<CapitalOutcome[]>()
     .with(DEPOSIT_FAILED, () => [])
@@ -237,26 +273,41 @@ const depositOutcomesOf = (accountId: string, row: DepositRow): CapitalOutcome[]
           throw new BinanceWalkStop(CAPITAL_DEPOSIT_TYPE);
         }
 
-        return rowOutcomesOf({ ...row, accountId, kind: 'deposit', direction: 1 });
+        return rowOutcomesOf({
+          ...row,
+          accountId,
+          kind: 'deposit',
+          direction: 1,
+          fee: row.depositFee,
+          instants,
+        });
       },
     )
     .otherwise(() => {
       throw new BinanceWalkStop(CAPITAL_NOT_SETTLED);
     });
 
-const internalOutcomesOf = (accountId: string, row: InternalRow): CapitalOutcome[] =>
+const internalOutcomesOf = (
+  accountId: string,
+  row: InternalRow,
+  instants: readonly number[],
+): CapitalOutcome[] =>
   match(row.status)
     .returnType<CapitalOutcome[]>()
     .with(INTERNAL_FAILED, () => [])
     .when(
       (status) => SETTLED_STATUSES.internal.includes(status),
-      () => rowOutcomesOf({ ...row, accountId, kind: 'internal', direction: 1 }),
+      () => rowOutcomesOf({ ...row, accountId, kind: 'internal', direction: 1, instants }),
     )
     .otherwise(() => {
       throw new BinanceWalkStop(CAPITAL_NOT_SETTLED);
     });
 
-const withdrawalOutcomesOf = (accountId: string, row: WithdrawalRow): CapitalOutcome[] =>
+const withdrawalOutcomesOf = (
+  accountId: string,
+  row: WithdrawalRow,
+  instants: readonly number[],
+): CapitalOutcome[] =>
   match(row.status)
     .returnType<CapitalOutcome[]>()
     .when(
@@ -272,6 +323,9 @@ const withdrawalOutcomesOf = (accountId: string, row: WithdrawalRow): CapitalOut
           accountId,
           kind: 'withdraw',
           direction: -1,
+          fee: row.withdrawFee,
+          tax: row.tax,
+          instants,
         }),
     )
     .otherwise(() => {
@@ -286,13 +340,13 @@ const outcomesOf = (accountId: string, record: CapitalRecord): CapitalOutcome[] 
     })
     .with({ item: { kind: 'untracked' } }, () => [])
     .with({ series: 'deposit', item: { kind: 'row' } }, ({ item }) =>
-      depositOutcomesOf(accountId, item.row),
+      depositOutcomesOf(accountId, item.row, item.times),
     )
     .with({ series: 'internal', item: { kind: 'row' } }, ({ item }) =>
-      internalOutcomesOf(accountId, item.row),
+      internalOutcomesOf(accountId, item.row, item.times),
     )
     .with({ series: 'withdraw', item: { kind: 'row' } }, ({ item }) =>
-      withdrawalOutcomesOf(accountId, item.row),
+      withdrawalOutcomesOf(accountId, item.row, item.times),
     )
     .exhaustive();
 
@@ -516,8 +570,15 @@ const commitSpan = (
   records: SpanRecords,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> =>
-  commitExchangeSpan<PlannedCapitalRow, BybitCapitalRow>({
-    context,
+  commitExchangeSpan<PlannedCapitalRow, PlacedCapitalRow>({
+    context: {
+      ...context,
+      deps: {
+        ...context.deps,
+        addTransactions: (placed) =>
+          addWithFundingSources(context, placed, context.deps.addTransactions),
+      },
+    },
     pass,
     span,
     settled: settledSpanOf(context, span, records),
@@ -525,7 +586,8 @@ const commitSpan = (
     restartMs: BYBIT_RESTART_FLOOR_MS,
     series: window.series,
     forwardOwes: CAPITAL_FORWARD_OWES,
-    remove: context.deps.removeTransactions,
+    remove: (externalIds) =>
+      removeWithFundingSources(context, externalIds, context.deps.removeTransactions),
   });
 
 /**

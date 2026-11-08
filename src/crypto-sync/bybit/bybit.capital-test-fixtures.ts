@@ -1,5 +1,5 @@
-import type { HoldingRow } from '@kiko/db';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
+import type { FundingMatchRow, HoldingRow } from '@kiko/db';
 import type { ExchangeStateDeps } from '@kiko/crypto-sync/exchange/walk';
 
 import { createBybitHistoryRun } from './bybit.history-budget';
@@ -180,12 +180,16 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
   const { state } = worldOptions;
   const holdings: HoldingRow[] = [];
   const stored = new Map<string, StoredRow>();
+  const sources = new Map<string, FundingMatchRow>();
   const calls: string[] = [];
+  // `calls` with the store double's writes in it: the order of a row, its record and the marks.
+  const sequence: string[] = [];
   const clock = { now: worldOptions.now ?? NOW };
   let writes = 0;
 
   const record = (call: 'add' | 'remove' | 'mark'): void => {
     calls.push(call);
+    sequence.push(call);
     writes += 1;
     worldOptions.beforeWrite?.(writes);
   };
@@ -226,6 +230,20 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
         return isNew;
       }).length;
     }),
+    writeFundingSources: jest.fn(async (records: FundingMatchRow[]) => {
+      sequence.push('source-add');
+
+      for (const row of records) {
+        sources.set(row.recordKey, row);
+      }
+    }),
+    removeFundingSources: jest.fn(async (_accountId: string, recordKeys: readonly string[]) => {
+      sequence.push('source-remove');
+
+      for (const recordKey of recordKeys) {
+        sources.delete(recordKey);
+      }
+    }),
   };
 
   return {
@@ -235,7 +253,10 @@ export const inMemoryWalkOf = (worldOptions: WalkWorldOptions) => {
     record,
     holdings,
     calls,
+    sequence,
     stored,
+    /** The records of the Funding ledger's stored set that the walk wrote, by key. */
+    fundingSources: (): FundingMatchRow[] => [...sources.values()],
     rows: (): StoredRow[] => [...stored.values()],
     keys: (): string[] => [...stored.keys()],
   };

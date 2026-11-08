@@ -29,6 +29,13 @@ import {
   runBybitWalk,
   taggedWith,
 } from './bybit.walk-run';
+import {
+  type BybitFundingSourceDeps,
+  type FundingSourcePlan,
+  addWithFundingSources,
+  defaultBybitFundingSourceDeps,
+  fundingSourceOf,
+} from './bybit.funding-source';
 import { readCursorSpan } from './bybit.cursor-span';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
 import { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
@@ -99,24 +106,31 @@ type PlannedTransferRow = {
   externalId: string;
   exchangePairId: string;
   description: string;
+  /** The record of a leg on the Funding wallet: the other leg has none. */
+  funding?: FundingSourcePlan;
 };
 
 /**
  * The imported-transaction shape the walk hands to `transactionsRepo.addManyDedup`: the leg, the
  * holding it sits on and its other leg's, and the id the two legs share.
  */
-type BybitTransferRow = Omit<PlannedTransferRow, 'wallet' | 'counterpartWallet'> & {
+type BybitTransferRow = Omit<PlannedTransferRow, 'wallet' | 'counterpartWallet' | 'funding'> & {
   holdingId: string;
   source: 'bybit';
   exchangeCounterpartHoldingId?: string;
 };
 
-type BybitTransferHistoryDeps = BybitRowWalkDeps<BybitTransferRow> & {
-  fetchTransferPage: typeof fetchTransferPage;
-};
+/** A leg placed on its holding, still with the record it writes to the Funding ledger. */
+type PlacedTransferRow = BybitTransferRow & { funding?: FundingSourcePlan };
+
+type BybitTransferHistoryDeps = BybitRowWalkDeps<BybitTransferRow> &
+  BybitFundingSourceDeps & {
+    fetchTransferPage: typeof fetchTransferPage;
+  };
 
 const defaultBybitTransferHistoryDeps: BybitTransferHistoryDeps = {
   ...defaultBybitRowWalkDeps,
+  ...defaultBybitFundingSourceDeps,
   fetchTransferPage,
 };
 
@@ -192,6 +206,14 @@ const legsOf = (accountId: string, row: TransferRow): PlannedTransferRow[] => {
     externalId: `${exchangePairId}:${holdingKeyOf(coin, wallet)}`,
     exchangePairId,
     description: '',
+    funding: fundingSourceOf({
+      wallet,
+      series: 'transfer',
+      coin,
+      direction: signedUnits > 0 ? 'I' : 'O',
+      amount,
+      time,
+    }),
   });
 
   return [legOf(source, destination, -units), legOf(destination, source, units)];
@@ -312,8 +334,15 @@ const commitSpan = (
   records: SpanRecords,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> =>
-  commitExchangeSpan<PlannedTransferRow, BybitTransferRow>({
-    context,
+  commitExchangeSpan<PlannedTransferRow, PlacedTransferRow>({
+    context: {
+      ...context,
+      deps: {
+        ...context.deps,
+        addTransactions: (placed) =>
+          addWithFundingSources(context, placed, context.deps.addTransactions),
+      },
+    },
     pass,
     span,
     settled: settledSpanOf(context, span, records),

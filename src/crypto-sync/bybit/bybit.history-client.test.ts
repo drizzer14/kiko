@@ -161,6 +161,7 @@ describe('the named fields of each series', () => {
             amount: '999.0496',
             status: 3,
             depositType: '0',
+            depositFee: undefined,
             time: { start: MS, end: MS },
           },
         },
@@ -201,6 +202,8 @@ describe('the named fields of each series', () => {
           coin: 'USDT',
           amount: '41.43008',
           status: 'success',
+          withdrawFee: '5',
+          tax: undefined,
           time: { start: MS, end: MS },
         },
       },
@@ -264,6 +267,39 @@ describe('the named fields of each series', () => {
       const page = await depositsOf(fetchImpl);
 
       expect(page.rows[0]).toMatchObject({ kind: 'row', row: { depositType: expected } });
+    },
+  );
+
+  it.each([
+    ['text 0.5', '0.5', '0.5'],
+    ['a comma mark 0,5', '0,5', '0.5'],
+    ['empty text, as the sample shows', '', undefined],
+    ['text that is no decimal', 'five', undefined],
+    ['a number 5', 5, undefined],
+    ['absent', undefined, undefined],
+  ])('reads depositFee %s as %s, and the row stays a row', async (_title, depositFee, expected) => {
+    const { fetchImpl } = pageAnswer('rows', [depositRow({ depositFee })]);
+    const page = await depositsOf(fetchImpl);
+
+    expect(page.rows[0]).toMatchObject({ kind: 'row', row: { depositFee: expected } });
+  });
+
+  it.each([
+    ['text 5', '5', '5'],
+    ['empty text', '', undefined],
+    ['a negative text', '-5', undefined],
+    ['a number 5', 5, undefined],
+    ['absent', undefined, undefined],
+  ])(
+    'reads withdrawFee and tax %s as %s, and the row stays a row',
+    async (_title, text, wanted) => {
+      const { fetchImpl } = pageAnswer('rows', [withdrawalRow({ withdrawFee: text, tax: text })]);
+      const page = await fetchWithdrawalPage(API_KEY, SECRET, FIRST_PAGE, optionsOf(fetchImpl));
+
+      expect(page.rows[0]).toMatchObject({
+        kind: 'row',
+        row: { withdrawFee: wanted, tax: wanted },
+      });
     },
   );
 

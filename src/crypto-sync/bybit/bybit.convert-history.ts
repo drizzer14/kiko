@@ -35,6 +35,13 @@ import {
   readUnderCooldown,
   taggedWith,
 } from './bybit.walk-run';
+import {
+  type BybitFundingSourceDeps,
+  type FundingSourcePlan,
+  addWithFundingSources,
+  defaultBybitFundingSourceDeps,
+  fundingSourceOf,
+} from './bybit.funding-source';
 import { isBybitCoolingDown } from './bybit.cooldown';
 import { fetchConvertPage } from './bybit.history-client';
 import { isTrackedBybitAsset } from './bybit.tracked-coin';
@@ -85,21 +92,28 @@ type PlannedConvertRow = {
   untrackedCounterpart?: string;
   description: '';
   operation: 'convert';
+  /** The record of a leg on the Funding wallet: a leg on Unified has none. */
+  funding?: FundingSourcePlan;
 };
 
 /** The imported-transaction shape the walk hands to `transactionsRepo.addManyDedup`. */
-type BybitConvertRow = Omit<PlannedConvertRow, 'wallet' | 'counterpartWallet'> & {
+type BybitConvertRow = Omit<PlannedConvertRow, 'wallet' | 'counterpartWallet' | 'funding'> & {
   holdingId: string;
   source: 'bybit';
   exchangeCounterpartHoldingId?: string;
 };
 
-type BybitConvertHistoryDeps = BybitRowWalkDeps<BybitConvertRow> & {
-  fetchConvertPage: typeof fetchConvertPage;
-};
+/** A leg placed on its holding, still with the record it writes to the Funding ledger. */
+type PlacedConvertRow = BybitConvertRow & { funding?: FundingSourcePlan };
+
+type BybitConvertHistoryDeps = BybitRowWalkDeps<BybitConvertRow> &
+  BybitFundingSourceDeps & {
+    fetchConvertPage: typeof fetchConvertPage;
+  };
 
 const defaultBybitConvertHistoryDeps: BybitConvertHistoryDeps = {
   ...defaultBybitRowWalkDeps,
+  ...defaultBybitFundingSourceDeps,
   fetchConvertPage,
 };
 
@@ -193,6 +207,14 @@ const settledOutcomeOf = (accountId: string, row: ConvertRow): ConvertOutcome =>
     externalId: `${pairId}:${keyOf(leg)}`,
     description: '' as const,
     operation: 'convert' as const,
+    funding: fundingSourceOf({
+      wallet,
+      series: 'convert',
+      coin: leg.asset,
+      direction: leg.sign === 1 ? 'I' : 'O',
+      amount: leg.amountText,
+      time,
+    }),
   });
   const pairedLegOf = (leg: ConvertLeg, other: ConvertLeg): PlannedConvertRow => ({
     ...baseOf(leg),
@@ -408,7 +430,7 @@ const commitPage = async (
 ): Promise<number> => {
   const { deps, accountId, floorMs, now } = context;
   const span = { start: floorMs, end: now };
-  const commit = await commitSettledSpan<PlannedConvertRow, BybitConvertRow>({
+  const commit = await commitSettledSpan<PlannedConvertRow, PlacedConvertRow>({
     pass: 'pending',
     span,
     settled: settledPageOf(
@@ -417,7 +439,7 @@ const commitPage = async (
       page.items.filter((item) => isWithinFloor(item, floorMs)),
     ),
     place: (planned) => placeBybitRows(context, planned, CONVERT_HOLDING_MISSING),
-    add: deps.addTransactions,
+    add: (placed) => addWithFundingSources(context, placed, deps.addTransactions),
     writeOversized: historyListWriterOf(deps, accountId, 'oversizedCoins'),
     writeUntracked: historyListWriterOf(deps, accountId, 'untrackedCoins'),
     writeNotImported: notImportedWriterOf(deps, accountId),

@@ -188,6 +188,7 @@ describe('the time of a row', () => {
         amount: '999.0496',
         status: 3,
         depositType: '0',
+        depositFee: undefined,
         time: undefined,
       },
     });

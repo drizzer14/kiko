@@ -2,6 +2,7 @@ import { match, P } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
+import { normalizeDecimal } from '@kiko/currency/decimal';
 import type { WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
 import type { BybitSignedPath } from './bybit.endpoints';
@@ -54,6 +55,14 @@ const optionalIdentifier: Reader<string | undefined> = (value) => {
 };
 
 const identifier: Reader<string> = (value) => optionalIdentifier(value) ?? parseFailure();
+
+/**
+ * A fee or a tax, read only so the Funding ledger can tell what a source's amount may mean (rule
+ * 51). The sample sends an empty text for no fee, and a text no decimal can read is no fee, so
+ * neither makes the row unreadable.
+ */
+const feeText: Reader<string | undefined> = (value) =>
+  typeof value === 'string' ? (normalizeDecimal(value) ?? undefined) : undefined;
 
 const SECOND_MS = 1_000;
 const MILLISECOND_DIGITS = 13;
@@ -238,7 +247,7 @@ const fetcherOf =
 /**
  * Deposits. The row's point is `successAt`. The transaction hash, the addresses and the tag are
  * never read. `depositType` is kept as the text it came as, for the walk to compare, and is not
- * guessed when it is absent.
+ * guessed when it is absent. `depositFee` is read for the Funding ledger's match alone.
  */
 export const fetchDepositPage = fetcherOf({
   path: '/v5/asset/deposit/query-record',
@@ -251,6 +260,7 @@ export const fetchDepositPage = fetcherOf({
     amount: text(fields.amount),
     status: integer(fields.status),
     depositType: optionalIdentifier(fields.depositType),
+    depositFee: feeText(fields.depositFee),
     time: timeOf(fields.successAt),
   }),
 });
@@ -274,7 +284,8 @@ export const fetchInternalDepositPage = fetcherOf({
  * Withdrawals of both kinds: the route answers on-chain ones alone unless `withdrawType` is 2. The
  * row's point is `createTime`, which never changes, so the row keeps its day when it settles.
  * `updateTime` is a window field only: it is read for the drift test and never into the row, so
- * an `updateTime` that cannot be read does not make a settled withdrawal unreadable.
+ * an `updateTime` that cannot be read does not make a settled withdrawal unreadable. `withdrawFee`
+ * and `tax` are read for the Funding ledger's match alone.
  */
 export const fetchWithdrawalPage = fetcherOf({
   path: '/v5/asset/withdraw/query-record',
@@ -286,6 +297,8 @@ export const fetchWithdrawalPage = fetcherOf({
     coin: nonEmptyText(fields.coin),
     amount: text(fields.amount),
     status: text(fields.status),
+    withdrawFee: feeText(fields.withdrawFee),
+    tax: feeText(fields.tax),
     time: timeOf(fields.createTime),
   }),
 });

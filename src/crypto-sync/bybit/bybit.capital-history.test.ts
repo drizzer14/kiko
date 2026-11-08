@@ -584,6 +584,7 @@ describe('the capital walk: what each row is', () => {
                         amount: '1',
                         status: 3,
                         depositType: '0',
+                        depositFee: undefined,
                         time: { start: AT, end: AT },
                       },
                     },

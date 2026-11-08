@@ -35,7 +35,7 @@ export type FundingMatchInput = {
 
 const FUNDING_SERIES = ['deposit', 'internal', 'withdraw', 'transfer', 'convert'] as const;
 
-type FundingSeries = (typeof FUNDING_SERIES)[number];
+export type FundingSeries = (typeof FUNDING_SERIES)[number];
 
 const WALK_OF_SERIES = {
   deposit: 'capital',
