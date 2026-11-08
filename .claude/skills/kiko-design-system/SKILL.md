@@ -157,6 +157,9 @@ The token categories, defined once in a single theme module (read
   current values; never restate the numbers here. A call site passes
   `theme.iconSizes.<step>` (for example `theme.iconSizes.caption` for a
   checkmark beside caption text), never an inline literal like `18`.
+- **table tints** — `colors.rowBand` (zebra rows) and `colors.sumTint` (sum columns) in a
+  DataTable; read the values in `src/design-system/theme/theme.ts`. `sheetBackground` is a sheet
+  ground, never a stand-in for a tint.
 - **layout** — `paneMaxWidth` caps a pane's SCREEN CONTENT (lists,
   forms), except `Screen uncapped` and in a pane under a top tab bar (see the Screen entry
   under "Component set" in component-set.md), and never native bars;

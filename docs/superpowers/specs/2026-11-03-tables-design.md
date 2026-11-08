@@ -266,7 +266,7 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
   Pick excludes it (`money-text.props.d.ts:37`). The designer adds it to the table's cell text.
 - Column order (Decision 3), ruled: oldest to newest, as the charts read, with Total and Average (or
   Change) on the right. Opens scrolled so that the last 3 months show on a phone, with a part of the next
-  column visible as the scroll hint. Sum columns have a `sheetBackground` tint. The last row ("All") is bold.
+  column visible as the scroll hint. Sum columns have a `colors.sumTint` tint. The last row ("All") is bold.
 - The header row stays visible on vertical scroll. RN has no sticky support in a horizontal list, so this is
   the first probe of the change set. Tables is its own screen, so the table owns its vertical scroll, and the header
   row is child 1 of that scroll (`stickyHeaderIndices={[1]}`), under the caption and `topContent`, and follows the horizontal offset. Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
@@ -394,7 +394,7 @@ Rulings of 2026-11-04 (user, relayed by the coordinator):
 
 ## 13. Left to the builder
 
-The sticky header technique; the exact token for the sum-column tint if `sheetBackground` looks wrong on a device; the file names under
+The sticky header technique; the file names under
 `src/statistics`; the period control's component (`SelectField` or the filter bar's own button); the account order source.
 
 ## 14. Change sets

@@ -451,6 +451,9 @@ import maybe, { foldMap } from 'fnts/maybe';
 const tags = foldMap(maybe(holding.category), (category) => [toTag(category)]) ?? [];
 ```
 
+The ban covers a NON-empty fallback too (user ruling 2026-11-06): `x === undefined ? fallback :
+f(x)` is the same nullable map, so write `foldMap(maybe(x), f) ?? fallback`.
+
 The empty-object spread form — `...(x === undefined ? {} : { key: x })`,
 either branch order — is a nullable map too. Spread a `foldMap`
 instead (spreading `undefined` adds nothing):
