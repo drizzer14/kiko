@@ -351,12 +351,24 @@ describe('createHoldingValuer against a holding that is not a Bybit one', () => 
   });
 
   it.each([
-    ['a Binance key', { binanceAsset: 'BTC', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
-    ['a Monobank key', { monobankId: 'card-1', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
-    ['a wallet address', { walletAddress: 'bc1q', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
-    ['no source key', { balanceReadAt: at(0, 10) }],
-    ['no metadata', null],
-  ])('reads each row twice and counts every row, with %s', (_, metadata) => {
+    [
+      'a Binance key',
+      { binanceAsset: 'BTC', syncedAt: at(0, 10), balanceReadAt: at(0, 10) },
+      { reads: 4, sourceReads: 4 },
+    ],
+    [
+      'a Monobank key',
+      { monobankId: 'card-1', syncedAt: at(0, 10), balanceReadAt: at(0, 10) },
+      { reads: 4, sourceReads: 0 },
+    ],
+    [
+      'a wallet address',
+      { walletAddress: 'bc1q', syncedAt: at(0, 10), balanceReadAt: at(0, 10) },
+      { reads: 4, sourceReads: 4 },
+    ],
+    ['no source key', { balanceReadAt: at(0, 10) }, { reads: 4, sourceReads: 0 }],
+    ['no metadata', null, { reads: 4, sourceReads: 0 }],
+  ])('reads each row twice and counts every row, with %s', (_, metadata, expectedReads) => {
     const readCounter = { reads: 0, sourceReads: 0 };
     const rows = [
       countedRow(at(1, 9), -FIFTH_OF_A_COIN, readCounter),
@@ -367,6 +379,6 @@ describe('createHoldingValuer against a holding that is not a Bybit one', () => 
     expect(valueAt(midnightOf(-2))).toBe(FIFTH_OF_A_COIN);
     expect(valueAt(midnightOf(0))).toBe(ONE_COIN + FIFTH_OF_A_COIN);
     expect(valueAt(midnightOf(1))).toBe(ONE_COIN);
-    expect(readCounter).toEqual({ reads: 4, sourceReads: 0 });
+    expect(readCounter).toEqual(expectedReads);
   });
 });
