@@ -532,6 +532,167 @@ export const mccPickerRows: (input: { own: readonly { mcc: number; rowCount: num
 
 ---
 
+## 1.4-category-automation task 9b: uk merchant names and a browse list without group-only codes
+
+**Rulings A and B (user, 2026-11-09, via the coordinator; binding):** A: in uk, a code whose en
+names one merchant reads «<group> — <EN NAME>» (en unchanged, source casing). B: a code whose en
+and uk are only a group name leaves the "All codes" browse list and stays everywhere else. Spec 2
+(rows A, B), 3.2 (group-text rule), 3.3 (measured counts), 3.4 (shape), 5.2 (sheet).
+
+**Defaults taken (need user confirmation):**
+- D1 **422 joined uk names, not 420** (measured, spec 3.3). The 2 more are 3816 "Home2Suites" and
+  3835 "* MASTERS ECONOMY INNS": `edited_description` names a merchant and `irs_description` is
+  blank; they become «Готелі — Home2Suites», «Готелі — * MASTERS ECONOMY INNS». They do not come
+  from usda, combined or irs: no field adds a name beyond `edited_description`. The orchestrator
+  reports 422/261 to the coordinator before step 1; if the ruling wants 420, the rule gains "and
+  `irs_description` is not blank" and the pins say 420 (2 codes then keep the bare group noun).
+- D2 The group text is greggles `irs_description`, compared only for codes 3000-3999 (spec 3.2;
+  outside that range 93 codes have en equal to irs, for example 4011 "Railroads", and stay).
+- D3 Data shape: `"listed": false` on the 261 group-only entries only; no other entry holds the key.
+- D4 The review TSV gains a fourth column, `hidden` on the 261 rows, else empty, so the user can
+  review B.
+- D5 Separator ` — ` (U+2014) inside the uk data name, as the ruling writes it; the label reads
+  "3000 – Авіалінії — UNITED AIRLINES". Not changed here; READY may propose parentheses.
+- D6 A digits-only query lists a group-only code in "All codes" when its code starts with the
+  digits (`30` shows 21 of them among 100); a text query never lists one.
+
+**Needs:** task 9/9. **Base:** `1ee91d04d` (or the track tip when it starts). **Label:**
+`1.4-category-automation-task-9b`.
+
+**Files (floor). Mutable: 2** (`mcc-names.ts`, `mcc-picker-rows.ts`; the generator is `.js` and
+the data is JSON, P2; the developer measures with `make mutable`).
+- Modify: `scripts/mcc-names/generate-mcc-names.js`, `src/categories/mcc-names/mcc-names.data.json`
+  (regenerated), `src/categories/mcc-names/mcc-names.ts` (`MccName` type),
+  `src/screens/forms/category-rule-form/mcc-field/mcc-picker-rows.ts`, spec 3.3 (written size)
+- Tests: `__tests__/generate-mcc-names.test.ts`, `src/categories/mcc-names/mcc-names.test.ts`,
+  `src/screens/forms/category-rule-form/mcc-field/mcc-picker-rows.test.ts`
+- Untouched: `mcc-names.notice.ts` and its hash pin, `mccNameOf`, `mccLabelOf`, `MCC_NAME_SEPARATOR`,
+  the own read, `mccOutcome`, catalogues (no key; the em dash is a data separator, not copy).
+
+**Interfaces. Produces:**
+```ts
+// @kiko/categories/mcc-names: listed is present only as false (JSON import types it boolean)
+export type MccName = { code: string; en: string; uk: string; listed?: boolean };
+// generate-mcc-names.js: buildMccNames reads row.irs_description for codes 3000-3999 only;
+// renderMccNamesJson writes listed only when false; renderReviewTable writes 4 columns
+```
+
+**Scenario matrix (was: / now):**
+
+| Code | en | uk was: | uk now | All codes, blank or text query, was: / now | digits query |
+|---|---|---|---|---|---|
+| 3000 | UNITED AIRLINES | «Авіалінії» | «Авіалінії — UNITED AIRLINES» | listed / listed | listed |
+| 3501 | HOLIDAY INNS, HOLIDAY INN EXPRESS | «Готелі. Курорти» | «Готелі. Курорти — HOLIDAY INNS, HOLIDAY INN EXPRESS» | listed / listed | listed |
+| 3816 | Home2Suites | «Готелі» | «Готелі — Home2Suites» (D1) | listed / listed | listed |
+| 3003 | Airlines | «Авіалінії» | «Авіалінії» | listed / **left out** | listed (`3003`, `300`, `30`, `3`) |
+| 4511, 7011, 7512 | general text | as is | as is | listed / listed | listed |
+| 3003 as own code, on the trigger, on the card, through "Other code" | | | | shown with its name / unchanged | |
+
+- [ ] **step 1/10 (kiko:qa): generator pins.** `__tests__/generate-mcc-names.test.ts`; the `row`
+  helper and `GregglesRow` gain an optional `irs_description` (default blank). New:
+  - `joins the uk group and the en merchant name for a code 3000-3999 whose en is not its group
+    text`: 3000 "UNITED AIRLINES" / irs "Airlines" / «Авіалінії» gives `{ code: '3000', en: 'UNITED
+    AIRLINES', uk: 'Авіалінії — UNITED AIRLINES' }` (`toEqual`, no `listed` key); the separator
+    is space, U+2014, space.
+  - `marks a code 3000-3999 whose en equals its group text as not listed and keeps its uk`: 3003
+    "Airlines" / "Airlines" gives `{ ..., uk: 'Авіалінії', listed: false }`.
+  - `treats a code 3000-3999 with a blank group text as a merchant name`: 3816 "Home2Suites", irs
+    blank, «Готелі» gives «Готелі — Home2Suites».
+  - `never joins or hides a code outside 3000-3999`: 2999 and 4000 and 4011 with en equal to irs
+    stay `{ code, en, uk }`; 3999 with en equal to irs is hidden (both range ends).
+  - `keeps the en casing and apostrophe in the joined uk name, after the uk apostrophe rewrite`:
+    3299 "WIDERO’S FLYVESELSKAP" with uk «Авіалінії» keeps U+2019; a uk group with `'` inside a
+    Cyrillic word gets U+02BC and the en part is untouched.
+  - `compares the group text trimmed`: irs " Airlines " hides 3003.
+  was:/now (each in the commit message):
+  - `renders the entries as a JSON array with only code, en and uk, ending in a newline`: was: an
+    entry renders code, en, uk only; now: title `... with code, en, uk and listed only when false
+    ...`, an entry with `listed: false` keeps it, an entry with `listed: true` or none renders
+    without it, extra keys dropped.
+  - `renders a review table with one line per code`: was: 3 columns; now: 4, `hidden` on a
+    `listed: false` entry, else empty (D4).
+  Red: `npx jest __tests__/generate-mcc-names.test.ts --maxWorkers=2 > <out file>`, output kept.
+  Commit `test(category): generator pins for MCC rulings A and B`.
+
+- [ ] **step 2/10 (kiko:developer): the generator.** `generate-mcc-names.js`: a group-text reader
+  (`irs_description` through `tidy`), the 3000-3999 range and the U+2014 separator as named
+  constants (full words), the join/flag in `buildMccNames` (spec 3.2), `renderMccNamesJson` and
+  `renderReviewTable` per step 1; header comment states the rule. Dependency-free. Green: same
+  command. Commit `feat(category): MCC generator joins merchant names and marks group-only codes`.
+
+- [ ] **step 3/10 (kiko:qa): data and rows pins.** Red commit reads `listed` through a test-local
+  cast (Global Constraints). `src/categories/mcc-names/mcc-names.test.ts`, new:
+  - `joins the group and the merchant name in Ukrainian for exactly 422 codes`: entries whose uk
+    ends with ` — ${en}` number 422, all in 3000-3999; named: 3000 «Авіалінії — UNITED AIRLINES»,
+    3005 «Авіалінії — BRITISH AIRWAYS», 3501, 3816 (D1); their en unchanged (`3000` "UNITED
+    AIRLINES").
+  - `hides exactly 261 group-only codes, all in 3000-3999, each named only by a group`: `listed ===
+    false` count 261; every one in range; en in {"Airlines", "Car Rental",
+    "Hotels/Motels/Inns/Resorts"} and uk in {«Авіалінії», «Оренда авто», «Готелі. Курорти»};
+    3003 among them.
+  - `holds listed only as false`: no entry has `listed` other than absent or `false`.
+  - `keeps the general codes listed and unjoined`: 4511, 7011, 7512 have no `listed` and no ` — `.
+  - `names a hidden code in every lookup`: `mccNameOf('3003', 'uk')` «Авіалінії»,
+    `mccLabelOf('3003', 'en')` `'3003 – Airlines'`, `mccLabelOf('3000', 'uk')` `'3000 – Авіалінії —
+    UNITED AIRLINES'`.
+  - Stays unchanged: `holds exactly 981 codes`, the U+02BC, trim and common-code pins.
+  `mcc-picker-rows.test.ts`, new:
+  - `lists 720 codes and no group-only code when the query is blank`; `leaves a group-only code
+    out of a text query` (en `airlines`: 3000 and 4511 present, 3003 absent).
+  - `finds a group-only code by its digits` (`3003` gives the all section `[3003 Airlines]`; `300`
+    holds 3003 between 3002 and 3004).
+  - `keeps a group-only own code in Your codes with its name` (own 3003, blank query: own row named
+    `Airlines`, no all row 3003; uk «Авіалінії»).
+  - `finds a joined uk name by the merchant name` (uk `united` holds 3000).
+  was:/now: the helper `everyCodeRows` and the three pins that spread it (`puts Other first, then
+  own codes by the order given, then every code by code`, `shows the own heading and the empty row
+  when the read landed with no codes`, `shows the own heading alone while the read is loading`):
+  was: every entry of `MCC_NAMES` (981); now: the entries without `listed: false` (720, pinned by
+  length in the new blank-query pin, so the helper is not the code's own rule restated); the first
+  title says `every listed code`.
+  Red: `npx jest src/categories/mcc-names src/screens/forms/category-rule-form/mcc-field
+  --maxWorkers=2 > <out file>`. Commit `test(rules): MCC data and picker pins for rulings A and B`.
+
+- [ ] **step 4/10 (kiko:developer): data and list.** Fetch both pinned files into new, empty scratch
+  directories, check SHA-256 (spec 3.1), never execute. Regenerate with the documented command
+  (`KIKO_REGEN_MCC=1 KIKO_MCC_GREGGLES=<path> KIKO_MCC_SOMINEMO=<path>
+  KIKO_MCC_REVIEW_OUT=.superpowers/sdd/1.4-category-automation/mcc-names-review.tsv npx jest
+  __tests__/generate-mcc-names.test.ts --maxWorkers=2`), then `./node_modules/.bin/biome check
+  src/categories/mcc-names/mcc-names.data.json` (no `--write`, P2). `MccName` gains `listed?:
+  boolean`; `mccPickerRows` "all" section keeps an entry when `listed !== false` or the folded
+  query is digits only (`DIGITS_ONLY`), then `matchesMccQuery` as today; own rows untouched. Tidy
+  the step 3 casts. Record the written byte size in spec 3.3 (projected 113362). Green: steps 1 and
+  3 commands plus `src/screens/forms/category-rule-form src/screens/forms/category-form`
+  (`mcc-field`, card and screen suites read the data). `npm run check:dup` (a finding on the data
+  file is P7, stop and report), `npm run check:guard-replay`. Commit `feat(rules): uk merchant names
+  and group-only codes left out of All codes`.
+
+- [ ] **step 5/10 Review (kiko:reviewer)** of `1ee91d04d..HEAD`. Top questions: does the rule give
+  exactly 422/261 and no code outside 3000-3999; can a hidden code be unreachable anywhere (own
+  list, digits search, trigger, card, "Other code"); does the JSON carry `listed` only as false;
+  check every edited pin against the was:/now lists of steps 1 and 3. No migration.
+- [ ] **step 6/10 Drift (kiko:retrospect).** kiko-translator (MCC data paragraph: the joined uk
+  names and the U+2014 data separator), kiko-domain (MCC label, hidden-from-browse rule),
+  kiko-architecture (data shape `listed`).
+- [ ] **step 7/10 Scribe (kiko:scribe).** Sha or "no drift found".
+- [ ] **step 8/10 Owed checks (orchestrator, named only).** `npm run check:typecheck`,
+  `check:knip`, `check:import-order`, `check:full-word-identifiers`, `check:comment-line-width`,
+  `check:lint` on the changed files; `make jest-affected BASE=1ee91d04d` only if the power mode
+  allows, else the named runs of step 4. Outputs kept in files.
+- [ ] **step 9/10 Sim items (added to the track-end sim list and the device confirm):** uk, blank
+  query: rows 3000-3999 read «Авіалінії — UNITED AIRLINES», no bare «Авіалінії» row in that range;
+  search `3003` finds it; search `united` (uk) finds 3000; "Other code" `3003` shows «3003 –
+  Авіалінії» on the trigger and the card; long joined names wrap at the largest Dynamic Type.
+- [ ] **step 10/10 Ready.** Label `1.4-category-automation-task-9b`, base `1ee91d04d`, head, mutable
+  count (`make mutable`, `KIKO_MUTATION_BASE=1ee91d04d`), named-run output paths, the written JSON
+  size, the review TSV path for the user, D1-D6 for confirmation, and an optional proposal on the
+  em dash vs parentheses (D5). Merges into `next` after task 9/9, on its own green verify and the
+  device confirm.
+
+Run-log gaps: task 9b closes none and leaves all open (none touches MCC data).
+
+---
+
 ## Texts for the user
 
 Sent through the coordinator; APPROVED by the user 2026-11-08 21:20 ("User answers"):
