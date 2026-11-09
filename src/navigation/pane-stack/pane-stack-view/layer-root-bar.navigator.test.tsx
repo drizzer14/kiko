@@ -54,16 +54,10 @@ jest.mock('@kiko/screens/forms/transaction-form', () => {
   return { __esModule: true, default: TransactionFormScreenStub };
 });
 
-type HeaderConfig = {
+type HeaderConfig = Record<string, unknown> & {
   title: string;
   hidden?: boolean;
-  backgroundColor: string;
-  hideShadow?: boolean;
   largeTitle?: boolean;
-  translucent: boolean;
-  blurEffect?: string;
-  largeTitleBackgroundColor?: string;
-  largeTitleHideShadow?: boolean;
 };
 
 const headerConfigs = (): HeaderConfig[] => headerConfigsIn<HeaderConfig>(screen.toJSON());
@@ -86,28 +80,28 @@ const tablesBar = (): HeaderConfig => {
   return tables[0];
 };
 
-// What the shared navigation bar is drawn from: every header config prop that
-// `RNSScreenStackHeaderConfig.buildAppearance` and the scroll-edge appearance read for the
-// background (the title and font props are left out: the root shows no title). `largeTitle` is read
-// as on or off: a stack that sets no large title leaves it undefined, which the native side reads
-// as off.
-const lookOf = ({
-  backgroundColor,
-  blurEffect,
-  hideShadow,
-  largeTitle,
-  largeTitleBackgroundColor,
-  largeTitleHideShadow,
-  translucent,
-}: HeaderConfig) => ({
-  backgroundColor,
-  blurEffect,
-  hideShadow,
-  largeTitle: largeTitle === true,
-  largeTitleBackgroundColor,
-  largeTitleHideShadow,
-  translucent,
-});
+// The header config props that name what a page shows, not how its bar is drawn: every other prop
+// is compared, so a prop native-stack adds to the bar is covered without a line here.
+const NOT_THE_LOOK = [
+  // The root shows no title, and a page is named by one.
+  'title',
+  // React elements: the root's empty title view, the page's own title and back button. Elements
+  // are not compared by equality, and the title view is pinned in `pane-slice.test.ts`.
+  'children',
+  // The back button's label and menu, read from `headerBack` and the options `LAYER_BACK_OPTIONS`
+  // sets on the page: the root is first in its stack and has no back button.
+  'backTitle',
+  'backTitleVisible',
+  'backButtonDisplayMode',
+  'disableBackButtonMenu',
+];
+
+// What the shared navigation bar is drawn from: the whole header config the native bar is given,
+// less the props above. `RNSScreenStackHeaderConfig.buildAppearance` and the scroll-edge
+// appearance read the background props of it, and a swipe back moves UIKit from one bar's to the
+// other's.
+const lookOf = (config: HeaderConfig) =>
+  Object.fromEntries(Object.entries(config).filter(([name]) => !NOT_THE_LOOK.includes(name)));
 
 const navigationRef = createNavigationContainerRef<ParamListBase>();
 
@@ -138,6 +132,8 @@ describe.each([
     await act(async () => navigationRef.navigate('Tables'));
 
     expect(layerRootBar().hidden).not.toBe(true);
+    // Two small bars would look alike too: Tables is on its large title, and so is the root.
+    expect(tablesBar().largeTitle).toBe(true);
     expect(lookOf(layerRootBar())).toEqual(lookOf(tablesBar()));
   });
 

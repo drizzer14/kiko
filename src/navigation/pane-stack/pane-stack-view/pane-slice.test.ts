@@ -182,7 +182,7 @@ describe('layerSlice', () => {
     home: { id: 'home-descriptor' },
     tables: {
       id: 'tables-descriptor',
-      options: { title: 'Tables', headerLargeTitle: false },
+      options: { title: 'Tables', headerLargeTitle: true },
     },
     form: { id: 'form-descriptor', options: { title: 'Form' } },
   } as never as NativeStackViewProps['descriptors'];
@@ -240,7 +240,7 @@ describe('layerSlice', () => {
   });
 
   // The whole options object is compared: the root takes nothing from the route it is named after,
-  // whose own options (a large title, for one) would show in a bar that is meant to be empty.
+  // whose own options (a title, for one) would show in a bar that is meant to be empty.
   // Root and Tables share one navigation bar. A root with no header hides that bar when a swipe
   // back starts, so while Tables is in the layer the root keeps a header of its own, one that
   // is drawn as Tables' bar is (it takes the appearance options from Tables) and shows no title;
@@ -260,6 +260,7 @@ describe('layerSlice', () => {
       contentStyle: { backgroundColor: 'transparent' },
       headerShown: true,
       headerTitle: expect.any(Function),
+      headerLargeTitle: true,
     });
   });
 
@@ -323,6 +324,7 @@ describe('layerSlice', () => {
           title: 'Tables',
           headerBackTitle: 'Back',
           headerLargeTitle: true,
+          headerLargeTitleEnabled: true,
           headerBackground,
           headerBlurEffect: 'systemChromeMaterial',
           headerLargeStyle,
@@ -339,6 +341,8 @@ describe('layerSlice', () => {
         contentStyle: { backgroundColor: 'transparent' },
         headerShown: true,
         headerTitle: expect.any(Function),
+        headerLargeTitle: true,
+        headerLargeTitleEnabled: true,
         headerBackground,
         headerBlurEffect: 'systemChromeMaterial',
         headerLargeStyle,
@@ -372,7 +376,7 @@ describe('layerSlice', () => {
       id: 'tables-descriptor',
       options: {
         title: 'Tables',
-        headerLargeTitle: false,
+        headerLargeTitle: true,
         headerBackButtonDisplayMode: 'minimal',
         headerBackButtonMenuEnabled: false,
       },

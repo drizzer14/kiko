@@ -5,6 +5,7 @@ import type { RateTable } from '@kiko/rates/conversion';
 import type { PriceBook } from '@kiko/prices/price-book';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import type { SeriesHolding } from '@kiko/statistics/holding-value-at';
+import type { DataTableProps } from '@kiko/design-system/components/data-table';
 import type { AccountRow, CurrencyRateHistoryRow, HoldingRow, TransactionRow } from '@kiko/db';
 
 export type NetWorthTableProps = {
@@ -32,4 +33,6 @@ export type NetWorthTableProps = {
    * in the empty and loading states, where they are the way out.
    */
   topContent: ReactNode;
+  /** The live height of the bar the table scrolls under, handed to the table as it is. */
+  barInset?: DataTableProps['barInset'];
 };

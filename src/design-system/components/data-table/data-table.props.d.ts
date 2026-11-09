@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { Animated } from 'react-native';
 
 export type DataTableCell = {
   text: string;
@@ -42,5 +43,12 @@ export type DataTableProps = {
   // The column whose left edge sits at the fixed column on opening; none means scrolled to the
   // start.
   initialColumnIndex?: number;
+  // The live height of a translucent bar the table scrolls under (the native stack's animated
+  // header height). Given, the table is a scroll view with the automatic content inset, so a large
+  // title collapses with it; it keeps the header row flush under the bar, pads its own sides and
+  // clears the tab bar itself, and its content does not grow to the scroll's height (the inset
+  // would make a short table scroll). Absent, the caller lays the table out and the header sticks
+  // at the top.
+  barInset?: Animated.Value | Animated.AnimatedInterpolation<number>;
   testID?: string;
 };

@@ -42,6 +42,11 @@ jest.mock('@kiko/navigation/pane-stack', () =>
     require('@kiko/test-support/mock-pane-stack') as typeof import('@kiko/test-support/mock-pane-stack')
   ).paneStackModule(() => jest.fn(), { useIsScreenVisible: () => true }),
 );
+jest.mock('@react-navigation/native-stack', () =>
+  (
+    require('@kiko/test-support/mock-header-height') as typeof import('@kiko/test-support/mock-header-height')
+  ).nativeStackModule(),
+);
 
 // The data of the world starts two days before the fixed clock, so this quarter is the period that
 // is always offered besides this year.
@@ -266,7 +271,7 @@ describe('TablesScreen', () => {
     it('drops the top edge when the table shows', async () => {
       const { getByTestId } = await renderTables();
 
-      expect(getByTestId('screen-content').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
+      expect(getByTestId('category-table').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
     });
 
     it('drops the top edge while the data loads', async () => {
@@ -274,7 +279,7 @@ describe('TablesScreen', () => {
 
       const { getByTestId } = await renderTables();
 
-      expect(getByTestId('screen-content').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
+      expect(getByTestId('screen-scroll-view').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
     });
 
     it('drops the top edge in the empty state', async () => {
@@ -284,15 +289,27 @@ describe('TablesScreen', () => {
 
       const { getByTestId } = await renderTables();
 
-      expect(getByTestId('screen-content').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
+      expect(getByTestId('category-table').parent?.props.edges).toEqual(EDGES_UNDER_HEADER);
     });
   });
 
   // The pane cap keeps a form from stretching across a wide window; a table of twelve months is
   // wider than it, so the screen takes the whole window in each of its three states.
   describe('the width on a regular window', () => {
-    const rootStyleOf = (rendered: Awaited<ReturnType<typeof renderTables>>) =>
-      StyleSheet.flatten(rendered.getByTestId('screen-content').parent?.props.style);
+    // The cap sits on the screen's root, or on the content of a scroll the screen owns: the places
+    // a screen's width is set, around the one scroll that shows.
+    const maxWidthsAround = (
+      rendered: Awaited<ReturnType<typeof renderTables>>,
+      scrollId: string,
+    ) => {
+      const scroll = rendered.getByTestId(scrollId);
+
+      return [
+        scroll.parent?.props.style,
+        scroll.props.style,
+        scroll.props.contentContainerStyle,
+      ].map((style) => StyleSheet.flatten(style)?.maxWidth);
+    };
 
     beforeEach(() => {
       reportWindow('regular', 1376, 1032);
@@ -310,22 +327,14 @@ describe('TablesScreen', () => {
       ).toBe(darkTheme.layout.paneMaxWidth);
     });
 
-    it('is not capped while the table shows', async () => {
-      expect(rootStyleOf(await renderTables()).maxWidth).toBeUndefined();
-    });
-
     it('is not capped while the data loads', async () => {
       mockUseLiveQuery.mockImplementation(() => ({ data: [], isLoading: true, isFresh: false }));
 
-      expect(rootStyleOf(await renderTables()).maxWidth).toBeUndefined();
-    });
-
-    it('is not capped in the empty state', async () => {
-      mockUseLiveQuery.mockImplementation(
-        answerWith((tables) => (tables[0] === 'transactions' ? [] : undefined)),
-      );
-
-      expect(rootStyleOf(await renderTables()).maxWidth).toBeUndefined();
+      expect(maxWidthsAround(await renderTables(), 'screen-scroll-view')).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
     });
   });
 

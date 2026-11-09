@@ -78,6 +78,11 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane))` (the
   `require` inside the factory is order-proof; the spy comes through a getter because the factory
   runs before the suite's `const`).
+- `mock-header-height.ts`: `nativeStackModule`, the real native-stack module with
+  `useAnimatedHeaderHeight` (which throws outside a header) returning one `Animated.Value` for the
+  suite; wire it with `jest.mock('@react-navigation/native-stack', () =>
+  require('@kiko/test-support/mock-header-height').nativeStackModule())`, at the top of every
+  suite that renders a screen reading the header height.
 - `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
   real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
   `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and

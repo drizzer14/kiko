@@ -15,6 +15,11 @@ jest.mock('@kiko/navigation/pane-stack', () =>
     require('@kiko/test-support/mock-pane-stack') as typeof import('@kiko/test-support/mock-pane-stack')
   ).paneStackModule(() => jest.fn(), { useIsScreenVisible: () => true }),
 );
+jest.mock('@react-navigation/native-stack', () =>
+  (
+    require('@kiko/test-support/mock-header-height') as typeof import('@kiko/test-support/mock-header-height')
+  ).nativeStackModule(),
+);
 
 const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 

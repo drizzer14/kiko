@@ -88,6 +88,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
   sheetGeneration,
   onOpenTransaction,
   topContent,
+  barInset,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
@@ -212,6 +213,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
         topContent={topContent}
         emptyContent={emptyContent}
         initialColumnIndex={openingColumnIndexOf(months)}
+        barInset={barInset}
         testID="category-table"
       />
 

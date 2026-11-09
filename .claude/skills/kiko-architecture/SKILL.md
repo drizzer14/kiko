@@ -1707,7 +1707,7 @@ are built with `createPaneStackNavigator`.
   floor 0 (`dismiss` in `pane-router.ts`). At rest the root has no header (`headerShown: false`).
   While a page is above it the root has a shown header whose title is an empty plain View
   (`LAYER_ROOT_TITLE_STYLE`), not `''`, and that copies the page's bar appearance options
-  (`BAR_APPEARANCE_OPTIONS`), except the large title, so both sides of the swipe share one
+  (the `BAR_APPEARANCE_OPTIONS` array, large title included), so both sides of the swipe share one
   appearance (all in `src/navigation/pane-stack/pane-stack-view/pane-slice.ts`; its comments
   give the sizes). A hidden root header hides the shared bar when a swipe starts; a differing
   appearance fades the bar's background; a content-free root item lays the compact landscape

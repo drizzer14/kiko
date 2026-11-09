@@ -69,6 +69,13 @@ export const resolveRowHeights = (
     }),
   );
 
+// How far the header row is moved down so it stays flush under a bar the table scrolls under: none
+// until the header has scrolled up to the bar's bottom edge, then the distance past it. The
+// component draws this as an `Animated` expression, because the bar's height and the offset change
+// on the native side; this is the same rule in plain numbers.
+export const resolveHeaderShift = (scrollOffset: number, barInset: number, headerOffset: number) =>
+  Math.max(0, scrollOffset + barInset - headerOffset);
+
 // The offset that puts the column's left edge at the fixed column, never past the content's end.
 export const resolveInitialOffset = (
   columnWidths: number[],

@@ -122,7 +122,7 @@ the Home stacks: on a wide window Statistics is Home's companion, and a name the
 - Filter options and picks: pure builders move out of S, so Tables copies no archive or prune rule: `buildCategoryOptions`,
   `buildAccountOptions`, `visibleCategorySelection`, `excludedCategoryKeysOf`.
 
-A `SegmentedControl` at the top of Tables switches the tables, with three parts: Categories, Cash flow, Net worth (tabs-vs-chips
+The `SegmentedControl` view switch is the table's top content (it scrolls away) and switches the tables, with three parts: Categories, Cash flow, Net worth (tabs-vs-chips
 rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. The selection is a
 route param of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
 (`pane-stack-view`, "A switch between one pane and two"), keeps it; a new push still opens on Categories. The period (user ruling
@@ -269,7 +269,7 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
   column visible as the scroll hint. Sum columns have a `colors.sumTint` tint. The last row ("All") is bold.
 - The header row stays visible on vertical scroll. RN has no sticky support in a horizontal list, so this is
   the first probe of the change set. Tables is its own screen, so the table owns its vertical scroll, and the header
-  row is child 1 of that scroll (`stickyHeaderIndices={[1]}`), under the caption and `topContent`, and follows the horizontal offset. Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
+  row is child 1 of that scroll (`stickyHeaderIndices={[1]}`), under the caption and `topContent`, and follows the horizontal offset. Built (`barInset`). Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
   actions (`kiko-gestures`). Check the iPad split and the edge swipe on a device.
 - VoiceOver: one element per cell, label "<row>, <month>", value = the FULL amount, never rounded; role `button`
   and a hint only where a tap opens rows. Header cells are hidden from it, as the HIG says for chart axes,
@@ -388,7 +388,7 @@ Rulings of 2026-11-04 (user, relayed by the coordinator):
 | # | Decision | Ruling |
 |---|---|---|
 | 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`) shown in a layer over both panes; the tab bar stays, Back returns to the two panes. User ruling (relayed by the coordinator, 2026-11-04): "A: It stays (Recommended)": with a form or Home open beside Statistics, the Monthly tables press keeps it open (`openFrom` keeps all routes), and Back returns to it as it was. Implementation note, not a user ruling: the layer root has a shown header with an empty plain View title that takes the page's bar appearance options (not the large title) only while a page is in the layer, and no header at rest, because a hidden root header hides the shared bar when a swipe starts (fault A); seen on the Duo simulator (held swipe solid; a content-free root item laid the compact bar out 0 high mid-pop, fixed by the empty View title), device check still owed. Back after fold and unfold is open, with no found cause |
-| 12 | Tables title | "A: Small title (Recommended)": a normal small title in an opaque bar, content below it, Tables only |
+| 12 | Tables title | was: "A: Small title (Recommended)", a small title in an opaque bar; now (user 2026-11-09) the native large title like every pane |
 | 13 | Button size | "As it is now": 44 pt, full width (`size="compact"`) |
 | 14 | Button chevron | "Remove it (Recommended)" |
 

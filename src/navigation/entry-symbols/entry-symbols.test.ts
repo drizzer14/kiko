@@ -1,7 +1,7 @@
 import { entrySymbol } from './entry-symbols';
 
 describe('entrySymbol', () => {
-  it('holds the glyph of every screen the Help footer opens', () => {
+  it('holds the glyph of every entry that has its own symbol', () => {
     expect(entrySymbol).toEqual({
       system: 'gearshape',
       reminders: 'bell',

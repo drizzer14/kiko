@@ -149,12 +149,18 @@ new component can land between reviews of this skill:
   flashes a spinner at all — readiness (`useDataReady`) itself is
   never delayed, only the visual spinner.
 - **DataTable** (`src/design-system/components/data-table/`) — a grid of money amounts: props
-  `{ columns, rows, caption, topContent?, emptyContent?, initialColumnIndex?, testID? }`: strings
-  and display flags, plus two `ReactNode` props (the caller formats every amount). A fixed first
+  in `src/design-system/components/data-table/data-table.props.d.ts` (read the list there; the
+  caller formats every amount). A fixed first
   column (at most 40% of the table's measured width, a long label wraps in full), one vertical
-  `ScrollView` whose child 0 is one `View` holding `topContent` and the caption (both scroll
-  away), the header row (child 1, sticky through
-  `stickyHeaderIndices={[1]}`, opaque `surface` ground), then the body. `stickyHeaderIndices`
+  `ScrollView`. Without `barInset`: child 0 is one `View` holding `topContent` and the caption
+  (both scroll away), the header row is child 1 (sticky through
+  `stickyHeaderIndices={[1]}`, opaque `surface` ground), then the body. With `barInset` (under a
+  translucent bar): the scroll is the component root, no wrapper (UIKit's first-child chain
+  drives the large title), with the automatic inset; side padding from `useContentMargin`, top
+  `spacing(4)` (16 pt), bottom tab-bar clearance plus 16; the header is shifted flush under
+  the bar by an `Animated` transform (`zIndex` 1) instead of a sticky index; the content does
+  not grow to the scroll's height; the raw scroll width is kept and the side margin subtracted
+  at render. The measure layer is the scroll's last child. `stickyHeaderIndices`
   moves the sticky child's own style to a wrapper, so that child must be a plain `View` that holds
   the row. `emptyContent` replaces the header and the body: no sticky index, `topContent` stays
   mounted (a filter sheet in it stays open), the measuring layer is unmounted and the offsets and
@@ -173,12 +179,12 @@ new component can land between reviews of this skill:
   (label, FULL value; role `button` and hint only with `onPress`); header cells are hidden; the
   caption is the `summary`. `SummaryTable` does not fit: it is a label/value stack with no
   columns, header, fixed column or scroll. The caller gives it a bounded height (Screen not
-  scrolling). That holds for `Screen belowHeader uncapped` only: the table's own vertical scroll
-  fills a plain Screen.
+  scrolling). The table's own vertical scroll fills the Screen; Tables uses `<Screen bleedTop>`
+  with `barInset` (`src/screens/tables/tables.screen.tsx`).
   React Native's sticky header wrapper reads the raw scroll offset and has no content inset
-  handling (read from the code, not measured), so measure before you put this table under
-  `bleedTop` with an automatic inset. A `Pressable` that is only inert omits `disabled`, because
-  React Native then sets the disabled state and VoiceOver reads the element as dimmed; keep
+  handling, so under a translucent bar always pass `barInset`.
+  A `Pressable` that is only inert omits `disabled`, because React Native then sets the
+  disabled state and VoiceOver reads the element as dimmed; keep
   `disabled` for a control that is temporarily unavailable.
 - **Box** — a generic layout container reading spacing/color/direction
   tokens (padding, gap, background, `direction="row"`).
