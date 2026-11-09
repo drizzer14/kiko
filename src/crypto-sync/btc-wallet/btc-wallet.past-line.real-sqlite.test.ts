@@ -210,12 +210,61 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
     await readAt(at(4, 10), SIX_TENTHS_OF_A_COIN);
 
     expect((await storedHolding()).metadata).toMatchObject({
-      overwrittenRowIds: expect.arrayContaining([laterRowId]),
+      overwrittenRowIds: [laterRowId],
+      keptRowIds: ['typed-row'],
     });
 
     await transactionsRepo.remove(laterRowId);
 
     expect((await storedHolding()).balanceMinorUnits).toBe(SIX_TENTHS_OF_A_COIN);
+  });
+
+  it('the old typed row stays off the mark at the second and the third dated read, with a disconnect between them, and keeps counting', async () => {
+    seedShippedWalletWithTypedRow();
+
+    const dayOfRead = [2, 3, 4];
+
+    for (const day of dayOfRead) {
+      await readAt(at(day, 10), SIX_TENTHS_OF_A_COIN);
+
+      expect((await storedHolding()).metadata).toEqual({
+        walletAddress: ADDRESS,
+        syncedAt: at(day, 10),
+        balanceReadAt: at(day, 10),
+        keptRowIds: ['typed-row'],
+      });
+      expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
+
+      await disconnectCryptoAccount(ACCOUNT_ID, 'btc_wallet');
+    }
+  });
+
+  it('a delete of the old typed row after the third dated read moves the balance as today', async () => {
+    seedShippedWalletWithTypedRow();
+    await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
+    await disconnectCryptoAccount(ACCOUNT_ID, 'btc_wallet');
+    await readAt(at(3, 10), SIX_TENTHS_OF_A_COIN);
+    await disconnectCryptoAccount(ACCOUNT_ID, 'btc_wallet');
+    await readAt(at(4, 10), SIX_TENTHS_OF_A_COIN);
+
+    expect((await transactionsRepo.removePlan('typed-row')).balanceChanges).toBeDefined();
+
+    await transactionsRepo.remove('typed-row');
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
+  });
+
+  it('a deleted old row leaves the kept list at the next dated read', async () => {
+    seedShippedWalletWithTypedRow();
+    await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
+    await transactionsRepo.remove('typed-row');
+    await readAt(at(3, 10), TENTH_OF_A_COIN);
+
+    expect((await storedHolding()).metadata).toEqual({
+      walletAddress: ADDRESS,
+      syncedAt: at(3, 10),
+      balanceReadAt: at(3, 10),
+    });
   });
 });
 

@@ -163,6 +163,40 @@ describe('holdingsRepo.upsertExchangeMany on a Bybit holding', () => {
     });
   });
 
+  it("Bybit's first read marks every row that is not a bybit row and writes no kept list", async () => {
+    seedHolding(HOLDING_ID, { bybitAsset: BYBIT_KEY, syncedAt: 1_000 });
+    seedRow('row-typed', 'manual');
+    seedRow('row-import', 'import');
+    seedRow('row-fill', 'bybit');
+
+    await bybitRead();
+
+    expect(metadataBy('bybitAsset', BYBIT_KEY)).toEqual({
+      bybitAsset: BYBIT_KEY,
+      syncedAt: READ_AT,
+      balanceReadAt: READ_AT,
+      overwrittenRowIds: ['row-import', 'row-typed'],
+    });
+  });
+
+  it('a read of a holding that stores a kept list never reads it: its rows are marked, no list stays', async () => {
+    seedHolding(HOLDING_ID, {
+      bybitAsset: BYBIT_KEY,
+      balanceReadAt: 1_000,
+      keptRowIds: ['row-typed'],
+    });
+    seedRow('row-typed', 'manual');
+
+    await bybitRead();
+
+    expect(metadataBy('bybitAsset', BYBIT_KEY)).toEqual({
+      bybitAsset: BYBIT_KEY,
+      syncedAt: READ_AT,
+      balanceReadAt: READ_AT,
+      overwrittenRowIds: ['row-typed'],
+    });
+  });
+
   it('a read with no such row writes no key, and the old list does not stay', async () => {
     seedHolding(HOLDING_ID, {
       bybitAsset: BYBIT_KEY,
@@ -266,6 +300,32 @@ describe('holdingsRepo.upsertExchangeMany on a Binance or a wallet holding', () 
         balanceReadAt: READ_AT,
       });
       expect(holdingBy(field, key).balance).toBe(BALANCE_MINOR_UNITS);
+    },
+  );
+
+  it.each(DATED)(
+    'a later read of a %s holding marks only the rows off its kept list and prunes a gone id',
+    async (_, field, key, source) => {
+      seedHolding(HOLDING_ID, {
+        [field]: key,
+        syncedAt: 1_000,
+        balanceReadAt: 1_000,
+        keptRowIds: ['row-gone', 'row-old'],
+      });
+      seedRow('row-old', 'manual');
+      seedRow('row-new', 'manual');
+      seedRow('row-import', 'import');
+      seedRow('row-source', source);
+
+      await upsertOf(field, key);
+
+      expect(metadataBy(field, key)).toEqual({
+        [field]: key,
+        syncedAt: READ_AT,
+        balanceReadAt: READ_AT,
+        overwrittenRowIds: ['row-import', 'row-new'],
+        keptRowIds: ['row-old'],
+      });
     },
   );
 

@@ -151,6 +151,8 @@ export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
  */
 export const OVERWRITTEN_ROW_IDS_FIELD = 'overwrittenRowIds';
 
+export const KEPT_ROW_IDS_FIELD = 'keptRowIds';
+
 // The two stored shapes a balance sync writes (see the spec's "Data model"):
 //   wallet:  { walletAddress: string; syncedAt: number }
 //   Binance: { binanceAsset: 'BTC'; syncedAt: number }
@@ -259,6 +261,8 @@ export const overwrittenRowIdsOf = (metadata: unknown): string[] => {
     ? rowIds.filter((rowId): rowId is string => typeof rowId === 'string')
     : [];
 };
+
+export const keptRowIdsOf = (_metadata: unknown): string[] => [];
 
 /**
  * One provider of the dated list: the `source` of the ledger rows that its balance holds, and

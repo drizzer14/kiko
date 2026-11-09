@@ -19,6 +19,7 @@ jest.mock('@kiko/db/client', () => {
 
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
 
@@ -647,5 +648,41 @@ describe('restoring a Binance holding that the dated read may or may not have re
 
     expect(metadataOf('holding-btc')).toEqual(DATED_METADATA);
     expect(await lineOfBitcoinHolding()).toEqual(lineBeforeRestore);
+  });
+
+  it('a restore keeps the kept list, and the next read marks no old row', async () => {
+    // The first dated read kept the user's old typed row, so it is on no mark.
+    const KEPT_METADATA = {
+      binanceAsset: 'BTC',
+      syncedAt: READ_BETWEEN_AT,
+      balanceReadAt: READ_BETWEEN_AT,
+      keptRowIds: ['row-typed'],
+    };
+
+    seedBinanceLedger(KEPT_METADATA, true);
+
+    await restoredIntoNewDatabase(throughJson(await readDataSnapshot()), EXPORT_VERSION);
+
+    expect(metadataOf('holding-btc')).toEqual(KEPT_METADATA);
+
+    await holdingsRepo.upsertExchangeMany([
+      {
+        accountId: 'account-binance',
+        name: 'Binance Spot · BTC',
+        type: 'crypto_asset',
+        currency: 'BTC',
+        balanceMinorUnits: 100_000_000,
+        metadata: { syncedAt: READ_AT, balanceReadAt: READ_AT },
+        metadataField: 'binanceAsset',
+        metadataKey: 'BTC',
+      },
+    ]);
+
+    expect(metadataOf('holding-btc')).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: READ_AT,
+      balanceReadAt: READ_AT,
+      keptRowIds: ['row-typed'],
+    });
   });
 });

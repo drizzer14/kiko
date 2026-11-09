@@ -338,12 +338,63 @@ describe('the line of a Binance holding that shipped with a row the user typed, 
     await readAt(at(4, 10), { spot: spotOf('0.6') });
 
     expect((await storedHolding()).metadata).toMatchObject({
-      overwrittenRowIds: expect.arrayContaining([laterRowId]),
+      overwrittenRowIds: [laterRowId],
+      keptRowIds: ['typed-row'],
     });
 
     await transactionsRepo.remove(laterRowId);
 
     expect((await storedHolding()).balanceMinorUnits).toBe(SIX_TENTHS_OF_A_COIN);
+  });
+
+  it('the old typed row stays off the mark at the second and the third dated read, with a disconnect between them, and keeps counting', async () => {
+    seedShippedHoldingWithTypedRow();
+
+    const dayOfRead = [2, 3, 4];
+
+    for (const day of dayOfRead) {
+      await readAt(at(day, 10), { spot: spotOf('0.6') });
+
+      expect((await storedHolding()).metadata).toEqual({
+        binanceAsset: 'BTC',
+        syncedAt: at(day, 10),
+        balanceReadAt: at(day, 10),
+        defaultNameRenameSettled: true,
+        keptRowIds: ['typed-row'],
+      });
+      expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
+
+      await disconnectCryptoAccount(ACCOUNT_ID, 'binance');
+    }
+  });
+
+  it('a delete of the old typed row after the third dated read moves the balance as today', async () => {
+    seedShippedHoldingWithTypedRow();
+    await readAt(at(2, 10), { spot: spotOf('0.6') });
+    await disconnectCryptoAccount(ACCOUNT_ID, 'binance');
+    await readAt(at(3, 10), { spot: spotOf('0.6') });
+    await disconnectCryptoAccount(ACCOUNT_ID, 'binance');
+    await readAt(at(4, 10), { spot: spotOf('0.6') });
+
+    expect((await transactionsRepo.removePlan('typed-row')).balanceChanges).toBeDefined();
+
+    await transactionsRepo.remove('typed-row');
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
+  });
+
+  it('a deleted old row leaves the kept list at the next dated read', async () => {
+    seedShippedHoldingWithTypedRow();
+    await readAt(at(2, 10), { spot: spotOf('0.6') });
+    await transactionsRepo.remove('typed-row');
+    await readAt(at(3, 10), { spot: spotOf('0.1') });
+
+    expect((await storedHolding()).metadata).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: at(3, 10),
+      balanceReadAt: at(3, 10),
+      defaultNameRenameSettled: true,
+    });
   });
 });
 
