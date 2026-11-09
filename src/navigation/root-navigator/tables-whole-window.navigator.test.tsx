@@ -93,16 +93,9 @@ const oneOf = (rendered: Rendered, testID: string): Instance => {
   return found[0];
 };
 
-// The content view of the Tables screen, whose parent is the screen's SafeAreaView.
-const tablesContent = (rendered: Rendered): Instance | null => {
-  let node = rendered.getByTestId(TABLES).parent;
-
-  while (node !== null && node.props.testID !== 'screen-content') {
-    node = node.parent;
-  }
-
-  return node;
-};
+// The scroll of the Tables screen (the category table, which it opens on) is the screen's own
+// child, so its parent is the screen's SafeAreaView.
+const tablesScroll = (rendered: Rendered): Instance => rendered.getByTestId('category-table');
 
 const ancestorsOf = (instance: Instance): Instance[] => {
   const found: Instance[] = [];
@@ -245,22 +238,22 @@ describe('Tables is in a layer over both panes', () => {
     });
 
     // The layer tells its screens they are in no pane, so Tables reads as the single stack's: the
-    // header owns the top inset, the other edges are the window's, and the content starts at the
-    // base padding with no top-bar pill.
-    it('lays Tables out as the window under its header: no top edge, the base padding', async () => {
+    // header owns the top inset, the other edges are the window's, and the table starts at the
+    // bar's own inset with no top-bar pill.
+    it('lays Tables out as the window under its header: no top edge, no top padding of its own', async () => {
       const rendered = await renderRoot();
 
       await pressTables(rendered);
 
-      const content = tablesContent(rendered);
+      const scroll = tablesScroll(rendered);
 
-      expect(content?.parent?.props.edges).toEqual({
+      expect(scroll.parent?.props.edges).toEqual({
         top: 'off',
         right: 'additive',
         bottom: 'additive',
         left: 'additive',
       });
-      expect(StyleSheet.flatten(content?.props.style).paddingTop).toBe(darkTheme.spacing(4));
+      expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingTop).toBeUndefined();
     });
 
     it('keeps the Statistics beside Home mounted, with no route made for it', async () => {
@@ -525,13 +518,16 @@ describe('Tables is in a layer over both panes', () => {
       await goToTab('StatisticsTab');
       await pressTables(rendered);
 
-      const content = tablesContent(rendered);
+      const scroll = tablesScroll(rendered);
 
       expect(allOf(rendered, PRIMARY)).toHaveLength(0);
       expect(allOf(rendered, LAYER)).toHaveLength(0);
       expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
-      expect(content).not.toBeNull();
-      expect(StyleSheet.flatten(content?.parent?.props.style).maxWidth).toBeUndefined();
+      expect(
+        [scroll.parent?.props.style, scroll.props.style, scroll.props.contentContainerStyle].map(
+          (style) => StyleSheet.flatten(style)?.maxWidth,
+        ),
+      ).toEqual([undefined, undefined, undefined]);
       expect(darkTheme.layout.paneMaxWidth).toBeLessThan(669);
     });
 

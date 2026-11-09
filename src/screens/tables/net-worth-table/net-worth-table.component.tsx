@@ -55,6 +55,7 @@ const NetWorthTable: FC<NetWorthTableProps> = ({
   baseCurrency,
   backfillState,
   topContent,
+  barInset,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
@@ -145,6 +146,7 @@ const NetWorthTable: FC<NetWorthTableProps> = ({
       topContent={topContent}
       emptyContent={emptyContent}
       initialColumnIndex={openingColumnIndexOf(months)}
+      barInset={barInset}
       testID="net-worth-table"
     />
   );

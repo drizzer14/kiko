@@ -123,13 +123,15 @@ const LAYER_ROOT_HEADER: NativeStackNavigationOptions = {
 // background and large-title ground. UIKit moves the shared bar from one page's bar look to the
 // other's during the swipe, so a root that differs in any of them fades the bar's background away.
 // The page over the root has them from its stack's `screenOptions` or its own, and the root, which
-// is described apart from both, takes them from that page. Its title, back button and items stay
-// its own, and so does `headerLargeTitle`: it also shapes the bar's background, but the root never
-// takes a large title, a deliberate exception (the root's bar is the plain one the swipe ends on).
+// is described apart from both, takes them from that page. The large title is among them (both
+// names native-stack reads): it makes the page's bar translucent with a transparent ground, and a
+// root without it would draw an opaque one. Its title, back button and items stay its own.
 const BAR_APPEARANCE_OPTIONS = [
   'headerBackground',
   'headerBlurEffect',
   'headerLargeStyle',
+  'headerLargeTitle',
+  'headerLargeTitleEnabled',
   'headerLargeTitleShadowVisible',
   'headerShadowVisible',
   'headerStyle',

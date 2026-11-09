@@ -136,9 +136,12 @@ describe('HomeStack', () => {
     });
   });
 
-  // User ruling (small title): the table sits below an opaque bar, never under a large title.
-  it('registers the Tables route with a visible header and its title, and no large-title options', () => {
-    expect(optionsOf('Tables', undefined)).toEqual({ headerShown: true, title: 'Tables' });
+  it('registers the Tables route with a visible header, the shared large-title options and its title', () => {
+    expect(optionsOf('Tables', undefined)).toEqual({
+      headerShown: true,
+      ...sharedLargeTitleOptions,
+      title: 'Tables',
+    });
   });
 
   it('keeps the Tables header on a merged Home', () => {

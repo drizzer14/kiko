@@ -19,6 +19,7 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
+import { useAnimatedHeaderHeight } from '@react-navigation/native-stack';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
@@ -68,6 +69,9 @@ const HAS_CATEGORY_FILTER: Record<TablesView, boolean> = {
  */
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
+  // The live height of the large-title bar the table scrolls under, which the table keeps its
+  // header row flush below; read here so the design system's table stays free of navigation.
+  const barInset = useAnimatedHeaderHeight();
   const scheme = useActiveColorScheme();
   // Visibility, not focus: in two panes the panes behind this screen are in view without being the
   // focused route, and this screen is the only one read while it shows.
@@ -220,8 +224,10 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   );
 
   if (!isReady) {
+    // A scroll, so the bar's large title is tracked from the first frame and the spinner sits
+    // below it, not under the translucent bar.
     return (
-      <Screen belowHeader uncapped>
+      <Screen scroll uncapped>
         <LoadingState testID="tables-loading" />
       </Screen>
     );
@@ -245,9 +251,20 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   );
 
   // They go into the table's scroll, so at a large type size they scroll away with the caption
-  // and leave the rows the room; the empty state keeps them in place.
+  // and leave the rows the room; the empty state keeps them in place. The view switch is the
+  // first of them, so it scrolls away too and the title collapses as on Home and Statistics.
   const controls = (
     <Box gap={3}>
+      <SegmentedControl<TablesView>
+        options={TABLES_VIEWS}
+        selected={view}
+        onSelect={selectView}
+        labels={viewLabels}
+        labelVariant="caption"
+        accessibilityLabel={t('tables.view.label')}
+        testID="tables-view"
+      />
+
       <Box
         direction="row"
         gap={3}
@@ -286,67 +303,60 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   );
 
   return (
-    <Screen belowHeader uncapped>
-      <Box gap={3} style={styles.content}>
-        <SegmentedControl<TablesView>
-          options={TABLES_VIEWS}
-          selected={view}
-          onSelect={selectView}
-          labels={viewLabels}
-          labelVariant="caption"
-          accessibilityLabel={t('tables.view.label')}
-          testID="tables-view"
-        />
-
-        {match(view)
-          .with('categories', () => (
-            <CategoryTable
-              ledger={ledger}
-              months={months}
-              now={now}
-              categoryDisplay={categoryByKey}
-              rateTable={rateTable}
-              baseCurrency={baseCurrency}
-              defaultCategoryKey={defaultCategoryKey}
-              excludedCategories={excludedCategories}
-              describeRow={describeRow}
-              sheetGeneration={sheetGeneration}
-              onOpenTransaction={openTransaction}
-              topContent={controls}
-            />
-          ))
-          .with('cashFlow', () => (
-            <CashFlowTable
-              ledger={ledger}
-              months={months}
-              now={now}
-              categoryDisplay={categoryByKey}
-              rateTable={rateTable}
-              baseCurrency={baseCurrency}
-              defaultCategoryKey={defaultCategoryKey}
-              describeRow={describeRow}
-              sheetGeneration={sheetGeneration}
-              onOpenTransaction={openTransaction}
-              topContent={controls}
-            />
-          ))
-          .with('netWorth', () => (
-            <NetWorthTable
-              accounts={filtered.filteredAccounts}
-              holdings={filtered.netWorthHoldings}
-              transactions={transactions}
-              historyRows={historyRows}
-              months={months}
-              now={now}
-              rateTable={rateTable}
-              priceBook={priceBook}
-              baseCurrency={baseCurrency}
-              backfillState={backfillStatus.state}
-              topContent={controls}
-            />
-          ))
-          .exhaustive()}
-      </Box>
+    // The table is the safe-area view's own child, so it is the scroll the large title collapses
+    // with, and it pads its own sides and clears the tab bar.
+    <Screen bleedTop uncapped>
+      {match(view)
+        .with('categories', () => (
+          <CategoryTable
+            ledger={ledger}
+            months={months}
+            now={now}
+            categoryDisplay={categoryByKey}
+            rateTable={rateTable}
+            baseCurrency={baseCurrency}
+            defaultCategoryKey={defaultCategoryKey}
+            excludedCategories={excludedCategories}
+            describeRow={describeRow}
+            sheetGeneration={sheetGeneration}
+            onOpenTransaction={openTransaction}
+            topContent={controls}
+            barInset={barInset}
+          />
+        ))
+        .with('cashFlow', () => (
+          <CashFlowTable
+            ledger={ledger}
+            months={months}
+            now={now}
+            categoryDisplay={categoryByKey}
+            rateTable={rateTable}
+            baseCurrency={baseCurrency}
+            defaultCategoryKey={defaultCategoryKey}
+            describeRow={describeRow}
+            sheetGeneration={sheetGeneration}
+            onOpenTransaction={openTransaction}
+            topContent={controls}
+            barInset={barInset}
+          />
+        ))
+        .with('netWorth', () => (
+          <NetWorthTable
+            accounts={filtered.filteredAccounts}
+            holdings={filtered.netWorthHoldings}
+            transactions={transactions}
+            historyRows={historyRows}
+            months={months}
+            now={now}
+            rateTable={rateTable}
+            priceBook={priceBook}
+            baseCurrency={baseCurrency}
+            backfillState={backfillStatus.state}
+            topContent={controls}
+            barInset={barInset}
+          />
+        ))
+        .exhaustive()}
     </Screen>
   );
 };
