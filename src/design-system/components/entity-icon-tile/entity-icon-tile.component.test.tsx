@@ -62,7 +62,7 @@ describe('EntityIconTile', () => {
   });
 
   // A fixed white glyph fails WCAG AA on a
-  // light entity swatch (e.g. `white`, `yellow` — see `isLightEntityColor`'s
+  // light entity swatch (e.g. `white`, `yellow` — see `prefersDarkGlyph`'s
   // doc comment in `entity-tint.ts`). The glyph must switch to the dark
   // `theme.colors.background` token instead of staying white on a tile this
   // bright.
@@ -99,9 +99,13 @@ describe('EntityIconTile', () => {
       restoreThemeOrder();
     });
 
-    it('tints the glyph on a light tile with the tile glyph token, not the page color', async () => {
+    it('tints the glyph on the light yellow tile with the tile glyph token, not the page color', async () => {
       const { getByLabelText } = await render(
-        <EntityIconTile name="banknote" color="#FFFF00" accessibilityLabel="Cash icon" />,
+        <EntityIconTile
+          name="banknote"
+          color={lightTheme.colors.entityColors.yellow}
+          accessibilityLabel="Cash icon"
+        />,
       );
       const tint = getByLabelText('Cash icon').props.tintColor;
 
@@ -109,9 +113,26 @@ describe('EntityIconTile', () => {
       expect(tint).not.toBe(lightTheme.colors.background);
     });
 
-    it('keeps the onAccent token on a dark tile', async () => {
+    // White holds 4.39:1 here, so a white-under-3:1 rule keeps the white glyph; black holds 4.78:1.
+    it('tints the glyph on the light indigo tile with the tile glyph token, the better contrast', async () => {
       const { getByLabelText } = await render(
-        <EntityIconTile name="banknote" color="#0066E6" accessibilityLabel="Checking icon" />,
+        <EntityIconTile
+          name="banknote"
+          color={lightTheme.colors.entityColors.indigo}
+          accessibilityLabel="Cash icon"
+        />,
+      );
+
+      expect(getByLabelText('Cash icon').props.tintColor).toBe(lightTheme.colors.glyphOnLightTile);
+    });
+
+    it('keeps the onAccent token on the light red tile', async () => {
+      const { getByLabelText } = await render(
+        <EntityIconTile
+          name="banknote"
+          color={lightTheme.colors.entityColors.red}
+          accessibilityLabel="Checking icon"
+        />,
       );
 
       expect(getByLabelText('Checking icon').props.tintColor).toBe(lightTheme.colors.onAccent);

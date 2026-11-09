@@ -76,12 +76,9 @@ import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dat
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import '@kiko/design-system/unistyles';
-import {
-  categoryColorsLight,
-  entityColorsDark,
-  entityColorsLight,
-} from '@kiko/design-system/palette';
-import { darkTheme } from '@kiko/design-system/theme';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { entityColorsDark } from '@kiko/design-system/palette';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
@@ -2137,7 +2134,7 @@ describe('StatisticsScreen', () => {
     ).toBe(categoryColor('groceries'));
   });
 
-  it('tints a category filter option through the light map in the light scheme', async () => {
+  it('tints a category filter option through the light map and the light mark in the light scheme', async () => {
     registerLightThemeFirst();
     seedSpending();
 
@@ -2151,7 +2148,7 @@ describe('StatisticsScreen', () => {
       const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart')?.props
         .tintColor;
 
-      expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
+      expect(tint).toBe(markColor(resolveCategoryColor(null, 'groceries', 'light'), 'light'));
       expect(tint).not.toBe(categoryColor('groceries'));
     } finally {
       restoreThemeOrder();
@@ -2160,7 +2157,7 @@ describe('StatisticsScreen', () => {
 
   // A manual trend key is held in the option list without being checked in the category filter, so
   // its glyph shows the tint; a checked row shows the white on-accent glyph instead.
-  it('tints a trend-held category with no spending through the category set in the light scheme', async () => {
+  it('tints a trend-held category with no spending through the category set and the light mark in the light scheme', async () => {
     registerLightThemeFirst();
     setLiveData({
       accounts: [CASH, BANK],
@@ -2185,8 +2182,7 @@ describe('StatisticsScreen', () => {
       const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-utilities`), 'bolt')?.props
         .tintColor;
 
-      expect(tint).toBe(categoryColorsLight.violet);
-      expect(tint).not.toBe(entityColorsLight.violet);
+      expect(tint).toBe(markColor(lightTheme.colors.categoryColors.violet, 'light'));
     } finally {
       restoreThemeOrder();
     }

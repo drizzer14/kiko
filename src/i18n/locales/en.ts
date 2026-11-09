@@ -1363,7 +1363,7 @@ export const en = {
         steps: {
           '1': 'Open the "Settings" tab, then tap "System".',
           '2': 'Under "Language", choose your language.',
-          '3': 'Under "Appearance", choose "System", "Light", or "Dark". "System" follows your device.',
+          '3': 'Under "Appearance", choose "Light", "System", or "Dark". "System" follows your device.',
           '4': 'Turn on "Require Face ID or passcode" to lock Kiko. Each time you launch it, it asks for Face ID or your device passcode.',
           '5': 'To turn the lock off, Kiko first asks you to confirm it is you.',
         },

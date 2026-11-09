@@ -20,6 +20,7 @@ const palette = JSON.parse(
   tokens: SwatchFile;
   entitySwatches: SwatchFile;
   categorySwatches: SwatchFile;
+  markSwatches: Record<string, { light: string }>;
   chartSeries: { keys: string[]; dark: string[]; light: string[] };
   iconTile: { glyph: { onLightTile: { dark: string; light: string } } };
   navigation: Record<string, { token: string } | { dark: string; light: string }>;
@@ -70,6 +71,61 @@ describe('the approved light palette file', () => {
     expect(palette.chartSeries.light).toEqual(
       palette.chartSeries.keys.map((key) => palette.categorySwatches[key].light),
     );
+  });
+
+  // markColor is read at run time: the red is the missing function or a wrong shade, not a failed
+  // import.
+  it('every light swatch mark equals markSwatches', () => {
+    const { markColor } = jest.requireActual('@kiko/design-system/entity-tint') as {
+      markColor?: (hex: string, scheme: 'dark' | 'light') => string;
+    };
+
+    expect(markColor).toBeInstanceOf(Function);
+
+    const tilesByName = [palette.entitySwatches, palette.categorySwatches].flatMap((swatches) =>
+      Object.entries(valuesOf(swatches, 'light')),
+    );
+
+    expect(tilesByName).toHaveLength(28);
+    expect(Object.keys(palette.markSwatches).sort()).toEqual(
+      Object.keys(palette.entitySwatches).sort(),
+    );
+
+    for (const [name, tile] of tilesByName) {
+      expect(markColor?.(tile, 'light')).toBe(palette.markSwatches[name].light);
+    }
+  });
+
+  it('dark swatches stay byte-identical', () => {
+    expect(entityColorsDark).toEqual({
+      white: '#FFFFFF',
+      khaki: '#BDB76B',
+      brown: '#AC8E68',
+      yellow: '#FFD60A',
+      blue: '#0A84FF',
+      green: '#30D158',
+      mint: '#66D4CF',
+      violet: '#BF5AF2',
+      red: '#FF453A',
+      orange: '#FF9F0A',
+      teal: '#40C8E0',
+      pink: '#FF375F',
+      indigo: '#5E5CE6',
+      gray: '#98989D',
+    });
+    expect(chartSeriesDark).toEqual([
+      '#0A84FF',
+      '#30D158',
+      '#FF9F0A',
+      '#BF5AF2',
+      '#40C8E0',
+      '#FF375F',
+      '#FFD60A',
+      '#5E5CE6',
+    ]);
+    expect(palette.chartSeries.dark).toEqual([...chartSeriesDark]);
+    expect(valuesOf(palette.entitySwatches, 'dark')).toEqual(entityColorsDark);
+    expect(valuesOf(palette.categorySwatches, 'dark')).toEqual(entityColorsDark);
   });
 
   it('pins the glyph on a light tile to the file', () => {

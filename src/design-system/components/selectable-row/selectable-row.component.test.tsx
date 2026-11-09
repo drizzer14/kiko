@@ -1,6 +1,13 @@
 import { Text } from 'react-native';
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
+import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 
 import SelectableRow from '.';
 
@@ -104,5 +111,43 @@ describe('SelectableRow', () => {
     expect(getByText('Monobank')).toBeTruthy();
     expect(getByTestId('trailing-icons')).toBeTruthy();
     expect(getByText('Connect and import statements.')).toBeTruthy();
+  });
+
+  describe('icon tint', () => {
+    const yellowTile = lightTheme.colors.entityColors.yellow;
+    const iconTintsOf = async () => {
+      const { getByTestId } = await render(
+        <SelectableRow
+          selected={false}
+          onPress={jest.fn()}
+          label="Groceries"
+          icon="cart.fill"
+          iconColor={yellowTile}
+          testID="row"
+        />,
+      );
+
+      return glyphTintsWithin(getByTestId('row'));
+    };
+
+    it('keeps the tile on the icon in the dark world', async () => {
+      expect(darkTheme.colors.entityColors.yellow).not.toBe(yellowTile);
+      expect(await iconTintsOf()).toEqual([yellowTile]);
+    });
+
+    describe('in the light world', () => {
+      beforeEach(() => {
+        registerLightThemeFirst();
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('paints the light mark of the tile, not the tile', async () => {
+        expect(markColor(yellowTile, 'light')).not.toBe(yellowTile);
+        expect(await iconTintsOf()).toEqual([markColor(yellowTile, 'light')]);
+      });
+    });
   });
 });

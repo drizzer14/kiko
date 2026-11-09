@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
+import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+
 import FieldTrigger from '.';
 
 // Text's tone -> color mapping is a react-native-unistyles variant, which
@@ -121,5 +129,44 @@ describe('FieldTrigger', () => {
 
     expect(getByText('Return to 1').props.testID).toBe('text-tone-negative');
     expect(queryByTestId('return-field-error')).toBeNull();
+  });
+
+  describe('icon tint', () => {
+    const yellowTile = lightTheme.colors.entityColors.yellow;
+    const iconTintsOf = async () => {
+      const { getByTestId } = await render(
+        <FieldTrigger
+          label="Category"
+          onPress={jest.fn()}
+          value="Groceries"
+          valueTone="textPrimary"
+          icon="cart.fill"
+          iconColor={yellowTile}
+          testID="trigger"
+        />,
+      );
+
+      return glyphTintsWithin(getByTestId('trigger'));
+    };
+
+    it('keeps the tile on the icon in the dark world', async () => {
+      expect(darkTheme.colors.entityColors.yellow).not.toBe(yellowTile);
+      expect(await iconTintsOf()).toEqual([yellowTile]);
+    });
+
+    describe('in the light world', () => {
+      beforeEach(() => {
+        registerLightThemeFirst();
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('paints the light mark of the tile, not the tile', async () => {
+        expect(markColor(yellowTile, 'light')).not.toBe(yellowTile);
+        expect(await iconTintsOf()).toEqual([markColor(yellowTile, 'light')]);
+      });
+    });
   });
 });

@@ -13,6 +13,7 @@ import {
 } from '@kiko/test-support/statistics-filter-data';
 import { darkTheme } from '@kiko/design-system/theme';
 import Screen from '@kiko/design-system/components/screen';
+import { markColor } from '@kiko/design-system/entity-tint';
 import { reportWindow } from '@kiko/test-support/window-size';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
@@ -562,7 +563,7 @@ describe('TablesScreen', () => {
       await held.unmount();
     });
 
-    it('tints a category option through the light map in the light scheme', async () => {
+    it('tints a category option through the light map and the light mark in the light scheme', async () => {
       registerLightThemeFirst();
 
       try {
@@ -574,7 +575,7 @@ describe('TablesScreen', () => {
           (node) => node.props.name === 'cart',
         )[0]?.props.tintColor;
 
-        expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
+        expect(tint).toBe(markColor(resolveCategoryColor(null, 'groceries', 'light'), 'light'));
         expect(tint).not.toBe(categoryColor('groceries'));
       } finally {
         restoreThemeOrder();

@@ -1,5 +1,7 @@
 import type { FC } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useUnistyles } from 'react-native-unistyles';
+import { markColor } from '@kiko/design-system/entity-tint';
 
 import Box from '../box';
 import Card from '../card';
@@ -46,7 +48,13 @@ const TransactionCard: FC<TransactionCardProps> = ({
               tone="textSecondary"
               // A glyph with no colour of its own reads as onAccent on the selected fill, where
               // the category colour (the accent blue, say) would vanish into it.
-              color={selected === true ? undefined : categoryIconColor}
+              color={
+                selected === true
+                  ? undefined
+                  : foldMap(maybe(categoryIconColor), (color) =>
+                      markColor(color, theme.colorScheme),
+                    )
+              }
               accessibilityLabel={categoryAccessibilityLabel}
             />
             <Box style={styles.rowDescription}>
