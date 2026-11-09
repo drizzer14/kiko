@@ -29,10 +29,19 @@ const casesOf = (label: string, scheme: Scheme, swatches: Record<string, string>
   Object.entries(swatches).map(([name, hex]) => [`${label} ${name}`, hex, scheme] as const);
 
 const darkCases = casesOf('dark entity', darkTheme, darkTheme.colors.entityColors);
+// The user chose a white glyph on the light orange and indigo tiles on the device; white sits
+// below the 4.5:1 base floor on them on purpose, so only they leave that one case (teal's white
+// meets it) and are asserted white instead. Every swatch keeps the 3:1 stop floor.
+const BELOW_BASE_FLOOR_BY_USER_RULING = ['orange', 'indigo'];
+const isBelowBaseFloor = ([label]: readonly [string, ...unknown[]]): boolean =>
+  BELOW_BASE_FLOOR_BY_USER_RULING.some((name) => label.endsWith(` ${name}`));
+
 const lightCases = [
   ...casesOf('light entity', lightTheme, lightTheme.colors.entityColors),
   ...casesOf('light category', lightTheme, lightTheme.colors.categoryColors),
 ];
+const baseFloorCases = lightCases.filter((entry) => !isBelowBaseFloor(entry));
+const belowBaseFloorCases = lightCases.filter(isBelowBaseFloor);
 
 const glyphOf = (hex: string, scheme: Scheme, which: 'dark' | 'light'): string =>
   prefersDarkGlyph(hex, which) ? scheme.colors.glyphOnLightTile : scheme.colors.onAccent;
@@ -50,7 +59,7 @@ describe('palette contrast: dark entity tiles', () => {
 
 // The light tile is exempt from the page 3:1 floor; the glyph and the mark carry the contrast.
 describe('palette contrast: light tiles', () => {
-  it.each(lightCases)('%s glyph holds 4.5:1 on the base', (_label, hex, scheme) => {
+  it.each(baseFloorCases)('%s glyph holds 4.5:1 on the base', (_label, hex, scheme) => {
     expect(wcagContrastRatio(glyphOf(hex, scheme, 'light'), hex)).toBeGreaterThanOrEqual(
       TEXT_FLOOR,
     );
@@ -63,6 +72,16 @@ describe('palette contrast: light tiles', () => {
       expect(wcagContrastRatio(glyph, stop)).toBeGreaterThanOrEqual(FLOOR);
     }
   });
+
+  it.each(belowBaseFloorCases)(
+    '%s keeps the white glyph below the 4.5:1 base floor',
+    (_label, hex, scheme) => {
+      const glyph = glyphOf(hex, scheme, 'light');
+
+      expect(glyph).toBe(scheme.colors.onAccent);
+      expect(wcagContrastRatio(glyph, hex)).toBeGreaterThan(4);
+    },
+  );
 
   it.each(lightCases)('%s mark holds 3.05:1 on page and card', (_label, hex, scheme) => {
     const mark = markColor(hex, 'light');

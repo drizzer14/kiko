@@ -113,8 +113,8 @@ describe('EntityIconTile', () => {
       expect(tint).not.toBe(lightTheme.colors.background);
     });
 
-    // White holds 4.39:1 here, so a white-under-3:1 rule keeps the white glyph; black holds 4.78:1.
-    it('tints the glyph on the light indigo tile with the tile glyph token, the better contrast', async () => {
+    // The user chose white here on the device, though black holds 4.78:1 against white's 4.39:1.
+    it('keeps the onAccent token on the light indigo tile', async () => {
       const { getByLabelText } = await render(
         <EntityIconTile
           name="banknote"
@@ -123,7 +123,7 @@ describe('EntityIconTile', () => {
         />,
       );
 
-      expect(getByLabelText('Cash icon').props.tintColor).toBe(lightTheme.colors.glyphOnLightTile);
+      expect(getByLabelText('Cash icon').props.tintColor).toBe(lightTheme.colors.onAccent);
     });
 
     it('keeps the onAccent token on the light red tile', async () => {

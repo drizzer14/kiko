@@ -98,17 +98,19 @@ describe('prefersDarkGlyph', () => {
     'gray',
   ];
   const WHITE_GLYPH_DARK: SwatchName[] = ['brown', 'blue', 'violet', 'red', 'pink', 'indigo'];
-  const BLACK_GLYPH_LIGHT: SwatchName[] = [
-    'yellow',
-    'mint',
-    'violet',
-    'orange',
-    'teal',
-    'pink',
-    'indigo',
-    'gray',
+  const BLACK_GLYPH_LIGHT: SwatchName[] = ['yellow', 'mint', 'pink', 'violet', 'gray'];
+  // The user chose a white glyph on these three light tiles on the device; black would contrast
+  // more, and white on orange is 4.16:1, under the 4.5:1 text floor.
+  const USER_WHITE_GLYPH_LIGHT: SwatchName[] = ['orange', 'teal', 'indigo'];
+  const WHITE_GLYPH_LIGHT: SwatchName[] = [
+    'white',
+    'khaki',
+    'brown',
+    'blue',
+    'green',
+    'red',
+    ...USER_WHITE_GLYPH_LIGHT,
   ];
-  const WHITE_GLYPH_LIGHT: SwatchName[] = ['white', 'khaki', 'brown', 'blue', 'green', 'red'];
   const WHITE = '#FFFFFF';
   const GLYPH_FLOOR = 3;
   const DARK_RULE_HEXES = [
@@ -158,14 +160,17 @@ describe('prefersDarkGlyph', () => {
     );
   });
 
-  it.each(Object.values(entityColorsLight))(
-    'light: %s takes whichever of white and black contrasts more',
-    (hex) => {
-      expect(prefersDarkGlyph(hex, 'light')).toBe(
-        wcagContrastRatio('#000000', hex) > wcagContrastRatio(WHITE, hex),
-      );
-    },
-  );
+  it.each(
+    (Object.keys(entityColorsLight) as SwatchName[]).filter(
+      (name) => !USER_WHITE_GLYPH_LIGHT.includes(name),
+    ),
+  )('light: the %s tile takes whichever of white and black contrasts more', (name) => {
+    const hex = entityColorsLight[name];
+
+    expect(prefersDarkGlyph(hex, 'light')).toBe(
+      wcagContrastRatio('#000000', hex) > wcagContrastRatio(WHITE, hex),
+    );
+  });
 });
 
 describe('resolveEntityColor', () => {
