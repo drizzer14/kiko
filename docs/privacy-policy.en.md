@@ -2,7 +2,7 @@
 
 > 🇺🇦 [Українською](./privacy-policy.md) · 🇬🇧 English
 
-**Effective date:** 3 November 2026
+**Effective date:** 9 November 2026
 
 Kiko is a personal finance app developed by Dmytro Vasylkivskyi ("we", "us").
 This policy explains how Kiko handles your information.
@@ -51,9 +51,9 @@ and its key safe.
 Kiko communicates directly from your device with the services below, only as
 far as your accounts and holdings need them. Some connections run only after
 you connect an account, add a Bitcoin address, or save a key (Monobank
-statements, Binance account data, Blockstream). Others run automatically to
-value what you track: currency exchange rates (Monobank and the National Bank
-of Ukraine), cryptocurrency prices (CoinGecko, and Binance public prices when
+statements, Binance account data, Bybit account data, Blockstream). Others
+run automatically to value what you track: currency exchange rates (Monobank
+and the National Bank of Ukraine), cryptocurrency prices (CoinGecko, and Binance public prices when
 CoinGecko has none), and precious-metal prices and the government bond
 register (National Bank of Ukraine). Kiko does not route these
 connections through any server of ours. Like any internet connection, each
@@ -78,6 +78,31 @@ service can see your device's IP address.
   `.kiko` export. Also, for any user, public market prices of a coin CoinGecko
   did not price: Kiko sends only the market symbol (for example `BTCUSDT`) and
   the dates of the prices it needs; no key, address, or amount is sent.
+- **Bybit** (`api.bybit.com`): using your read-only API key: details of the
+  key itself (whether it is read-only, whether it belongs to your main account,
+  and when it ends); your balances of every coin and fiat currency (Unified,
+  Funding); your deposit history, including deposits sent by another Bybit
+  user, your withdrawal history; your transfers between your Bybit wallets;
+  your Unified account's transaction log, from which Kiko imports spot trades;
+  your convert history; and your Funding wallet's transaction record. Bybit's
+  answers can include your Bybit user ID and the sender's or recipient's
+  address, email, phone number or Bybit user ID. They reach only your device,
+  and Kiko does not keep those details, with one exception named at the end of
+  this entry. Kiko keeps on your device the tickers of coins it does not track
+  or could not read, the wallets it left out, the kinds of log entries it did
+  not import, the date your key ends, and, inside each imported trade or
+  convert and each convert it could not import, Bybit's IDs of that record and
+  its order, which can hold your account number; for each move of your Funding
+  wallet's record and each move matched to one, its coin, direction, amount,
+  fee, tax, time, kind of move and Bybit's ID, also for one that Kiko does not
+  list; this also travels in a `.kiko` export. The exception: from your own
+  Bybit user ID, Kiko makes a value and keeps it on your device and in a
+  `.kiko` export, so that it can refuse a key of another Bybit account while an
+  account in Kiko still has holdings from the first. The value is not the ID
+  itself, but the ID is a short number: anyone who can read the value, for
+  example from a `.kiko` export and its key, can find your ID with a script. A
+  later read of a key replaces the value, and deleting that account in Kiko
+  deletes it.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
   Bitcoin address you add. Kiko sends that address to Blockstream to look it up.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price
