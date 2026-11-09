@@ -71,6 +71,70 @@ Files: `src/holdings/holding-metadata/holding-metadata.ts`,
   measured counts against the parent. A count that grows is reported, not re-pinned silently.
   Check: named jest on those two files; `npm run check:typecheck`.
 
+## 1.4-binance-dated task 1/3 fix round 3: the kept list (Q3, old typed rows count for good)
+
+Base: tip 7ed3f7067 (task base 480d4ab7c). Spec: section 3 "The kept list", rows R8 to R10, pins D8
+and D9, and the D8 rows of "Existing pins that change on purpose". One fresh `kiko:developer`.
+Re-grep every symbol below on the actual base; counts are floors.
+
+Files: `src/holdings/holding-metadata/holding-metadata.ts` (the key constant beside
+`OVERWRITTEN_ROW_IDS_FIELD`, a reader beside `overwrittenRowIdsOf`, the `DatedBalance` and
+`OVERWRITTEN_ROW_IDS_FIELD` comments), `src/holdings/repo/holdings.repo.ts`
+(`overwrittenRowsPatch`, its comment, the `upsertByMetadataKey` header paragraph on the dated
+list), and the tests named below. No other `src/` file: the valuer, `isOverwrittenRow`,
+`strippedOnDisconnect`, `carriedMetadataKeys` and the restore stay as they are.
+
+- [ ] **step 1/3: red pins (D9), each with its own seed.** Seed old rows by raw INSERT as the
+  existing "shipped with a row the user typed" describes do; type later rows with `recordManual`.
+  - `binance.past-line.real-sqlite.test.ts` and `btc-wallet.past-line.real-sqlite.test.ts`, the
+    "shipped with a row the user typed" describe: "the old typed row stays off the mark at the
+    second and the third dated read, with a disconnect between them, and keeps counting" (line
+    and metadata after each read); "a delete of the old typed row after the third dated read moves
+    the balance as today"; "a deleted old row leaves the kept list at the next read". Tighten the
+    Q-j title's assertion to exactly `[laterRowId]` (spec table, D8 row).
+  - `holdings.repo.past-line-mark.test.ts`, `it.each(DATED)`: "a later read of a %s holding marks
+    only the rows off its kept list and prunes a gone id"; one Bybit title: "Bybit's first read
+    marks every row that is not a bybit row and writes no kept list" (green on the base: a
+    no-change pin, say so in the report).
+  - `restore-past-line-mark.test.ts`, the Binance describe: "a restore keeps the kept list, and the
+    next read marks no old row" (per-pin seed through the describe's own `seedBinanceLedger`
+    shape; never a shared helper).
+  - `holding-metadata.test.ts`: the reader ("reads the kept ids; a value that is not a list reads
+    as none", modelled on `overwrittenRowIdsOf`'s titles) and in `withCarriedMetadataKeys` "does
+    not carry the kept list, so a read writes its own".
+  Check: each new title fails on 7ed3f7067 for its stated reason (the old row on the mark, or the
+  missing key or reader), output quoted; a green one is reported as a no-change pin.
+- [ ] **step 2/3: the kept list in `overwrittenRowsPatch`.** One select of the non-source row ids,
+  as now, on every read of a dated holding (the first read included). First dated read of an entry
+  with `countsSourceRowsBeforeFirstRead` (stored `balanceReadAtOf` null): return the kept key with
+  those ids, or `{}` when none, and no mark. Any later read of such an entry: mark = ids off the
+  stored kept list; kept = ids on it that still exist; each key only when non-empty. An entry with
+  `false` (Bybit): exactly as today, the kept list never read. Re-pin in this commit the three D8
+  rows of the spec's "Existing pins that change on purpose" (ruling Q3, kept list, in the message).
+  Update the comments named under Files (drop the second-read limit from `DatedBalance`; state that
+  the key is in neither carried nor stripped list, as the mark).
+  Check: step 1/3 pins green; named jest on the five test files; `make jest-affected`
+  (`BASE=7ed3f7067`; exit 3: report for the queued verify); `npm run check:typecheck`;
+  `npm run check:import-order`; `npm run check:full-word-identifiers`. Any other red suite: list
+  it with both expectations and stop, unless it is a whole-metadata pin of an undated Binance or
+  wallet holding WITH a non-source row read through the update branch (spec section 6 floor of
+  candidates), which gains the kept key: list each with the ruling. The 1.2-upgrade worlds
+  (`src/test-support/binance-backfill-world.ts` and other undated seeds) must stay green unchanged.
+- [ ] **step 3/3: statement counts.** Run the D8 count title (now one select on the first read)
+  and "a read of an existing %s holding sends one statement on the ledger table", the A135
+  "$label makes the same statements…" titles, and the `holding-value-at.bybit.test.ts` dated
+  describe; record measured counts against 7ed3f7067. A count that grows other than the D8 first
+  read is reported, not re-pinned. Check: named jest on those files.
+
+Then: READY FOR VERIFY (worktree, label, base 480d4ab7c for the task, this round's base 7ed3f7067,
+tip); the coordinator's queued `bash scripts/job-queue.sh verify <worktree> <label>`, rerun until
+green; `kiko:reviewer` on 7ed3f7067..tip (top question: can an old row reach the mark by any path:
+a disconnect, a restore, a delete, a Bybit holding); mutation gate text stays with
+`KIKO_MUTATION_BASE=7ed3f7067` (gates paused since 2026-10-25). No migration, so no migration
+review step. Task 3/3 reuses the kept list (Monobank's entry: `countsSourceRowsBeforeFirstRead:
+true`; its marked sources filter the same select); its step 3/3 adds "keeps the kept list" to the
+reopen and `disconnectMonobank` titles.
+
 ## 1.4-binance-dated task 2/3: the "Earlier history" line reads the held rows (PLANNER CALL D2)
 
 Files: `src/statistics/holding-value-at/holding-value-at.ts` (export the held-rows function or an
@@ -111,7 +175,8 @@ client-info answer), tests.
   Check: D7 green; `make jest-affected`; every Monobank suite that asserts a card's whole metadata
   (`sync.test.ts`, `sync.reopen.test.ts`, `sync.reconnect-import.test.ts`,
   `holdings.repo.sync-close.test.ts`, floor) listed with the ruling, never loosened.
-- [ ] **step 3/3: carried keys.** Confirm `BALANCE_READ_AT_FIELD` and the mark are in neither
+- [ ] **step 3/3: carried keys.** Confirm `BALANCE_READ_AT_FIELD`, the mark and the kept list
+  (task 1/3 fix round 3) are in neither
   `carriedMetadataKeys` nor `strippedOnDisconnect`, and that `closeManyBySync` and the reopen keep
   them: one new title in `monobank.past-line.real-sqlite.test.ts`, "a sync-closed card keeps its
   read time and mark through the reopen", and one through `disconnectMonobank`. Check: named jest.
@@ -119,7 +184,8 @@ client-info answer), tests.
 ## After the last task
 
 - [ ] `kiko:retrospect`, then `kiko:scribe`: skill lines that name Bybit alone for the dated read
-  (kiko-exchange-sync "Past-line mark: a Bybit balance is dated…"; kiko-domain "An exchange
+  (kiko-exchange-sync "Past-line mark: a Bybit balance is dated…" and "A balance sync never
+  touches the walk state" (the kept list beside the mark); kiko-domain "An exchange
   holding's 'Earlier history' line … `balance - sum(rows)`"; the Bybit spec's A121 and A135 rows
   point at this spec).
 - [ ] Track-end `kiko:designer` read-only review (task 2 changes a shown value).

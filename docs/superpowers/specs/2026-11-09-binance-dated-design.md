@@ -57,16 +57,37 @@ before the row's day, then from it.
 | R5 | A coin refused for good (`refused`), so no read ever writes it | as typed by rows | as today, for good | as today up to the seed, then held | flat |
 | R6 | A walk makes a holding at 0 and a buy +1 arrives, no read (Bybit row 5) | -1, 0 | -1, 0 until a read (today's numbers) | no seed for a new holding: as C | 0, 0 |
 | R7 | A `.kiko` file written by 1.3 or earlier, restored on this build | as the source device | as the source device; the first good read dates it | needs a restore mirror (the migration does not see a restored file) and its own test; without it, C | flat until a read |
-| R8 | Shipped holding with a row the user typed before the update (an old disconnect, an old Duplicate, a `.kiko` row); wallet: +0.5 typed while disconnected, stored 0.6, reconnected, first dated read 0.6 | 0.1, 0.6; a delete of the row moves the balance | 0.1, 0.6, now dated with NO mark; a delete of the row moves the balance as today (Q3 = A, coordinator, 2026-11-09) | the seed makes it a later read: 0.6, 0.6 | 0.6, 0.6 for good |
+| R8 | Shipped holding with a row the user typed before the update (an old disconnect, an old Duplicate, a `.kiko` row); wallet: +0.5 typed while disconnected, stored 0.6, reconnected, first dated read 0.6 | 0.1, 0.6; a delete of the row moves the balance | 0.1, 0.6, now dated with NO mark; the row's id goes on the kept list; a delete of the row moves the balance as today (Q3 = A, coordinator, 2026-11-09) | the seed makes it a later read: 0.6, 0.6 | 0.6, 0.6 for good |
 | R9 | R8, then a row typed after the first dated read (disconnect, type, reconnect), read again | not dated | the row is on the mark of the next read (Q-j holds); no move on its delete or edit | as R8 | as R8 |
+| R10 | R8, then a second and a third dated read (a disconnect, or a `.kiko` restore, between them) | not dated; was (fix round 2, 7ed3f7067): the old row on the mark from the second read, line 0.6, 0.6, its delete moves nothing | 0.1, 0.6 at every read, for good; the old row is never on the mark; its delete moves the balance as today | as R8 | as R8 |
 
 Q3 (coordinator, 2026-11-09, "same principle" of Q2): the FIRST dated read of a holding that has no
 read date writes the date and NO mark, so the old typed rows of a shipped holding keep counting as
 today, and the fix applies to the rows typed after the update. It holds for Binance and the wallet
 (`countsSourceRowsBeforeFirstRead: true`) and applies to Monobank in task 3/3. Bybit (`false`)
-never shipped an undated holding and marks at once. Limit: a later read lists every row that is
-not of the source, so an old typed row is on the mark from the SECOND dated read on. Reported to
-the coordinator.
+never shipped an undated holding and marks at once.
+
+The kept list (fix round 3; the ruling's own words "old typed rows keep counting", for good). The
+first dated read of such a holding writes, beside the date, a new metadata key (a reading:
+`KEPT_ROW_IDS_FIELD`, `keptRowIds`): the ids of the holding's rows that are not of the source at
+that read, and no key when there are none. Every later read marks the rows that are not of the
+source AND not on the kept list, and rewrites the kept list as the ids on it that still exist (a
+deleted row leaves it; an empty list writes no key). So an old row never reaches the mark, and a
+row typed after the first dated read is not on the list and is marked (Q-j, R9). The key lives as
+the mark does: written only by the update branch of the upsert (`overwrittenRowsPatch`), in neither
+`carriedMetadataKeys` nor `strippedOnDisconnect` (each read writes its own pruned list; a
+disconnect keeps it), plain JSON in a `.kiko` file (a restore keeps it, as A128 shows for the
+mark). Bybit's entry (`false`) never writes or reads it, so Bybit is unchanged. The valuer
+(`rowsHeldByBalance`) and `isOverwrittenRow` read only the mark, so neither changes. No migration,
+no column (Q2 = A). Task 3/3 reuses it with no new code path: Monobank's entry counts its rows
+before the first read, so its first dated read keeps the ids of its marked-source (manual) rows,
+and its later reads mark only manual rows off the list.
+
+Rejected shapes: a time cut against `transactions.created_at` (SQLite second resolution against a
+millisecond read time, a device clock change, and an old row moved in by an edit reads as old); an
+id order (row ids are random v4 UUIDs, `src/db/id.ts`); a cut derived from the stored mark and
+`balanceReadAt` with no new key (the same clock compare, and a lost mark loses it); a schema column
+or a seed (a migration, Q2 = A).
 
 | | A: own no-date rule | B: seed by migration | C: Bybit's rule as is |
 |---|---|---|---|
@@ -155,7 +176,8 @@ and Q-k and Q-l hold on Monobank as the user ruled for all three (Q-m).
 | D4 | The same for the wallet: W8, W9 | new `src/crypto-sync/btc-wallet/btc-wallet.past-line.real-sqlite.test.ts` |
 | D5 | A restored 1.3 file (R7): an undated Binance holding draws today's line; a dated one keeps date and mark | `src/data-transfer/snapshot/restore-past-line-mark.test.ts`, new titles |
 | D6 | The footer equals the series' opening (W11) | `exchange-history-footer.component.test.tsx`: "shows the balance less the rows the line counts", "shows no line when a row after the read explains the gap"; the existing "Earlier history" titles stay green unless their world has a date (developer lists any that flip) |
-| D8 | R8, R9 (Q3): the first dated read of a shipped Binance or wallet holding writes the date and no mark; its old typed row keeps counting and a delete of it moves the balance; a row typed after the read is on the next read's mark | `binance.past-line.real-sqlite.test.ts` and `btc-wallet.past-line.real-sqlite.test.ts`: the "shipped with a row the user typed" describes (own seed per pin); `holdings.repo.past-line-mark.test.ts`: "Q3, the first dated read of a shipped %s holding writes the date, no key and reads no row" |
+| D8 | R8, R9 (Q3): the first dated read of a shipped Binance or wallet holding writes the date and no mark; its old typed row keeps counting and a delete of it moves the balance; a row typed after the read is on the next read's mark | `binance.past-line.real-sqlite.test.ts` and `btc-wallet.past-line.real-sqlite.test.ts`: the "shipped with a row the user typed" describes (own seed per pin); `holdings.repo.past-line-mark.test.ts`: "Q3, the first dated read of a shipped %s holding writes the date, no key and reads no row" (changed in fix round 3, table below) |
+| D9 | R10 (Q3, the kept list): an old typed row stays off the mark at the second and the third dated read, through a disconnect and through a `.kiko` restore, and its delete still moves the balance; only a row typed after the first dated read is on the mark; a deleted old row leaves the list; Bybit's first read still marks every row and writes no list | `binance.past-line.real-sqlite.test.ts`, `btc-wallet.past-line.real-sqlite.test.ts` (own seed per pin); `holdings.repo.past-line-mark.test.ts`; `restore-past-line-mark.test.ts` (a restore keeps the list, and the next read after it marks no old row); `holding-metadata.test.ts` (the list's reader; `withCarriedMetadataKeys` does not carry it) |
 | D7 | Monobank, after the user's pick (option A shown) | `src/monobank/sync/sync.test.ts`: "the fast phase writes the read time beside each card"; new `src/monobank/sync/monobank.past-line.real-sqlite.test.ts`: section 5 world, the payment between two reads, an import row stays off the mark and keeps counting, a manual row on the mark moves no balance |
 
 ### Existing pins that change on purpose (and why)
@@ -173,6 +195,9 @@ and Q-k and Q-l hold on Monobank as the user ruled for all three (Q-m).
 | A135; `transactions.repo.past-line-mark.test.ts`: "$label moves by a delete as today…", "…by an edit as today…" | Binance, wallet, Monobank rows | Binance and wallet rows move to "moves no balance on a row on the mark"; the statement-count titles keep their counts (developer measures on the parent) | Q-k, Q-m |
 | `holding-value-at.bybit.test.ts`: "reads each row twice and counts every row, with %s" (describe "not a Bybit one"), Binance key and wallet address rows | `{ reads: 4, sourceReads: 0 }`: no pass of the filter | the two rows move to their own describe "against a Binance or a wallet holding, whose balance is dated", title "reads each row four times in all and counts every row, with %s", `{ reads: 4, sourceReads: 4 }` (measured: `source` and `id` once per row); the old describe, now "not on the dated list", keeps Monobank, no key, no metadata at `sourceReads: 0` | O85, Q-m |
 | `sync.test.ts` (A122): "a provider that does not writes the stamp alone" | any non-Bybit provider stub | reseeded with a stub key still off the list, per pin (never the shared helper) | O85 |
+| D8; `holdings.repo.past-line-mark.test.ts`: "Q3, the first dated read of a shipped %s holding writes the date, no key and reads no row" | no statement on the ledger; metadata `{ key, syncedAt, balanceReadAt }` | title names the kept ids instead of "no key and reads no row"; one select on the ledger (measured); metadata plus `keptRowIds: ['row-typed']`; no mark | Q3 (kept list) |
+| D8; `binance.past-line` and `btc-wallet.past-line`: "Q3, the first dated read writes the date and no mark, and the old typed row keeps counting" | whole metadata, no list | the same plus `keptRowIds` with the seeded row's id | Q3 (kept list) |
+| D8; the same two files: "Q-j, a row typed after the first dated read is on the mark of the next read" | `arrayContaining([laterRowId])` (the old row was on it too) | exactly `[laterRowId]`, kept list the seeded row's id | Q3 (kept list), Q-j |
 
 Suites that assert a Binance or wallet holding's whole metadata after `runBalanceSync`
 (`toEqual({ binanceAsset, syncedAt })`) gain `balanceReadAt`. Floor of candidates (grep of
