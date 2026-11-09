@@ -434,11 +434,13 @@ every one of them, so scan this list rather than the reference files for what is
   switch (`undefined` where the screen set none): the screen's own values from before the
   switch. A value the screen changes during heading mode is not kept (setOptions cannot remove
   a key). Never restore with fixed values. Device-confirm: Jest cannot show bar translucency.
-- **Tables has a small title in an opaque bar** (2026-11-04; user: "A: Small title
-  (Recommended)"). A normal small title, content below it, Tables only: an exception to "every
-  pane uses the native large title". The Statistics stack sets `headerLargeTitle: false` on it
-  (`src/navigation/statistics-stack/statistics.stack.tsx`); the Home stack sets only
-  `headerShown: true`.
+- **Tables uses the native large title like every pane** (user ruling 2026-11-09; it replaced
+  the 2026-11-04 small title). The Statistics stack sets `{ title }`
+  (`src/navigation/statistics-stack/statistics.stack.tsx`); the Home stack spreads
+  `largeTitleScreenOptions` plus `headerShown: true`. The table is the first scroll view of the
+  screen (see `DataTable` `barInset` in the component set). Rulings 2026-11-09: the iOS 18 bar
+  fade is accepted; on the Duo in landscape the title is native; Settings behaves the same on
+  iOS 27.
 - **The Statistics Tables button stays 44 pt and full width** (2026-11-04; user: "As it is now").
   It is `size="compact"` (`src/screens/statistics/statistics.screen.tsx`), an exception to the
   inline secondary rule. The chevron is removed (user: "Remove it (Recommended)"): `icon` only.
