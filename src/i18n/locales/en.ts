@@ -1285,7 +1285,7 @@ export const en = {
           '1': 'On the "Accounts" tab, tap "Add account".',
           '2': 'Choose the account kind: bank, cash, crypto, property, metals, debt, or broker.',
           '3': 'Enter a name. Cash needs a currency and an initial value; a bank account needs its bank.',
-          '4': 'Optional: connect Monobank with a token, Binance with an API key, or Bitcoin with a wallet address.',
+          '4': 'Optional: connect Monobank with a token, Binance or Bybit with an API key, or Bitcoin with a wallet address.',
           '5': 'For other banks, open the account, tap "Import statement", and choose a CSV or XLSX file from your bank.',
         },
         title: 'Add an Account',

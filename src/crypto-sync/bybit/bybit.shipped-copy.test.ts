@@ -124,6 +124,22 @@ describe('the Bybit copy', () => {
     expect(Object.keys(uk.accountDetail.bybitLogKind).sort()).toEqual([...leftOut].sort());
   });
 
+  it('the Add an Account help names Bybit among the connect options, en and uk', () => {
+    const english = en.help.topics.addAccount.steps[4];
+    const ukrainian = uk.help.topics.addAccount.steps[4];
+
+    expect(english).toContain('Bybit');
+    expect(english).toContain('Binance');
+    expect(english).toBe(
+      'Optional: connect Monobank with a token, Binance or Bybit with an API key, or Bitcoin with a wallet address.',
+    );
+    expect(ukrainian).toContain('Bybit');
+    expect(ukrainian).toContain('Binance');
+    expect(ukrainian).toBe(
+      'За бажанням підключіть Monobank за токеном, Binance чи Bybit за API-ключем або гаманець Bitcoin за адресою.',
+    );
+  });
+
   it('the borrowed line does not say a last balance exists', () => {
     expect(en.accountDetail.bybitCoinBorrowed).not.toMatch(/last balance/i);
     expect(en.accountDetail.bybitCoinBorrowed).toMatch(
