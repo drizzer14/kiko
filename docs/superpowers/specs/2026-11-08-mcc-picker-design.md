@@ -37,6 +37,8 @@ User answers 2026-11-08 21:20, relayed by the coordinator; binding.
 | Q-MCC2 | Where the MIT notice ships | D (a new option): the notice text ships bundled in the app in `src/categories/mcc-names/mcc-names.notice.ts`; no screen (section 7) | default A: a Settings row "Acknowledgements" and a plain text page, with 5 catalogue keys (plan task 10/10, now dropped, never built) |
 | Q-MCC3 | The rule card on the category page shows "5411 – Grocery Stores, Supermarkets" too | YES: one label everywhere a stored code shows (section 6) | default yes (same) |
 | Q-MCC4 | en and uk names shown as the sources write them (source casing and punctuation): 419 of the 683 en names in 3000-3999 are all capitals, for example `3000` "UNITED AIRLINES", `3501` "HOLIDAY INNS, HOLIDAY INN EXPRESS", next to `3003` "Airlines"; in uk those codes read «Авіалінії», «Готелі. Курорти» (section 3.3) | YES, as the sources write them: data, not UI copy (section 3.4) | default yes (same) |
+| A (2026-11-09) | uk names of codes 3000-3999 that name one merchant | uk = «<group> — <EN NAME>», en unchanged, source casing kept (sections 3.2, 3.3) | uk = the Sominemo group noun alone («Авіалінії») |
+| B (2026-11-09) | codes whose en and uk are only a group name | left out of the "All codes" list, kept in the data (sections 3.2, 3.4, 5.2) | every code in "All codes" |
 
 The UI strings of section 9 (12 rows) are approved as written. Plan section "User answers".
 
@@ -75,6 +77,14 @@ differs from the pinned one. Nothing from ISO 18245, Visa or Mastercard document
   A greggles code with no Sominemo uk name stops the generator, listing every such code
   (measured: none, 3.3). Sominemo keys are read by code, never by key order.
 - Sominemo-only codes (no en) are dropped and listed in the run report.
+- Group text (rulings A and B, 2026-11-09): for a code 3000-3999 only, the group text is greggles
+  `irs_description`, trimmed ("Airlines", "Car Rental", "Hotels/Motels/Inns/Resorts"). A code whose
+  en equals its group text is group-only: the entry gets `"listed": false`, uk unchanged. Any other
+  code 3000-3999 names one merchant (a blank group text never equals an en name, so 3816 and 3835
+  count here): uk becomes `<Sominemo uk> — <en>` (space, U+2014 em dash, space; en verbatim,
+  after the apostrophe rewrite of the uk part). A code outside 3000-3999 is never joined or
+  hidden, even where its en equals its `irs_description` (93 such codes, for example 4011
+  "Railroads"). No other greggles field is read.
 - Text tidy: whitespace collapsed to one space; in uk text, an ASCII `'` or U+2019 between two
   Cyrillic letters becomes U+02BC (the catalogue rule of `src/i18n/locales/uk.catalog-rules.test.ts`
   applied to data). en text keeps its apostrophes as the source writes them (search folds them,
@@ -141,10 +151,28 @@ Five-row samples, in file order:
 Task 7/9 step 5 regenerated `mcc-names.data.json` (981 entries, none dropped): 99224 bytes
 (about 97 KB, inside the research estimate of 60-100 KB).
 
+Rulings A and B, measured 2026-11-09 by the planner on the same pinned files (SHA-256 checked,
+scratch Node script, the 3.2 group-text rule applied to the committed data):
+
+| Count | Value |
+|---|---|
+| codes 3000-3999 | 683 = 422 merchant + 261 group-only |
+| `irs_description` of codes 3000-3999 | "Airlines" 300, "Hotels/Motels/Inns/Resorts" 290, "Car Rental" 91, blank 2 (3816, 3835) |
+| merchant, uk joined | 422: «Авіалінії» 172, «Готелі. Курорти» 198, «Оренда авто» 50, «Готелі» 2 (3816 «Готелі — Home2Suites», 3835 «Готелі — * MASTERS ECONOMY INNS») |
+| group-only, `listed: false` | 261: en "Airlines" 128, "Hotels/Motels/Inns/Resorts" 92, "Car Rental" 41; uk «Авіалінії», «Готелі. Курорти», «Оренда авто» in the same counts; first 3003, last 3790; none has a usda text or a combined text other than its en |
+| listed codes (blank query) | 720 of 981; 4511, 7011, 7512 listed, not joined |
+| longest uk | 64 characters (was 37) |
+| data file after the regeneration | 113362 bytes (+8657 joined names, +5481 = 261 x 21 bytes of `,\n    "listed": false`); the regeneration wrote 113362 bytes, as projected |
+
+The coordinator counted 420 merchant codes (all four greggles text fields filled); the 2 more,
+3816 and 3835, name a merchant in `edited_description` itself with a blank `irs_description`.
+usda, combined and irs add no name beyond `edited_description`.
+
 ### 3.4 Shape and display
 
 `src/categories/mcc-names/`: `mcc-names.data.json` (generated, committed: a JSON array of
-`{ "code", "en", "uk" }` sorted by code) and `mcc-names.ts`, which imports the JSON (the
+`{ "code", "en", "uk" }` sorted by code; a group-only code adds `"listed": false`, no other entry
+holds the key) and `mcc-names.ts`, which imports the JSON (the
 `package.json` import in `src/screens/settings/settings/settings.screen.tsx` is the precedent:
 `resolveJsonModule` comes from `@react-native/typescript-config`, and jest and Metro already load
 it) and exports it typed as `MCC_NAMES: readonly MccName[]`, `MccName = { code: string; en: string;
@@ -221,7 +249,10 @@ codes" heading and rows; a no-match line when a query empties both sections.
 
 - Own row: label = the code's label; second line `ruleForm.mccTransactionCount` (plural, `count`).
   An own code not in the list shows its digits. Order as the read returns it.
-- All-codes row: label only; order by code.
+- All-codes row: label only; order by code. A group-only code (`listed: false`, 3.2) shows here
+  only while the query is digits only and its code starts with them (ruling B); a blank or text
+  query leaves it out. It still shows in "Your codes" with its name, on the trigger and the rule
+  card (`mccLabelOf`), and "Other code" accepts it.
 - Own section with no codes and no query, after the read landed (`ownLoading` false): the heading
   and `ruleForm.mccOwnEmpty`. While a query is typed, a section the query empties is dropped with
   its heading (the `CurrencyField` rule).

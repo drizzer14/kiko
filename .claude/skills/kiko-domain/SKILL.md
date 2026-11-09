@@ -1041,12 +1041,16 @@ An MCC is a 4-digit string (`describeMatcher` in
 in `scripts/mcc-names/generate-mcc-names.js` pads with `CODE_DIGITS`).
 `mccLabelOf(code, language)` in `src/categories/mcc-names/mcc-names.ts`
 is code + `MCC_NAME_SEPARATOR` + name; a code with no source name shows its
-digits alone (208 mapped codes today: 3791-3999 except 3816 and 3835, and
-6540; re-verify in the data).
+digits alone; `src/categories/mcc-names/mcc-names.data.json` holds the named codes (count
+there and in the generator header, never copied here). An entry with `listed: false` (a 3000-3999
+code named only by its group) still has `mccNameOf` and `mccLabelOf`, but
+`src/screens/forms/category-rule-form/mcc-field/mcc-picker-rows.ts` shows it under "All codes"
+only for a digits-only query.
 The rule form's mcc condition is `MccField`
 (`src/screens/forms/category-rule-form/mcc-field/`): a picker of "Your codes" (counts from
 `mccCountsQuery`, read by `useLiveQuery` on `['transactions']` only while the sheet is open) and
-"All codes", plus an "Other code" row for any four digits. It still stores
+"All codes" (hidden codes only via a digits-only query), plus an "Other code" row for any
+four digits. It still stores
 `{ type: 'mcc', code }`; `mccOutcome` in
 `src/screens/forms/category-rule-form/rule-draft/rule-draft.ts` refuses anything but four digits
 with `ruleForm.errorMcc` (the catalogues hold the text; do not copy it). What the trigger shows

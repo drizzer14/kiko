@@ -68,14 +68,18 @@ export const mccPickerRows = ({
     })
     .filter((row) => matchesMccQuery(row, query));
 
-  const allRows = MCC_NAMES.map(
-    ({ code }): MccCodeRow => ({
-      type: 'code',
-      section: 'all',
-      code,
-      name: mccNameOf(code, language),
-    }),
-  ).filter((row) => matchesMccQuery(row, query));
+  const digitsOnlyQuery = DIGITS_ONLY.test(foldText(query));
+
+  const allRows = MCC_NAMES.filter(({ listed }) => listed !== false || digitsOnlyQuery)
+    .map(
+      ({ code }): MccCodeRow => ({
+        type: 'code',
+        section: 'all',
+        code,
+        name: mccNameOf(code, language),
+      }),
+    )
+    .filter((row) => matchesMccQuery(row, query));
 
   if (ownRows.length === 0 && allRows.length === 0 && !blankQuery) {
     return [{ type: 'other' }, { type: 'noMatch' }];

@@ -11,8 +11,15 @@ const allRow = (code: string, name: string | undefined): MccPickerRow => ({
 
 const nameOf = (code: string, language: string): string | undefined => mccNameOf(code, language);
 
+const LISTED_CODE_COUNT = 720;
+
 const everyCodeRows = (language: string): MccPickerRow[] =>
-  MCC_NAMES.map(({ code }) => allRow(code, nameOf(code, language)));
+  MCC_NAMES.filter(({ listed }) => listed !== false).map(({ code }) =>
+    allRow(code, nameOf(code, language)),
+  );
+
+const allCodesOf = (rows: readonly MccPickerRow[]): string[] =>
+  rows.flatMap((row) => (row.type === 'code' && row.section === 'all' ? [row.code] : []));
 
 describe('matchesMccQuery', () => {
   it('a digits-only query matches codes that start with it', () => {
@@ -60,7 +67,7 @@ describe('matchesMccQuery', () => {
 });
 
 describe('mccPickerRows', () => {
-  it('puts Other first, then own codes by the order given, then every code by code', () => {
+  it('puts Other first, then own codes by the order given, then every listed code by code', () => {
     const rows = mccPickerRows({
       own: [
         { mcc: 5812, rowCount: 9 },
@@ -169,6 +176,73 @@ describe('mccPickerRows', () => {
         language: 'en',
       }),
     ).toEqual([{ type: 'other' }, { type: 'noMatch' }]);
+  });
+
+  it(`lists ${LISTED_CODE_COUNT} codes and no group-only code when the query is blank`, () => {
+    const codes = allCodesOf(
+      mccPickerRows({ own: [], ownLoading: false, query: '', language: 'en' }),
+    );
+
+    expect(codes).toHaveLength(LISTED_CODE_COUNT);
+    expect(codes).not.toContain('3003');
+    expect(codes).toContain('3000');
+  });
+
+  it('leaves a group-only code out of a text query', () => {
+    const codes = allCodesOf(
+      mccPickerRows({ own: [], ownLoading: false, query: 'airlines', language: 'en' }),
+    );
+
+    expect(codes).toContain('3000');
+    expect(codes).toContain('4511');
+    expect(codes).not.toContain('3003');
+  });
+
+  it('finds a group-only code by its digits', () => {
+    expect(mccPickerRows({ own: [], ownLoading: false, query: '3003', language: 'en' })).toEqual([
+      { type: 'other' },
+      { type: 'heading', section: 'all' },
+      allRow('3003', 'Airlines'),
+    ]);
+
+    const codes = allCodesOf(
+      mccPickerRows({ own: [], ownLoading: false, query: '300', language: 'en' }),
+    );
+
+    expect(codes.slice(codes.indexOf('3002'), codes.indexOf('3004') + 1)).toEqual([
+      '3002',
+      '3003',
+      '3004',
+    ]);
+  });
+
+  it('keeps a group-only own code in Your codes with its name', () => {
+    const input = { own: [{ mcc: 3003, rowCount: 2 }], ownLoading: false, query: '' };
+
+    const english = mccPickerRows({ ...input, language: 'en' });
+    const ukrainian = mccPickerRows({ ...input, language: 'uk' });
+
+    expect(english).toContainEqual({
+      type: 'code',
+      section: 'own',
+      code: '3003',
+      name: 'Airlines',
+      rowCount: 2,
+    });
+    expect(ukrainian).toContainEqual({
+      type: 'code',
+      section: 'own',
+      code: '3003',
+      name: 'Авіалінії',
+      rowCount: 2,
+    });
+    expect(allCodesOf(english)).not.toContain('3003');
+  });
+
+  it('finds a joined uk name by the merchant name', () => {
+    expect(
+      allCodesOf(mccPickerRows({ own: [], ownLoading: false, query: 'united', language: 'uk' })),
+    ).toContain('3000');
   });
 
   it('names each code in the current language', () => {
