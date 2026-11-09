@@ -15,16 +15,25 @@ type GregglesRow = {
   mcc: string | number;
   edited_description: string;
   combined_description: string;
+  irs_description?: string;
 };
 type SominemoFile = Record<string, { uk: string; ru: string }>;
 
 const REPOSITORY_ROOT = join(__dirname, '..');
 const DATA_PATH = join(REPOSITORY_ROOT, 'src/categories/mcc-names/mcc-names.data.json');
 
-const row = (mcc: string | number, edited: string, combined: string = edited): GregglesRow => ({
+type RenderedEntry = MccName & { listed?: boolean };
+
+const row = (
+  mcc: string | number,
+  edited: string,
+  combined: string = edited,
+  irs: string = '',
+): GregglesRow => ({
   mcc,
   edited_description: edited,
   combined_description: combined,
+  irs_description: irs,
 });
 
 const ukOf = (...pairs: [string, string][]): SominemoFile =>
@@ -208,6 +217,79 @@ describe('generate MCC names', () => {
     });
   });
 
+  describe('group and merchant name', () => {
+    it('joins the uk group and the en merchant name for a code 3000-3999 whose en is not its group text', () => {
+      const { entries } = build(
+        [row('3000', 'UNITED AIRLINES', 'UNITED AIRLINES', 'Airlines')],
+        ukOf(['3000', 'Авіалінії']),
+      );
+
+      expect(entries).toEqual([
+        { code: '3000', en: 'UNITED AIRLINES', uk: 'Авіалінії — UNITED AIRLINES' },
+      ]);
+      expect(entries[0].uk).toBe('Авіалінії — UNITED AIRLINES');
+      expect(entries[0]).not.toHaveProperty('listed');
+    });
+
+    it('marks a code 3000-3999 whose en equals its group text as not listed and keeps its uk', () => {
+      const { entries } = build(
+        [row('3003', 'Airlines', 'Airlines', 'Airlines')],
+        ukOf(['3003', 'Авіалінії']),
+      );
+
+      expect(entries).toEqual([{ code: '3003', en: 'Airlines', uk: 'Авіалінії', listed: false }]);
+    });
+
+    it('treats a code 3000-3999 with a blank group text as a merchant name', () => {
+      const { entries } = build(
+        [row('3816', 'Home2Suites', 'Home2Suites', '')],
+        ukOf(['3816', 'Готелі']),
+      );
+
+      expect(entries).toEqual([{ code: '3816', en: 'Home2Suites', uk: 'Готелі — Home2Suites' }]);
+    });
+
+    it('never joins or hides a code outside 3000-3999', () => {
+      const { entries } = build(
+        [
+          row('2999', 'Same', 'Same', 'Same'),
+          row('3999', 'Same', 'Same', 'Same'),
+          row('4000', 'Same', 'Same', 'Same'),
+          row('4011', 'Railroads', 'Railroads', 'Railroads'),
+        ],
+        ukOf(['2999', 'Один'], ['3999', 'Два'], ['4000', 'Три'], ['4011', 'Залізниці']),
+      );
+
+      expect(entries).toEqual([
+        { code: '2999', en: 'Same', uk: 'Один' },
+        { code: '3999', en: 'Same', uk: 'Два', listed: false },
+        { code: '4000', en: 'Same', uk: 'Три' },
+        { code: '4011', en: 'Railroads', uk: 'Залізниці' },
+      ]);
+    });
+
+    it('keeps the en casing and apostrophe in the joined uk name, after the uk apostrophe rewrite', () => {
+      const { entries } = build(
+        [row('3299', 'WIDERO’S FLYVESELSKAP'), row('3300', 'Plane', 'Plane', 'Airlines')],
+        ukOf(['3299', 'Авіалінії'], ['3300', "Кур'єрські авіалінії"]),
+      );
+
+      expect(entries.map(({ uk }) => uk)).toEqual([
+        'Авіалінії — WIDERO’S FLYVESELSKAP',
+        'Курʼєрські авіалінії — Plane',
+      ]);
+    });
+
+    it('compares the group text trimmed', () => {
+      const { entries } = build(
+        [row('3003', 'Airlines', 'Airlines', ' Airlines ')],
+        ukOf(['3003', 'Авіалінії']),
+      );
+
+      expect(entries).toEqual([{ code: '3003', en: 'Airlines', uk: 'Авіалінії', listed: false }]);
+    });
+  });
+
   describe('source check', () => {
     const text = '[{"mcc":"0742"}]';
     const sha256 = createHash('sha256').update(text).digest('hex');
@@ -229,20 +311,40 @@ describe('generate MCC names', () => {
       { code: '5411', en: 'Grocery Stores, Supermarkets', uk: 'Продукти' },
     ];
 
-    it('renders the entries as a JSON array with only code, en and uk, ending in a newline', () => {
-      const extended = entries.map((entry) => ({ ...entry, extra: 'x' }));
+    const hiddenEntry: RenderedEntry = {
+      code: '3003',
+      en: 'Airlines',
+      uk: 'Авіалінії',
+      listed: false,
+    };
+    const unlistedFlagTrue: RenderedEntry = {
+      code: '3004',
+      en: 'Airlines',
+      uk: 'Авіалінії',
+      listed: true,
+    };
+
+    it('renders the entries as a JSON array with code, en, uk and listed only when false, ending in a newline', () => {
+      const extended = [...entries, hiddenEntry, unlistedFlagTrue].map((entry) => ({
+        ...entry,
+        extra: 'x',
+      }));
+      const expected = [...entries, hiddenEntry, { code: '3004', en: 'Airlines', uk: 'Авіалінії' }];
       const rendered = renderMccNamesJson(extended);
 
-      expect(JSON.parse(rendered)).toEqual(entries);
-      expect(rendered).toBe(`${JSON.stringify(entries, null, 2)}\n`);
+      expect(JSON.parse(rendered)).toEqual(expected);
+      expect(rendered).toBe(`${JSON.stringify(expected, null, 2)}\n`);
     });
 
     it('renders a review table with one line per code', () => {
-      const lines = renderReviewTable(entries).split('\n').filter(Boolean);
+      const lines = renderReviewTable([...entries, hiddenEntry])
+        .split('\n')
+        .filter(Boolean);
 
       expect(lines).toEqual([
-        '0742\tVeterinary Services\tВетеринари',
-        '5411\tGrocery Stores, Supermarkets\tПродукти',
+        '0742\tVeterinary Services\tВетеринари\t',
+        '5411\tGrocery Stores, Supermarkets\tПродукти\t',
+        '3003\tAirlines\tАвіалінії\thidden',
       ]);
     });
   });
