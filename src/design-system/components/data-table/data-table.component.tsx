@@ -95,7 +95,10 @@ const DataTable: FC<DataTableProps> = ({
     [scrollOffsetY],
   );
   const isEmpty = emptyContent !== undefined;
-  const [containerWidth, setContainerWidth] = useState(0);
+  // The scroll's own width: the side padding it takes is subtracted at render, so a change of the
+  // margin or of the inset that sets it needs no new layout event.
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const containerWidth = Math.max(scrollWidth - (hasBarInset ? sideMargin * 2 : 0), 0);
   const [labelWidth, setLabelWidth] = useState(0);
   const [columnTextWidths, setColumnTextWidths] = useState(NO_WIDTHS);
   const [textHeights, setTextHeights] = useState<Record<string, number>>({});
@@ -357,9 +360,7 @@ const DataTable: FC<DataTableProps> = ({
     // first-child chain, and a view wrapping it leaves none.
     <NativeAnimated.ScrollView
       style={styles.container}
-      onLayout={(event) =>
-        setContainerWidth(event.nativeEvent.layout.width - (hasBarInset ? sideMargin * 2 : 0))
-      }
+      onLayout={(event) => setScrollWidth(event.nativeEvent.layout.width)}
       testID={testID}
       stickyHeaderIndices={isEmpty || hasBarInset ? undefined : STICKY_HEADER_INDICES}
       contentInsetAdjustmentBehavior={hasBarInset ? 'automatic' : undefined}

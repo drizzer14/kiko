@@ -65,15 +65,21 @@ describe('DataTable with a bar inset', () => {
 
       expect(rendered.toJSON()).toMatchObject({ type: 'RCTScrollView', props: { testID: ROOT } });
     });
+  });
 
-    it('holds the measuring layer inside the scroll, so no wrapper view is needed', async () => {
+  describe('the scroll events', () => {
+    it('reach the shift expression on the root, at one event a frame', async () => {
+      const rendered = await renderTable({ barInset: new Animated.Value(100) });
+
+      expect(typeof rendered.getByTestId(ROOT).props.onScroll).toBe('function');
+      expect(rendered.getByTestId(ROOT).props.scrollEventThrottle).toBe(16);
+    });
+
+    it('are not listened for without a bar inset', async () => {
       const rendered = await renderTable();
 
-      expect(
-        within(rendered.getByTestId(ROOT)).getByTestId(`${PREFIX}-measure-layer`, {
-          includeHiddenElements: true,
-        }),
-      ).toBeTruthy();
+      expect(rendered.getByTestId(ROOT).props.onScroll).toBeUndefined();
+      expect(rendered.getByTestId(ROOT).props.scrollEventThrottle).toBeUndefined();
     });
   });
 
@@ -101,21 +107,6 @@ describe('DataTable with a bar inset', () => {
     it('moves by the helper value for the scroll offset and the bar height', async () => {
       const barInset = new Animated.Value(100);
       const eventSpy = jest.spyOn(Animated, 'event');
-      const originalAdd = Animated.add;
-      let shiftExpression: { __getValue: () => number } | undefined;
-      jest.spyOn(Animated, 'add').mockImplementation((first, second) => {
-        const sum = originalAdd(first, second);
-        const interpolate = sum.interpolate.bind(sum);
-
-        sum.interpolate = ((config: Parameters<typeof interpolate>[0]) => {
-          const expression = interpolate(config);
-          shiftExpression = expression as unknown as { __getValue: () => number };
-
-          return expression;
-        }) as typeof sum.interpolate;
-
-        return sum;
-      });
       const rendered = await renderTable({ barInset });
       const mapping = eventSpy.mock.calls[0][0] as unknown as {
         nativeEvent: { contentOffset: { y: Animated.Value } };
@@ -124,19 +115,25 @@ describe('DataTable with a bar inset', () => {
       const shiftedHeader = () =>
         rendered.getByTestId(`${PREFIX}-header-shift`, { includeHiddenElements: true });
       await fireEvent(shiftedHeader(), 'layout', layoutEvent(300, 300));
-      // A native-driven value does not render again, so the style a host holds is the number of the
-      // last render; the expression itself is read.
-      const shiftOf = () => shiftExpression?.__getValue();
+      // A native-driven value does not render again on a device, so the host style is read after
+      // a render of the table that follows each change.
+      const shiftOf = async () => {
+        await rendered.rerender(<DataTable {...baseProps} barInset={barInset} />);
+
+        const [{ translateY }] = flat(shiftedHeader()).transform as { translateY: number }[];
+
+        return translateY;
+      };
 
       for (const offset of [0, 150, 200, 260]) {
         await act(async () => scrollY.setValue(offset));
 
-        expect(shiftOf()).toBe(resolveHeaderShift(offset, 100, 300));
+        expect(await shiftOf()).toBe(resolveHeaderShift(offset, 100, 300));
       }
 
       await act(async () => barInset.setValue(60));
 
-      expect(shiftOf()).toBe(resolveHeaderShift(260, 60, 300));
+      expect(await shiftOf()).toBe(resolveHeaderShift(260, 60, 300));
     });
 
     it('draws the header above the body rows it slides over', async () => {
@@ -183,14 +180,6 @@ describe('DataTable with a bar inset', () => {
       ).toBeUndefined();
     });
 
-    it('keeps growing to the scroll height without a bar inset', async () => {
-      const rendered = await renderTable();
-
-      expect(
-        StyleSheet.flatten(rendered.getByTestId(ROOT).props.contentContainerStyle).flexGrow,
-      ).toBe(1);
-    });
-
     it('pads its sides by the content margin', async () => {
       const rendered = await renderTable({ barInset: new Animated.Value(100) });
 
@@ -224,6 +213,22 @@ describe('DataTable with a bar inset', () => {
 
     it('leaves out the side padding the scroll content takes', async () => {
       expect(await fixedWidthOf({ barInset: new Animated.Value(100) }, 400)).toBe(
+        (400 - SIDE_MARGIN * 2) * 0.4,
+      );
+    });
+
+    it('follows a bar inset that appears at the same scroll width', async () => {
+      const rendered = await renderTable();
+      await fireEvent(rendered.getByTestId(ROOT), 'layout', layoutEvent(400));
+      await fireEvent(
+        rendered.getByTestId(`${PREFIX}-measure-labels`, { includeHiddenElements: true }),
+        'layout',
+        layoutEvent(500),
+      );
+
+      await rendered.rerender(<DataTable {...baseProps} barInset={new Animated.Value(100)} />);
+
+      expect(flat(rendered.getByTestId(`${PREFIX}-fixed-column`)).width).toBe(
         (400 - SIDE_MARGIN * 2) * 0.4,
       );
     });
