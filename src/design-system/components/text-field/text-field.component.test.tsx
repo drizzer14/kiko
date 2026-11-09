@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
-import { Keyboard, StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
+import { Keyboard, StyleSheet, type ViewStyle } from 'react-native';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
@@ -23,6 +23,46 @@ jest.mock('@kiko/design-system/components/field-label', () =>
 // instead of repeating the same render boilerplate call after call.
 const renderField = (props: Partial<ComponentProps<typeof TextField>> = {}) =>
   render(<TextField value="" onChangeText={jest.fn()} {...props} />);
+
+type RenderedNode = ReturnType<Awaited<ReturnType<typeof render>>['toJSON']>;
+type RenderedElementNode = Exclude<RenderedNode, null | unknown[]>;
+
+const isElementNode = (node: unknown): node is RenderedElementNode =>
+  typeof node === 'object' && node !== null && !Array.isArray(node) && 'type' in node;
+
+const childNodesOf = (node: RenderedElementNode): RenderedElementNode[] =>
+  (node.children ?? []).filter(isElementNode);
+
+const findInsetContainer = (node: unknown): RenderedElementNode | undefined => {
+  if (!isElementNode(node)) {
+    return undefined;
+  }
+
+  if (childNodesOf(node).some((child) => child.type === 'TextInput')) {
+    return node;
+  }
+
+  return childNodesOf(node).reduce<RenderedElementNode | undefined>(
+    (found, child) => found ?? findInsetContainer(child),
+    undefined,
+  );
+};
+
+// The input paints an opaque background in the light scheme, so a slot that
+// neither follows it in the container nor outranks it by zIndex is hidden.
+const paintsAbove = (tree: RenderedNode, slotMarker: string): boolean => {
+  const children = childNodesOf(findInsetContainer(tree) as RenderedElementNode);
+  const inputIndex = children.findIndex((child) => child.type === 'TextInput');
+  const slotIndex = children.findIndex((child) => JSON.stringify(child).includes(slotMarker));
+  const zIndexOf = (child: RenderedElementNode) =>
+    StyleSheet.flatten(child.props.style as ViewStyle)?.zIndex ?? 0;
+
+  return (
+    slotIndex > inputIndex ||
+    zIndexOf(children[slotIndex] as RenderedElementNode) >
+      zIndexOf(children[inputIndex] as RenderedElementNode)
+  );
+};
 
 describe('TextField', () => {
   it('renders its label as a caption and the value in the input', async () => {
@@ -52,18 +92,34 @@ describe('TextField', () => {
     expect(getByLabelText('Name').props.secureTextEntry).toBeUndefined();
   });
 
-  it('renders a leading SF Symbol icon before the input when leadingIcon is set', async () => {
+  it("renders a leading SF Symbol icon at the field's leading edge when leadingIcon is set", async () => {
     const { toJSON, getByDisplayValue } = await renderField({
       label: 'Search',
       value: 'usd',
       leadingIcon: 'magnifyingglass',
     });
 
-    // The input still holds the value, and the leading glyph renders before it.
+    // The input still holds the value, and the leading glyph is in the tree.
     // The mocked SFSymbolView forwards its `name` to a host View, so the symbol
     // name appears in the tree.
     expect(getByDisplayValue('usd')).toBeTruthy();
     expect(JSON.stringify(toJSON())).toContain('magnifyingglass');
+  });
+
+  it('paints the leading icon above the opaque input', async () => {
+    const { toJSON } = await renderField({
+      label: 'Search',
+      value: 'usd',
+      leadingIcon: 'magnifyingglass',
+    });
+
+    expect(paintsAbove(toJSON(), 'magnifyingglass')).toBe(true);
+  });
+
+  it('paints the suffix above the opaque input', async () => {
+    const { toJSON } = await renderField({ label: 'Amount', value: '100.00', suffix: '₴' });
+
+    expect(paintsAbove(toJSON(), '₴')).toBe(true);
   });
 
   it('renders no leading icon by default', async () => {
