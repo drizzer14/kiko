@@ -8,6 +8,7 @@ export const entrySymbol = {
   reminders: REMINDERS_BELL_SYMBOL,
   importData: 'square.and.arrow.down',
   exportData: 'square.and.arrow.up',
+  exportCsv: 'tablecells',
   statistics: 'chart.xyaxis.line',
   recurringCharges: 'repeat',
 } as const;

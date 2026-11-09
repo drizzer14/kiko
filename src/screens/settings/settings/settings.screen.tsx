@@ -199,7 +199,7 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
 
           <SettingsRow
             testID="settings-row-export-csv"
-            icon={entrySymbol.exportData}
+            icon={entrySymbol.exportCsv}
             label={t('settings.csvExport.rowLabel')}
             onPress={() => openInPane('ExportCsv')}
             selected={isShown('ExportCsv')}

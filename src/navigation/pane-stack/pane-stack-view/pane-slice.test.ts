@@ -293,9 +293,7 @@ describe('layerSlice', () => {
 
       const view = screen.toJSON() as Exclude<ReturnType<typeof screen.toJSON>, null | unknown[]>;
 
-      expect(view.children ?? []).toEqual([]);
-      expect(view.props.accessible).not.toBe(true);
-      expect(view.props.accessibilityLabel).toBeUndefined();
+      expect(view.props).toEqual({ style: view.props.style });
     });
   });
 

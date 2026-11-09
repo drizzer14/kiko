@@ -512,6 +512,18 @@ describe('SettingsScreen', () => {
     ).toEqual(['settings-row-export-data', 'settings-row-export-csv']);
   });
 
+  it('shows the table glyph on the CSV export row and the share glyph on the backup export row', async () => {
+    const { getByTestId } = await renderScreen();
+    const glyphsOf = (testID: string): string[] =>
+      getByTestId(testID)
+        .queryAll((node) => typeof node.props.name === 'string')
+        .map((node) => node.props.name as string);
+
+    expect(glyphsOf('settings-row-export-csv')).toContain('tablecells');
+    expect(glyphsOf('settings-row-export-csv')).not.toContain('square.and.arrow.up');
+    expect(glyphsOf('settings-row-export-data')).toContain('square.and.arrow.up');
+  });
+
   it('opens the ExportCsv sub-screen when the CSV export row is pressed', async () => {
     const { findByTestId } = await renderScreen(navigationSpy());
 
