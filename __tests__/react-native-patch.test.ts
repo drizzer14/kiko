@@ -115,33 +115,112 @@ describe('the react-native-screens fixed content margin patch', () => {
     );
   });
 
+  const patchedLines = () =>
+    readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8')
+      .split('\n')
+      .filter((line) => (line.startsWith('+') && !line.startsWith('+++')) || line.startsWith(' '))
+      .map((line) => line.slice(1))
+      .join('\n');
+  const sources = [
+    ['the patch file', patchedLines],
+    ['the installed file', () => read('ios/RNSScreenStack.mm')],
+  ] as const;
+  const withoutComments = (code: string) =>
+    code
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join(' ')
+      .replace(/\s+/g, ' ');
+  // A method's code up to the next method, comments dropped and whitespace collapsed.
+  const methodCode = (source: string, signature: string) => {
+    const start = source.indexOf(signature);
+    const end = source.indexOf('\n- (', start + 1);
+
+    return withoutComments(source.slice(start, end));
+  };
+  // A C function's code up to its closing brace at column 0, in the same form.
+  const functionCode = (source: string, signature: string) => {
+    const start = source.indexOf(signature);
+    const end = source.indexOf('\n}\n', start);
+
+    return start === -1 ? '' : withoutComments(source.slice(start, end + 2));
+  };
+
+  // On iOS 27.2 the leading split pane's large title is laid out in a separate row under an empty
+  // bar row. Setting the item's mode to Inline puts it in the bar row like the other pane. The
+  // lever acts on the measured layout, so these pins hold the shipped text, not UIKit's behavior.
+  describe('iOS 27.2 stacked pane title', () => {
+    const LEVER = 'static void RNSInlineStackedPaneLargeTitle(';
+
+    it.each(sources)(
+      'runs after the safe top correction at each layout pass, in %s',
+      (_name, load) => {
+        const source = load();
+        const layoutPass = methodCode(source, '- (void)viewDidLayoutSubviews');
+
+        expect(layoutPass.indexOf('RNSInlineStackedPaneLargeTitle(self);')).toBeGreaterThan(
+          layoutPass.indexOf('[self syncParentSafeAreaTopInset];'),
+        );
+        expect(source.match(/RNSInlineStackedPaneLargeTitle\(self\)/g)).toHaveLength(1);
+      },
+    );
+
+    it.each(sources)(
+      'acts only on iOS 27.2, a pane narrower than the window and a stacked title, in %s',
+      (_name, load) => {
+        const lever = functionCode(load(), LEVER);
+
+        expect(lever).toContain('if (@available(iOS 27.2, *)) {');
+        expect(lever).toMatch(/window == nil \|\| [\w.]*size\.width >= [\w.]*width - 0\.5/);
+        expect(lever).toMatch(/RNSFindLargeTitleView\(\w+, 0\)/);
+        expect(lever).toMatch(
+          /largeTitleFrame\.size\.height <= 0\.5 \|\| largeTitleFrame\.origin\.y < 0\.5/,
+        );
+        expect(lever).toContain('convertRect:largeTitleView.frame toView:');
+      },
+    );
+
+    it.each(sources)('finds the title view by its class name, in %s', (_name, load) => {
+      const finder = functionCode(load(), 'static UIView *RNSFindLargeTitleView(');
+
+      expect(finder).toContain('strstr(object_getClassName(subview), "LargeTitle") != NULL');
+    });
+
+    it.each(sources)(
+      'writes Inline only while the mode is Always, then asks the bar to lay out, in %s',
+      (_name, load) => {
+        const lever = functionCode(load(), LEVER);
+        const always = lever.indexOf(
+          'largeTitleDisplayMode != UINavigationItemLargeTitleDisplayModeAlways',
+        );
+        const inline = lever.indexOf(
+          'largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeInline;',
+        );
+
+        expect(always).toBeGreaterThan(-1);
+        expect(inline).toBeGreaterThan(always);
+        expect(lever.match(/UINavigationItemLargeTitleDisplayMode\w+/g)).toEqual([
+          'UINavigationItemLargeTitleDisplayModeAlways',
+          'UINavigationItemLargeTitleDisplayModeInline',
+        ]);
+        expect(lever.indexOf('[bar setNeedsLayout];')).toBeGreaterThan(inline);
+        expect(lever).toContain('#if !TARGET_OS_TV');
+      },
+    );
+
+    it('ships no diagnostics: no log, no F2 text and no timer in the patch file', () => {
+      const patch = readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8');
+
+      expect(patch).not.toContain('NSLog');
+      expect(patch).not.toContain('F2');
+      expect(patch).not.toContain('dispatch_after');
+    });
+  });
+
   // In a split view with a top tab bar the per-tab hosting controller that parents the stack keeps
   // a safe top of 96 on a revisit (32 on the first visit), which drops the navigation bar 10 pt.
   // UIKit ignores a negative additional inset on the stack itself and honors one on the parent.
   describe('parent safe top inset', () => {
-    const patchedLines = () =>
-      readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8')
-        .split('\n')
-        .filter((line) => (line.startsWith('+') && !line.startsWith('+++')) || line.startsWith(' '))
-        .map((line) => line.slice(1))
-        .join('\n');
-    const sources = [
-      ['the patch file', patchedLines],
-      ['the installed file', () => read('ios/RNSScreenStack.mm')],
-    ] as const;
-    // A method's code up to the next method, comments dropped and whitespace collapsed.
-    const methodCode = (source: string, signature: string) => {
-      const start = source.indexOf(signature);
-      const end = source.indexOf('\n- (', start + 1);
-
-      return source
-        .slice(start, end)
-        .split('\n')
-        .filter((line) => !line.trim().startsWith('//'))
-        .join(' ')
-        .replace(/\s+/g, ' ');
-    };
-
     it.each(sources)(
       'writes only while the fixed margin, a window and a tab bar hold, in %s',
       (_name, load) => {
