@@ -45,6 +45,7 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
+import ExpandToggle from '@kiko/design-system/components/expand-toggle';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
@@ -302,19 +303,35 @@ const HistoryCaption: FC<HistoryCaptionProps> = ({
   );
 };
 
+const KINDS_COLLAPSED_LINES = 3;
+
 // What Kiko reads of the exchange and what it leaves out. It states no stored fact, so it needs no
-// loaded state.
+// loaded state. The text is long, so it is held to its first lines until the shared toggle opens
+// it: the kinds Kiko reads lead it, and what stays wrong follows.
 const KindsLine: FC<Pick<KeyLinesProps, 'provider'>> = ({ provider }) => {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
 
   if (!hasKeyLines(provider)) {
     return null;
   }
 
   return (
-    <Text variant="caption" tone="textSecondary">
-      {t('accountDetail.bybitKinds')}
-    </Text>
+    <Box gap={1}>
+      <Text
+        variant="caption"
+        tone="textSecondary"
+        numberOfLines={expanded ? undefined : KINDS_COLLAPSED_LINES}
+      >
+        {t('accountDetail.bybitKinds')}
+      </Text>
+
+      <ExpandToggle
+        expanded={expanded}
+        onPress={() => setExpanded((isExpanded) => !isExpanded)}
+        testID="bybit-kinds-toggle"
+      />
+    </Box>
   );
 };
 

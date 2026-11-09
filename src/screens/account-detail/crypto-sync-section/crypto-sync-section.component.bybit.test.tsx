@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
 import { i18n } from '@kiko/i18n/init';
@@ -445,6 +445,29 @@ describe('the kinds line of a Bybit account', () => {
     const { getByText } = await renderState('bybit', '{not json');
 
     expect(getByText(i18n.t('accountDetail.bybitKinds'))).toBeTruthy();
+  });
+
+  it('holds the long text to its first lines until the toggle is tapped, and back on a second tap', async () => {
+    const { getByText, getByTestId } = await renderState('bybit', { walks: {} });
+    const kinds = i18n.t('accountDetail.bybitKinds');
+
+    expect(getByText(kinds).props.numberOfLines).toBe(3);
+    expect(getByText(i18n.t('components.expandToggle.showAll'))).toBeTruthy();
+
+    await fireEvent.press(getByTestId('bybit-kinds-toggle'));
+
+    expect(getByText(kinds).props.numberOfLines).toBeUndefined();
+    expect(getByText(i18n.t('components.expandToggle.showLess'))).toBeTruthy();
+
+    await fireEvent.press(getByTestId('bybit-kinds-toggle'));
+
+    expect(getByText(kinds).props.numberOfLines).toBe(3);
+  });
+
+  it('gives a Binance account no toggle, since it has no such text', async () => {
+    const { queryByTestId } = await renderState('binance', { walks: {} });
+
+    expect(queryByTestId('bybit-kinds-toggle')).toBeNull();
   });
 });
 
