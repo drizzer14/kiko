@@ -96,6 +96,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `layout-mode-spy.ts`, `modal-animation-spy.ts`, `mock-reanimated-scroll-to-end.ts`,
   `gesture-root-wrapper.tsx`: doubles for the layout mode, a Modal's animation, a scroll ref and
   a gesture root.
+- `modal-render-spy.ts`, `modal-dismiss-spy.ts`: read the props of a Modal's latest render per
+  `testID`, and call its latest `onDismiss` as native does when a close has finished.
+- `tables-period-selection.ts`: `pickTablesPeriod` starts a test from a kept Tables period;
+  `resetTablesPeriodSelection` goes in `afterEach`.
 - `lift-grid-card.ts`, `hold-card.ts`: a drag lifecycle and a touch-and-hold driven through props,
   because Jest cannot hit-test.
 - `native-spec-lookup.ts`: the native-spec lookup check; the caller passes a thunk holding its own
@@ -110,7 +114,8 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `local-days-from.ts`, `device-zone-offset.ts`: calendar-day arithmetic and a device-zone offset
   for a test whose dates cross DST.
 - `code-from-currency.ts`: the numeric ISO code of a currency, for a Monobank feed fixture.
-- `window-size.ts`: `reportWindow` (the size class the native display-regions module reports, plus
+- `window-size.ts`: `reportWindow(horizontalSizeClass, width, height, verticalBarEdge = 'none')`
+  (the size class and vertical bar edge the native display-regions module reports, plus
   the window size; call it before the first render) and `resizeWindow` (resize a mounted tree).
 - `lazy-tabs.tsx`: a tab navigator on the real `TabRouter` that mounts a tab on its first focus and
   keeps it mounted, as the native bottom tabs do.

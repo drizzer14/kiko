@@ -2,7 +2,9 @@ import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { reportWindow } from '@kiko/test-support/window-size';
 import { act, fireEvent } from '@testing-library/react-native';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { resetTablesPeriodSelection } from '@kiko/test-support/tables-period-selection';
 import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
@@ -15,7 +17,6 @@ import {
   pickThisQuarter,
   renderRoot,
   setLayout,
-  THIS_QUARTER,
 } from './__fixtures__/tables-navigator-world';
 import { layout } from './__fixtures__/mock-layout';
 
@@ -43,7 +44,7 @@ jest.mock('@bottom-tabs/react-navigation', () =>
 type StackRoute = {
   key: string;
   name: string;
-  params?: { period?: { kind: string; year?: number } };
+  params?: { transactionId?: string };
 };
 type StackState = { key: string; routes: StackRoute[]; panes: Record<string, string | undefined> };
 
@@ -201,6 +202,7 @@ describe('Tables is in a layer over both panes', () => {
 
   afterEach(async () => {
     await resetStatisticsFilterSelection();
+    await resetTablesPeriodSelection();
     reportWindow('compact', 393, 852);
     jest.useRealTimers();
   });
@@ -546,6 +548,140 @@ describe('Tables is in a layer over both panes', () => {
     });
   });
 
+  // A row of the list behind a cell opens its transaction's form from Tables, once the list has
+  // closed. The world holds the spending `e1` (Groceries) and `e2` (Transport), so the Total cell
+  // of Groceries lists `e1`.
+  describe('a row of a cell opens its form', () => {
+    const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
+
+    const formsOf = (tab: string): StackRoute[] =>
+      stackOf(tab).routes.filter(({ name }) => name === 'TransactionForm');
+
+    const openRow = async (rendered: Rendered): Promise<void> => {
+      await act(async () => {
+        await fireEvent.press(rendered.getByLabelText('Groceries, Total'));
+      });
+
+      await fireEvent.press(rendered.getByTestId('cell-row-e1'));
+      await modal.finishClosing();
+    };
+
+    const openFormOf = async (transactionId: string): Promise<void> => {
+      await act(async () => {
+        navigationRef.dispatch({
+          type: 'PANE_OPEN',
+          payload: {
+            openerKey: 'pane-default:companion',
+            route: { name: 'TransactionForm', params: { transactionId } },
+          },
+          target: stackOf('StatisticsTab').key,
+        });
+      });
+    };
+
+    it('opens the form over Tables in the layer, and Back shows Tables, then the panes as they were', async () => {
+      const rendered = await renderRoot();
+
+      await goToTab('StatisticsTab');
+
+      const before = framesOf(rendered);
+
+      await pressTables(rendered);
+      await openRow(rendered);
+
+      expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables', 'TransactionForm']);
+      expect(formsOf('StatisticsTab')[0].params).toEqual({ transactionId: 'e1' });
+      expect(placeOf(oneOf(rendered, FORM))).toBe(LAYER);
+      expect(framesOf(rendered)).toEqual(before);
+      expect(isLayerOpen(rendered)).toBe(true);
+
+      await goBack();
+
+      expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
+      expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
+
+      await goBack();
+
+      expect(namesOf('StatisticsTab')).toEqual(['Statistics']);
+      expect(framesOf(rendered)).toEqual(before);
+      expect(isLayerAtRest(rendered)).toBe(true);
+    });
+
+    it('goes back to Tables when the native stack reports the dismissal of the form', async () => {
+      const rendered = await renderRoot();
+
+      await goToTab('StatisticsTab');
+      await pressTables(rendered);
+      await openRow(rendered);
+      await dismissNatively(oneOf(rendered, FORM));
+
+      expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
+      expect(placeOf(oneOf(rendered, TABLES))).toBe(LAYER);
+    });
+
+    // The Duo unfolded, on the Statistics tab: the only pose where a form of the same transaction
+    // can be open under Tables (Home's tap replaces its detail stack, and Tables opens from the
+    // Statistics screen only). A second form would hold the old values under the edited one.
+    describe('when the form of that transaction is already open under Tables', () => {
+      it('shows that form as it was, closes Tables, and opens no second form', async () => {
+        const rendered = await renderRoot();
+
+        await goToTab('StatisticsTab');
+        await openFormOf('e1');
+
+        const form = oneOf(rendered, FORM);
+        const [formRoute] = formsOf('StatisticsTab');
+
+        await pressTables(rendered);
+        await pickThisQuarter(rendered);
+        await openRow(rendered);
+
+        expect(formsOf('StatisticsTab')).toEqual([formRoute]);
+        expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Home', 'TransactionForm']);
+        expect(oneOf(rendered, FORM)).toBe(form);
+        expect(placeOf(form)).toBe(COMPANION);
+        expect(allOf(rendered, TABLES)).toHaveLength(0);
+        expect(isLayerAtRest(rendered)).toBe(true);
+
+        await pressTables(rendered);
+
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', { exact: false });
+      });
+
+      // A form opened from that form (a template or a create form) is above it. Back from Tables
+      // shows that one, the top route, and the form of the row is below it: still one form of it,
+      // none written over by a stale second.
+      it('shows the route above it when one is open there, and still opens no second form', async () => {
+        const rendered = await renderRoot();
+
+        await goToTab('StatisticsTab');
+        await openFormOf('e1');
+        await act(async () => {
+          navigationRef.dispatch({
+            type: 'PUSH',
+            payload: { name: 'TransactionForm', params: { templateId: 'template' } },
+            target: stackOf('StatisticsTab').key,
+          });
+        });
+        await pressTables(rendered);
+        await openRow(rendered);
+
+        expect(namesOf('StatisticsTab')).toEqual([
+          'Statistics',
+          'Home',
+          'TransactionForm',
+          'TransactionForm',
+        ]);
+        expect(formsOf('StatisticsTab').map(({ params }) => params)).toEqual([
+          { transactionId: 'e1' },
+          { templateId: 'template' },
+        ]);
+        expect(allOf(rendered, TABLES)).toHaveLength(0);
+        expect(isLayerAtRest(rendered)).toBe(true);
+      });
+    });
+  });
+
   // This row passes on any code that keeps the route in the state: it says the period survives the
   // switch and the layer is there again, nothing about how a Back behaves after the cycle on a
   // device.
@@ -575,12 +711,33 @@ describe('Tables is in a layer over both panes', () => {
         expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', {
           exact: false,
         });
-        expect(stackOf(tab).routes.at(-1)?.params?.period).toEqual(THIS_QUARTER);
 
         await goBack();
 
         expect(isLayerAtRest(rendered)).toBe(true);
         expect(allOf(rendered, TABLES)).toHaveLength(0);
+      },
+    );
+  });
+
+  describe('a reopen after Back', () => {
+    it.each(['HomeTab', 'StatisticsTab'])(
+      'opens Tables on the period last picked on the %s',
+      async (tab) => {
+        const rendered = await renderRoot();
+
+        await goToTab(tab);
+        await pressTables(rendered);
+        await pickThisQuarter(rendered);
+        await goBack();
+
+        expect(allOf(rendered, TABLES)).toHaveLength(0);
+
+        await pressTables(rendered);
+
+        expect(rendered.getByTestId(TABLES)).toHaveTextContent('This quarter', {
+          exact: false,
+        });
       },
     );
   });

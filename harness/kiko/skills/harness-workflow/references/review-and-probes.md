@@ -9,6 +9,12 @@
   brief asks which existing queries touch the column or table and which
   index each now uses. A new index without an EXPLAIN QUERY PLAN test is
   a finding.
+- Each track ends with one `kiko:designer` consistency review before its final READY (user
+  ruling 2026-11-06). The brief says READ ONLY, because the agent has write tools. It covers
+  every screen and component the track touched: shared design-system components with no local
+  copies, tokens only, the same patterns as sibling screens (dividers, headers, buttons, tones,
+  empty states), en and uk, dark, and light once it ships. Its findings become one small fix
+  set with its own fresh review. The final READY names the designer review file.
 
 ## Orchestrator defaults never widen or contradict
 

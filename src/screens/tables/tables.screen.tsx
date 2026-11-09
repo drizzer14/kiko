@@ -2,7 +2,6 @@ import { match } from 'ts-pattern';
 import {
   monthsOfPeriod,
   resolveTablePeriod,
-  type TablePeriod,
   tablePeriodOptions,
 } from '@kiko/statistics/table-period';
 import { useTranslation } from 'react-i18next';
@@ -14,21 +13,23 @@ import {
 } from '@kiko/statistics/statistics-filter-scope';
 import Box from '@kiko/design-system/components/box';
 import Screen from '@kiko/design-system/components/screen';
-import type { TablesParams } from '@kiko/navigation/types';
+import { useVerticalBarEdge } from '@kiko/display-regions';
 import { rowDescriberOf } from '@kiko/statistics/cell-rows';
-import { type FC, useEffect, useMemo, useState } from 'react';
-import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { useStatisticsSources } from '@kiko/statistics/statistics-sources';
+import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { categorySlicesOfMonths } from '@kiko/statistics/category-by-month';
 import { TABLES_VIEWS, type TablesView } from '@kiko/statistics/tables-view';
 import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
+import type { TablesParams, TransactionFormParams } from '@kiko/navigation/types';
 import { useRateHistoryBackfill } from '@kiko/statistics/use-rate-history-backfill';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
+import { useIsScreenVisible, useSettledLayoutMode } from '@kiko/navigation/pane-stack';
+import { useTablesPeriodSelection } from '@kiko/statistics/use-tables-period-selection';
 import { useStatisticsFilterSelection } from '@kiko/design-system/use-statistics-filter-selection';
 
 import { styles } from './tables.styles';
@@ -38,11 +39,16 @@ import NetWorthTable from './net-worth-table';
 import TablePeriodField from './table-period-field';
 
 // This screen is registered in the Home and the Statistics stacks (the Statistics screen that
-// opens it shows in either), so it binds no stack's param list: it needs the route's params and
-// `setParams`, which both stacks' generated props satisfy.
+// opens it shows in either), so it binds no stack's param list: it needs the route's params,
+// `setParams`, and what it opens a transaction with, which both stacks' generated props satisfy.
 type TablesScreenProps = {
   route: { params?: TablesParams };
-  navigation: { setParams: (params: TablesParams) => void };
+  navigation: {
+    setParams: (params: TablesParams) => void;
+    navigate: (name: 'TransactionForm', params: TransactionFormParams) => void;
+    goBack: () => void;
+    getState: () => { routes: { name: string; params?: object }[] };
+  };
 };
 
 // A table without a category column has no use for the category filter, and a view added to the
@@ -56,9 +62,9 @@ const HAS_CATEGORY_FILTER: Record<TablesView, boolean> = {
 /**
  * The monthly tables behind the Statistics charts. It reads the same sources, ledger and account
  * and category picks as the Statistics screen, so a table cell is the number its donut shows for
- * that month, and a pick made in either holds in both. The period is its own, held in the route
- * params (not in the shared date range, which it neither reads nor changes), so a fold or a
- * resize that remounts the screen keeps it, and a new push opens on this year.
+ * that month, and a pick made in either holds in both. The period is its own (not the shared date
+ * range, which it neither reads nor changes), held in a session store so a fold or a resize that
+ * remounts the screen keeps it, and so does Back: a new push opens on the period last picked.
  */
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
@@ -78,6 +84,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
 
   const { selectedAccounts, selectedCategories, toggleAccount, toggleCategory } =
     useStatisticsFilterSelection();
+  const { selectedPeriod, selectPeriod } = useTablesPeriodSelection();
   const now = useVisibleRefreshedNow(isVisible);
   const {
     accounts,
@@ -121,8 +128,17 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   // holdings' names, and re-reads the language when it changes.
   const describeRow = useMemo(() => rowDescriberOf(holdings, t), [holdings, t]);
 
+  // The Duo unfolded in landscape: a side bar on a window with room for two panes. The vertical
+  // bar is the system's own trait, the layout mode the app's own test for that room, so a folded
+  // Duo (one page) and a portrait Duo (a bottom bar) keep the period in its own row. The mode is
+  // the settled one: a pose change that shows the raw mode for one frame would move the period
+  // field and close a Period sheet that is open.
+  const verticalBarEdge = useVerticalBarEdge();
+  const layoutMode = useSettledLayoutMode();
+  const isPeriodBesideFilters = verticalBarEdge !== 'none' && layoutMode === 'columns';
+
   const periodOptions = useMemo(() => tablePeriodOptions(spanStart, now), [spanStart, now]);
-  const period = resolveTablePeriod(route.params?.period, periodOptions, now);
+  const period = resolveTablePeriod(selectedPeriod, periodOptions, now);
   const months = useMemo(() => monthsOfPeriod(period, spanStart, now), [period, spanStart, now]);
   const view = route.params?.view ?? 'categories';
   const hasCategoryFilter = HAS_CATEGORY_FILTER[view];
@@ -175,13 +191,33 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     [periodSlices, visibleSelectedCategories],
   );
 
-  const selectPeriod = (next: TablePeriod): void => {
-    navigation.setParams({ period: next });
-  };
-
   const selectView = (next: TablesView): void => {
     navigation.setParams({ view: next });
   };
+
+  // A form of this transaction can be open under this screen (in the second pane, or kept by a
+  // fold). A second one would show the old values under the edited one, and a Save there would
+  // write them back, so this screen closes and the one that is open shows as it was.
+  const openTransaction = useCallback(
+    (transactionId: string): void => {
+      const isFormOpen = navigation
+        .getState()
+        .routes.some(
+          ({ name, params }) =>
+            name === 'TransactionForm' &&
+            params !== undefined &&
+            'transactionId' in params &&
+            params.transactionId === transactionId,
+        );
+
+      if (isFormOpen) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('TransactionForm', { transactionId });
+      }
+    },
+    [navigation],
+  );
 
   if (!isReady) {
     return (
@@ -197,11 +233,29 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     netWorth: t('tables.view.netWorth'),
   };
 
+  const periodField = (
+    <TablePeriodField
+      key={`period-${sheetGeneration}`}
+      period={period}
+      options={periodOptions}
+      now={now}
+      onSelect={selectPeriod}
+      testID="tables-period"
+    />
+  );
+
   // They go into the table's scroll, so at a large type size they scroll away with the caption
   // and leave the rows the room; the empty state keeps them in place.
   const controls = (
     <Box gap={3}>
-      <Box direction="row" gap={3} style={styles.filterBar}>
+      <Box
+        direction="row"
+        gap={3}
+        style={[styles.filterBar, isPeriodBesideFilters && styles.filterBarWithPeriod]}
+        testID="tables-filter-bar"
+      >
+        {isPeriodBesideFilters && periodField}
+
         <FilterMenu
           key={`account-filter-${sheetGeneration}`}
           label={t('statistics.filterAccounts')}
@@ -227,14 +281,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
         )}
       </Box>
 
-      <TablePeriodField
-        key={`period-${sheetGeneration}`}
-        period={period}
-        options={periodOptions}
-        now={now}
-        onSelect={selectPeriod}
-        testID="tables-period"
-      />
+      {!isPeriodBesideFilters && periodField}
     </Box>
   );
 
@@ -264,6 +311,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               excludedCategories={excludedCategories}
               describeRow={describeRow}
               sheetGeneration={sheetGeneration}
+              onOpenTransaction={openTransaction}
               topContent={controls}
             />
           ))
@@ -278,6 +326,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
               defaultCategoryKey={defaultCategoryKey}
               describeRow={describeRow}
               sheetGeneration={sheetGeneration}
+              onOpenTransaction={openTransaction}
               topContent={controls}
             />
           ))

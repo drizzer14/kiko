@@ -1842,7 +1842,10 @@ are built with `createPaneStackNavigator`.
   `net-worth-table/` under `src/screens/tables/`, `table-cells/` shared cell formatters with
   `monthColumnsOf`, `cell-rows-sheet/` the tap-a-cell sheet: `use-cell-rows-sheet` holds the
   cell and computes the rows in render); the data in
-  `src/statistics/{table-period,category-by-month,cash-flow,tables-view,cell-rows}/`.
+  `src/statistics/{table-period,category-by-month,cash-flow,tables-view,cell-rows}/`; the kept
+  period is `src/statistics/use-tables-period-selection/` (see reminders.md "Shared UI state
+  across screens"). The CSV export is `src/data-transfer/csv-export/` with its screen in
+  `src/screens/settings/export-csv/`.
   `expenseRowsOf` and `incomeRowsOf` (`src/statistics/cell-rows/`, range type `CellRange`) list
   the rows behind a month or Total cell; expense rows come from `spendingContributionsOf`
   (`category-breakdown`, the donut's per-row calculation), income rows from `incomeAmountOf`

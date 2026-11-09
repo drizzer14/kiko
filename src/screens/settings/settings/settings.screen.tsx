@@ -194,6 +194,17 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
             selected={isShown('ExportData')}
             style={groupedRowStyle}
           />
+
+          <Divider testID="settings-divider-export-csv" style={groupedDividerStyle} />
+
+          <SettingsRow
+            testID="settings-row-export-csv"
+            icon={entrySymbol.exportData}
+            label={t('settings.csvExport.rowLabel')}
+            onPress={() => openInPane('ExportCsv')}
+            selected={isShown('ExportCsv')}
+            style={groupedRowStyle}
+          />
         </Card>
 
         {/* The base currency is FIAT-ONLY: it drives every net-worth conversion,

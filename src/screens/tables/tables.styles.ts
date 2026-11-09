@@ -11,4 +11,9 @@ export const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
   },
+  // The period field is a label over its trigger, so the chips beside it end level with the
+  // trigger, not at the middle of the label and the trigger together.
+  filterBarWithPeriod: {
+    alignItems: 'flex-end',
+  },
 });

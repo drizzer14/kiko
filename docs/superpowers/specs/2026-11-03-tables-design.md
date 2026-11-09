@@ -123,9 +123,12 @@ the Home stacks: on a wide window Statistics is Home's companion, and a name the
   `buildAccountOptions`, `visibleCategorySelection`, `excludedCategoryKeysOf`.
 
 A `SegmentedControl` at the top of Tables switches the tables, with three parts: Categories, Cash flow, Net worth (tabs-vs-chips
-rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. Selection and
-period are route params of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
-(`pane-stack-view`, "A switch between one pane and two"), keeps them; a new push still opens on Categories and the default period.
+rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. The selection is a
+route param of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
+(`pane-stack-view`, "A switch between one pane and two"), keeps it; a new push still opens on Categories. The period (user ruling
+2026-11-08) is held in the session store `use-tables-period-selection` (`src/statistics/`), so it also survives Back: a new push
+opens on the period last picked, until the app is closed, and on the default only before a first pick. A kept period that the options
+no longer offer reads as the default.
 `resetTabStackOnBlur` pops the screen on a tab change, as for any pushed screen. The uk labels ("Категорії", "Рух коштів", "Капітал")
 must fit: `labelVariant: 'caption'` is the first step. Measure at large sizes; if they do not fit, the builder reports it. Do not shrink
 the text silently.
@@ -234,6 +237,13 @@ all C3 cells do not open (no rows sum to them). This also answers the HIG line o
 exact value behind a rounded cell. With a held category pick, the All cell of C1 lists only the picked categories, so its
 total equals the cell; C2's expense cell ignores the pick, as the C2 column does.
 
+User ruling 2026-11-08, replacing "read-only" above: a tap on a row of the list closes it and opens
+that transaction's form, as a row on Home does (a loan interest or fee row opens its payment, and a
+synced row opens read-only). The form opens once the list has finished closing. If a form of that
+transaction is already open under Tables, Tables closes and that form shows as it was, so no second
+form holds the old values. A row has no touch-and-hold menu. The Tables help topic says it in one
+sentence.
+
 ## 9. The table component (kiko:designer owns it)
 
 `src/design-system/components/data-table/`. Its props are strings and display flags, plus two `ReactNode` props of the
@@ -256,7 +266,7 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
   Pick excludes it (`money-text.props.d.ts:37`). The designer adds it to the table's cell text.
 - Column order (Decision 3), ruled: oldest to newest, as the charts read, with Total and Average (or
   Change) on the right. Opens scrolled so that the last 3 months show on a phone, with a part of the next
-  column visible as the scroll hint. Sum columns have a `sheetBackground` tint. The last row ("All") is bold.
+  column visible as the scroll hint. Sum columns have a `colors.sumTint` tint. The last row ("All") is bold.
 - The header row stays visible on vertical scroll. RN has no sticky support in a horizontal list, so this is
   the first probe of the change set. Tables is its own screen, so the table owns its vertical scroll, and the header
   row is child 1 of that scroll (`stickyHeaderIndices={[1]}`), under the caption and `topContent`, and follows the horizontal offset. Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
@@ -384,7 +394,7 @@ Rulings of 2026-11-04 (user, relayed by the coordinator):
 
 ## 13. Left to the builder
 
-The sticky header technique; the exact token for the sum-column tint if `sheetBackground` looks wrong on a device; the file names under
+The sticky header technique; the file names under
 `src/statistics`; the period control's component (`SelectField` or the filter bar's own button); the account order source.
 
 ## 14. Change sets

@@ -16,6 +16,8 @@ import { type LedgerRow, type SpendingLedger, spendingRowsIn } from '../spending
 /** One row of the list a table cell opens; the rows' base amounts add up to the cell. */
 export type CellRow = {
   id: string;
+  /** The stored transaction a tap opens: a derived loan entry's payment, else the row itself. */
+  transactionId: string;
   time: number;
   description: string;
   /** In the row's own currency. For a payment with change returned, what is left of it. */
@@ -99,6 +101,7 @@ export const expenseRowsOf = (
 
       return {
         id: transaction.id,
+        transactionId: paymentId ?? transaction.id,
         time: transaction.time,
         description:
           foldMap(maybe(sourceById.get(paymentId ?? transaction.id)), describe) ??
@@ -131,6 +134,7 @@ export const incomeRowsOf = (
           (base) => [
             {
               id: row.id,
+              transactionId: row.id,
               time: row.time,
               description: describe(row),
               native: Money.of(row.currency, row.amountMinorUnits),

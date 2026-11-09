@@ -25,6 +25,7 @@ export const en = {
     // sheet with (`confirmOwner(reason)`), one per sensitive action.
     reason: {
       disableLock: 'Turn off app lock',
+      exportCsv: 'Export your transactions',
       exportSecrets: 'Export your saved passwords & keys',
     },
     reauth: {
@@ -79,6 +80,56 @@ export const en = {
     baseCurrency: 'Base currency',
     baseCurrencySheetTitle: 'Base Currency',
     categories: 'Categories',
+    csvExport: {
+      columns: {
+        account: 'Account',
+        amount: 'Amount',
+        category: 'Category',
+        comment: 'Comment',
+        currency: 'Currency',
+        date: 'Date',
+        description: 'Description',
+        holding: 'Holding',
+        pending: 'Pending',
+        source: 'Source',
+        type: 'Type',
+      },
+      contents:
+        'It holds the date, amount, currency, category, description and comment of every transaction in your accounts, and for each one its type, whether it is pending, and where it came from, such as a bank or an exchange. It also holds the names of the accounts and holdings. A holding name can hold a card number mask, and a description can name another person. Archived accounts are left out.',
+      errorMessage: 'Please try again.',
+      errorTitle: 'Export failed',
+      notBackup:
+        'This is not a backup. It leaves out balances, prices and settings, and Kiko cannot restore your data from it. To back up your data, export a .kiko file instead.',
+      // The values of the `pending` column: a row that is still on hold at the bank, or not.
+      pending: {
+        no: 'No',
+        yes: 'Yes',
+      },
+      // The Settings row that opens this screen. Title Case by the same ruling as
+      // `dataExport.rowLabel`, so it reads the same as `title` below (the nav header).
+      rowLabel: 'Export to CSV',
+      shareButton: 'Share CSV file',
+      // The values of the `source` column, one per `transactions.source`.
+      sources: {
+        binance: 'Binance',
+        btc_wallet: 'Bitcoin wallet',
+        import: 'Statement import',
+        manual: 'Manual',
+        monobank: 'Monobank',
+      },
+      title: 'Export to CSV',
+      // The values of the `type` column, one per `CsvTransactionType`.
+      types: {
+        balance: 'Balance',
+        exchange: 'Exchange',
+        expense: 'Expense',
+        income: 'Income',
+        loan: 'Loan payment',
+        transfer: 'Transfer',
+      },
+      warning:
+        'This file is not encrypted. Anyone who gets it can read it, so share it only with people and apps you trust.',
+    },
     dataExport: {
       copied: 'Copied',
       copyKey: 'Copy key',
@@ -1217,6 +1268,7 @@ export const en = {
           '2': 'To keep syncing after a restore, turn on "Include saved passwords & keys".',
           '3': 'Tap "Export data", then "Share file" to save the .kiko file.',
           '4': 'Tap "Copy key" and keep the key somewhere safe. It is shown only once, and the file cannot be opened without it.',
+          '5': 'To save your transactions as a spreadsheet file, tap "Export to CSV" in "Settings". A CSV file is not a backup: it is not encrypted, and Kiko cannot restore your data from it.',
         },
         title: 'Back Up Your Data',
       },
@@ -1372,10 +1424,10 @@ export const en = {
           '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
           '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. A bank payment that paid for a P2P purchase, a card purchase or a deposit on an exchange does not count as spending either. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category. A transaction that sets an account\'s balance, such as its initial value, does not count as spending either.',
           '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
-          '9': 'Above the filters, "Monthly tables" opens your spending by category for each month, in whole units of your base currency at today\'s rate, so an earlier month changes when the rate does. "Period" chooses a quarter, the first or second half of this year, or this or last year. It starts on "This year". The average is the mean of the cells for the months it counts: it leaves out the first month with data and the month that is not over yet. A return that falls in a different month from its payment lowers the "Total" or "All" figure, but not the cell of the payment\'s month.',
+          '9': 'Above the filters, "Monthly tables" opens your spending by category for each month, in whole units of your base currency at today\'s rate, so an earlier month changes when the rate does. "Period" chooses a quarter, the first or second half of this year, or this or last year. It starts on "This year", then opens on the period you picked last, until you close the app. The average is the mean of the cells for the months it counts: it leaves out the first month with data and the month that is not over yet. A return that falls in a different month from its payment lowers the "Total" or "All" figure, but not the cell of the payment\'s month.',
           '10': 'On the "Tables" screen, "Categories", "Cash flow" and "Net worth" at the top switch between the three tables. "Cash flow" shows, for each month, "Income", "Expenses", "Net" (income minus expenses) and "Savings rate" (net divided by income, a dash in a month with no income). "Expenses" count every category: a category you pick with "Categories" narrows the category table only. "Income" is every credit that none of the spending rules leaves out, so it can be wrong. A refund that arrives as a separate credit counts as income, while a return you add to the payment itself does not. A transfer between two accounts that Kiko tracks counts as income when its two sides are more than 2 minutes apart or only one side was synced. So does money that reaches your bank from an account Kiko does not track, money you withdraw or sell from Binance to your bank, and a loan you receive. A credit described as a deposit or bonds, or one that your bank codes as a cash withdrawal, a card top-up or a transfer from one of your Monobank cards that Kiko syncs or synced, does not count, even when it is an interest or coupon payout. "Net" is not the change in your net worth, which also moves with exchange rates and with the revaluation of what you hold.',
           '11': '"Net worth" shows, for each month, what each of your accounts is worth at the end of it, in whole units of your base currency. The month that is not over yet shows today\'s value. "All" is your net worth at the end of each month, counted as "Net Worth Over Time" counts it. A loan or a card in debit lowers the account it belongs to. An account with no holding has no row, and an archived account is not counted. "Change" is the last month\'s value less the value at the end of the month before the first column. A month uses the exchange rate of its last day, or the earliest rate Kiko has stored for a month before that currency\'s history starts. A currency with no history uses today\'s rate, so its earlier months change when the rate does. "Net worth" has no category filter.',
-          '12': 'In the "Categories" table, tap a month or "Total" in a category row or in "All", and in the "Cash flow" table, tap one in "Income" or "Expenses", to list the transactions behind that amount, newest first. The total at the bottom of the list adds them up to the amount in the cell. "Average", "Net", "Savings rate" and the "Net worth" table have no list.',
+          '12': 'In the "Categories" table, tap a month or "Total" in a category row or in "All", and in the "Cash flow" table, tap one in "Income" or "Expenses", to list the transactions behind that amount, newest first. The total at the bottom of the list adds them up to the amount in the cell. Tap a transaction in the list to open it. "Average", "Net", "Savings rate" and the "Net worth" table have no list.',
         },
         title: 'Read Your Statistics',
       },

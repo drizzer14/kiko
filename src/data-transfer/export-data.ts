@@ -2,6 +2,7 @@ import * as RNFS from 'react-native-fs';
 
 import pkg from '../../package.json';
 
+import { joinPath } from './join-path';
 import { utf8Encode } from './utf8/utf8';
 import type { ExportPayload } from './payload';
 import { encryptEnvelope } from './crypto/envelope';
@@ -16,16 +17,6 @@ import { readDataSnapshot } from './snapshot/read-snapshot';
 type ExportResult = { fileUri: string; keyBase64: string };
 
 const exportFileName = (): string => `kiko-export-${Date.now()}.kiko`;
-
-// `RNFS.TemporaryDirectoryPath` is a native constant (`NSTemporaryDirectory()`
-// on iOS) whose trailing-slash presence has drifted across OS/library
-// versions — a bare concatenation silently produces a malformed path (e.g.
-// `/tmp` + `kiko-export-….kiko` with no separator) that `writeFile` then
-// fails on, with the failure surfacing only as the generic export error
-// Alert. This joins the two unconditionally correctly regardless of whether
-// the directory constant already ends in `/`.
-const joinPath = (directory: string, fileName: string): string =>
-  `${directory}${directory.endsWith('/') ? '' : '/'}${fileName}`;
 
 /**
  * Builds a fresh AES-256-GCM-encrypted `.kiko` export of every logical table

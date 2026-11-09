@@ -1,5 +1,6 @@
 import { act, fireEvent } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
+import { resetTablesPeriodSelection } from '@kiko/test-support/tables-period-selection';
 import { answerFilterData, FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
@@ -12,14 +13,13 @@ import {
   pickThisQuarter,
   renderRoot,
   setLayout,
-  THIS_QUARTER,
 } from './__fixtures__/tables-navigator-world';
 import { layout } from './__fixtures__/mock-layout';
 
 /**
  * The Statistics screen's button opens the Tables screen on the real RootNavigator, in the Home
- * tab's companion pane and on the Statistics tab, and the period lives in the route params: a
- * fold or an unfold, which remounts the screen, keeps it, and a new push opens on the default.
+ * tab's companion pane and on the Statistics tab, and the period lives in the session's period
+ * store: a fold or an unfold, which remounts the screen, keeps it, and so does a new push.
  */
 
 jest.mock('@kiko/display-regions', () =>
@@ -32,7 +32,7 @@ jest.mock('@bottom-tabs/react-navigation', () =>
 
 type StackRoute = {
   name: string;
-  params?: { period?: { kind: string; year?: number }; view?: string };
+  params?: { view?: string };
 };
 
 const BUTTON = 'statistics-open-tables';
@@ -55,6 +55,7 @@ describe('the Tables route on the real RootNavigator', () => {
 
   afterEach(async () => {
     await resetStatisticsFilterSelection();
+    await resetTablesPeriodSelection();
     jest.useRealTimers();
   });
 
@@ -93,7 +94,6 @@ describe('the Tables route on the real RootNavigator', () => {
 
     await setLayout('columns');
 
-    expect(tablesRouteOf('StatisticsTab')?.params?.period).toEqual(THIS_QUARTER);
     expect(rendered.getByTestId('tables-period')).toHaveTextContent('This quarter', {
       exact: false,
     });
@@ -105,7 +105,7 @@ describe('the Tables route on the real RootNavigator', () => {
     });
   });
 
-  it('opens a new push on this year after the screen was popped', async () => {
+  it('opens a new push on the period last picked after the screen was popped', async () => {
     const rendered = await renderRoot();
 
     await goToTab('StatisticsTab');
@@ -120,8 +120,7 @@ describe('the Tables route on the real RootNavigator', () => {
 
     await fireEvent.press(rendered.getByTestId(BUTTON));
 
-    expect(tablesRouteOf('StatisticsTab')?.params?.period).toBeUndefined();
-    expect(rendered.getByTestId('tables-period')).toHaveTextContent('This year', {
+    expect(rendered.getByTestId('tables-period')).toHaveTextContent('This quarter', {
       exact: false,
     });
   });

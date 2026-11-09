@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
@@ -10,9 +10,11 @@ import type DataTable from '@kiko/design-system/components/data-table';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import {
   CARD,
+  LOAN_PAYMENT,
   transactionRow,
   worldInput,
 } from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 
 import CategoryTable from '.';
 
@@ -61,6 +63,8 @@ const WORLD = [
   spend('g-jun', 'groceries', 50_00, JUNE.start + 1_000),
 ];
 
+const onOpenTransaction = jest.fn();
+
 const propsOf = (
   transactions: ReturnType<typeof transactionRow>[],
   overrides: Partial<CategoryTableProps> = {},
@@ -75,6 +79,7 @@ const propsOf = (
   excludedCategories: new Set<string>(),
   describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
   sheetGeneration: 0,
+  onOpenTransaction,
   topContent: <View testID="table-controls" />,
   ...overrides,
 });
@@ -462,6 +467,44 @@ describe('CategoryTable', () => {
       await rendered.rerender(<CategoryTable {...props} sheetGeneration={1} />);
 
       expect(rendered.queryByText('Groceries, February 2025')).toBeNull();
+    });
+
+    describe('a pressed row', () => {
+      const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
+
+      it('opens the transaction of a pressed row after the sheet closes', async () => {
+        const { rendered } = await pressed(propsOf(WORLD), 'category-groceries', 1);
+
+        await fireEvent.press(rendered.getByTestId('cell-row-g-feb'));
+
+        expect(onOpenTransaction).not.toHaveBeenCalled();
+
+        await modal.finishClosing();
+
+        expect(onOpenTransaction).toHaveBeenCalledTimes(1);
+        expect(onOpenTransaction).toHaveBeenCalledWith('g-feb');
+      });
+
+      it('opens the payment of a pressed loan interest row', async () => {
+        // The loan of the shared world is the one of January 2024.
+        const { rendered } = await pressed(
+          propsOf([], {
+            ledger: buildSpendingLedger(worldInput({ transactions: [LOAN_PAYMENT] })),
+            months: calendarMonthsBetween(
+              new Date(2024, 0, 1).getTime(),
+              new Date(2024, 5, 30).getTime(),
+            ),
+            now: new Date(2024, 5, 15, 12).getTime(),
+          }),
+          'all',
+          0,
+        );
+
+        await fireEvent.press(rendered.getByTestId('cell-row-loan-interest:loan-payment'));
+        await modal.finishClosing();
+
+        expect(onOpenTransaction).toHaveBeenCalledWith('loan-payment');
+      });
     });
   });
 

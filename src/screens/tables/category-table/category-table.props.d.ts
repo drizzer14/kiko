@@ -22,6 +22,8 @@ export type CategoryTableProps = {
   describeRow: RowDescriber;
   /** The screen's count of times it stopped showing; a sheet opened before the last one closes. */
   sheetGeneration: number;
+  /** A row of the list a cell opens was pressed and the list has closed: open its transaction. */
+  onOpenTransaction: (transactionId: string) => void;
   /**
    * The filters and the period. They scroll with the caption above the rows, and stay on screen
    * in the empty state, where they are the way out of an empty period.

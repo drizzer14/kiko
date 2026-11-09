@@ -103,10 +103,10 @@ export const TITLE_KEYS = new Set([
   'forms.transaction.title',
   'forms.transaction.toSheetTitle',
   'forms.transaction.typeSheetTitle',
-  // `help.rowLabel`, `settings.dataExport.rowLabel` and `settings.dataImport.rowLabel` are
-  // Settings rows in Title Case by user ruling, so each row matches the nav title
-  // of the screen it opens (`help.title`, `settings.dataExport.title`,
-  // `settings.dataImport.title`).
+  // `help.rowLabel`, `settings.dataExport.rowLabel`, `settings.dataImport.rowLabel` and
+  // `settings.csvExport.rowLabel` are Settings rows in Title Case by user ruling, so each row
+  // matches the nav title of the screen it opens (`help.title`, `settings.dataExport.title`,
+  // `settings.dataImport.title`, `settings.csvExport.title`).
   'help.groups.accounts.title',
   'help.groups.categories.title',
   'help.groups.holdings.title',
@@ -156,6 +156,8 @@ export const TITLE_KEYS = new Set([
   'ruleRewrite.title',
   'settings.baseCurrencySheetTitle',
   'settings.categories',
+  'settings.csvExport.rowLabel',
+  'settings.csvExport.title',
   'settings.dataExport.rowLabel',
   'settings.dataExport.title',
   'settings.dataImport.confirmTitle',
