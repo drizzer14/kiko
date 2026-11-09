@@ -16,6 +16,8 @@ import {
 import {
   type SQL,
   and,
+  asc,
+  between,
   desc,
   eq,
   gt,
@@ -2368,6 +2370,25 @@ export const transactionsRepo = {
       .innerJoin(accounts, eq(holdings.accountId, accounts.id))
       .groupBy(transactions.category)
       .orderBy(desc(sql`max(${transactions.time})`)),
+  /**
+   * Each merchant code the user's own ledger holds once, with its row count, most rows
+   * first and then by code — the picker's "Your codes" section. ONE statement: a single
+   * scan of `transactions` grouped on a temporary B-tree, with no index on `mcc` and none
+   * added. `BETWEEN 0 AND 9999` is the range a rule can store and is false on NULL, so no
+   * `IS NOT NULL` is needed and the column's nullable type never reaches the result. Every
+   * row counts, whatever its category or hand flag, because a rule condition tests every
+   * row. One row comes back per distinct code, never one per transaction.
+   */
+  mccCountsQuery: () =>
+    database
+      .select({
+        mcc: sql<number>`${transactions.mcc}`,
+        rowCount: sql<number>`count(*)`,
+      })
+      .from(transactions)
+      .where(between(transactions.mcc, 0, 9999))
+      .groupBy(transactions.mcc)
+      .orderBy(desc(sql`count(*)`), asc(transactions.mcc)),
   /**
    * The DISTINCT, non-empty descriptions of the user's own MANUAL rows, newest
    * first — the source of the create-form's inline description suggestions.
