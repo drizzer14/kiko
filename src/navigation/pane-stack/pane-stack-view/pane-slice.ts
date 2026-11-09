@@ -100,22 +100,16 @@ const LAYER_ROOT_OPTIONS: NativeStackNavigationOptions = {
   contentStyle: { backgroundColor: 'transparent' },
 };
 
-// The height of UIKit's compact (landscape iPhone) navigation bar, 32 pt. The compact-height bar
-// lays out 0 high for a root item with no content mid-pop, which leaves the page's bar see-through
-// during a held swipe back; an empty title view this tall gives the item content and keeps the bar
-// open (on the Duo sim the bar was 0 high without it and 58 pt with it).
+// No taller than the classic compact (landscape iPhone) navigation bar, 32 pt, so it never grows a
+// bar. The compact-height bar lays out 0 high for a root item with no content mid-pop, which leaves
+// the page's bar see-through during a held swipe back; an empty title view gives the item content.
 const COMPACT_BAR_TITLE_HEIGHT = 32;
 
-// 1 pt wide, the width the fix was proven with: a view of no width is not shown to count as
-// content. It shows nothing, and VoiceOver skips it.
+// 1 pt wide: a view of no width is not shown to count as content. It is childless and not
+// accessible, so it shows nothing and VoiceOver has nothing to land on.
 const LAYER_ROOT_TITLE_STYLE = { width: 1, height: COMPACT_BAR_TITLE_HEIGHT };
 
-const layerRootTitle = () =>
-  createElement(View, {
-    style: LAYER_ROOT_TITLE_STYLE,
-    accessibilityElementsHidden: true,
-    importantForAccessibility: 'no-hide-descendants',
-  });
+const layerRootTitle = () => createElement(View, { style: LAYER_ROOT_TITLE_STYLE });
 
 // A header that is there and shows no title. Root and the page over it share one navigation bar, so
 // a root with no header hides the page's own bar when a swipe back starts; a root with this one

@@ -265,7 +265,8 @@ describe('layerSlice', () => {
 
   // The header title is a view, not the empty string: the compact landscape bar lays out 0 high for
   // a root item with no content mid-pop, and a view of fixed height keeps it open. It shows nothing
-  // and VoiceOver skips it. Jest proves the view only, never the bar UIKit lays out around it.
+  // and, with no content to speak, VoiceOver has nothing to land on. Jest proves the view only,
+  // never the bar UIKit lays out around it.
   describe('the empty title view of the root header', () => {
     const titleViewOf = () => {
       const { headerTitle } = rootOf(onTables()).options;
@@ -281,27 +282,20 @@ describe('layerSlice', () => {
       await render(titleViewOf());
 
       const view = screen.toJSON() as Exclude<ReturnType<typeof screen.toJSON>, null | unknown[]>;
-      const { width, height } = StyleSheet.flatten(view.props.style) as Record<string, number>;
 
       expect(view.type).toBe('View');
       expect(view.children ?? []).toEqual([]);
-      expect(width).toBeGreaterThan(0);
-      expect(height).toBeGreaterThan(0);
+      expect(StyleSheet.flatten(view.props.style)).toEqual({ width: 1, height: 32 });
     });
 
-    it('is hidden from VoiceOver and carries no label', async () => {
+    it('has nothing for VoiceOver to land on', async () => {
       await render(titleViewOf());
 
-      expect(screen.toJSON()).toMatchObject({
-        props: {
-          accessibilityElementsHidden: true,
-          importantForAccessibility: 'no-hide-descendants',
-        },
-      });
-      expect(screen.toJSON()).not.toMatchObject({
-        props: { accessibilityLabel: expect.anything() },
-      });
-      expect(screen.toJSON()).not.toMatchObject({ props: { accessible: true } });
+      const view = screen.toJSON() as Exclude<ReturnType<typeof screen.toJSON>, null | unknown[]>;
+
+      expect(view.children ?? []).toEqual([]);
+      expect(view.props.accessible).not.toBe(true);
+      expect(view.props.accessibilityLabel).toBeUndefined();
     });
   });
 
