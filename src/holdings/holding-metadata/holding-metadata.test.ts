@@ -334,14 +334,16 @@ describe('balanceReadAtOf', () => {
 });
 
 describe('datedBalanceSourceOf', () => {
-  it('names the row source of a holding whose key marks a dated balance', () => {
-    expect(datedBalanceSourceOf({ bybitAsset: 'BTC:unified' })).toBe('bybit');
+  it.each([
+    ['Bybit', { bybitAsset: 'BTC:unified' }, 'bybit'],
+    ['Binance', { binanceAsset: 'BTC' }, 'binance'],
+    ['a wallet', { walletAddress: 'bc1q' }, 'btc_wallet'],
+  ])('names the row source of %s', (_, metadata, source) => {
+    expect(datedBalanceSourceOf(metadata)).toBe(source);
   });
 
   it.each([
-    ['a Binance key', { binanceAsset: 'BTC', syncedAt: 1_000 }],
     ['a Monobank key', { monobankId: 'card-1', syncedAt: 1_000 }],
-    ['a wallet address', { walletAddress: 'bc1q', syncedAt: 1_000 }],
     ['no source key', { syncedAt: 1_000, balanceReadAt: 1_000 }],
     ['a key that is not a string', { bybitAsset: 5 }],
     ['null', null],
@@ -352,16 +354,16 @@ describe('datedBalanceSourceOf', () => {
 });
 
 describe('datesBalanceOf', () => {
-  it('is true for a key on the dated list', () => {
-    expect(datesBalanceOf('bybitAsset')).toBe(true);
-  });
-
-  it.each(['binanceAsset', 'walletAddress', 'monobankId'] as const)(
-    'is false for %s, which is not on the list',
+  it.each(['bybitAsset', 'binanceAsset', 'walletAddress'] as const)(
+    'is true for %s, which is on the list',
     (field) => {
-      expect(datesBalanceOf(field)).toBe(false);
+      expect(datesBalanceOf(field)).toBe(true);
     },
   );
+
+  it('is false for monobankId, which is not on the list', () => {
+    expect(datesBalanceOf('monobankId')).toBe(false);
+  });
 });
 
 describe('overwrittenRowIdsOf', () => {
@@ -406,9 +408,12 @@ describe('isOverwrittenRow', () => {
   it.each([
     ['binanceAsset', 'BTC'],
     ['walletAddress', 'bc1q'],
-    ['monobankId', 'card-1'],
-  ])('is false for %s, which is not on the list', (field, key) => {
-    expect(isOverwrittenRow({ [field]: key, overwrittenRowIds: ['a'] }, 'a')).toBe(false);
+  ])('is true for a listed id on a dated %s holding', (field, key) => {
+    expect(isOverwrittenRow({ [field]: key, overwrittenRowIds: ['a'] }, 'a')).toBe(true);
+  });
+
+  it('is false for monobankId, which is not on the list', () => {
+    expect(isOverwrittenRow({ monobankId: 'card-1', overwrittenRowIds: ['a'] }, 'a')).toBe(false);
   });
 
   it.each([

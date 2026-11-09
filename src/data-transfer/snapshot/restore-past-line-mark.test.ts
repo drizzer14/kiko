@@ -84,7 +84,7 @@ type SeedRow = {
   holdingId: string;
   amountMinorUnits: number;
   time: number;
-  source?: 'bybit' | 'import';
+  source?: 'bybit' | 'binance' | 'import';
   description?: string;
   category?: string;
   setsBalance?: boolean;
@@ -545,5 +545,107 @@ describe('restoring the owner value of a Bybit account, O93', () => {
     await restoredIntoNewDatabase(oldFile, LAST_SCALE_2_USDT_VERSION);
 
     expect(storedState()).toEqual(JSON.parse(STATE));
+  });
+});
+
+// A Binance holding of a file that 1.3 or an earlier build wrote has no read time, and a file of
+// this build holds the time and the mark in the metadata. Each world has its own seed: a buy of 1
+// on 1 March and a fill of -0.2 on 5 March, both Binance's own rows, and a stored balance of 1.
+describe('restoring a Binance holding that the dated read may or may not have reached', () => {
+  const READ_BETWEEN_AT = Date.UTC(2026, 2, 3, 12);
+  const UNDATED_METADATA = { binanceAsset: 'BTC', syncedAt: READ_AT };
+  const DATED_METADATA = {
+    binanceAsset: 'BTC',
+    syncedAt: READ_BETWEEN_AT,
+    balanceReadAt: READ_BETWEEN_AT,
+    overwrittenRowIds: ['row-typed'],
+  };
+
+  const seedBinanceLedger = (metadata: object, typedRow: boolean): void => {
+    run(
+      `INSERT INTO accounts (id, name, kind, institution, currency)
+       VALUES ('account-binance', 'Binance', 'crypto', 'binance', 'USD')`,
+    );
+    run('INSERT INTO settings (id, dedup_keys_upgraded, import_times_rezoned) VALUES (1, 1, 1)');
+    insertHolding({
+      id: 'holding-btc',
+      accountId: 'account-binance',
+      type: 'crypto_asset',
+      currency: 'BTC',
+      balance: 100_000_000,
+      metadata,
+    });
+    insertRow({
+      id: 'row-buy',
+      holdingId: 'holding-btc',
+      amountMinorUnits: 100_000_000,
+      time: BYBIT_FILL_AT,
+      source: 'binance',
+      externalId: 'BTC:buy-1',
+    });
+    insertRow({
+      id: 'row-fill',
+      holdingId: 'holding-btc',
+      amountMinorUnits: -20_000_000,
+      time: TYPED_AT,
+      source: 'binance',
+      externalId: 'BTC:fill-1',
+    });
+
+    if (typedRow) {
+      insertRow({
+        id: 'row-typed',
+        holdingId: 'holding-btc',
+        amountMinorUnits: 50_000_000,
+        time: IMPORTED_AT,
+      });
+    }
+  };
+
+  beforeEach(() => {
+    mockDatabase = openDatabase();
+  });
+
+  it('a restore of an undated holding draws the line that every row gives', async () => {
+    seedBinanceLedger(UNDATED_METADATA, false);
+
+    const lineBeforeRestore = await lineOfBitcoinHolding();
+
+    // Every row counts: the opening is the balance of 1 less the 0.8 the two rows add up to.
+    expect(lineBeforeRestore).toEqual([0.2, 0.2, 1.2, 1.2, 1.2, 1.2, 1, 1, 1, 1, 1, 1, 1, 1]);
+
+    await restoredIntoNewDatabase(throughJson(await readDataSnapshot()), EXPORT_VERSION);
+
+    expect(metadataOf('holding-btc')).toEqual(UNDATED_METADATA);
+    expect(await lineOfBitcoinHolding()).toEqual(lineBeforeRestore);
+  });
+
+  it('a file of an old version restores an undated holding with the line that every row gives', async () => {
+    seedBinanceLedger(UNDATED_METADATA, false);
+
+    const lineBeforeRestore = await lineOfBitcoinHolding();
+
+    await restoredIntoNewDatabase(
+      asFileOfOldVersion(throughJson(await readDataSnapshot())),
+      LAST_SCALE_2_USDT_VERSION,
+    );
+
+    expect(metadataOf('holding-btc')).toEqual(UNDATED_METADATA);
+    expect(await lineOfBitcoinHolding()).toEqual(lineBeforeRestore);
+  });
+
+  it('a restore of a dated holding keeps its read time and mark, and draws the line of the read', async () => {
+    seedBinanceLedger(DATED_METADATA, true);
+
+    const lineBeforeRestore = await lineOfBitcoinHolding();
+
+    // The read of 1 on 3 March holds the buy; the typed row is on the mark and the fill came after
+    // the read, so the line is 0 before the buy and 1 from it.
+    expect(lineBeforeRestore).toEqual([0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+
+    await restoredIntoNewDatabase(throughJson(await readDataSnapshot()), EXPORT_VERSION);
+
+    expect(metadataOf('holding-btc')).toEqual(DATED_METADATA);
+    expect(await lineOfBitcoinHolding()).toEqual(lineBeforeRestore);
   });
 });
