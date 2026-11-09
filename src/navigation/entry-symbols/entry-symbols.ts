@@ -1,8 +1,8 @@
 import { REMINDERS_BELL_SYMBOL } from '@kiko/design-system/edit-bar-item';
 
-// The glyph of each screen the app opens from one place and the Help footer opens too, so an entry
-// and its Help button read from one source and cannot drift apart. The account, transaction,
-// template and category entries are the generic entity symbols instead.
+// The glyph of each place the app opens from one entry, read from one source so an entry and the
+// Help button that opens the same screen cannot drift apart (`exportCsv` is a Settings row only).
+// The account, transaction, template and category entries are the generic entity symbols instead.
 export const entrySymbol = {
   system: 'gearshape',
   reminders: REMINDERS_BELL_SYMBOL,
