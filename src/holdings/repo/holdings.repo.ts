@@ -251,9 +251,9 @@ const overwrittenRowsPatch = async (
 // and already holds what the user deleted. The sync clears the keys but never
 // reads them, so it never revives a row.
 //
-// The update branch of a holding on the dated list (Bybit, Binance, the wallet) also replaces the
-// list of overwritten row ids (`overwrittenRowsPatch`), never joins it to the stored one. A holding
-// off that list reads no row and gets no key. A new holding has no row, so the insert branch writes
+// The update branch of a holding on the dated list (`datedBalances`) also replaces the list of
+// overwritten row ids (`overwrittenRowsPatch`), never joins it to the stored one. A holding off
+// that list reads no row and gets no key. A new holding has no row, so the insert branch writes
 // none either.
 //
 // The known limit (a holding closed before the mark existed stays closed) is

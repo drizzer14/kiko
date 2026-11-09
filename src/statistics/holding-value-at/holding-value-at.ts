@@ -111,16 +111,15 @@ const lastIndexAtOrBefore = (days: number[], targetDay: number): number => {
  *   boundary. Opening balance = current balance - sum(the rows that count),
  *   since the stored `balanceMinorUnits` is the CURRENT balance, not the
  *   range-start balance. Every row counts, except for a holding whose balance is dated
- *   (`datedBalanceOf`: Bybit, Binance and the Bitcoin wallet): it sums only the rows that count
+ *   (`datedBalanceOf`, on the `datedBalances` list): it sums only the rows that count
  *   (`rowsHeldByBalance`), so the line past the last read is flat at that balance, which is the
  *   number Home shows, instead of moving by rows the balance does not contain. A row that the
  *   read overwrote, which the holding's list names, is left out as well, since the read's figure
- *   replaced the balance and the row has no part in it. Before its first dated read a Binance or
- *   wallet holding counts every row, as it did before its read was dated. The per-holding
- *   one-time setup groups transactions
- *   by local-day key and builds a running (prefix) sum per distinct day;
- *   each call then binary searches that sorted day list instead of
- *   re-filtering/re-reducing the whole transaction list per bucket.
+ *   replaced the balance and the row has no part in it. Before its first dated read a holding whose
+ *   entry says so (`countsSourceRowsBeforeFirstRead`) counts every row, as it did before its read
+ *   was dated. The per-holding one-time setup groups transactions by local-day key and builds a
+ *   running (prefix) sum per distinct day; each call then binary searches that sorted day list
+ *   instead of re-filtering/re-reducing the whole transaction list per bucket.
  */
 export const createHoldingValuer = (
   holding: SeriesHolding,

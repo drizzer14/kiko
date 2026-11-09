@@ -142,7 +142,8 @@ export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
 
 /**
  * The ids of the rows that the last balance read overwrote, written beside the balance by a
- * provider on the dated list: every row of the holding that is not of the syncing source. The
+ * provider on the dated list: every row of the holding that is not of the syncing source, except on
+ * the first dated read of a holding that had no read time (see `datedBalances`). The
  * read's figure replaced the balance, so a row the user typed before that read has no part in it.
  * It is in neither `carriedMetadataKeys` nor the disconnect's stripped list: a carried key would
  * join the new read's list to the stored one, so the id of a row that is gone would never leave
@@ -265,7 +266,9 @@ export const overwrittenRowIdsOf = (metadata: unknown): string[] => {
  * read was dated has rows and no time: Bybit never shipped one, so a Bybit holding with no read
  * counts no row of its source and opens at its stored balance, and the others counted every row
  * before the read was dated, so they keep counting them until their first dated read, and no
- * holding ever shows a line worse than it did.
+ * undated holding shows a line worse than it did. The first dated read marks no row of such a
+ * holding, so its old typed rows keep counting through it; the second read lists them as it does
+ * every row that is not of the source, and from then on a line can differ from what it was.
  */
 type DatedBalance = {
   field: SyncedMetadataField;
