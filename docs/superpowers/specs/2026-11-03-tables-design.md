@@ -143,6 +143,7 @@ the options are This quarter, Last quarter, the other started quarters of this y
 (from 1 July), This year and Last year. The default and the fallback is This year. "Last 12 months" and
 older years are removed. The option list and its builder are in the period code under `src/screens/tables/`;
 read them there.
+In the wide pose the period sits at the leading end and the filters at the trailing end.
 
 Filters on Tables: accounts for all three tables, and categories for C1 only, both from the shared store
 (`use-statistics-filter-selection.ts`), so a pick in Statistics holds on Tables. C2 and C3 hide the category filter. A category

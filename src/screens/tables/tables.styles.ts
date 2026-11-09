@@ -1,7 +1,8 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
-  // The two filters on one row, wrapping when a narrow device cannot hold both.
+  // The filter bar row (also holds the period field and the spacer in the beside pose), wrapping
+  // when a narrow device cannot hold it all.
   filterBar: {
     flexWrap: 'wrap',
     alignItems: 'center',
