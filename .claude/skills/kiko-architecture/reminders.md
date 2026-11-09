@@ -70,7 +70,7 @@ what a change must keep.
   `reminder-row.component.tsx`'s `unavailableCaption` shows
   `reminders.unavailable.statementImport` or
   `reminders.unavailable.addTransactions` per kind. A synced account of
-  any kind (a Monobank bank, Binance, a BTC wallet) has no eligible
+  any kind (a bank or crypto connect) has no eligible
   kind; with no saved reminder either, its page shows the caption
   `reminders.emptyNoKinds` instead of rows.
 - **Summary.** `describeSchedule(schedule, t, firstDay, clock)`
@@ -143,7 +143,7 @@ what a change must keep.
   single-flight trigger that the scheduler hook ALSO uses. Every
   reminder write (form save, pause, delete, permission answer), and
   every write that changes what may be scheduled (an account delete,
-  which takes its reminder rows; a Monobank, Binance or wallet connect,
+  which takes its reminder rows; a bank or crypto connect,
   after its sync whatever the result, and a successful disconnect, since
   a synced account sends no reminder), calls it rather than
   `syncReminders` directly, so an older re-plan can never overwrite a

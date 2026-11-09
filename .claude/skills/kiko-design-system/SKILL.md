@@ -655,7 +655,7 @@ The established patterns grouped under this heading:
   source's field, nothing for `'other'`; the caller picks the source.
   `ExchangeKeyForm` checks its `isCoolingDown` prop after the blank-field check and before
   `fetchAccount`. On a cooling account it shows the localized cooldown text
-  (`accountDetail.binanceCoolingDown` for Binance), makes no request or write, and keeps the
+  (each exchange passes its own as `copy.coolingDown`), makes no request or write, and keeps the
   typed pair, so a later press connects once the cooldown ends. After that check it also
   checks its `isSyncRunning` prop and shows the exchange's still-running text
   (`accountDetail.binanceSyncStillRunning`, `accountDetail.bybitSyncStillRunning`).

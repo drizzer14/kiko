@@ -1,6 +1,6 @@
 ---
 name: kiko-domain
-description: Invoke whenever you touch the domain model — the Account/Holding/Transaction schema, the Money value object, currency codes, or net worth calculation. Read before writing a Drizzle table, a repository, a form, or any code that handles an amount. For bonds, ISINs, the NBU register and bond coupons or yield, see kiko-bonds; for debt accounts, loan holdings, loan schedule math, loan payment links and the loan-payment matcher, see kiko-debts; for Binance and exchange legs, see kiko-exchange-sync.
+description: Invoke whenever you touch the domain model — the Account/Holding/Transaction schema, the Money value object, currency codes, or net worth calculation. Read before writing a Drizzle table, a repository, a form, or any code that handles an amount. For bonds, ISINs, the NBU register and bond coupons or yield, see kiko-bonds; for debt accounts, loan holdings, loan schedule math, loan payment links and the loan-payment matcher, see kiko-debts; for Binance, Bybit and exchange legs, see kiko-exchange-sync.
 ---
 
 # Kiko domain model
@@ -132,9 +132,12 @@ absent** — this skill states the shape and non-enum facts only:
   `BinanceWriteToken` of that write, not the pair. The account form's
   `clearPairIfRowMissing(token)` calls `clearCredentialsIfWrittenBy`, which resets the pair only
   when that token is still the account's latest recorded write, so a later save (even of the same
-  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). Every write and
-  clear of the pair goes through that file's per-account lock; the exchange helpers
-  (`exchange/credentials`) are lock-free and have no other caller. The form clears
+  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). Bybit does the same
+  with `WriteToken` and `clearBybitCredentialsIfWrittenBy`
+  (`src/crypto-sync/bybit/bybit.credentials.ts`). Every write and clear of a pair goes through
+  that exchange's credentials file and its per-account lock (`createWriteSerial`); the exchange
+  helpers (`exchange/credentials`) are lock-free, and the two credentials files are their only
+  callers. The form clears
   when no row owns P, and account detail keeps the pair (user ruling 2026-10-10).
   Known limit after a fold: see kiko-architecture, "Form drafts". Re-picking the
   already-selected kind is a no-op (the bank/broker
@@ -188,7 +191,12 @@ entry, not a change to either caller. The registry is intentionally
 `Partial`: a `BankProviderId` with no entry here is simply not yet
 implemented, and callers must skip it rather than assume every id resolves.
 `exchangeProviderRegistry` (`src/crypto-sync/exchange/registry/`) is the crypto twin of
-`bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire. For exchange
+`bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire. An
+`ExchangeProviderEntry` also carries optional display fields (`pastLimitsKeysOf` reads
+one of them); read the type in
+`src/crypto-sync/exchange/registry/registry.ts`. A new exchange is a catalog entry
+(`src/crypto-sync/exchange-catalog/exchange-catalog.ts`), a registry entry and an id in
+`balanceProviderIds` (`src/crypto-sync/provider/provider.ts`). For exchange
 sync and Exchange/Convert legs see `kiko-exchange-sync`.
 
   **Implicit accounts: at most one LIVE `property` account and one LIVE

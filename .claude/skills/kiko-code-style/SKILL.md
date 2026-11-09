@@ -676,8 +676,8 @@ KEEP, not an oversight:
   `bank-sync-section.component.tsx`) and
   `exchange-key-form.component.tsx` (`handleConnect`)/`monobank-connect-field`'s own connect
   handlers (a fixed twin pair, both kept). `account-form.screen.tsx`'s
-  sibling `connectWallet`/`connectBinance` no longer have their own
-  `try`/`catch` at all — they call the shared `accountEnsured` above
+  sibling `connectWallet`/`connectBinance`/`connectBybit` (and `connectKeyPair`) no longer have
+  their own `try`/`catch` at all — they call the shared `accountEnsured` above
   instead.
 - **Decode-or-fall-back-to-original.** A single `decodeURIComponent`
   attempt whose only failure path returns the pre-decode string

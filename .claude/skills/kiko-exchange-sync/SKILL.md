@@ -1,11 +1,13 @@
 ---
 name: kiko-exchange-sync
-description: Invoke whenever you touch src/crypto-sync/**, src/sync-state/**, src/statistics/exchange-exclusion/**, src/statistics/exchange-funding-match/**, src/transactions/exchange-description/**, src/holdings/exchange-convert/**, src/holdings/exchange-destination/**, src/holdings/exchange-prefill/**, src/screens/forms/exchange-fields/**, or work on exchange sync, Binance (the Spot, Funding and Earn balance reads and the capital, Pay, Transfer, Earn, Convert, P2P, fiat, trade and dust history walks), a wallet or coin holding, an Exchange or Convert leg, or `exchange_state` in sync-state. Read before writing a Binance client call, a history walk, a cursor, pending or re-scan mark, a coin-keyed holding or pair id, or the label of an exchange leg. For the bank provider registry see kiko-domain; for the sync pipeline and `.kiko` export see kiko-architecture; for the public Binance price fallback see kiko-pricing.
+description: Invoke whenever you touch src/crypto-sync/**, src/sync-state/**, src/statistics/exchange-exclusion/**, src/statistics/exchange-funding-match/**, src/transactions/exchange-description/**, src/holdings/exchange-convert/**, src/holdings/exchange-destination/**, src/holdings/exchange-prefill/**, src/screens/forms/exchange-fields/**, or work on exchange sync, Bybit (`src/crypto-sync/bybit/`, the shared `ExchangeKeyForm`), Binance (the Spot, Funding and Earn balance reads and the capital, Pay, Transfer, Earn, Convert, P2P, fiat, trade and dust history walks), a wallet or coin holding, an Exchange or Convert leg, or `exchange_state` in sync-state. Read before writing a Binance client call, a history walk, a cursor, pending or re-scan mark, a coin-keyed holding or pair id, or the label of an exchange leg. For the bank provider registry see kiko-domain; for the sync pipeline and `.kiko` export see kiko-architecture; for the public Binance price fallback see kiko-pricing.
 ---
 
 # Kiko exchange sync
 
-The exchange-sync rules of the crypto-sync provider layer (Binance and the BTC wallet provider), its
+The exchange-sync rules of the crypto-sync provider layer (Binance, Bybit and the BTC wallet
+provider;
+`balanceProviderIds` in `src/crypto-sync/provider/provider.ts` lists them), its
 sync-state walk marks, and the Exchange/Convert leg markers and labels. The bank provider registry
 and its `exchangeProviderRegistry` twin sentence stay in kiko-domain ("Bank catalog and provider
 registry"); the sync pipeline, the Monobank rules and `.kiko` export/import stay in
@@ -322,7 +324,8 @@ than restated here:
   an account with no capital row starts at the floor. The forward pass starts at
   `max(floor, cursor)`. The re-scan covers `[base, forward start)` with
   `base = max(floor, min(end - window, forward start - overlap))`, where overlap is
-  `RESYNC_OVERLAP_MS` for Binance and `overlapMsOf` for Bybit (see "Bybit balance sync"),
+  `RESYNC_OVERLAP_MS` for Binance and `overlapMsOf` for Bybit (see
+  "Bybit — client, key, balance sync, history walks"),
   kept in its own mark (`rescan`, one per walk entry; read `WalkMarks` in
   `exchange/walk-state/walk-state.ts`); it stores the floor
   when finished, and a mark behind the base starts a new pass.
@@ -420,13 +423,14 @@ than restated here:
   the provider's quiet skip serves a sync of an already connected account.
   A cooldown that starts after the check can still reach the provider's
   cooling return. After the cooldown check, `handleConnect` checks
-  `isBinanceSyncRunning(accountId)` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`; it
-  reads `inFlightBinanceSyncs`, the Binance map only). A running sync shows
+  its `isSyncRunning` prop; Binance passes `isBinanceSyncRunning` and Bybit passes
+  `isBybitSyncRunning` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`; each reads its own
+  in-flight map). A running sync shows
   `accountDetail.binanceSyncStillRunning` and makes no `fetchAccount`, save or sync, because a
   Disconnect does not end the run and the join would hand the Connect a run that holds the old
   pair. Residuals: a job queued before a Disconnect can start after the check, and
   `src/crypto-sync/sync/sync.ts` joins a wallet run by account id, which
-  `isBinanceSyncRunning` does not see.
+  neither running check sees.
 - **Disconnect resets the walk state, not the holdings.**
   `disconnectCryptoAccount`'s Binance path calls
   `accountsRepo.disconnectExchange(accountId, 'binance', HISTORY_FLOOR_MS)`,
@@ -754,7 +758,7 @@ probe. An edit of one of these helpers is an edit of every pin on it. The stop c
   follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
   every stop). A span stop (`earn-page-drift`, `earn-holding-missing`) and a row with no time keep
-  R28. Bybit is the opposite (see "Bybit balance sync — notes, set-aside coins, cooling"): a
+  R28. Bybit is the opposite (see "Bybit — client, key, balance sync, history walks"): a
   capital page drift is an owed tagged range and the forward pass goes on.
 - **Earn reads at the second (R36).** The Earn endpoints compare a record's whole-second `time`
   to each end of a read at the second, so a read of a span also returns a record in the second its
@@ -944,7 +948,8 @@ namespaced by its holding's account id: `` `${accountId}:${sourceId}` `` —
 `` `${accountId}:${statementId}` `` for Monobank (`mapStatementItem`,
 `src/monobank/`) and `` `${accountId}:deposit:<id>` `` /
 `` `${accountId}:withdraw:<id>` `` for Binance
-(`src/crypto-sync/binance/binance.transactions.ts`). Without the prefix, two
+(`src/crypto-sync/binance/binance.transactions.ts`); Bybit's shape is `externalIdOf` in
+`src/crypto-sync/bybit/bybit.capital-history.ts`. Without the prefix, two
 Binance connections — whose deposit/withdrawal record ids are only PER-ACCOUNT
 sequences, NOT globally unique — could each emit the same `deposit:<id>`, and
 the upsert would refresh the WRONG connection's row. Monobank statement ids are
@@ -1052,11 +1057,41 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
   rather than trust a caller-supplied flag, since the write is reachable
   directly, not only through the picker.
 
-## Bybit balance sync — notes, set-aside coins, cooling
+## Bybit — client, key, balance sync, history walks
 
-Status: sets 5, 6, 9 and 10 of 1.4-bybit are in (capital, transfer, log, convert, Funding
-ledger); later sets extend this section. The code is in `src/crypto-sync/bybit/`; read it there
-and copy no list from here.
+The code is in `src/crypto-sync/bybit/`; read it there and copy no list from here. This is the
+one Bybit section: extend it, never add a second.
+
+- Client: `signedBybitGet` (`bybit.client.ts`) sends GET only, over the closed
+  `BYBIT_SIGNED_PATHS` (`bybit.endpoints.ts`; pins in `bybit.endpoints.test.ts`), with
+  `Cache-Control: no-store`. Each refusal has a `BybitRefusalClass` (`bybit.client.ts`). A
+  rate refusal or an HTTP 403 is a `BybitRateLimitError` with a wait (`DEFAULT_COOLDOWN_MS`,
+  `FORBIDDEN_COOLDOWN_MS` there). `bybit.failure-text.ts` gives each class its text; a refusal
+  with no code gets `bybitRequestFailedNoCode`.
+- Credentials: the keychain service and username are stored data; never rename them
+  (`bybit.credentials.ts`). `clearBybitCredentialsIfWrittenBy` runs over `createWriteSerial`
+  (`src/crypto-sync/exchange/credentials/write-serial.ts`).
+- Connect: `bybitKeyRefusalOf` (`bybit.key-check.ts`) checks in this order: the key read,
+  read-only, master key, the owner check (only with `ownerCheck`), then one read of each shipped
+  route. A new route is added to `routeReadsAt` there.
+- Owner value (O93): `keyOwnerValueOf` (`bybit.key-owner.ts`) is an HMAC of the user id under
+  the account id. It is written at each good key read (`bybit.provider.ts`), compared only at
+  connect, and kept after a disconnect (`ownerAfterDisconnect` in
+  `src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`). It
+  rides in the `.kiko` file; the raw id is never stored (A31). A stored value with an unreadable
+  id gives `bybitRequestFailedNoCode`, not a rejected key.
+- Key expiry: `keyExpiryStateOf` (`bybit.key-expiry.ts`); the caption is `KeyExpiryLine` in
+  `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.tsx`.
+- Cooldown: module-level per account (`bybit.cooldown.ts`). Connect shows `bybitForbidden`
+  (`src/design-system/components/bybit-credentials-field/bybit-credentials-field.component.tsx`).
+- Ids: `holdingKeyOf` gives `<COIN>:<wallet>` (`bybit.holding-keys.ts`, under `bybitAsset`);
+  `exchangePairIdOf` is in the same file. A tracked coin passes `isTrackedBybitAsset`
+  (`bybit.tracked-coin.ts`, with `BYBIT_FIAT_CODES`).
+- Caption parts in the same `crypto-sync-section.component.tsx` (path above):
+  `KindsLine` (its `ExpandToggle` sets
+  `collapsedLabel`), `BalanceNotesLines`, `LogLeftOutLine`, `FundingLines`.
+
+Balance sync, notes, set-aside coins, cooling and the history walks:
 
 - `readCursorSpan` (`bybit.cursor-span.ts`) counts a refused call (`recordBybitFailedCall`) and
   rethrows it. The reader does not sort rows; the walk sorts them by time, then key
@@ -1092,10 +1127,11 @@ and copy no list from here.
   `src/screens/account-detail/crypto-sync-section/binance-history-status.ts`; read the Bybit list
   there.
 - The log walk (`bybit.log-history.ts`) rounds a row's amount with `rounded-row`, and writes the
-  patch kinds `logKinds` (the kinds seen) and `denseSpans` (a span too dense to read, with its
-  mark). Its forward pass splits a span down to `LOG_MIN_SPLIT_MS`; a pending, re-scan or point
-  read splits to `LOG_REREAD_MIN_SPLIT_MS` (1 ms), so the re-read of a burst that a forward span
-  edge split ends (PLANNER CALL 123). The convert walk (`bybit.convert-history.ts`) has no
+  patch kind `logKinds` (the kinds seen); `bybit.dense-read.ts` writes `denseSpans` (a span too
+  dense to read, with its mark). Its forward pass splits a span down to `LOG_MIN_SPLIT_MS`; a
+  pending, re-scan or point read splits to `LOG_REREAD_MIN_SPLIT_MS` (1 ms), so the re-read of
+  a burst that a forward span edge split ends (PLANNER CALL 123). The convert walk
+  (`bybit.convert-history.ts`) has no
   window and reads by page index; it also rounds with `rounded-row`.
 - A Bybit walk owes the overlap day behind its forward start only when the cursor was read within
   one re-scan window of its time: `overlapMsOf` in `src/crypto-sync/bybit/bybit.walk-run.ts`

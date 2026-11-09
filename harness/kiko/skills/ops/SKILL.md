@@ -270,6 +270,7 @@ copies it into the device-test request it sends the user.
   - Monobank sync: pull-to-refresh, and the sync throttle (a second
     immediate refresh should not re-hit the API).
   - Binance sync, if a Binance account is connected.
+  - Bybit sync, if a Bybit account is connected.
   - Statement import with a known file.
   - Export → import round trip (`.kiko` file).
   - Net worth + statistics screens render correctly.

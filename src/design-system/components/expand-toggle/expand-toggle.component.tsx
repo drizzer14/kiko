@@ -15,8 +15,8 @@ import type { ExpandToggleProps } from './expand-toggle.props';
 const TOGGLE_HIT_SLOP = { top: 10, bottom: 10 } as const;
 
 /**
- * The one "Show all" / "Show less" link that expands or collapses a bounded list: the pie
- * legend, the statement-import raw preview, and the loan's scheduled payments share it.
+ * The one "Show all" / "Show less" link that expands or collapses a bounded list. A toggle that
+ * must say what it hides passes `collapsedLabel`.
  */
 const ExpandToggle: FC<ExpandToggleProps> = ({ expanded, onPress, collapsedLabel, testID }) => {
   const { t } = useTranslation();

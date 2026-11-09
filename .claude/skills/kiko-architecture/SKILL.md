@@ -1,6 +1,6 @@
 ---
 name: kiko-architecture
-description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, reminders or local notifications (`src/reminders/`), a write that connects, disconnects or deletes an account (it re-plans reminders), or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, any reminder schedule or notification-permission code, or any `.kiko` export/import code. For currency rates, price_points, or a priced holding's value, see kiko-pricing; for statement-import parsing or column mapping, see kiko-statement-import; for Binance and crypto-sync history walks, exchange_state marks and Exchange/Convert legs, see kiko-exchange-sync.
+description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, reminders or local notifications (`src/reminders/`), a write that connects, disconnects or deletes an account (it re-plans reminders), or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, any reminder schedule or notification-permission code, or any `.kiko` export/import code. For currency rates, price_points, or a priced holding's value, see kiko-pricing; for statement-import parsing or column mapping, see kiko-statement-import; for Binance and Bybit crypto-sync history walks, exchange_state marks and Exchange/Convert legs, see kiko-exchange-sync.
 ---
 
 # Kiko architecture
@@ -1280,8 +1280,8 @@ on the row's own group alone; a settings fire (a hide or a mark write) runs no d
 `settingsRepo.getQuery()`), each a `useLiveQuery` with `paused: !isVisible`, gated by
 `useDataReady`; none is a whole-ledger read or detection.
 
-For the crypto re-sync request (`resyncRequest`) and the Binance exchange sync (balance reads,
-history walks, walk marks) see `kiko-exchange-sync`.
+For the crypto re-sync request (`resyncRequest`) and the Binance and Bybit exchange sync
+(balance reads, history walks, walk marks) see `kiko-exchange-sync`.
 
 ## Price data
 
@@ -1381,15 +1381,19 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   shape, checked through a `Record<keyof ExportSecrets, …>` so a new field
   needs its own check) is refused as "not a valid Kiko export file" while the
   live database is still untouched. A field a file lacks is not a fault:
-  a missing or empty `monobankTokens`/`binanceCredentials` means no
+  a missing or empty secret list (`ExportSecrets` in `src/data-transfer/payload.d.ts`) means no
   secrets and the restore goes on, and a secret whose account the file does
   not carry (an account deleted before the export) is dropped by
   `restoreExportSecrets(secrets, accountIds)` with no error. A new secret
-  class in `ExportSecrets` extends that guard in the same change. A Keychain
+  class in `ExportSecrets` extends that guard in the same change. A new OPTIONAL secret list
+  needs no `EXPORT_VERSION` bump (the comment on `bybitCredentials` in `payload.d.ts`), but it
+  extends `isExportSecrets`. `exchange_state` travels whole in the snapshot and a restore keeps
+  the owner value; a value made from an identity needs the policy clause (kiko-compliance,
+  "5.1.1 / 5.1.2 — data collection and privacy"). A Keychain
   write that fails after the commit is not an import failure:
   `restoreExportSecrets` never rejects, tries every secret on its own, and
-  resolves with the connections it could not write (`'monobank'`,
-  `'binance'`); `importData` returns them as
+  resolves with the connections it could not write (the `ExportSecretKind` values in
+  `src/data-transfer/secrets/restore-secrets.ts`); `importData` returns them as
   `unrestoredCredentials`, still runs the market refresh and the loan
   auto-link, and the screen shows the success plus a line naming the
   connections to set up again.
@@ -1828,7 +1832,8 @@ are built with `createPaneStackNavigator`.
   its own screen on a fresh route. The first blur writes a draft once: a new rule's blank row (the
   row appears after the settings read), and an edited category's or rule's stored values even
   unchanged (the autosave starts from the blank first render). Secrets, tokens, wallet and
-  Binance keys never go in a draft (a lender IBAN lives only in the in-memory loan draft). Not
+  an exchange key pair (Binance, Bybit) never go in a draft (`AccountFormDraft` holds no key)
+  (a lender IBAN lives only in the in-memory loan draft). Not
   saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`, `leavingKind`. The "Add
   holding" and "Add template" round-trip auto-select (`use-select-created-option`, an exact
   handback id) does not survive a fold: the fold unmounts the picker, which closes the handback,
