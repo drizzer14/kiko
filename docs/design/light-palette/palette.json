@@ -280,7 +280,7 @@
     "gray": { "light": "#858B99" }
   },
   "swatchSets": {
-    "entityRule": "Tile fill, v3.1: one light set for entity and category tiles. The glyph is computed (white or black, whichever contrasts more on the base), at least 4.5:1 on the base and 3:1 on the worst gradient stop. The tile need not clear 3:1 on the page (waived, ruling R6); lines and bare glyph tints use the mark shade instead.",
+    "entityRule": "Tile fill, v3.1: one light set for entity and category tiles. The glyph is computed (white or black, whichever contrasts more on the base), at least 4.5:1 on the base and 3:1 on the worst gradient stop, except that orange, teal and indigo take white by the user ruling of 2026-11-09; orange (4.16) and indigo (4.39) sit below the 4.5:1 base floor on purpose and keep the 3:1 stop floor, teal meets both. The tile need not clear 3:1 on the page (waived, ruling R6); lines and bare glyph tints use the mark shade instead.",
     "categoryRule": "Same hexes as the entity set (ruling R1). Slices and bars paint the tile hex with no edge; a trend line, its legend dot and a bare glyph tint paint the mark shade, at least 3.05:1 on the page (#F2F2F7) and on the card (#FFFFFF).",
     "whatDiffers": "Nothing: entitySwatches.light equals categorySwatches.light for all 14 keys. The mark shade (markSwatches) differs from the tile only for yellow, mint, violet, pink and gray, the pale tiles whose own hex is under 3.05:1 on the page or the card."
   },
@@ -452,7 +452,7 @@
         "dark": "#000000",
         "light": "#000000"
       },
-      "rule": "Light (v3.1): computed, no per-swatch flag. The glyph is white (onAccent) or black (glyphOnLightTile #000000), whichever contrasts more on the base hue; at least 4.5:1 on the base and 3:1 on the worst gradient stop (+15% / -20%). Black on yellow, mint, violet, orange, teal, pink, indigo and gray; white on the rest. Dark keeps its rule: white glyph unless contrast(white, base) < 3, then black; the dark glyph choices do not change."
+      "rule": "Light (v3.1): computed, no per-swatch flag. The glyph is white (onAccent) or black (glyphOnLightTile #000000), whichever contrasts more on the base hue; at least 4.5:1 on the base and 3:1 on the worst gradient stop (+15% / -20%). Black on yellow, mint, violet, pink and gray; white on the rest, including orange, teal and indigo by the user ruling of 2026-11-09 (orange and indigo sit below 4.5:1 on purpose). Dark keeps its rule: white glyph unless contrast(white, base) < 3, then black; the dark glyph choices do not change."
     }
   },
   "calendar": {

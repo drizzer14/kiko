@@ -885,8 +885,10 @@ where they can drift. The pipeline is:
   from the one resolved hue via `lightenHex`/`darkenHex`, and
   `prefersDarkGlyph(colorHex, scheme)` (`entity-tint.ts`, a real WCAG
   contrast-ratio check) picks the glyph tint: dark scheme, black only
-  when white contrasts under 3:1; light scheme, black when black
-  contrasts more than white.
+  when white contrasts under 3:1; light scheme, white for the swatches
+  in `SWATCHES_WITH_WHITE_GLYPH_ON_LIGHT` (`entity-tint.ts`; user
+  ruling 2026-11-09, orange and indigo sit below 4.5 on purpose),
+  otherwise black when black contrasts more than white.
 
 Light palette v3.1 rules (source of truth
 `docs/design/light-palette/palette.json`, plus its `markSwatches`):
@@ -895,7 +897,10 @@ Light palette v3.1 rules (source of truth
   (`categoryColorsLight` equals `entityColorsLight`).
 - Light tiles are exempt from the page 3:1 floor; the glyph and the
   mark carry the contrast. The glyph needs at least 4.5 on the base and
-  at least 3 on the worst gradient stop.
+  at least 3 on the worst gradient stop. Orange and
+  indigo (white glyph by user ruling) are excluded from the 4.5 base
+  floor only, in `src/design-system/palette/palette.contrast.test.ts`;
+  every swatch keeps the 3 stop floor, and teal meets both.
 - `markColor(hex, scheme)` (`entity-tint.ts`) is the color for icon and
   line sinks: a gamut-safe chroma clamp with a module cache. The sinks
   are icon and line tints only; tiles keep the tile color.
