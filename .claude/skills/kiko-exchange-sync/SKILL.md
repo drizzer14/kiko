@@ -324,7 +324,8 @@ than restated here:
   an account with no capital row starts at the floor. The forward pass starts at
   `max(floor, cursor)`. The re-scan covers `[base, forward start)` with
   `base = max(floor, min(end - window, forward start - overlap))`, where overlap is
-  `RESYNC_OVERLAP_MS` for Binance and `overlapMsOf` for Bybit (see "Bybit balance sync"),
+  `RESYNC_OVERLAP_MS` for Binance and `overlapMsOf` for Bybit (see
+  "Bybit — client, key, balance sync, history walks"),
   kept in its own mark (`rescan`, one per walk entry; read `WalkMarks` in
   `exchange/walk-state/walk-state.ts`); it stores the floor
   when finished, and a mark behind the base starts a new pass.
@@ -757,7 +758,7 @@ probe. An edit of one of these helpers is an edit of every pin on it. The stop c
   follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
   every stop). A span stop (`earn-page-drift`, `earn-holding-missing`) and a row with no time keep
-  R28. Bybit is the opposite (see "Bybit balance sync — notes, set-aside coins, cooling"): a
+  R28. Bybit is the opposite (see "Bybit — client, key, balance sync, history walks"): a
   capital page drift is an owed tagged range and the forward pass goes on.
 - **Earn reads at the second (R36).** The Earn endpoints compare a record's whole-second `time`
   to each end of a read at the second, so a read of a span also returns a record in the second its
@@ -1063,9 +1064,10 @@ one Bybit section: extend it, never add a second.
 
 - Client: `signedBybitGet` (`bybit.client.ts`) sends GET only, over the closed
   `BYBIT_SIGNED_PATHS` (`bybit.endpoints.ts`; pins in `bybit.endpoints.test.ts`), with
-  `Cache-Control: no-store`. Each refusal has a `BybitRefusalClass` and a cooldown constant in
-  `bybit.client.ts`. One text per class lives in `bybit.failure-text.ts`; no error code gives
-  `bybitRequestFailedNoCode`.
+  `Cache-Control: no-store`. Each refusal has a `BybitRefusalClass` (`bybit.client.ts`). A
+  rate refusal or an HTTP 403 is a `BybitRateLimitError` with a wait (`DEFAULT_COOLDOWN_MS`,
+  `FORBIDDEN_COOLDOWN_MS` there). `bybit.failure-text.ts` gives each class its text; a refusal
+  with no code gets `bybitRequestFailedNoCode`.
 - Credentials: the keychain service and username are stored data; never rename them
   (`bybit.credentials.ts`). `clearBybitCredentialsIfWrittenBy` runs over `createWriteSerial`
   (`src/crypto-sync/exchange/credentials/write-serial.ts`).
@@ -1074,17 +1076,19 @@ one Bybit section: extend it, never add a second.
   route. A new route is added to `routeReadsAt` there.
 - Owner value (O93): `keyOwnerValueOf` (`bybit.key-owner.ts`) is an HMAC of the user id under
   the account id. It is written at each good key read (`bybit.provider.ts`), compared only at
-  connect, and kept after a disconnect (`ownerAfterDisconnect` in `exchange-state-patch.ts`). It
+  connect, and kept after a disconnect (`ownerAfterDisconnect` in
+  `src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`). It
   rides in the `.kiko` file; the raw id is never stored (A31). A stored value with an unreadable
   id gives `bybitRequestFailedNoCode`, not a rejected key.
 - Key expiry: `keyExpiryStateOf` (`bybit.key-expiry.ts`); the caption is `KeyExpiryLine` in
-  `crypto-sync-section.component.tsx`.
+  `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.tsx`.
 - Cooldown: module-level per account (`bybit.cooldown.ts`). Connect shows `bybitForbidden`
-  (`bybit-credentials-field.component.tsx`).
+  (`src/design-system/components/bybit-credentials-field/bybit-credentials-field.component.tsx`).
 - Ids: `holdingKeyOf` gives `<COIN>:<wallet>` (`bybit.holding-keys.ts`, under `bybitAsset`);
   `exchangePairIdOf` is in the same file. A tracked coin passes `isTrackedBybitAsset`
   (`bybit.tracked-coin.ts`, with `BYBIT_FIAT_CODES`).
-- Caption parts in `crypto-sync-section.component.tsx`: `KindsLine` (its `ExpandToggle` sets
+- Caption parts in the same `crypto-sync-section.component.tsx` (path above):
+  `KindsLine` (its `ExpandToggle` sets
   `collapsedLabel`), `BalanceNotesLines`, `LogLeftOutLine`, `FundingLines`.
 
 Balance sync, notes, set-aside coins, cooling and the history walks:

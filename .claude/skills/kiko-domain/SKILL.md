@@ -192,8 +192,8 @@ entry, not a change to either caller. The registry is intentionally
 implemented, and callers must skip it rather than assume every id resolves.
 `exchangeProviderRegistry` (`src/crypto-sync/exchange/registry/`) is the crypto twin of
 `bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire. An
-`ExchangeProviderEntry` also carries optional display fields (`notListedKey`,
-`showsEarlierHistory`, `pastLimitsKey`; `pastLimitsKeysOf` reads the last); read the type in
+`ExchangeProviderEntry` also carries optional display fields (`pastLimitsKeysOf` reads
+one of them); read the type in
 `src/crypto-sync/exchange/registry/registry.ts`. A new exchange is a catalog entry
 (`src/crypto-sync/exchange-catalog/exchange-catalog.ts`), a registry entry and an id in
 `balanceProviderIds` (`src/crypto-sync/provider/provider.ts`). For exchange

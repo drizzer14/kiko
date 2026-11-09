@@ -25,7 +25,8 @@ The rejection guideline. Apple moved it from 2.3.1(a) to 2.5.19 on 2026-10-16
 (https://developer.apple.com/news/?id=92th7e5i). Only the hidden-feature rule moved: the
 Notes-for-Review sentence stayed in 2.3.1(a) (checked 2026-10-18,
 https://developer.apple.com/app-store/review/guidelines/), so citing it below is correct.
-Text collapsed by default is not hidden when its toggle label names what it hides
+Kiko's reading, not Apple's text: text collapsed by default is not hidden when its toggle
+label names what it hides
 (`collapsedLabel` of `ExpandToggle`, kiko-design-system).
 2.5.19 also bans hiding an undocumented feature
 in the binary, such as through code obfuscation or other methods: grounds for removal from the
@@ -383,15 +384,18 @@ policy section 3 of the four policy files. A new path goes to that list plus its
 in the test and all four files; read the list there, never a copy.
 
 Bybit API terms (read 2026-11-03 and 2026-11-09; verdict PASS WITH CONDITIONS, global bybit.com
-accounts only, ruling O39). This is a reading of terms, not legal advice. Full text and quotes:
-`.superpowers/sdd/1.4-bybit/terms-verdict.md`; the verdict table, the conditions C1 to C7 and
-the re-read note are in section 9 of `docs/superpowers/specs/2026-11-03-bybit-sync-design.md`
-(heading "Terms verdict, 2026-11-03") and in
-`.superpowers/sdd/1.4-bybit/research-c7-reread-2026-11-09.md`. A Bybit EU account is forbidden
-by EU 7.4 (no access through a non-official or unauthorised application): an EU key never goes
+accounts only, ruling O39). This is a reading of terms, not legal advice. The tracked
+record is section 9 of `docs/superpowers/specs/2026-11-03-bybit-sync-design.md`
+(heading "Terms verdict, 2026-11-03": the verdict table, the conditions C1 to C7, and the C7
+row with the 2026-11-09 URL, hash and sections read). The git-ignored work files
+`.superpowers/sdd/1.4-bybit/terms-verdict.md` and
+`.superpowers/sdd/1.4-bybit/research-c7-reread-2026-11-09.md` hold the quotes. A Bybit EU
+account is forbidden by EU 7.4 (no access through a non-official or unauthorised
+application): an EU key never goes
 to `api.bybit.eu`, and the copy says Kiko does not support those accounts.
-Documents. The API Terms PDF has no date; its SHA-256 is in the research note above, and it was
-read in full on 2026-11-09 (compare the hash at the next re-read). The Global terms page says
+Documents. The API Terms PDF has no date; its URL and its 2026-11-09 SHA-256 are in the C7 row
+(compare the hash at the next re-read). Sections 1.1, 1.2, 2.1 and 6.9 were read on 2026-11-09,
+and 2.2 to 2.8 were spot-checked against the 2026-11-03 text. The Global terms page says
 "last updated 2026-10-16". The EU terms page says "2026-07-20". The Global and EU PDFs were
 checked by page date and file name only on 2026-11-09: their text is unread since 2026-11-03.
 The API Docs guide and intro have no date and no new rule. The EU 4.3.7 list is still unread.
@@ -400,8 +404,10 @@ its user experience: not forbidden, but a real doubt, because the clause is broa
 repackaging or reselling); 6.9 (no commercial exploiting of the APIs; Kiko is free); 2.5 (giving
 a key to a third party is a warning, not a ban); 7.1 (the API Documentation adds terms); 8.3
 (the API Terms prevail over the Documentation); 1.2 (the API Terms prevail over the Terms of
-Use; this corrects the 2026-11-03 reading that no clause sets a precedence); Global 40.4(e) (bans
-commercial use of the name only: plain text in a free app is not that) and 40.4(c); EU 7.4.
+Use; this corrects the 2026-11-03 reading that no clause sets a precedence); Global 40.4(e) (no
+commercial use of the Site, the Platform, or Bybit's logo, trademark or brand name; on the
+verdict's reading, plain text in a free app is not commercial use, and the store listing is the
+closest point, C4) and 40.4(c); EU 7.4.
 Conditions and their pins (read each test there):
 - C1 (EU copy, no `api.bybit.eu`): `src/crypto-sync/bybit/bybit.shipped-copy.test.ts`,
   `bybit-credentials-field.component.test.tsx` in
@@ -410,7 +416,9 @@ Conditions and their pins (read each test there):
 - C2 (a closed list of GET routes, no write path; a trading feature re-opens API 6.5):
   `src/crypto-sync/bybit/bybit.endpoints.test.ts`.
 - C3 (free: no price, ad, purchase, tip, sponsor or affiliate code on the management URL): the
-  URL is pinned in the Bybit credentials field test; the business state has no test and is a
+  URL is pinned in
+  `src/design-system/components/bybit-credentials-field/bybit-credentials-field.component.test.tsx`;
+  the business state has no test and is a
   reviewer's judgment.
 - C4 (name as plain text, no logo, no Bybit look, the not-affiliated caption, no Bybit in the
   store title, subtitle or keywords): the caption is pinned in

@@ -140,9 +140,9 @@ for the diaspora. The user rulings differ: see the kiko-competitors skill.
 - Bybit v5: HMAC-SHA256 hex, no passphrase; 600 req/5 s per IP + per-UID per route; deposits
   30-day window, cursor, 50/page, depth not stated; inter-transfer 7-day windows; US IPs get
   403; EU accounts may need api.bybit.eu (probe). Read-only key can read history: UNVERIFIED.
-  Earn path UNVERIFIED. (Dated 2026-11-09: the 1.4-bybit spec (section 9, C1) and the probe now
-  say EU accounts are not supported and never use `api.bybit.eu`; see the spec for the read-only
-  key result.)
+  Earn path UNVERIFIED. (Dated 2026-11-09: 1.4-bybit spec section 9 (C1, EU 7.4) says Kiko does
+  not support EU accounts and never uses `api.bybit.eu`; spec section 6 has the MEASURED
+  read-only key result.)
 - OKX v5: Read permission, PASSPHRASE mandatory; HMAC-SHA256 base64, ISO timestamp, 30 s skew;
   regional hosts openapi.okx.com / eea.okx.com / us.okx.com (user must pick region); bills 7 d
   / 3 mo / async file since 2021; funding history paths UNVERIFIED.
