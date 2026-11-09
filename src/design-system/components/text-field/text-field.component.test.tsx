@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react';
 import { Keyboard, StyleSheet } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
@@ -52,18 +53,36 @@ describe('TextField', () => {
     expect(getByLabelText('Name').props.secureTextEntry).toBeUndefined();
   });
 
-  it('renders a leading SF Symbol icon before the input when leadingIcon is set', async () => {
+  it('renders a leading SF Symbol icon when leadingIcon is set', async () => {
     const { toJSON, getByDisplayValue } = await renderField({
       label: 'Search',
       value: 'usd',
       leadingIcon: 'magnifyingglass',
     });
 
-    // The input still holds the value, and the leading glyph renders before it.
+    // The input still holds the value, and the leading glyph is in the tree.
     // The mocked SFSymbolView forwards its `name` to a host View, so the symbol
     // name appears in the tree.
     expect(getByDisplayValue('usd')).toBeTruthy();
     expect(JSON.stringify(toJSON())).toContain('magnifyingglass');
+  });
+
+  it('paints the leading icon above the opaque input by rendering it after the input', async () => {
+    const { getByDisplayValue } = await renderField({
+      label: 'Search',
+      value: 'usd',
+      leadingIcon: 'magnifyingglass',
+    });
+
+    const input = getByDisplayValue('usd');
+    const siblings = input.parent?.children ?? [];
+    const laterSiblings = siblings.slice(siblings.indexOf(input) + 1);
+
+    expect(
+      laterSiblings.flatMap((sibling) =>
+        typeof sibling === 'string' ? [] : glyphNamesWithin(sibling),
+      ),
+    ).toContain('magnifyingglass');
   });
 
   it('renders no leading icon by default', async () => {

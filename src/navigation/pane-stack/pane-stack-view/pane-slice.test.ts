@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { createElement, Fragment } from 'react';
 import { render, screen } from '@testing-library/react-native';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
@@ -258,7 +259,41 @@ describe('layerSlice', () => {
       title: '',
       contentStyle: { backgroundColor: 'transparent' },
       headerShown: true,
-      headerTitle: '',
+      headerTitle: expect.any(Function),
+    });
+  });
+
+  // The header title is a view, not the empty string: the compact landscape bar lays out 0 high for
+  // a root item with no content mid-pop, and a view of fixed height keeps it open. It shows nothing
+  // and, with no content to speak, VoiceOver has nothing to land on. Jest proves the view only,
+  // never the bar UIKit lays out around it.
+  describe('the empty title view of the root header', () => {
+    const titleViewOf = () => {
+      const { headerTitle } = rootOf(onTables()).options;
+
+      if (typeof headerTitle !== 'function') {
+        throw new Error('the root header title is not a view');
+      }
+
+      return createElement(Fragment, null, headerTitle({ children: '' }));
+    };
+
+    it('is a view of a fixed height, with no text in it', async () => {
+      await render(titleViewOf());
+
+      const view = screen.toJSON() as Exclude<ReturnType<typeof screen.toJSON>, null | unknown[]>;
+
+      expect(view.type).toBe('View');
+      expect(view.children ?? []).toEqual([]);
+      expect(StyleSheet.flatten(view.props.style)).toEqual({ width: 1, height: 32 });
+    });
+
+    it('has nothing for VoiceOver to land on', async () => {
+      await render(titleViewOf());
+
+      const view = screen.toJSON() as Exclude<ReturnType<typeof screen.toJSON>, null | unknown[]>;
+
+      expect(view.props).toEqual({ style: view.props.style });
     });
   });
 
@@ -303,7 +338,7 @@ describe('layerSlice', () => {
         title: '',
         contentStyle: { backgroundColor: 'transparent' },
         headerShown: true,
-        headerTitle: '',
+        headerTitle: expect.any(Function),
         headerBackground,
         headerBlurEffect: 'systemChromeMaterial',
         headerLargeStyle,

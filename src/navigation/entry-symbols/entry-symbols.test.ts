@@ -7,6 +7,7 @@ describe('entrySymbol', () => {
       reminders: 'bell',
       importData: 'square.and.arrow.down',
       exportData: 'square.and.arrow.up',
+      exportCsv: 'tablecells',
       statistics: 'chart.xyaxis.line',
       recurringCharges: 'repeat',
     });

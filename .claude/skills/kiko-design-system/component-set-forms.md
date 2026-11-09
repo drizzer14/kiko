@@ -237,6 +237,10 @@
   in light, none in dark). In light a disabled field and an active one share a white fill;
   the faded `surfaceHigh` border, the 0.5 opacity and the `textSecondary` text tell them
   apart. `DateRangeField`, `FilterMenu` and `TrendFilterField` keep `surface`.
+  `fieldBackground` is opaque in light, so an absolutely positioned icon or adornment over a
+  field renders AFTER the field's input (a later sibling paints above it). Dark does not show
+  the fault because its fill is transparent. The `TextField` test "paints the leading icon
+  above the opaque input" pins the leading slot.
   It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
   Screen's `onFieldBlur`. `HoldingIdentityField` calls `useFieldBlur(undefined)`; a text field
   outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity)
