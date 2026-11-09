@@ -10,7 +10,6 @@ import {
   DIRECTIONS,
   DIRECTION_LABEL_KEYS,
   MATCHER_TYPES,
-  MCC_DIGITS,
   TIME_OPERATORS,
   TIME_OPERATOR_LABEL_KEYS,
   labelsOf,
@@ -28,6 +27,8 @@ import TextField from '@kiko/design-system/components/text-field';
 import SelectField from '@kiko/design-system/components/select-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
+
+import MccField from '../mcc-field';
 
 import type { MatcherRowProps } from './matcher-row.props';
 
@@ -136,22 +137,12 @@ const MatcherRow: FC<MatcherRowProps> = ({
       </>
     ))
     .with('mcc', () => (
-      <>
-        <TextField
-          label={t('ruleForm.mcc')}
-          value={draft.mccText}
-          onChangeText={(text) =>
-            onChange({ mccText: text.replace(/\D/g, '').slice(0, MCC_DIGITS) })
-          }
-          keyboardType="number-pad"
-          required
-          error={error}
-        />
-
-        <Text variant="caption" tone="textSecondary">
-          {t('ruleForm.mccHint')}
-        </Text>
-      </>
+      <MccField
+        value={draft.mccText}
+        onChange={(mccText) => onChange({ mccText })}
+        error={error}
+        testID={`matcher-mcc-${position}`}
+      />
     ))
     .with('account', () => (
       <SelectField<string>
