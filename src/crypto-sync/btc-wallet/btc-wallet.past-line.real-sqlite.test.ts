@@ -35,6 +35,7 @@ const ADDRESS = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
 const ONE_COIN = 100_000_000;
 const TENTH_OF_A_COIN = 10_000_000;
 const HALF_OF_A_COIN = 50_000_000;
+const SIX_TENTHS_OF_A_COIN = 60_000_000;
 const SEVEN_TENTHS_OF_A_COIN = 70_000_000;
 
 // A local calendar day of January 2026 at an hour, built from local fields: the line samples at
@@ -152,6 +153,69 @@ describe('the line of a Bitcoin wallet whose read overwrote rows the user typed,
     expect(
       mockDatabase.prepare('SELECT id, amount_minor_units AS amount FROM transactions').all(),
     ).toEqual([{ id: typedRowId, amount: SEVEN_TENTHS_OF_A_COIN }]);
+  });
+});
+
+describe('the line of a Bitcoin wallet that shipped with a row the user typed, on real SQLite', () => {
+  // Shipped, disconnected, a +0.5 typed (the balance 0.6), then reconnected. Seeded per pin, since
+  // each pin names its own world.
+  const seedShippedWalletWithTypedRow = (): void => {
+    mockDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
+         VALUES ('shipped', ?, 'BTC Wallet', 'crypto_asset', 'BTC', ?, ?)`,
+      )
+      .run(ACCOUNT_ID, SIX_TENTHS_OF_A_COIN, JSON.stringify({ walletAddress: ADDRESS }));
+    mockDatabase
+      .prepare(
+        `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source)
+         VALUES ('typed-row', 'shipped', ?, ?, 'manual')`,
+      )
+      .run(HALF_OF_A_COIN, at(1, 9));
+  };
+
+  it('Q3, the first dated read writes the date and no mark, and the old typed row keeps counting', async () => {
+    seedShippedWalletWithTypedRow();
+
+    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
+
+    await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
+
+    expect((await storedHolding()).metadata).toEqual({
+      walletAddress: ADDRESS,
+      syncedAt: at(2, 10),
+      balanceReadAt: at(2, 10),
+    });
+    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
+  });
+
+  it('Q3, a delete of the old typed row after the first dated read moves the balance as today', async () => {
+    seedShippedWalletWithTypedRow();
+    await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
+
+    expect((await transactionsRepo.removePlan('typed-row')).balanceChanges).toBeDefined();
+
+    await transactionsRepo.remove('typed-row');
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
+  });
+
+  it('Q-j, a row typed after the first dated read is on the mark of the next read', async () => {
+    seedShippedWalletWithTypedRow();
+    await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
+    await disconnectCryptoAccount(ACCOUNT_ID, 'btc_wallet');
+
+    const laterRowId = await typedRowAt(at(3, 9), HALF_OF_A_COIN);
+
+    await readAt(at(4, 10), SIX_TENTHS_OF_A_COIN);
+
+    expect((await storedHolding()).metadata).toMatchObject({
+      overwrittenRowIds: expect.arrayContaining([laterRowId]),
+    });
+
+    await transactionsRepo.remove(laterRowId);
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(SIX_TENTHS_OF_A_COIN);
   });
 });
 

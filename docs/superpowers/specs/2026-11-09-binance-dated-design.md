@@ -57,6 +57,16 @@ before the row's day, then from it.
 | R5 | A coin refused for good (`refused`), so no read ever writes it | as typed by rows | as today, for good | as today up to the seed, then held | flat |
 | R6 | A walk makes a holding at 0 and a buy +1 arrives, no read (Bybit row 5) | -1, 0 | -1, 0 until a read (today's numbers) | no seed for a new holding: as C | 0, 0 |
 | R7 | A `.kiko` file written by 1.3 or earlier, restored on this build | as the source device | as the source device; the first good read dates it | needs a restore mirror (the migration does not see a restored file) and its own test; without it, C | flat until a read |
+| R8 | Shipped holding with a row the user typed before the update (an old disconnect, an old Duplicate, a `.kiko` row); wallet: +0.5 typed while disconnected, stored 0.6, reconnected, first dated read 0.6 | 0.1, 0.6; a delete of the row moves the balance | 0.1, 0.6, now dated with NO mark; a delete of the row moves the balance as today (Q3 = A, coordinator, 2026-11-09) | the seed makes it a later read: 0.6, 0.6 | 0.6, 0.6 for good |
+| R9 | R8, then a row typed after the first dated read (disconnect, type, reconnect), read again | not dated | the row is on the mark of the next read (Q-j holds); no move on its delete or edit | as R8 | as R8 |
+
+Q3 (coordinator, 2026-11-09, "same principle" of Q2): the FIRST dated read of a holding that has no
+read date writes the date and NO mark, so the old typed rows of a shipped holding keep counting as
+today, and the fix applies to the rows typed after the update. It holds for Binance and the wallet
+(`countsSourceRowsBeforeFirstRead: true`) and applies to Monobank in task 3/3. Bybit (`false`)
+never shipped an undated holding and marks at once. Limit: a later read lists every row that is
+not of the source, so an old typed row is on the mark from the SECOND dated read on. Reported to
+the coordinator.
 
 | | A: own no-date rule | B: seed by migration | C: Bybit's rule as is |
 |---|---|---|---|
@@ -145,6 +155,7 @@ and Q-k and Q-l hold on Monobank as the user ruled for all three (Q-m).
 | D4 | The same for the wallet: W8, W9 | new `src/crypto-sync/btc-wallet/btc-wallet.past-line.real-sqlite.test.ts` |
 | D5 | A restored 1.3 file (R7): an undated Binance holding draws today's line; a dated one keeps date and mark | `src/data-transfer/snapshot/restore-past-line-mark.test.ts`, new titles |
 | D6 | The footer equals the series' opening (W11) | `exchange-history-footer.component.test.tsx`: "shows the balance less the rows the line counts", "shows no line when a row after the read explains the gap"; the existing "Earlier history" titles stay green unless their world has a date (developer lists any that flip) |
+| D8 | R8, R9 (Q3): the first dated read of a shipped Binance or wallet holding writes the date and no mark; its old typed row keeps counting and a delete of it moves the balance; a row typed after the read is on the next read's mark | `binance.past-line.real-sqlite.test.ts` and `btc-wallet.past-line.real-sqlite.test.ts`: the "shipped with a row the user typed" describes (own seed per pin); `holdings.repo.past-line-mark.test.ts`: "Q3, the first dated read of a shipped %s holding writes the date, no key and reads no row" |
 | D7 | Monobank, after the user's pick (option A shown) | `src/monobank/sync/sync.test.ts`: "the fast phase writes the read time beside each card"; new `src/monobank/sync/monobank.past-line.real-sqlite.test.ts`: section 5 world, the payment between two reads, an import row stays off the mark and keeps counting, a manual row on the mark moves no balance |
 
 ### Existing pins that change on purpose (and why)

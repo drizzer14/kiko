@@ -254,6 +254,22 @@ describe('holdingsRepo.upsertExchangeMany on a Binance or a wallet holding', () 
   });
 
   it.each(DATED)(
+    'Q3, the first dated read of a shipped %s holding writes the date, no key and reads no row',
+    async (_, field, key) => {
+      seedHolding(HOLDING_ID, { [field]: key, syncedAt: 1_000 });
+      seedRow('row-typed', 'manual');
+
+      expect(await statementsOnLedgerDuring(() => upsertOf(field, key))).toEqual([]);
+      expect(metadataBy(field, key)).toEqual({
+        [field]: key,
+        syncedAt: READ_AT,
+        balanceReadAt: READ_AT,
+      });
+      expect(holdingBy(field, key).balance).toBe(BALANCE_MINOR_UNITS);
+    },
+  );
+
+  it.each(DATED)(
     'a read of an existing %s holding sends one statement on the ledger table',
     async (_, field, key) => {
       seedDated(field, key);

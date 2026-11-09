@@ -40,6 +40,7 @@ const ACCOUNT_ID = 'acc-1';
 const ONE_COIN = 100_000_000;
 const TENTH_OF_A_COIN = 10_000_000;
 const HALF_OF_A_COIN = 50_000_000;
+const SIX_TENTHS_OF_A_COIN = 60_000_000;
 const SEVEN_TENTHS_OF_A_COIN = 70_000_000;
 const FIFTH_OF_A_COIN = 20_000_000;
 const FIVE_COINS = 500_000_000;
@@ -275,6 +276,74 @@ describe('the line of a Binance holding that shipped with no read time, on real 
     await readAt(at(2, 10), { spot: spotOf('0.8') });
 
     expect(await lineFrom(0, 2)).toEqual([1, 0.8, 0.8]);
+  });
+});
+
+describe('the line of a Binance holding that shipped with a row the user typed, on real SQLite', () => {
+  // The holding at 0.6 as the release before the dated read stored it, with a +0.5 the user typed
+  // long before, which that balance holds. Seeded per pin, since each pin names its own world.
+  const seedShippedHoldingWithTypedRow = (): void => {
+    mockDatabase
+      .prepare(
+        `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
+         VALUES ('shipped', ?, 'Binance Spot · BTC', 'crypto_asset', 'BTC', ?, ?)`,
+      )
+      .run(
+        ACCOUNT_ID,
+        SIX_TENTHS_OF_A_COIN,
+        JSON.stringify({ binanceAsset: 'BTC', syncedAt: at(-5, 10) }),
+      );
+    mockDatabase
+      .prepare(
+        `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source)
+         VALUES ('typed-row', 'shipped', ?, ?, 'manual')`,
+      )
+      .run(HALF_OF_A_COIN, at(1, 9));
+  };
+
+  it('Q3, the first dated read writes the date and no mark, and the old typed row keeps counting', async () => {
+    seedShippedHoldingWithTypedRow();
+
+    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
+
+    await readAt(at(2, 10), { spot: spotOf('0.6') });
+
+    expect((await storedHolding()).metadata).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: at(2, 10),
+      balanceReadAt: at(2, 10),
+      defaultNameRenameSettled: true,
+    });
+    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
+  });
+
+  it('Q3, a delete of the old typed row after the first dated read moves the balance as today', async () => {
+    seedShippedHoldingWithTypedRow();
+    await readAt(at(2, 10), { spot: spotOf('0.6') });
+
+    expect((await transactionsRepo.removePlan('typed-row')).balanceChanges).toBeDefined();
+
+    await transactionsRepo.remove('typed-row');
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
+  });
+
+  it('Q-j, a row typed after the first dated read is on the mark of the next read', async () => {
+    seedShippedHoldingWithTypedRow();
+    await readAt(at(2, 10), { spot: spotOf('0.6') });
+    await disconnectCryptoAccount(ACCOUNT_ID, 'binance');
+
+    const laterRowId = await typedRowAt(at(3, 9), FIFTH_OF_A_COIN);
+
+    await readAt(at(4, 10), { spot: spotOf('0.6') });
+
+    expect((await storedHolding()).metadata).toMatchObject({
+      overwrittenRowIds: expect.arrayContaining([laterRowId]),
+    });
+
+    await transactionsRepo.remove(laterRowId);
+
+    expect((await storedHolding()).balanceMinorUnits).toBe(SIX_TENTHS_OF_A_COIN);
   });
 });
 
