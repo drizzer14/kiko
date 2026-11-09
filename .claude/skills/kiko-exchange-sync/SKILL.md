@@ -411,8 +411,10 @@ than restated here:
   surfaced as the localized `accountDetail.binanceRequestFailed` message
   (never the raw `BinanceRateLimitError` text) — Spot's failure still
   fails the whole balance sync, per its own strict rule above.
-  `BinanceCredentialsField.handleConnect` checks
-  `isBinanceCoolingDown(accountId, Date.now())` before its first request.
+  `ExchangeKeyForm.handleConnect`
+  (`src/design-system/components/exchange-key-form/exchange-key-form.component.tsx`) checks its
+  `isCoolingDown(accountId, Date.now())` prop (Binance passes `isBinanceCoolingDown`) before its
+  first request.
   On a cooling account it makes no `fetchAccount`, no `saveCredentials` and
   no sync, and shows `accountDetail.binanceCoolingDown` as a `saveError`, so
   the provider's quiet skip serves a sync of an already connected account.

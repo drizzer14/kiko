@@ -122,7 +122,8 @@ absent** — this skill states the shape and non-enum facts only:
   in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
   `pendingAccountId` and nothing about the row; the remounted form asks the
   write queue (`usePendingRowLock`) before it unlocks the kind and bank
-  picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`)
+  picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`,
+  `BybitCredentialsField`, and the shared `ExchangeKeyForm`)
   never calls its connect callback once it is unmounted (`useIsMounted`),
   and stores nothing when it unmounts before the Keychain write: a token
   checked before a fold or a kind/bank switch is not stored, and the user

@@ -86,6 +86,11 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
   account form test; `pick-category.ts`: picks a category from the field's bottom sheet.
+- `mockKeyPairField` (`src/screens/forms/account-form/account-form.screen.test.tsx`): mocks the
+  exchange key-pair fields through one factory, named by exchange. A new exchange field is one
+  more `jest.mock` line. Some suites still mock inline (for example the
+  connect test in `src/screens/account-detail/crypto-sync-section/`); at the
+  first duplicate move the factory to a shared helper.
 - `held-currencies.ts`: the currencies the user holds, for a screen that renders a currency
   picker; `saved-reminder.ts`: an active daily reminder row; `permission-notice-cases.ts`: the
   shared notification-permission notice cases.
