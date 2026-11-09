@@ -363,6 +363,9 @@ project-level pointer to this section.
   an EXPLAIN QUERY PLAN test built from the repo's own query builder
   (`sqlite_autoindex_transactions_1 (id>?)`, no temp B-tree) — see
   `rewritePageQuery` in `src/categories/category-rules-repo/category-rules.repo.ts`.
+  A new aggregate read with no index gets the same pin shape: see
+  `src/transactions/repo/transactions.repo.mcc-counts.performance.test.ts` (one prepared
+  statement, one SCAN, only temp B-trees besides).
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the

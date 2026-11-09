@@ -198,6 +198,8 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   across two seeds or two databases otherwise differ by a whole second when a second boundary
   falls between the seeds (`src/data-transfer/snapshot/restore-new-matchers.two-path.test.ts`,
   fixed in 2acce8200).
+- To seed a balance-set row, set `sets_balance: 1` (`src/db/schema.ts`; kiko-domain, "A
+  balance-set row is a STORED mark, not a date."); `category` is not the marker.
 
 ## Acceptance pins, fix rounds and red proofs
 
