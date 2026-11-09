@@ -184,13 +184,15 @@ describe('MccField', () => {
   });
 
   it('Other code opens the typed field seeded with the digits of the query', async () => {
-    const screen = await renderField({ value: '0042' });
+    const onChange = jest.fn();
+    const screen = await renderField({ value: '0042', onChange });
     await open(screen);
     await search(screen, '54');
     await fireEvent.press(screen.getByTestId('mcc-other-row'));
 
     expect(screen.queryByPlaceholderText(SEARCH_PLACEHOLDER)).toBeNull();
     expect(screen.getByLabelText(TYPED_LABEL).props.value).toBe('54');
+    expect(onChange).toHaveBeenCalledWith('54');
   });
 
   it('Other code opens the typed field with the current code when the query is not digits', async () => {
