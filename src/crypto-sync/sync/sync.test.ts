@@ -377,6 +377,59 @@ describe('runBalanceSync', () => {
     expect(holdingsStore[0].balanceMinorUnits).toBe(20);
   });
 
+  it('a provider whose key is on the dated list writes the read time beside the stamp', async () => {
+    const { provider } = makeProvider();
+    const { deps, holdingsStore } = makeAccountDeps('btc_wallet');
+
+    await runBalanceSync(
+      { ...provider, metadataField: 'bybitAsset' },
+      { balances: [walletBalance(10)] },
+      deps,
+    );
+
+    expect(holdingsStore[0].metadata).toEqual({
+      bybitAsset: ADDRESS,
+      syncedAt: NOW,
+      balanceReadAt: NOW,
+    });
+  });
+
+  it('a provider that does not writes the stamp alone', async () => {
+    const { provider } = makeProvider();
+    const { deps, holdingsStore } = makeAccountDeps('btc_wallet');
+
+    await runBalanceSync(provider, { balances: [walletBalance(10)] }, deps);
+
+    expect(holdingsStore[0].metadata).toEqual({ walletAddress: ADDRESS, syncedAt: NOW });
+  });
+
+  it('a coin the read leaves out of a dated provider keeps its read time while the coin it writes takes the new one', async () => {
+    const { provider } = makeProvider();
+    const datingProvider = { ...provider, metadataField: 'bybitAsset' as const };
+    const { deps, holdingsStore } = makeAccountDeps('btc_wallet');
+    const otherAddress = 'bc1qother';
+    const otherBalance: ProviderBalance = { ...walletBalance(5), metadataKey: otherAddress };
+
+    await runBalanceSync(datingProvider, { balances: [walletBalance(10), otherBalance] }, deps);
+    deps.now = () => NOW + 1_000;
+    await runBalanceSync(datingProvider, { balances: [walletBalance(11)] }, deps);
+
+    const readTimeOf = (key: string) =>
+      holdingsStore.find(({ metadata }) => (metadata as { bybitAsset: string }).bybitAsset === key)
+        ?.metadata;
+
+    expect(readTimeOf(ADDRESS)).toEqual({
+      bybitAsset: ADDRESS,
+      syncedAt: NOW + 1_000,
+      balanceReadAt: NOW + 1_000,
+    });
+    expect(readTimeOf(otherAddress)).toEqual({
+      bybitAsset: otherAddress,
+      syncedAt: NOW,
+      balanceReadAt: NOW,
+    });
+  });
+
   it('leaves the target account unmarked and writes nothing when the provider fetch fails', async () => {
     const { provider } = makeProvider();
     const { deps, accountsStore, holdingsStore } = makeInMemoryDeps([cryptoAccount()]);

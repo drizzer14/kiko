@@ -2,6 +2,7 @@ import { bifoldMap } from 'fnts/either';
 
 import {
   UNTRACKED_WALLETS,
+  FUNDING_LEDGER_CODE,
   fiatTotalCode,
   untrackedAssetCode,
   untrackedWalletCode,
@@ -154,9 +155,20 @@ describe('parseUntrackedCounterpart', () => {
     expect(parseUntrackedCounterpart(code)).toEqual({ kind, fiat, totalMinorUnits: undefined });
   });
 
+  it('reads the code of a listed Funding ledger row as a ledger counterpart, and keeps the stored value', () => {
+    // A user's rows already hold this text, so a rename of the constant would strand them.
+    expect(FUNDING_LEDGER_CODE).toBe('ledger:funding');
+    expect(parseUntrackedCounterpart(FUNDING_LEDGER_CODE)).toEqual({ kind: 'ledger' });
+  });
+
   it.each([
     ['asset'],
     ['asset:'],
+    ['ledger'],
+    ['ledger:'],
+    ['ledger:funding:Earn'],
+    ['ledger:Funding'],
+    ['ledger:other'],
     ['asset:ETH:BSC'],
     ['p2p'],
     ['p2p:'],

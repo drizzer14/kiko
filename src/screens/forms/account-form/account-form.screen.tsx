@@ -46,8 +46,10 @@ import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import ExchangeTypeField from '@kiko/screens/forms/exchange-type-field';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import type { WriteToken } from '@kiko/crypto-sync/exchange/credentials';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
+import { clearBybitCredentialsIfWrittenBy } from '@kiko/crypto-sync/bybit';
 import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -433,6 +435,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // Save any more.
   const { sync: syncMonobank } = useSync();
   const { sync: syncCrypto } = useCryptoSync();
+  // Its own instance, so a refusal text shows only under the Bybit field: a failed Binance or
+  // wallet connect, then a switch to Bybit, would otherwise leave that text there.
+  const { sync: syncBybit, error: bybitConnectError } = useCryptoSync();
 
   // The account's id is pre-generated once for this create session so the
   // per-source fields — which bind to an EXISTING account id (a per-account
@@ -610,7 +615,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   };
 
   // A field stored a pair under the pre-generated account id with the write `written`, and no
-  // Connect of it will follow: connectBinance's Connect failed to ensure the row, or the field
+  // Connect of it will follow: the exchange's Connect failed to ensure the row, or the field
   // unmounted during the write and the form decides instead. Only when no row owns the id does
   // nothing else ever clear the pair: a reject on an empty name leaves a row that is there with its
   // keys, even one another screen's Connect has still queued (the read waits behind it), and a
@@ -618,27 +623,53 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // write's, not even an equal pair: a remounted field saves its own pair outside the write queue,
   // possibly after the read above answered. A failed clear is logged: the caller still reports its
   // own outcome.
-  const clearPairIfRowMissing = async (written: BinanceWriteToken): Promise<void> => {
+  const clearPairIfRowMissing = async (
+    exchange: 'Binance' | 'Bybit',
+    clearIfWrittenBy: (accountId: string, written: WriteToken) => Promise<void>,
+    written: WriteToken,
+  ): Promise<void> => {
     const rowIsMissing =
       bifoldr(await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId))) ===
       false;
 
     if (rowIsMissing) {
-      await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
-        clearCredentialsIfWrittenBy(pendingAccountId, written),
+      await logOnFailure(`[account-form] the ${exchange} key pair could not be cleared`, () =>
+        clearIfWrittenBy(pendingAccountId, written),
       );
     }
   };
 
-  const connectBinance = async (stored: BinanceWriteToken): Promise<boolean> => {
+  const clearBinancePairIfRowMissing = (written: BinanceWriteToken): Promise<void> =>
+    clearPairIfRowMissing('Binance', clearCredentialsIfWrittenBy, written);
+
+  const clearBybitPairIfRowMissing = (written: WriteToken): Promise<void> =>
+    clearPairIfRowMissing('Bybit', clearBybitCredentialsIfWrittenBy, written);
+
+  // The key-pair exchanges connect the same way: the field stored the pair first, so a Connect that
+  // cannot create the row clears it before it reports the failure.
+  const connectKeyPair = async (
+    stored: WriteToken,
+    clearPair: (written: WriteToken) => Promise<void>,
+    sync: () => Promise<boolean>,
+  ): Promise<boolean> => {
     if (!(await accountEnsured())) {
-      await clearPairIfRowMissing(stored);
+      await clearPair(stored);
 
       return false;
     }
 
-    return syncCrypto({ providerId: 'binance', targetAccountId: pendingAccountId });
+    return sync();
   };
+
+  const connectBinance = (stored: BinanceWriteToken): Promise<boolean> =>
+    connectKeyPair(stored, clearBinancePairIfRowMissing, () =>
+      syncCrypto({ providerId: 'binance', targetAccountId: pendingAccountId }),
+    );
+
+  const connectBybit = (stored: WriteToken): Promise<boolean> =>
+    connectKeyPair(stored, clearBybitPairIfRowMissing, () =>
+      syncBybit({ providerId: 'bybit', targetAccountId: pendingAccountId }),
+    );
 
   // In edit mode, the account being edited seeds the form (the query above always runs: hooks
   // can't be conditional).
@@ -1059,9 +1090,13 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
                 source={source}
                 onConnectWallet={connectWallet}
                 onConnectBinance={connectBinance}
+                onConnectBybit={connectBybit}
                 walletReminder={reminderFor('wallet')}
                 binanceReminder={reminderFor('binance')}
-                onBinanceStoredWhileUnmounted={clearPairIfRowMissing}
+                bybitReminder={reminderFor('bybit')}
+                onBinanceStoredWhileUnmounted={clearBinancePairIfRowMissing}
+                onBybitStoredWhileUnmounted={clearBybitPairIfRowMissing}
+                bybitConnectError={bybitConnectError}
               />
             ))}
           </Box>

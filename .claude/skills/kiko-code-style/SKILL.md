@@ -674,7 +674,7 @@ KEEP, not an oversight:
   plain success boolean/status for the caller's own local state — see
   `connectMonobank` (`account-form.screen.tsx`,
   `bank-sync-section.component.tsx`) and
-  `binance-credentials-field`/`monobank-connect-field`'s own connect
+  `exchange-key-form.component.tsx` (`handleConnect`)/`monobank-connect-field`'s own connect
   handlers (a fixed twin pair, both kept). `account-form.screen.tsx`'s
   sibling `connectWallet`/`connectBinance` no longer have their own
   `try`/`catch` at all — they call the shared `accountEnsured` above
@@ -730,7 +730,7 @@ one validation model — don't hand-roll a different one:
 - The shared attempted-submit flag is its own piece of state (`attemptedSave` in the forms under
   `src/screens/forms/`; the connect fields and the import screens keep their own, for example `showTokenRequiredError`
   in `monobank-connect-field.component.tsx`, `attemptedConnect` in
-  `binance-credentials-field.component.tsx`, `attemptedImport` in `column-mapping.screen.tsx` and
+  `exchange-key-form.component.tsx`, `attemptedImport` in `column-mapping.screen.tsx` and
   `statement-import.screen.tsx`), set true only after a failed submit attempt, so a
   fresh form shows no error before the user has tried to save.
 - Every field's error is computed from ONLY that field's own inputs,

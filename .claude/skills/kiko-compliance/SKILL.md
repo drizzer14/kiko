@@ -187,7 +187,7 @@ no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`,
 is a disk leak path through NSURLCache (`Cache.db` stores the response under
 its URL, together with the request object and its headers). Always send the
 request header `Cache-Control: no-store` on every such request (every
-Monobank and Binance request does); `npm run check:plist` fails a
+Monobank, Binance and Bybit request does); `npm run check:plist` fails a
 credential client without it. `AppDelegate.purgeStoredURLCacheOnce` cleared
 the rows builds before that stored. Verified on macOS CFNetwork: a per-request
 `cachePolicy` does NOT prevent the store, and React Native fetch's
@@ -359,7 +359,8 @@ Standing items:
   synchronizable. `hardenedFor` (`src/crypto-sync/exchange/credentials/credentials.ts`) sets
   `accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY`, and both Binance writers
   use it (`saveExchangeCredentials` in that file,
-  `src/crypto-sync/binance/migrate-binance-credential.ts`). Re-check
+  `src/crypto-sync/binance/migrate-binance-credential.ts`); Bybit writes through
+  `saveExchangeCredentials` in `src/crypto-sync/bybit/bybit.credentials.ts`. Re-check
   that any new writer of the key goes through `hardenedFor`.
 - (c) The Connect help keeps asking for a read-only key with no trading or withdrawal
   permission (4(b)); a change to that help text re-opens this item. Pinned by

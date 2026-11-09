@@ -85,6 +85,7 @@ const SOURCE_RANK: Record<RecurringLedgerRow['source'], number> = {
   monobank: 0,
   btc_wallet: 0,
   binance: 0,
+  bybit: 0,
   manual: 1,
   import: 2,
 };

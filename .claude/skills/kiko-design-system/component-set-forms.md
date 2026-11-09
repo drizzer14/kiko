@@ -94,7 +94,9 @@
   and a refusal inside the write shows the shared save-error alert). A
   lot row is the user's own entry, so unlike every other derived ledger
   row it carries no marker subtitle (`derivedMarker` returns undefined for a lot row).
-  A transaction row keeps tap-to-edit and passes `onDuplicate` (manual rows) and the View actions
+  A transaction row keeps tap-to-edit and passes `onDuplicate` (a manual row whose holding no
+  sync owns; the consumer passes none when the row is synced or `isOnSyncedHolding` holds)
+  and the View actions
   (`use-view-actions`; Home's transaction row). A synced transaction row gets
   the View actions only, and an imported row lists View account, View
   holding and Delete: a hold never opens the delete confirm directly there. `closeAction`
@@ -138,7 +140,8 @@
   dropped and neither overwrites the text nor opens a confirm. A transaction row
   whose source is `import` is deletable but passes NO `onDuplicate` and no other
   action (`isSyncedTransaction` is every non-manual source), so its hold opens
-  the delete confirm directly; only a manual row is duplicable. The imported
+  the delete confirm directly; only a manual row on a holding no sync owns is duplicable
+  (`src/holdings/deletable/deletable.ts`). The imported
   row's confirm needs no boundary read: every delete takes the row's full
   amount back, and the confirm's `removeNotice` states each holding's balance
   change (`transactions.deleteLinked.balanceChange`).
@@ -178,7 +181,8 @@
   (render each hook instance's `closeSheet` once; a screen with two hook
   instances renders both). `account` is the HOLDING's own account,
   read by `isSyncedHolding`; a screen listing the implicit account's
-  holdings passes that row.
+  holdings passes that row. `syncedHoldingIds` (same file as `isSyncedHolding`) feeds both
+  row menus and the holding pickers.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   in SKILL.md before passing it a color.

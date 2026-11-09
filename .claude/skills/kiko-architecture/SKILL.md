@@ -1037,10 +1037,12 @@ Chunk such a chain by term count (`MAX_OR_TERMS` in
 `src/transaction-templates/repo/transaction-templates.repo.ts`).
 
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
-shared `upsertDedupRowsDatabaseTransaction`
-(`src/transactions/repo/transactions.repo.ts`, called by both
-`transactionsRepo.addManyDedup` and, through
-`insertDedupRowsDatabaseTransaction`, `importRows`) — two shared helpers
+shared upsert of dedup rows
+(`src/transactions/repo/transactions.repo.ts`, reached by
+`transactionsRepo.addManyDedup` and `importRows` through the exported
+`addManyDedupDatabaseTransaction` form; a caller that needs a record
+plus its row in one write calls that exported `*DatabaseTransaction`
+form) — two shared helpers
 also chunk a per-row `inArray(...)` select directly at a safe item-count
 margin (the category-rule lookup in `withCategoryRules`, the
 existing-key lookup in `partitionNewRows`), since a one-column `inArray`
@@ -1348,8 +1350,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   rules and the app exports every rule: a restore guard never rejects a state
   the app itself writes.
 - **Every Keychain secret class the export carries is read and restored.**
-  Read `payload.d.ts`'s `ExportSecrets` for the classes it carries: the
-  per-account `monobankTokens` and `binanceCredentials`. The
+  Read `ExportSecrets` in `src/data-transfer/payload.d.ts` for the classes it
+  carries (each is per account). The
   export never carries the SQLCipher DB key at all. Secrets are written only
   with the credentials toggle on. `secrets/read-secrets.ts` reads every class
   from the Keychain (skipping an account with no stored secret) and

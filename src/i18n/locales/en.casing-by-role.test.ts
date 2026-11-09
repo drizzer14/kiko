@@ -57,6 +57,8 @@ const PROPER_NOUNS = new Set([
   "Kiko's",
   'Monobank',
   'Binance',
+  'Bybit',
+  "Bybit's",
   'Bitcoin',
   'Diia',
   'Apple',
@@ -65,6 +67,8 @@ const PROPER_NOUNS = new Set([
   'Settings',
   'Ukrainian',
   'Europe',
+  'Turkey',
+  'Kazakhstan',
   'Mondays',
   'Tuesdays',
   'Wednesdays',
@@ -175,9 +179,42 @@ const BINANCE_PRODUCT_PHRASES = new RegExp(
   'g',
 );
 
-// Blanks every Binance product phrase, so the words inside are not read as sentence text.
+// The Bybit wallet and product names `accountDetail.bybitKinds` and the Bybit footer
+// (`holdingDetail.exchangeNotListed.bybit`) write, the iOS clock labels
+// `bybitClockOff` names, the title of the Synchronization section that `bybitBalancesNotRead`
+// names, and the proper nouns of `bybitKinds` and `bybitForbidden` (a date, a country), as whole
+// phrases for the same reason: "Funding", "Unified" or "Earn" alone would then pass in every en
+// string.
+const BYBIT_PHRASES = new RegExp(
+  `(?:${[
+    'Unified, Funding',
+    'between Funding and Unified',
+    "Funding wallet's",
+    'Unified log entries',
+    'Earn orders',
+    'Funding wallet move',
+    'On Unified',
+    'On Funding',
+    'on Funding',
+    'Earn yield',
+    'an Earn product',
+    "Bybit's Funding",
+    'Funding moves',
+    'Funding move',
+    'Set Automatically',
+    'under Synchronization',
+    'Date & Time',
+    '10 September 2025',
+    'mainland China',
+  ].join('|')})`,
+  'g',
+);
+
+// Blanks every Binance and Bybit product phrase, so the words inside are not read as sentence text.
 const withoutBinanceProductNames = (value: string): string =>
-  value.replace(BINANCE_PRODUCT_PHRASES, (phrase) => ' '.repeat(phrase.length));
+  value
+    .replace(BINANCE_PRODUCT_PHRASES, (phrase) => ' '.repeat(phrase.length))
+    .replace(BYBIT_PHRASES, (phrase) => ' '.repeat(phrase.length));
 
 // Sentence case: a word may be capitalized only at the very start of the
 // string, at the start of a later sentence (after `. ! ? : — -  " “`), when it

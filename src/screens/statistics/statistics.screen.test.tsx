@@ -202,6 +202,7 @@ type Transaction = {
   exchangeCounterpartHoldingId?: string | null;
   untrackedCounterpart?: string | null;
   loanHoldingId?: string | null;
+  source?: string;
 };
 type CategoryRow = { key: string; title: string; icon: string; color?: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
@@ -3458,6 +3459,48 @@ describe('StatisticsScreen — paused while hidden', () => {
     });
 
     expect(mockRunBackfill.mock.calls.length).toBe(callsBefore);
+  });
+});
+
+describe('StatisticsScreen — a Bybit holding on the net-worth line', () => {
+  const READ_AT = localDaysFrom(now, -3);
+  const CRYPTO: Account = { id: 'c', name: 'Bybit', kind: 'crypto', color: null };
+  const BYBIT_COIN: Holding = {
+    id: 'hb',
+    accountId: 'c',
+    currency: 'BTC',
+    type: 'crypto_asset',
+    balanceMinorUnits: 100_000_000,
+    metadata: { bybitAsset: 'BTC:unified', syncedAt: READ_AT, balanceReadAt: READ_AT },
+    closedAt: null,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsScreenVisible.mockReturnValue(true);
+  });
+
+  it("hands each row's id and source to the net-worth line", async () => {
+    const fill = { id: 'f1', holdingId: 'hb', time: localDaysFrom(now, -1) };
+    const manual = { id: 'm1', holdingId: 'hb', time: localDaysFrom(now, -2) };
+
+    setLiveData({
+      accounts: [CRYPTO],
+      holdings: [BYBIT_COIN],
+      transactions: [
+        { ...fill, amountMinorUnits: -20_000_000, source: 'bybit' },
+        { ...manual, amountMinorUnits: 50_000_000, source: 'manual' },
+      ],
+      history: HISTORY,
+    });
+    await renderScreen();
+
+    const input = mockBuildNetWorthSeries.mock.calls.at(-1)?.[0];
+
+    expect(input.transactionsByHolding.get('hb')).toEqual([
+      { id: 'f1', time: fill.time, amountMinorUnits: -20_000_000, source: 'bybit' },
+      { id: 'm1', time: manual.time, amountMinorUnits: 50_000_000, source: 'manual' },
+    ]);
   });
 });
 

@@ -382,7 +382,8 @@ The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `Hold
   ACTION FK), next to the `sync_state` delete. The Accounts screen runs
   it through `writeThenReplan`, so the deleted reminders' pending
   requests go at once. After the commit it also clears the account's own
-  Keychain items (`clearToken`, `clearCredentials`): a failed first
+  Keychain items (the list in `clearKeychainItems`,
+  `src/accounts/accounts.repo.ts`): a failed first
   Connect stores a token or key pair under the account's id while the
   account still reads as manual, so a deletable account can own one. The
   clear never rejects (a failed one is logged): the delete has committed,

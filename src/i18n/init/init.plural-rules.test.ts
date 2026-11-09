@@ -110,6 +110,79 @@ describe('i18n plurals without Intl.PluralRules', () => {
   });
 
   it.each([
+    [1, 'Ключ Bybit діє ще 1 день. Подовжте його на Bybit; ключ лишається той самий.'],
+    [2, 'Ключ Bybit діє ще 2 дні. Подовжте його на Bybit; ключ лишається той самий.'],
+    [5, 'Ключ Bybit діє ще 5 днів. Подовжте його на Bybit; ключ лишається той самий.'],
+    [11, 'Ключ Bybit діє ще 11 днів. Подовжте його на Bybit; ключ лишається той самий.'],
+    [21, 'Ключ Bybit діє ще 21 день. Подовжте його на Bybit; ключ лишається той самий.'],
+    [22, 'Ключ Bybit діє ще 22 дні. Подовжте його на Bybit; ключ лишається той самий.'],
+    [25, 'Ключ Bybit діє ще 25 днів. Подовжте його на Bybit; ключ лишається той самий.'],
+  ])('declines the Bybit key ends soon sentence for %p', async (count, sentence) => {
+    const i18n = await freshI18n('uk');
+
+    expect(i18n.t('accountDetail.bybitKeyEndsSoon', { count })).toBe(sentence);
+  });
+
+  it.each([
+    [
+      1,
+      'Кіко не показав 1 рух коштів у Funding, бо він схожий на вже наявний запис, але не збігається з ним точно.',
+    ],
+    [
+      2,
+      'Кіко не показав 2 рухи коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно.',
+    ],
+    [
+      5,
+      'Кіко не показав 5 рухів коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно.',
+    ],
+    [
+      11,
+      'Кіко не показав 11 рухів коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно.',
+    ],
+    [
+      21,
+      'Кіко не показав 21 рух коштів у Funding, бо він схожий на вже наявний запис, але не збігається з ним точно.',
+    ],
+    [
+      22,
+      'Кіко не показав 22 рухи коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно.',
+    ],
+    [
+      25,
+      'Кіко не показав 25 рухів коштів у Funding, бо вони схожі на вже наявні записи, але не збігаються з ними точно.',
+    ],
+  ])('declines the Bybit Funding moves held sentence for %p', async (count, sentence) => {
+    const i18n = await freshI18n('uk');
+
+    expect(i18n.t('accountDetail.bybitFundingHeld', { count })).toBe(sentence);
+  });
+
+  it.each([
+    [1, 'Bybit key ends in 1 day. Renew it on Bybit; the key stays the same.'],
+    [2, 'Bybit key ends in 2 days. Renew it on Bybit; the key stays the same.'],
+  ])('reads the Bybit key ends soon sentence for %p in English', async (count, sentence) => {
+    const i18n = await freshI18n('en');
+
+    expect(i18n.t('accountDetail.bybitKeyEndsSoon', { count })).toBe(sentence);
+  });
+
+  it.each([
+    [
+      1,
+      'Kiko did not list 1 Funding move, because it looks like a move Kiko already has but does not match it exactly.',
+    ],
+    [
+      2,
+      'Kiko did not list 2 Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+    ],
+  ])('reads the Bybit Funding moves held sentence for %p in English', async (count, sentence) => {
+    const i18n = await freshI18n('en');
+
+    expect(i18n.t('accountDetail.bybitFundingHeld', { count })).toBe(sentence);
+  });
+
+  it.each([
     ['errorAmountNegative', 'Введіть суму від 0.'],
     ['errorAmountWholeOnly', 'Для цієї валюти можна ввести лише цілу суму.'],
     ['errorAmountTooLarge', 'Ця сума завелика.'],

@@ -19,7 +19,9 @@ export type WalkName =
   | 'convert'
   | 'p2p'
   | 'fiatOrders'
-  | 'fiatPayments';
+  | 'fiatPayments'
+  | 'log'
+  | 'fundingLedger';
 
 /** Every mark a walk writes, read from the patch type so a new mark cannot be left out. */
 export type WalkField = WalkMarkPatch['field'];
@@ -33,6 +35,10 @@ export type ExchangeStateSeed = {
   walks: Partial<Record<WalkName, Record<string, unknown>>>;
   oversizedCoins?: { history?: string[] };
   notImported?: string[];
+  logKinds?: string[];
+  denseSpans?: Partial<Record<'log' | 'fundingLedger', number>>;
+  fundingHeld?: number;
+  fundingLeftOut?: true;
   /** Any value, because a test also seeds an unreadable stamp. */
   balanceSyncedAt?: unknown;
 };
@@ -60,6 +66,9 @@ const LISTED_FIELDS: Record<WalkField, true> = {
   multiCoinSince: true,
   multiCoinSeen: true,
   readFailedAt: true,
+  pageIndex: true,
+  cursorReadAt: true,
+  passOwed: true,
 };
 
 const FIELDS = Object.keys(LISTED_FIELDS) as WalkField[];
@@ -73,6 +82,8 @@ export const WALK_NAMES: readonly WalkName[] = [
   'p2p',
   'fiatOrders',
   'fiatPayments',
+  'log',
+  'fundingLedger',
 ];
 
 const isNumberField = (field: WalkField): boolean =>
@@ -192,7 +203,12 @@ const isCoinListPatch = (patch: ExchangeStatePatch): patch is CoinListPatch =>
 const isNotImportedPatch = (patch: ExchangeStatePatch): boolean => patch.kind === 'notImported';
 
 const isListPatch = (patch: ExchangeStatePatch): boolean =>
-  isCoinListPatch(patch) || isNotImportedPatch(patch);
+  isCoinListPatch(patch) ||
+  isNotImportedPatch(patch) ||
+  patch.kind === 'logKinds' ||
+  patch.kind === 'denseSpans' ||
+  patch.kind === 'fundingHeld' ||
+  patch.kind === 'fundingLeftOut';
 
 /** The writes of one call, in the order of its patches: each a little after the call it is in. */
 const writesOfCall = (

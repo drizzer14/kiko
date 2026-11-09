@@ -3,13 +3,16 @@ import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type AmountError,
+  appearMinorUnitsOf,
+  exchangeMinorUnits,
+} from '@kiko/crypto-sync/exchange/amounts';
 import { isRecord } from '@kiko/type-guards';
 import { logFailure } from '@kiko/diagnostics';
-import { curatedCoins } from '@kiko/currency/coins';
-import { type Currency, isCrypto } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
 import either, { bifold, bifoldMap, type Either, isLeft, left, right } from 'fnts/either';
-import { type AmountError, exchangeMinorUnits } from '@kiko/crypto-sync/exchange/amounts';
 import { compareDecimal, decimalFromJsonNumber, normalizeDecimal } from '@kiko/currency/decimal';
 
 import type { BalanceProvider, ProviderBalance } from '../provider';
@@ -302,16 +305,6 @@ const renameOf = (
   wallet: BinanceWallet,
 ): Pick<ProviderBalance, 'renameFromDefaults'> =>
   currency === BINANCE_ASSET ? { renameFromDefaults: PREVIOUS_BTC_HOLDING_NAMES[wallet] } : {};
-
-/** The least balance that creates a holding: a coin's dust threshold, any non-zero fiat balance. */
-const appearMinorUnitsOf = (currency: Currency): number =>
-  isCrypto(currency)
-    ? bifoldMap(
-        exchangeMinorUnits(currency, curatedCoins[currency].dustBelow, 'balance'),
-        () => 1,
-        identity,
-      )
-    : 1;
 
 /** The coins that already have a holding in `wallet`. */
 const heldCoinsOf = (wallet: BinanceWallet, existingKeys: ReadonlySet<string>): Currency[] =>

@@ -3,9 +3,10 @@ import { accountsRepo } from '@kiko/accounts';
 
 import type { BalanceProviderId } from '../provider';
 import { clearCredentials, HISTORY_FLOOR_MS } from '../binance';
+import { BYBIT_RESTART_FLOOR_MS, clearBybitCredentials } from '../bybit';
 
 /**
- * Disconnect a wallet- or Binance-connected account, the required first step
+ * Disconnect a wallet-, Binance- or Bybit-connected account, the required first step
  * before it can be deleted. Mirrors `src/monobank/disconnect/disconnect.ts`. For Binance the DB
  * mutation is `accountsRepo.disconnectExchange`, ONE write that deletes the account's stored
  * funding match rows (none for a Binance account), resets the walk state and
@@ -21,7 +22,7 @@ import { clearCredentials, HISTORY_FLOOR_MS } from '../binance';
  * for Binance: a wallet stores no secret and has no walk state. Clearing is keyed by the
  * account id, so disconnecting one Binance connection never touches another's walk state or
  * credentials. If the DB write throws, the Keychain is left alone and the account stays
- * connected.
+ * connected. Bybit does the same in its own terms: its restart floor, its own Keychain item.
  */
 export const disconnectCryptoAccount = async (
   accountId: string,
@@ -31,6 +32,10 @@ export const disconnectCryptoAccount = async (
     .with('binance', async (exchangeId) => {
       await accountsRepo.disconnectExchange(accountId, exchangeId, HISTORY_FLOOR_MS);
       await clearCredentials(accountId);
+    })
+    .with('bybit', async (exchangeId) => {
+      await accountsRepo.disconnectExchange(accountId, exchangeId, BYBIT_RESTART_FLOOR_MS);
+      await clearBybitCredentials(accountId);
     })
     .with('btc_wallet', () => accountsRepo.disconnect(accountId))
     .exhaustive();

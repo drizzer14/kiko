@@ -9,7 +9,7 @@ import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
  * (Guideline 2.5.19): every entry always renders, and only the affordance differs.
  * `other` is LAST: it names no exchange, so it is added by hand.
  */
-const exchangeCatalogIds = ['binance', 'btc_wallet', 'other'] as const;
+const exchangeCatalogIds = ['binance', 'bybit', 'btc_wallet', 'other'] as const;
 
 export type ExchangeCatalogId = (typeof exchangeCatalogIds)[number];
 
@@ -32,6 +32,12 @@ export const exchangeCatalog: readonly ExchangeCatalogEntry[] = [
   {
     id: 'binance',
     displayName: 'Binance',
+    connectable: true,
+    captionKey: 'forms.account.exchangeConnectable',
+  },
+  {
+    id: 'bybit',
+    displayName: 'Bybit',
     connectable: true,
     captionKey: 'forms.account.exchangeConnectable',
   },

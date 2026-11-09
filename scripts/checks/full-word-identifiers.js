@@ -138,6 +138,12 @@ const EXEMPTIONS = [
     reason: 'msg is the literal field name in a Binance error body {code, msg}',
   },
   {
+    suffix: 'src/crypto-sync/bybit/bybit.client-test-fixtures.ts',
+    word: 'msg',
+    name: 'retMsg',
+    reason: 'retMsg is the literal text field of a Bybit answer {retCode, retMsg, result}',
+  },
+  {
     suffix: 'src/design-system/components/currency-field/currency-field.component.tsx',
     word: 'num',
     name: 'initialNumToRender',
@@ -184,6 +190,30 @@ const EXEMPTIONS = [
     word: 'tx',
     name: 'txId',
     reason: 'fixtures mirror Binance’s literal txId field',
+  },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-test-fixtures.ts',
+    word: 'tx',
+    name: 'txID',
+    reason: 'the internal deposit fixture mirrors the literal txID field of Bybit’s page',
+  },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-test-fixtures.ts',
+    word: 'tx',
+    name: 'exchangeTxId',
+    reason: 'the convert fixtures mirror the literal exchangeTxId field of Bybit’s page',
+  },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-client.convert.test.ts',
+    word: 'tx',
+    name: 'exchangeTxId',
+    reason: 'the convert tests name the literal exchangeTxId field of Bybit’s page',
+  },
+  {
+    suffix: 'src/crypto-sync/bybit/bybit.history-client.ts',
+    word: 'tx',
+    name: 'exchangeTxId',
+    reason: 'the convert reader names the literal exchangeTxId field of Bybit’s page',
   },
 ];
 

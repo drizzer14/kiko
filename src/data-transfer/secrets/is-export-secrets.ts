@@ -13,9 +13,12 @@ const isEveryEntry =
     Array.isArray(value) &&
     value.every((entry) => isRecord(entry) && isText(entry.accountId) && isEntry(entry));
 
+const isEveryKeyPair = isEveryEntry((entry) => isText(entry.apiKey) && isText(entry.secret));
+
 const FIELD_CHECKS: Record<keyof ExportSecrets, (value: unknown) => boolean> = {
   monobankTokens: isEveryEntry((entry) => isText(entry.token)),
-  binanceCredentials: isEveryEntry((entry) => isText(entry.apiKey) && isText(entry.secret)),
+  binanceCredentials: isEveryKeyPair,
+  bybitCredentials: isEveryKeyPair,
 };
 
 /**

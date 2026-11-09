@@ -118,6 +118,17 @@ describe('rowMinorUnits', () => {
     warn.mockRestore();
   });
 
+  it('rounds a full-scale coin half away from zero for a rounded row, and stops the rest as a row does', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(rowMinorUnits('BTC', '0.000000015', 'rounded-row')).toBe(2);
+    expect(rowMinorUnits('BTC', '-0.000000015', 'rounded-row')).toBe(-2);
+    expect(rowMinorUnits('EUR', '1.005', 'rounded-row')).toBe(101);
+    expect(() => rowMinorUnits('BTC', 'x', 'rounded-row')).toThrow(BinanceWalkStop);
+    expect(() => rowMinorUnits('BTC', '90071992.54740992', 'rounded-row')).toThrow(BinanceWalkStop);
+    warn.mockRestore();
+  });
+
   it('is every code of the amount parser that a lane that owes the point lists', () => {
     expect([...AMOUNT_STOP_CODES].sort()).toEqual([
       'amount-malformed',

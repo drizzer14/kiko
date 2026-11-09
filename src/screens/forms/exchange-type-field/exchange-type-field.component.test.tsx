@@ -92,6 +92,30 @@ describe('ExchangeTypeField', () => {
     expect(view.getByText(disclaimer)).toBeTruthy();
   });
 
+  it('the not-affiliated caption shows with Bybit in the sheet, and its en and uk text says so', async () => {
+    const view = await renderOpenSheet();
+
+    expect(view.getByTestId('exchange-type-option-bybit')).toBeTruthy();
+    expect(view.getByText(i18n.t('forms.account.exchangeDisclaimer'))).toBeTruthy();
+    expect(i18n.t('forms.account.exchangeDisclaimer', { lng: 'en' })).toBe(
+      'Kiko is an independent app. It is not affiliated with or endorsed by any exchange or wallet provider.',
+    );
+    expect(i18n.t('forms.account.exchangeDisclaimer', { lng: 'uk' })).toBe(
+      'Кіко — незалежний застосунок. Він не повʼязаний із жодною біржею чи гаманцем і не є їхнім партнером.',
+    );
+  });
+
+  it('names Bybit in plain text, with the API key caption and the connect icon', async () => {
+    const { getByTestId } = await renderOpenSheet();
+
+    expect(getByTestId('exchange-type-option-bybit').props.accessibilityLabel).toBe(
+      'Bybit. Connect with a read-only API key.',
+    );
+    expect(getByTestId('exchange-type-option-bybit-connect-icon').props.name).toBe(
+      'arrow.trianglehead.2.clockwise.rotate.90',
+    );
+  });
+
   it("shows the placeholder until an entry is picked, then the entry's name", async () => {
     const empty = await renderField();
 

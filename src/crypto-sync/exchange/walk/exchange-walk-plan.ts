@@ -12,6 +12,7 @@ import {
   type WalkPlan,
   type WalkResult,
   type WalkWindow,
+  type WindowOutcome,
   walkSpans,
 } from './walk';
 import type { WalkMarkWriter } from './exchange-state-deps';
@@ -47,6 +48,7 @@ export const runExchangeWalkPlan = <Page, Lane extends string, Cost>(input: {
   callsOf?: (window: OwedWindow) => number;
   owedFirst?: boolean;
   readOnPastUnreadableForward?: boolean;
+  outcomeOf?: (pass: WalkPass, window: OwedWindow, outcome: WindowOutcome) => WindowOutcome;
 }): Promise<WalkResult> => {
   const { context, lane, cost, read, commit } = input;
   const { deps, run, accountId, plan, marks, write } = context;
@@ -58,8 +60,8 @@ export const runExchangeWalkPlan = <Page, Lane extends string, Cost>(input: {
     readOnPastUnreadableForward: input.readOnPastUnreadableForward,
     canAfford: (keep) =>
       run.budget.canAfford(lane, cost, keep) && !input.isCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep, hint) =>
-      walkSpans({
+    runWindow: async (window, pass, keep, hint) => {
+      const outcome = await walkSpans({
         window,
         read: (span, keepCalls) => read(window, span, keepCalls),
         commit: (span, page) => commit(window, span, page, pass),
@@ -73,7 +75,10 @@ export const runExchangeWalkPlan = <Page, Lane extends string, Cost>(input: {
             marks,
             write,
           }),
-      }),
+      });
+
+      return input.outcomeOf?.(pass, window, outcome) ?? outcome;
+    },
     isUnreadableWindowError: input.isUnreadableWindowError,
     ...roundRobinHooksOf({ marks, write }),
   });

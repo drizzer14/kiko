@@ -152,7 +152,7 @@ describe.each(WALKS)('the history caption over syncs of a quiet $name walk', ({ 
 
       const stored = await world.freshDeps().readExchangeState(ACCOUNT_ID);
 
-      owing.push(historyOwesRange(parseExchangeState(stored), now));
+      owing.push(historyOwesRange(parseExchangeState(stored), now, 'binance'));
     }
 
     // The walk ran: its cursor moved past the one it started from.

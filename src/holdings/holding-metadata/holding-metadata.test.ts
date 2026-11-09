@@ -13,10 +13,17 @@ import {
   propertyCategoryOf,
   hasStoredBondPurchasePrice,
   syncedAtOf,
+  balanceReadAtOf,
+  datedBalanceSourceOf,
+  datesBalanceOf,
   statementFromOf,
   syncClosedFromOf,
   walletAddressOf,
+  overwrittenRowIdsOf,
+  isOverwrittenRow,
   withCarriedMetadataKeys,
+  BALANCE_READ_AT_FIELD,
+  OVERWRITTEN_ROW_IDS_FIELD,
   type BondMeta,
   type CompoundingFrequency,
   type LoanMeta,
@@ -311,6 +318,110 @@ describe('syncedAtOf', () => {
   });
 });
 
+describe('balanceReadAtOf', () => {
+  it('reads a finite balanceReadAt timestamp, beside a syncedAt that differs', () => {
+    expect(
+      balanceReadAtOf({ bybitAsset: 'BTC:unified', syncedAt: 2_000, balanceReadAt: 1_000 }),
+    ).toBe(1_000);
+  });
+
+  it('returns null when absent, non-numeric or not an object, whatever syncedAt holds', () => {
+    expect(balanceReadAtOf({ bybitAsset: 'BTC:unified', syncedAt: 2_000 })).toBeNull();
+    expect(balanceReadAtOf({ balanceReadAt: '1000' })).toBeNull();
+    expect(balanceReadAtOf({ balanceReadAt: Number.NaN })).toBeNull();
+    expect(balanceReadAtOf(null)).toBeNull();
+  });
+});
+
+describe('datedBalanceSourceOf', () => {
+  it('names the row source of a holding whose key marks a dated balance', () => {
+    expect(datedBalanceSourceOf({ bybitAsset: 'BTC:unified' })).toBe('bybit');
+  });
+
+  it.each([
+    ['a Binance key', { binanceAsset: 'BTC', syncedAt: 1_000 }],
+    ['a Monobank key', { monobankId: 'card-1', syncedAt: 1_000 }],
+    ['a wallet address', { walletAddress: 'bc1q', syncedAt: 1_000 }],
+    ['no source key', { syncedAt: 1_000, balanceReadAt: 1_000 }],
+    ['a key that is not a string', { bybitAsset: 5 }],
+    ['null', null],
+    ['text', 'bybitAsset'],
+  ])('names no source for %s', (_, metadata) => {
+    expect(datedBalanceSourceOf(metadata)).toBeUndefined();
+  });
+});
+
+describe('datesBalanceOf', () => {
+  it('is true for a key on the dated list', () => {
+    expect(datesBalanceOf('bybitAsset')).toBe(true);
+  });
+
+  it.each(['binanceAsset', 'walletAddress', 'monobankId'] as const)(
+    'is false for %s, which is not on the list',
+    (field) => {
+      expect(datesBalanceOf(field)).toBe(false);
+    },
+  );
+});
+
+describe('overwrittenRowIdsOf', () => {
+  it('reads the list of row ids, in order', () => {
+    expect(
+      overwrittenRowIdsOf({ bybitAsset: 'BTC:unified', overwrittenRowIds: ['b', 'a'] }),
+    ).toEqual(['b', 'a']);
+  });
+
+  it('keeps only the strings of a list', () => {
+    expect(overwrittenRowIdsOf({ overwrittenRowIds: ['a', 5, null, 'b', { id: 'c' }] })).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it.each([
+    ['text', 'a'],
+    ['an object', { a: true }],
+    ['a number', 5],
+    ['null', null],
+  ])('reads %s in place of the list as empty', (_, value) => {
+    expect(overwrittenRowIdsOf({ overwrittenRowIds: value })).toEqual([]);
+  });
+
+  it.each([
+    ['no key', { bybitAsset: 'BTC:unified' }],
+    ['null metadata', null],
+    ['text metadata', 'overwrittenRowIds'],
+  ])('reads %s as empty', (_, metadata) => {
+    expect(overwrittenRowIdsOf(metadata)).toEqual([]);
+  });
+});
+
+describe('isOverwrittenRow', () => {
+  it('is true for a listed id on a dated holding', () => {
+    expect(
+      isOverwrittenRow({ bybitAsset: 'BTC:unified', overwrittenRowIds: ['a', 'b'] }, 'b'),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['binanceAsset', 'BTC'],
+    ['walletAddress', 'bc1q'],
+    ['monobankId', 'card-1'],
+  ])('is false for %s, which is not on the list', (field, key) => {
+    expect(isOverwrittenRow({ [field]: key, overwrittenRowIds: ['a'] }, 'a')).toBe(false);
+  });
+
+  it.each([
+    ['an id off the list', { bybitAsset: 'BTC:unified', overwrittenRowIds: ['a'] }],
+    ['no list', { bybitAsset: 'BTC:unified' }],
+    ['a list it cannot read', { bybitAsset: 'BTC:unified', overwrittenRowIds: 'b' }],
+    ['a list of numbers', { bybitAsset: 'BTC:unified', overwrittenRowIds: [5] }],
+    ['null metadata', null],
+  ])('is false for %s', (_, metadata) => {
+    expect(isOverwrittenRow(metadata, 'b')).toBe(false);
+  });
+});
+
 describe('withCarriedMetadataKeys', () => {
   it('carries a sync-owned key from the stored metadata onto the target', () => {
     const target = { monobankId: 'card-1', syncedAt: 2_000 };
@@ -336,6 +447,30 @@ describe('withCarriedMetadataKeys', () => {
     };
 
     expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
+  });
+
+  it('does not carry the balance read time, so a read writes the new one', () => {
+    const target = { bybitAsset: 'BTC:UNIFIED', syncedAt: 2_000, [BALANCE_READ_AT_FIELD]: 2_000 };
+    const stored = { bybitAsset: 'BTC:UNIFIED', syncedAt: 1_000, [BALANCE_READ_AT_FIELD]: 1_000 };
+
+    expect(BALANCE_READ_AT_FIELD).toBe('balanceReadAt');
+    expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
+    expect(withCarriedMetadataKeys({ syncedAt: 2_000 }, stored)).toEqual({ syncedAt: 2_000 });
+  });
+
+  it('does not carry the mark of overwritten rows, so a read writes its own', () => {
+    const target = { bybitAsset: 'BTC:unified', syncedAt: 2_000 };
+    const stored = {
+      bybitAsset: 'BTC:unified',
+      syncedAt: 1_000,
+      [OVERWRITTEN_ROW_IDS_FIELD]: ['row-1'],
+    };
+
+    expect(OVERWRITTEN_ROW_IDS_FIELD).toBe('overwrittenRowIds');
+    expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
+    expect(
+      withCarriedMetadataKeys({ ...target, [OVERWRITTEN_ROW_IDS_FIELD]: ['row-2'] }, stored),
+    ).toEqual({ ...target, [OVERWRITTEN_ROW_IDS_FIELD]: ['row-2'] });
   });
 
   it('leaves the target unchanged when the stored metadata has no sync-owned key', () => {

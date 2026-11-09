@@ -113,6 +113,7 @@ export const en = {
       sources: {
         binance: 'Binance',
         btc_wallet: 'Bitcoin wallet',
+        bybit: 'Bybit',
         import: 'Statement import',
         manual: 'Manual',
         monobank: 'Monobank',
@@ -140,7 +141,7 @@ export const en = {
       exportButton: 'Export data',
       includeSecrets: 'Include saved passwords & keys',
       includeSecretsHint:
-        'Adds your saved Monobank token and Binance API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
+        'Adds your saved Monobank token and Binance and Bybit API keys to the file, so a restore can keep syncing without reconnecting. Turn this off to export only your data.',
       keyLabel: 'Encryption key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
@@ -819,6 +820,10 @@ export const en = {
       selectTemplate: 'Select a template',
       split: 'Split',
       splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
+      syncedCounterpartSaveError:
+        'The holding you selected is synced now, so Kiko cannot add this exchange to it. Select another holding.',
+      syncedHoldingSaveError:
+        'A holding on this form is synced now, so Kiko cannot add a transaction to it.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
       tabManual: 'Manual',
       tabTemplate: 'Template',
@@ -919,6 +924,94 @@ export const en = {
     binanceSyncStillRunning: 'Kiko is still finishing the last Binance sync. Try again later.',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
+    bybit: 'Bybit',
+    bybitApiKeyPlaceholder: 'Bybit API key',
+    bybitApiSecretPlaceholder: 'Bybit API secret',
+    bybitBalancesNotRead: {
+      message:
+        'Kiko could not read some balances on this Bybit account. The lines under Synchronization say which and why.',
+      title: 'Some balances not read',
+    },
+    bybitClockOff:
+      "Bybit refused the request because this device's clock is off. Turn on Set Automatically in Date & Time settings.",
+    bybitCoinBorrowed:
+      '{{coin}}: Bybit shows a loan against this coin, so Kiko does not read its balance. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
+    bybitCoinOpenOrder:
+      '{{coin}}: Bybit may hold part of this coin for an open order, so Kiko does not read its balance now. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.',
+    bybitCoinRefused:
+      "{{coin}}: Kiko could not read this coin's amounts from Bybit, so it left the coin out. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.",
+    bybitComplianceRefused:
+      'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
+    bybitConnected: 'Bybit connected',
+    bybitConnectLimits:
+      'Kiko works only with global Bybit accounts (bybit.com). It does not support Bybit EU accounts, and an account of another regional Bybit site (Turkey, Kazakhstan and others) may not work here. On your main account, create a read-only key with every read box ticked and no IP restriction. Bybit ends such a key after about 90 days; you renew it on Bybit, and the key and secret stay the same.',
+    bybitForbidden:
+      'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits before trying again, up to 10 minutes.',
+    // English defines every plural form so both catalogues carry the same keys.
+    bybitFundingHeld_one:
+      'Kiko did not list {{count}} Funding move, because it looks like a move Kiko already has but does not match it exactly.',
+    bybitFundingHeld_few:
+      'Kiko did not list {{count}} Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+    bybitFundingHeld_many:
+      'Kiko did not list {{count}} Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+    bybitFundingHeld_other:
+      'Kiko did not list {{count}} Funding moves, because they look like moves Kiko already has but do not match them exactly.',
+    bybitFundingNoId: 'Bybit gave some Funding moves no ID, so Kiko did not list them.',
+    bybitHistoryDense:
+      'Bybit lists too many records within one second on {{date}}. Kiko cannot read past them, so later trades or Funding moves stay out, and the past of your net worth can be off by those amounts.',
+    bybitKeychainDisclosure:
+      "Your Bybit API key is stored only in your device's Keychain, used only to fetch your own data directly from Bybit, and is never sent to Kiko or any server.",
+    bybitKeyEnded:
+      'Bybit key ended on {{date}}. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    // English defines every plural form so both catalogues carry the same keys.
+    bybitKeyEndsSoon_one:
+      'Bybit key ends in {{count}} day. Renew it on Bybit; the key stays the same.',
+    bybitKeyEndsSoon_few:
+      'Bybit key ends in {{count}} days. Renew it on Bybit; the key stays the same.',
+    bybitKeyEndsSoon_many:
+      'Bybit key ends in {{count}} days. Renew it on Bybit; the key stays the same.',
+    bybitKeyEndsSoon_other:
+      'Bybit key ends in {{count}} days. Renew it on Bybit; the key stays the same.',
+    bybitKeyExpiryUnknown:
+      'Kiko could not read when this Bybit key ends. A key with no IP restriction lasts about 90 days.',
+    bybitKeyMissingPermission:
+      'This key cannot read everything Kiko needs. Tick every read box Bybit offers for this key, or create a new read-only key with all of them, then connect again.',
+    bybitKeyNotMain:
+      'Bybit does not show this key as a main account key. Create a read-only key on your main Bybit account and connect with that one.',
+    bybitKeyNotReadOnly:
+      'This key can do more than read. Create a read-only key on Bybit and connect with that one.',
+    bybitKeyOtherAccount:
+      'This key is from a different Bybit account. Holdings from the Bybit account connected here before are still on this account. Add a new crypto account for this key, or delete those holdings first.',
+    bybitKeyRefused:
+      'Bybit refused this key. If you deleted it, create a new key, then disconnect and connect again.',
+    bybitKeyRefusedExpired:
+      'Bybit no longer accepts this key. Its term of about 90 days may have ended. Try to renew it on Bybit: the key and secret then stay the same, so you do not enter them again. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    bybitKeyRejected:
+      'Bybit did not accept this key. Check the key and the secret. Kiko works only with global Bybit accounts: it does not support Bybit EU accounts, and a key from another regional site may not be accepted here.',
+    bybitKeyValidUntil: 'Bybit key ends on {{date}}.',
+    // The first sentences are the kinds Kiko reads; the rest is what stays wrong.
+    bybitKinds:
+      "Kiko reads your balances (Unified, Funding), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet's record. It does not read P2P orders, derivatives or loans. Earn is not read, so money there is not in your balance. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses, airdrops, loans, stocks, card purchases and rewards, or moves to a sub-account. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit's Funding record lists them, and a move that looks like one it already has stays out. Kiko can also rarely count a move twice. The past of your net worth can be off by those amounts.",
+    bybitLogKind: {
+      bonuses: 'bonuses and airdrops',
+      convertEntries: 'convert and liquidation entries',
+      custody: 'custody entries',
+      derivatives: 'derivatives',
+      earn: 'Earn moves',
+      interestAndLoans: 'interest and loans',
+      other: 'other entries',
+      stocks: 'stocks',
+    },
+    bybitLogLeftOut: 'Unified log entries not imported: {{kinds}}.',
+    bybitMissingBalances: 'Bybit account response did not contain a balances list',
+    bybitRequestFailed: 'Bybit request failed: {{code}}',
+    bybitRequestFailedNoCode: 'Bybit request failed.',
+    bybitSyncDetails: 'Sync details',
+    bybitSyncStillRunning: 'Kiko is still finishing the last Bybit sync. Try again later.',
+    bybitWalletNotRead:
+      'Kiko could not read {{wallet}} in the last sync, so it did not update that balance. A balance shown here is from an earlier sync. With no earlier sync, money there is not in your balance.',
+    bybitWalletRefused:
+      "Bybit refused this key for {{wallet}}, so Kiko did not update that balance. Check the key's permissions on Bybit.",
     changeBankAction: 'Change bank',
     changeExchangeAction: 'Change exchange or wallet',
     checking: 'Checking…',
@@ -933,6 +1026,7 @@ export const en = {
       "It leaves your accounts and stops counting against your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
     closeLoanTitle: 'Close Loan "{{name}}"',
     connectBinance: 'Connect Binance',
+    connectBybit: 'Connect Bybit',
     connectedAs: 'Connected as {{name}}',
     connectExchangeAction: 'Connect an exchange or wallet',
     // The crypto `ProviderSheet` header — a sheet title, Title Case — kept separate from
@@ -941,6 +1035,7 @@ export const en = {
     connectMonobank: 'Connect Monobank',
     connectWallet: 'Connect wallet',
     couldNotConnectBinance: 'Could not connect Binance',
+    couldNotConnectBybit: 'Could not connect Bybit',
     couldNotConnectMonobank: 'Could not connect Monobank',
     couldNotConnectWallet: 'Could not connect wallet',
     couldNotSaveCredentials: 'Could not save credentials',
@@ -952,6 +1047,8 @@ export const en = {
     disconnectProvider: 'Disconnect {{provider}}',
     disconnectProviderMessage: {
       binance:
+        'This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot.',
+      bybit:
         'This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot.',
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
@@ -965,6 +1062,8 @@ export const en = {
       'Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync.',
     exchangeP2pReadFailed:
       '{{exchange}} P2P orders could not be read on the last sync. Kiko will try again on the next sync.',
+    exchangeSwitchRefused:
+      '{{exchange}} cannot connect here because this account still has holdings from another exchange or wallet. Add a new crypto account, or delete those holdings first.',
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
@@ -981,6 +1080,7 @@ export const en = {
     monobankTokenPlaceholder: 'Monobank token',
     never: 'Never',
     noBinanceCredentials: 'No Binance credentials stored; connect Binance before syncing.',
+    noBybitCredentials: 'No Bybit credentials stored; connect Bybit before syncing.',
     noConnectionFound: 'No {{name}} connection found',
     noMonobankConnection: 'No Monobank account connected',
     noMonobankToken: 'No Monobank token found; connect an account before syncing.',
@@ -995,6 +1095,7 @@ export const en = {
     },
     noWalletAddressStored: 'No wallet address stored; connect a wallet before syncing.',
     openBinanceLink: 'Open Binance API management',
+    openBybitLink: 'Open Bybit API management',
     openMonobankLink: 'Open api.monobank.ua',
     oversizedAmount: '{{coin}}: Kiko could not import an amount exactly, so it was skipped.',
     pasteApiKey: 'Paste API key from clipboard',
@@ -1009,7 +1110,7 @@ export const en = {
     tryAgainMessage: 'Please try again.',
     unsupportedCurrencyCode: 'Unsupported Monobank currency code: {{code}}.',
     untrackedCoins:
-      'Not tracked: {{tickers}}. Kiko does not import a currency its Binance sync does not support.',
+      'Not tracked: {{tickers}}. Kiko does not import a currency its {{exchange}} sync does not support.',
     wallet: 'Wallet',
     walletAddressRequiredError: 'Enter a wallet address.',
     walletConnected: 'Wallet connected',
@@ -1047,6 +1148,8 @@ export const en = {
     exchangeNotListed: {
       binance:
         'Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot.',
+      bybit:
+        "Not listed: interest, bonuses, airdrops and other Unified log entries that are not spot trades; converts made on the website or in the app before 10 September 2025; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; derivatives profit and loss; loans; sub-accounts; and records older than two years. Earn is not read, so money there is not in your balance. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. A spot trade's amount already holds its fee. A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted.",
     },
     expectedProfit: 'Expected profit',
     // A priced type's (property, metal) breakdown gain row: gross value minus
@@ -1235,7 +1338,7 @@ export const en = {
           '1': 'On the "Accounts" tab, tap "Add account".',
           '2': 'Choose the account kind: bank, cash, crypto, property, metals, debt, or broker.',
           '3': 'Enter a name. Cash needs a currency and an initial value; a bank account needs its bank.',
-          '4': 'Optional: connect Monobank with a token, Binance with an API key, or Bitcoin with a wallet address.',
+          '4': 'Optional: connect Monobank with a token, Binance or Bybit with an API key, or Bitcoin with a wallet address.',
           '5': 'For other banks, open the account, tap "Import statement", and choose a CSV or XLSX file from your bank.',
         },
         title: 'Add an Account',
@@ -1285,15 +1388,16 @@ export const en = {
         title: 'Set Categories Automatically',
       },
       connectCrypto: {
-        rowLabel: 'Connect Binance or a Bitcoin wallet',
+        rowLabel: 'Connect Binance, Bybit or a Bitcoin wallet',
         steps: {
           '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Crypto".',
-          '2': 'Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet".',
+          '2': 'Under "Exchange or wallet", choose "Binance", "Bybit" or "Bitcoin wallet".',
           '3': 'For Binance, tap "Open Binance API management" and create an API key there with only "Enable Reading" turned on (no trading or withdrawal permission). Paste the "API key" and "API secret", then tap "Connect Binance".',
-          '4': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
-          '5': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
+          '4': 'For Bybit: Kiko works only with global accounts (bybit.com). It does not support Bybit EU accounts, and a key from another regional site may not be accepted. Tap "Open Bybit API management" and, on your main account, create a read-only key with every read box offered ticked and no IP restriction. Paste the "API key" and "API secret", then tap "Connect Bybit". Bybit ends the key after about 90 days; renew it there before that date, and the key stays the same. Kiko reads your balances (Unified, Funding), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet\'s record. It does not read P2P orders, derivatives or loans. Earn is not read, so money there is not in your balance. Bybit\'s deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses, airdrops, loans, stocks, card purchases and rewards, or moves to a sub-account. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit\'s Funding record lists them, and a move that looks like one it already has stays out. Kiko can also rarely count a move twice. The past of your net worth can be off by those amounts.',
+          '5': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
+          '6': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
         },
-        title: 'Connect Binance or a Bitcoin Wallet',
+        title: 'Connect Binance, Bybit or a Bitcoin Wallet',
       },
       connectMonobank: {
         rowLabel: 'Connect Monobank',
@@ -1311,7 +1415,7 @@ export const en = {
         steps: {
           '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
           '2': 'Tap it, make your changes, and tap "Save". If you changed the category, choose "Apply" to use it for every transaction with that name, or "Just for this one". In a synced or imported transaction, you can change only the category and the loan link.',
-          '3': 'Touch and hold a transaction, then tap "View account" or "View holding" to open that page. On the page of the holding the transaction belongs to, of the two, only "View account" is offered. On a transaction you added or imported, tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
+          '3': 'Touch and hold a transaction, then tap "View account" or "View holding" to open that page. On the page of the holding the transaction belongs to, of the two, only "View account" is offered. On a transaction you added or imported, tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now, unless its holding is synced.',
         },
         title: 'Edit, Duplicate, or Delete a Transaction',
       },
@@ -1436,6 +1540,10 @@ export const en = {
   statistics: {
     accountContribution: 'Account Contribution',
     byType: 'By Type',
+    // The line under the net-worth chart while a Bybit account is in scope: what that account's
+    // past cannot hold, and the rule for a coin Kiko could not read.
+    bybitPastLimits:
+      "Bybit: the past of this line can be off. Kiko cannot read every move: P2P credits, Earn yield and stakes, interest, bonuses, loans, stocks, card spending, sub-account moves and derivatives, or anything older than two years. It can also rarely count a move twice. Your current balances are not affected. The account's details say more. A coin Kiko could not read stays on this line at its last read balance, or stays off it with no earlier sync.",
     // The "Debts" total shown under the account pie — a debt's own
     // negative held value, rendered through MoneyText.
     debtsTotal: 'Debts',
@@ -1565,7 +1673,8 @@ export const en = {
     defaultDescriptionExpensePlain: 'Expense',
     defaultDescriptionIncomePlain: 'Income',
     // The delete confirm's body: a sentence per other part of the movement the
-    // transaction belongs to, then `balanceChange`, which every delete carries.
+    // transaction belongs to, then `balanceChange`, which a delete carries unless a read of a
+    // dated balance overwrote the row.
     // No plurals: the holding names are the only variable, joined by the caller
     // (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
@@ -1613,6 +1722,8 @@ export const en = {
     cardSale: 'Sale to card ({{currency}})',
     bankDeposit: 'Bank deposit ({{currency}})',
     bankWithdrawal: 'Bank withdrawal ({{currency}})',
+    // A listed Funding ledger row: Bybit's own text for it is never stored or shown.
+    fundingLedgerMove: 'Funding wallet move',
     // The same movement when both sides hold one currency: an own-wallet move,
     // not an exchange. Also names a wallet Kiko does not track.
     transferFrom: 'Transfer from {{name}}',
@@ -1626,6 +1737,9 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    bybitCredentialsField: {
+      connectionDetails: 'Connection details',
+    },
     currencyField: {
       groups: {
         target: 'Holding currency',

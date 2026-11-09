@@ -15,7 +15,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { isRecord } from '@kiko/type-guards';
 import { holdingInstrument } from '@kiko/prices/instrument';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { isWalletHoldingInstitution } from '@kiko/holdings/wallet-holding-institution';
 
@@ -39,6 +39,8 @@ import {
   STATEMENT_FROM_FIELD,
   SYNC_CLOSED_FROM_FIELD,
   DEFAULT_NAME_RENAME_FIELD,
+  OVERWRITTEN_ROW_IDS_FIELD,
+  datedBalanceSourceOf,
   isDefaultNameRenameSettled,
   withCarriedMetadataKeys,
 } from '../holding-metadata';
@@ -182,6 +184,31 @@ const insertSyncedHolding = async (
     .values({ id: id(), ...rest, metadata: merged, sortOrder });
 };
 
+// The mark of a read on a dated balance (`datedBalanceSourceOf`): the ids of the holding's rows
+// that are not of the syncing source, read in the upsert's own transaction, so the list and the
+// balance it describes are written together. The read's figure replaces the balance, so a row the
+// user typed before it has no part in the line above it (`rowsHeldByBalance`). A holding off
+// the dated list returns before any read, and a read with no such row returns no key.
+const overwrittenRowsPatch = async (
+  databaseTransaction: typeof database,
+  holdingId: string,
+  merged: Record<string, unknown>,
+): Promise<Record<string, string[]>> => {
+  const datedSource = datedBalanceSourceOf(merged);
+
+  if (datedSource === undefined) {
+    return {};
+  }
+
+  const rows = await databaseTransaction
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.holdingId, holdingId), ne(transactions.source, datedSource)))
+    .orderBy(asc(transactions.id));
+
+  return rows.length === 0 ? {} : { [OVERWRITTEN_ROW_IDS_FIELD]: rows.map((row) => row.id) };
+};
+
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
 // a miss. The holding's name is written on insert and otherwise preserved on
@@ -213,6 +240,10 @@ const insertSyncedHolding = async (
 // rows (`deleted_import_keys`): the bank's balance written here is the new anchor
 // and already holds what the user deleted. The sync clears the keys but never
 // reads them, so it never revives a row.
+//
+// The update branch of a holding on the dated list (Bybit) also replaces the list of overwritten
+// row ids (`overwrittenRowsPatch`), never joins it to the stored one. A holding off that list reads
+// no row and gets no key. A new holding has no row, so the insert branch writes none either.
 //
 // The known limit (a holding closed before the mark existed stays closed) is
 // stated on `reconcileClosedHoldings` in the Monobank sync.
@@ -249,7 +280,10 @@ const upsertByMetadataKey = async (
       (renameFromDefaults ?? []).includes(current.name);
     const syncClosedFrom = syncClosedFromOf(current.metadata);
     const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
-    const carried = withCarriedMetadataKeys(merged, current.metadata);
+    const carried = {
+      ...withCarriedMetadataKeys(merged, current.metadata),
+      ...(await overwrittenRowsPatch(databaseTransaction, current.id, merged)),
+    };
     await databaseTransaction
       .update(holdings)
       .set({
@@ -791,7 +825,7 @@ export const holdingsRepo = {
    * from its transactions. `createHoldingValuer`
    * (statistics/holding-value-at/holding-value-at.ts) back-derives each
    * holding's opening balance as
-   * `currentBalance - sum(allTransactions)`, so a bare `set({ balanceMinorUnits })`
+   * `currentBalance - sum(rows that count)`, so a bare `set({ balanceMinorUnits })`
    * retroactively shifted the ENTIRE historical net-worth series by the delta,
    * with no ledger row to explain it, and left the holding-detail transaction
    * list unable to reconcile with its own displayed Value.
@@ -824,7 +858,8 @@ export const holdingsRepo = {
    * `transactions.setsBalance`: this edit is now the holding's current set.
    * An older set's row keeps its mark, which only keeps a closing import from
    * counting it twice (`postClosingRowsWhere`): its edit and its delete move the
-   * balance by its amount, like any row's. The same non-zero delta also forgets
+   * balance by its amount, like any row's, unless a read of a dated balance overwrote
+   * the row (`isOverwrittenRow`). The same non-zero delta also forgets
    * every kept key of the holding's deleted import rows, in the same write: the
    * hand-set balance is the new anchor and already holds what was deleted, so an
    * older statement imported later must not bring a deleted row back on top of it.

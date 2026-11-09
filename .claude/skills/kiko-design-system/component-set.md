@@ -330,9 +330,9 @@ new component can land between reviews of this skill:
 
   **The paste-icon-only ghost Button convention.** A field that reads
   the system clipboard (the Monobank token entry, both legs of the
-  Binance API key/secret entry, the crypto wallet-address field —
-  `src/design-system/components/monobank-token-input/`,
-  `binance-credentials-field/`, `wallet-address-field/`) pairs its
+  Binance and Bybit API key/secret entry, the crypto wallet-address field —
+  `src/design-system/components/monobank-token-input/`, `exchange-key-form/`,
+  `binance-credentials-field/`, `bybit-credentials-field/`, `wallet-address-field/`) pairs its
   `TextField` with an icon-only trailing `Button`:
   `variant="ghost"`, `size="small"`, `fullWidth={false}`,
   `icon="document.on.clipboard"`, `textColor={theme.colors.textSecondary}`,

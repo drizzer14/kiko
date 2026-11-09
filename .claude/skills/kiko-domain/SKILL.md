@@ -122,7 +122,8 @@ absent** — this skill states the shape and non-enum facts only:
   in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
   `pendingAccountId` and nothing about the row; the remounted form asks the
   write queue (`usePendingRowLock`) before it unlocks the kind and bank
-  picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`)
+  picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`,
+  `BybitCredentialsField`, and the shared `ExchangeKeyForm`)
   never calls its connect callback once it is unmounted (`useIsMounted`),
   and stores nothing when it unmounts before the Keychain write: a token
   checked before a fold or a kind/bank switch is not stored, and the user
@@ -164,8 +165,10 @@ absent** — this skill states the shape and non-enum facts only:
   section) — a dedicated format still wins whenever it
   actually matches. `bankId` is deliberately **never read** by
   `isSyncedAccount`/`isSyncedHolding`
-  (`src/holdings/deletable/`) or any provider-registry lookup — those
-  stay keyed on `institution` alone, so tagging an account
+  (`src/holdings/deletable/deletable.ts`) or any provider-registry lookup.
+  `isSyncedAccount` reads `institution` alone; `isSyncedHolding` reads
+  `institution`, then the key that `syncedMetadataFieldOf` names for it.
+  So tagging an account
   `bankId: 'privatbank'` can never make it look connected. This is the
   Guideline 2.5.19 invariant (see `guidelines-compliance-is-architecture-rule`
   in memory): never wire a picker selection into a connected-ness
@@ -362,7 +365,9 @@ through one of them:
 
 Why it matters concretely: `createHoldingValuer`
 (`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a
-holding's opening balance as `currentBalance - sum(allTransactions)`, so a
+holding's opening balance from `currentBalance` and the rows that count (see
+`rowsHeldByBalance` in that file; a holding with a dated balance drops some rows, every other
+holding counts all of them), so a
 balance written
 without its ledger row retroactively shifts the ENTIRE historical
 net-worth series by that amount, and the holding-detail transaction list
@@ -398,7 +403,11 @@ by the difference of the amounts) and EVERY delete (`remove`, a cascaded part, a
 holding's partner) move the stored balance by the row's full amount, in its own
 holding's currency, whatever the row's date, source or mark: a back-dated row,
 an imported row, an opening-balance or hand-edit row (`setsBalance`) included.
-There is no manual boundary and no re-date guard. A delete moves the balance
+There is no manual boundary and no re-date guard. One exception: a row that a
+dated balance's last read overwrote (`isOverwrittenRow`; only a holding that
+`datedBalanceSourceOf` names keeps such a list) moves NO balance on edit, delete or cascade, and the
+delete confirm names no move (`balanceChangesOf`, `src/transactions/repo/transactions.repo.ts`).
+A delete moves the balance
 only: `balanceSetAt` stays and no bank figure is stored, so deleting every row
 of an import ends on the statement's opening balance. Only an IMPORT still
 judges its rows against the boundary, the later of `holdings.balanceSetAt` and
@@ -448,6 +457,17 @@ direction live in `src/holdings/exchange-convert/` (`canConvertToExchange`,
 works: its receive path `contribution` writes metadata, not a row. The
 transaction form's split change-return picker offers only
 `isTransactionEligibleType` holdings, the same gate as the primary picker.
+
+**A manual write also refuses a holding a sync owns.**
+`refuseSyncedHoldingDatabaseTransaction` (`src/transactions/repo/transactions.repo.ts`) throws
+`SYNCED_HOLDING_REFUSAL` (`src/holdings/deletable/deletable.ts`) when the holding carries a
+sync key (`hasSyncedKey`) and `isSyncedHolding` holds. `hasSyncedKey` takes any key and is
+only a cheap test before the account read; `isSyncedHolding` wants the key of the account's
+CURRENT provider, so an earlier provider's key reads as manual. The throw rolls back the whole
+write, an `alongside` write included. The transaction form shows
+`forms.transaction.syncedHoldingSaveError`
+(`forms.transaction.syncedCounterpartSaveError` for the counterpart). Read the gate in
+`deletable.ts`; copy no rule from here.
 
 **A balance-set row is a STORED mark, not a date.** Every row whose amount
 set the balance (an opening balance, a cash opening, a hand edit) carries
@@ -859,7 +879,7 @@ why this is the deliberate exception to functional-first). It holds
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
   or float column. Exception: `funding_match_rows` `amount`, `fee`, `tax`
-  are TEXT, because rule 51 compares `normalizeDecimal` text and no scale
+  are TEXT, because rule 51 compares the amount key (CALL 134) and no scale
   is known per coin (O70). Convert to/from `Money` at the repository
   boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
   through `holdingsRepo.balanceOf(row): Money`, never a direct
@@ -1683,7 +1703,9 @@ contributes to the LINE's past but never to a current snapshot.
 Invariant: the LAST net-worth bucket always equals
 `guardedNetWorth(open holdings, now)` — the number Home shows. Pinned by
 `net-worth-series.test.ts` ("ends on the net worth Home shows for a bond,
-a lot holding, and a closed holding").
+a lot holding, and a closed holding"). For a holding with a dated balance the series
+sums only the rows that count (see `rowsHeldByBalance` in
+`src/statistics/holding-value-at/holding-value-at.ts`), so the same invariant rests on that list.
 
 `reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
 `.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same

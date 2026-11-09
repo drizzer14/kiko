@@ -202,3 +202,53 @@ describe('createHoldingValuer', () => {
     expect(optimizedReadCounter.reads).toBeLessThan(referenceReadCounter.reads * 0.05);
   });
 });
+
+describe('createHoldingValuer against a holding with a sync stamp', () => {
+  const ONE_COIN = 100_000_000;
+  const FIFTH_OF_A_COIN = 20_000_000;
+
+  const coinHolding = (
+    balanceMinorUnits: number,
+    metadata: SeriesHolding['metadata'],
+  ): SeriesHolding => ({
+    id: 'coin1',
+    currency: 'BTC',
+    type: 'crypto_asset',
+    balanceMinorUnits,
+    metadata,
+    closedAt: null,
+  });
+
+  it('a Binance holding counts every row against its balance, with a row after its stamp', () => {
+    const holding = coinHolding(ONE_COIN, { binanceAsset: 'BTC', syncedAt: T0 });
+    const valueAt = createHoldingValuer(holding, [transaction(1, -FIFTH_OF_A_COIN)]);
+
+    expect(valueAt(T0)).toBe(ONE_COIN + FIFTH_OF_A_COIN);
+    expect(valueAt(T0 + DAY_MS)).toBe(ONE_COIN);
+  });
+
+  it('a Binance holding at zero with no stamp opens below zero by its earlier buy', () => {
+    const holding = coinHolding(0, { binanceAsset: 'BTC' });
+    const valueAt = createHoldingValuer(holding, [transaction(0, ONE_COIN)]);
+
+    expect(valueAt(T0 - DAY_MS)).toBe(-ONE_COIN);
+    expect(valueAt(T0)).toBe(0);
+  });
+
+  it.each([
+    ['monobankId', { monobankId: 'c1', syncedAt: T0 }],
+    ['walletAddress', { walletAddress: 'bc1qexample', syncedAt: T0 }],
+    ['no source key', { syncedAt: T0 }],
+  ])('a holding of any other source counts every row, whatever its metadata: %s', (_, metadata) => {
+    const holding = coinHolding(ONE_COIN, metadata);
+    const transactions = [transaction(1, -FIFTH_OF_A_COIN)];
+    const valueAt = createHoldingValuer(holding, transactions);
+
+    for (const t of [T0, T0 + DAY_MS]) {
+      expect(valueAt(t)).toBe(referenceHoldingValueAt(holding, transactions, t));
+    }
+
+    expect(valueAt(T0)).toBe(ONE_COIN + FIFTH_OF_A_COIN);
+    expect(valueAt(T0 + DAY_MS)).toBe(ONE_COIN);
+  });
+});

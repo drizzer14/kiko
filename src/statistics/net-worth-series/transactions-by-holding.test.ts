@@ -1,27 +1,50 @@
 import { transactionsByHolding } from '.';
 
 describe('transactionsByHolding', () => {
-  it('groups the rows under their holding, each as a time and a signed amount', () => {
-    // A ledger row carries more than the three fields the series reads.
+  it('groups the rows under their holding, each as an id, a time, a signed amount and a source', () => {
+    // A ledger row carries more than the four fields the series reads.
     const rows = [
-      { holdingId: 'card', time: 10, amountMinorUnits: -500, description: 'left out' },
-      { holdingId: 'cash', time: 20, amountMinorUnits: 700, description: 'left out' },
-      { holdingId: 'card', time: 30, amountMinorUnits: 200, description: 'left out' },
+      {
+        id: 'a',
+        holdingId: 'card',
+        time: 10,
+        amountMinorUnits: -500,
+        source: 'manual' as const,
+        description: 'left out',
+      },
+      {
+        id: 'b',
+        holdingId: 'cash',
+        time: 20,
+        amountMinorUnits: 700,
+        source: 'bybit' as const,
+        description: 'left out',
+      },
+      {
+        id: 'c',
+        holdingId: 'card',
+        time: 30,
+        amountMinorUnits: 200,
+        source: 'bybit' as const,
+        description: 'left out',
+      },
     ];
     const grouped = transactionsByHolding(rows);
 
     expect([...grouped.keys()]).toEqual(['card', 'cash']);
     expect(grouped.get('card')).toEqual([
-      { time: 10, amountMinorUnits: -500 },
-      { time: 30, amountMinorUnits: 200 },
+      { id: 'a', time: 10, amountMinorUnits: -500, source: 'manual' },
+      { id: 'c', time: 30, amountMinorUnits: 200, source: 'bybit' },
     ]);
-    expect(grouped.get('cash')).toEqual([{ time: 20, amountMinorUnits: 700 }]);
+    expect(grouped.get('cash')).toEqual([
+      { id: 'b', time: 20, amountMinorUnits: 700, source: 'bybit' },
+    ]);
   });
 
   it('keeps the order the rows came in', () => {
     const grouped = transactionsByHolding([
-      { holdingId: 'card', time: 30, amountMinorUnits: 1 },
-      { holdingId: 'card', time: 10, amountMinorUnits: 2 },
+      { id: 'a', holdingId: 'card', time: 30, amountMinorUnits: 1, source: 'manual' },
+      { id: 'b', holdingId: 'card', time: 10, amountMinorUnits: 2, source: 'manual' },
     ]);
 
     expect(grouped.get('card')?.map((row) => row.time)).toEqual([30, 10]);

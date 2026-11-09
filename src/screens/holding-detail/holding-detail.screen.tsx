@@ -7,6 +7,7 @@ import {
 } from '@kiko/db';
 import {
   isSyncedHolding,
+  syncedHoldingIds,
   isSyncedTransaction,
   isDeletableTransaction,
 } from '@kiko/holdings/deletable';
@@ -459,10 +460,13 @@ type LedgerRowContext = {
   // A loan's counted linked payments, by transaction id; empty for every other holding.
   linkedBreakdowns: ReadonlyMap<string, LinkedPaymentBreakdown>;
   onPressTransaction: (transactionId: string) => void;
-  // Duplicate this ledger row into a pre-filled create form. Passed for
-  // manual rows only (a synced row is not duplicable), stateless via the
-  // `duplicateOfTransactionId` route param.
+  // Duplicate this ledger row into a pre-filled create form. Passed for manual rows on a holding
+  // no sync owns only (a synced row is not duplicable, and a holding a sync owns takes no new
+  // row), stateless via the `duplicateOfTransactionId` route param.
   onDuplicateTransaction: (transactionId: string) => void;
+  // Whether the holding a row is stored on is owned by a sync right now. By the row's own holding,
+  // never the page's: a loan's linked payment is stored on its payer.
+  isOnSyncedHolding: (rowHoldingId: string) => boolean;
   // The row's "open its account / its holding" actions, by the holding the row is stored on.
   viewActionsFor: ReturnType<typeof useViewActions>;
   lotActions: LotActions | undefined;
@@ -522,6 +526,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     linkedBreakdowns,
     onPressTransaction,
     onDuplicateTransaction,
+    isOnSyncedHolding,
     viewActionsFor,
     lotActions,
   } = context;
@@ -598,9 +603,9 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // touch-and-hold that opens the shared card context menu (see
       // `CardContextMenu`), the same long-press pattern the account/holding
       // cards use. Every row lists View account (and View holding, unless the
-      // row is on this very holding); a manual row adds Duplicate and Delete,
-      // an imported row Delete. A synced (Monobank) row is not deletable (its
-      // state is owned by the sync), so its hold lists the View actions only.
+      // row is on this very holding); a manual row adds Duplicate (unless its holding is
+      // synced now) and Delete, an imported row Delete. A synced (Monobank) row is not
+      // deletable (its state is owned by the sync), so its hold lists the View actions only.
       const { onViewAccount, onViewHolding } = viewActionsFor(transactionRow.transaction.holdingId);
 
       return (
@@ -613,11 +618,13 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
             removeNotice(await transactionsRepo.removePlan(transactionRow.transaction.id), t)
           }
           onDelete={() => transactionsRepo.remove(transactionRow.transaction.id)}
-          // A synced or imported row is not duplicable — pass no handler so its
-          // long-press offers the View actions and, where deletable, Delete, but no Duplicate.
-          // A manual row's Duplicate opens the create form pre-filled from this row.
+          // A synced or imported row is not duplicable, and neither is a manual row on a holding
+          // a sync owns (its copy would be refused at save) — pass no handler so its long-press
+          // offers the View actions and, where deletable, Delete, but no Duplicate. Any other
+          // manual row's Duplicate opens the create form pre-filled from this row.
           onDuplicate={
-            isSyncedTransaction(transactionRow.transaction)
+            isSyncedTransaction(transactionRow.transaction) ||
+            isOnSyncedHolding(transactionRow.transaction.holdingId)
               ? undefined
               : () => onDuplicateTransaction(transactionRow.transaction.id)
           }
@@ -953,6 +960,16 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     holdings,
     accounts: [...accounts, ...accountList],
   });
+  // The holdings a sync owns right now, read from the same accounts as the View actions: a loan's
+  // linked payment is stored on its payer, whose account is in `accountList`.
+  const syncedIds = useMemo(
+    () =>
+      syncedHoldingIds(
+        holdings,
+        new Map([...accounts, ...accountList].map((candidate) => [candidate.id, candidate])),
+      ),
+    [holdings, accounts, accountList],
+  );
   // The empty-transactions text, the footer add action, and the Value header
   // must never render while any of this screen's own queries is still on its
   // first load (kiko-architecture's useLiveQuery consumer rule) — gated below,
@@ -1131,6 +1148,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { duplicateOfTransactionId: transactionId }),
+    isOnSyncedHolding: (rowHoldingId) => syncedIds.has(rowHoldingId),
     viewActionsFor,
     lotActions: buildLotActions(holding, navigation, t),
   };

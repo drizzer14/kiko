@@ -19,6 +19,7 @@ describe('transactions.source enum', () => {
       'monobank',
       'btc_wallet',
       'binance',
+      'bybit',
       'import',
     ]);
   });

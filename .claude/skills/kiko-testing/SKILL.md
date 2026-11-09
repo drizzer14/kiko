@@ -86,6 +86,11 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   `expectNavBarSaveOnly`).
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
   account form test; `pick-category.ts`: picks a category from the field's bottom sheet.
+- `mockKeyPairField` (`src/screens/forms/account-form/account-form.screen.test.tsx`): mocks the
+  exchange key-pair fields through one factory, named by exchange. A new exchange field is one
+  more `jest.mock` line. Some suites still mock inline (for example the
+  connect test in `src/screens/account-detail/crypto-sync-section/`); at the
+  first duplicate move the factory to a shared helper.
 - `held-currencies.ts`: the currencies the user holds, for a screen that renders a currency
   picker; `saved-reminder.ts`: an active daily reminder row; `permission-notice-cases.ts`: the
   shared notification-permission notice cases.
@@ -190,7 +195,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   handle that drives it and updates each.
 - A `jest.mock` factory replaces the whole module. When an import rewrite makes production code
   resolve a function through a partially mocked module (`holdingsRepo.balanceOf` via the barrel),
-  add that function to the factory; never widen the mock to the real module.
+  add that function to the factory; never put real code into a mock factory to dodge a missing
+  function. A spread of `jest.requireActual(...)` that overrides named exports on purpose is
+  allowed (see `src/crypto-sync/bybit/bybit.capital-history.empty-plan.test.ts`).
   A mock must target the module that holds the call site. After you extract code,
   re-point each mock of a function that the moved code calls from a sibling file
   (a mock on the barrel `exchange/walk` missed `runWalkPlan`, which
@@ -244,6 +251,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - After a hook is extracted out of a screen, a green suite on the hook alone does not prove the
   screen wires every one of the hook's outputs to a prop. Add a screen-level integration test (or
   a manual "does every hook field reach a prop" pass) in the SAME change as the extraction.
+- A walk law or call-count table: derive each floor from the code (windows plus the pages of a
+  short last window), never copy it from a measure; pin a MEASURED value only after a run. A fix
+  can hide the red of an earlier fix, so keep a twin test that fails alone beside each fix (see
+  the 3-day twin in `src/crypto-sync/bybit/bybit.convergence.test.ts`).
 
 ## Mutant-aware tests
 
@@ -269,6 +280,11 @@ test from being decorative.
 - A counted-work pin counts the work itself (sort comparisons, calls of the inner function), not
   reads on input rows: a copy of a field hides later reads. See
   `src/recurring/detection/detection.performance.test.ts`.
+- A fake of a limited route refuses what the server refuses (its refusal code), so a width fault
+  turns the suite red. A window-limit pin runs from a clock inside a second, not on a whole one.
+- A burst or edge seed derives from the window geometry (the halving edges move with the width),
+  never from a shift by a fixed number of seconds. After a width change, re-seed by geometry and
+  check that no earlier pin went vacuous.
 - A hook memo over several live reads is gated on readiness, and its pin settles the reads one
   at a time, so a half-loaded set is seen to run nothing. See
   `src/recurring/use-recurring-series/use-recurring-series.test.tsx`.
@@ -295,6 +311,8 @@ test from being decorative.
 - A walk world needs a moving clock: a fixed-clock world hid a reset bug in `headFirstGroundOf`.
   Run it at gaps of 0, one hour and one day, and pin the cases that need the clock to move (a head
   held across runs).
+- A new law needs a mutant of its own fix that turns it red, shown in the report: a bound copied
+  from the old law can stay green with the fix removed.
 - A red commit for a missing export or field reads it by a runtime lookup so the file type-checks;
   after the green, tidy the lookup into a typed import or field.
 - When a rule changes, include a DISCRIMINATING case where the old and new rules disagree; a
@@ -464,7 +482,10 @@ fragment. Exception: a test that pins REMOVED wording has no key to derive from 
 gone). A typed fragment is the only form there. Keep it, and add the positive twin on the
 replacement text (`src/help/help-topics.test.ts`). Add a positive twin that finds the same text
 in the case where it must be there, so the matcher is proven to match. After any reword,
-grep the old fragment across `src/` and the tests.
+grep the old fragment across `src/` and the tests. An absence assert also never pins a fixed
+date or value it does not need: match the key text before the `{{date}}` slot with a partial
+match, so a line with another date is still caught (the dense-line key in
+`src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.bybit.test.tsx`).
 
 ## A subset matcher never holds a Set or a Map
 

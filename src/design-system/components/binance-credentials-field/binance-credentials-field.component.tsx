@@ -1,27 +1,17 @@
+import type { FC } from 'react';
 import {
-  type BinanceCredentials,
   type BinanceWriteToken,
   fetchAccount,
   isBinanceCoolingDown,
   saveCredentials,
 } from '@kiko/crypto-sync/binance';
-import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
+import either, { bifoldMap } from 'fnts/either';
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
-import { type FC, useEffect, useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
-import { useIsMounted } from '@kiko/design-system/use-is-mounted';
 import { isBinanceSyncRunning } from '@kiko/crypto-sync/run-crypto-sync';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
-import Box from '../box';
-import Text from '../text';
-import Button from '../button';
-import InfoHint from '../info-hint';
-import ClipboardTextField from '../clipboard-text-field';
-import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
-
-import { styles } from './binance-credentials-field.styles';
+import ExchangeKeyForm from '../exchange-key-form';
 
 type BinanceCredentialsFieldProps = {
   // The account this field's credentials belong to. The pair is a PER-ACCOUNT
@@ -45,42 +35,10 @@ type BinanceCredentialsFieldProps = {
   onStoredWhileUnmounted?: (stored: BinanceWriteToken) => Promise<void>;
 };
 
-type Field = 'apiKey' | 'secret';
-
-type StoreOutcome =
-  | { kind: 'saveError' }
-  | { kind: 'unmounted' }
-  | { kind: 'stored'; token: BinanceWriteToken }
-  | { kind: 'storedWhileUnmounted'; token: BinanceWriteToken };
-
-// Stores a verified pair unless the field is gone, and says whether the connect may go on. A fold
-// or a kind switch removes the field during the check or the write. Gone before the write, nothing
-// is stored: a key under an account id nothing connects would be left behind. Gone during the
-// write, the pair is stored and its write token is reported through onStoredWhileUnmounted, because
-// the screen that owns the account decides its fate. Either way connecting is skipped: it would
-// insert the account row after the form that replaced this one already decided what to write.
-const storePair = async (
-  accountId: string,
-  credentials: BinanceCredentials,
-  isMounted: () => boolean,
-): Promise<StoreOutcome> => {
-  if (!isMounted()) {
-    return { kind: 'unmounted' };
-  }
-
-  try {
-    const token = await saveCredentials(accountId, credentials);
-
-    return isMounted() ? { kind: 'stored', token } : { kind: 'storedWhileUnmounted', token };
-  } catch {
-    return { kind: 'saveError' };
-  }
-};
-
 // The Binance counterpart of the Monobank token field: two secure inputs for a
-// read-only ("Enable Reading" only) key pair. Connect verifies the pair with one
-// account call BEFORE it is written to the biometric Keychain, then runs the
-// first sync. The pair never leaves this component except into `fetchAccount` (the check) and
+// read-only ("Enable Reading" only) key pair, over the shared `ExchangeKeyForm`. Connect verifies
+// the pair with one account call BEFORE it is written to the biometric Keychain, then runs the
+// first sync. The pair never leaves the form except into `fetchAccount` (the check) and
 // `saveCredentials`; the callbacks get only the token of that write.
 const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   accountId,
@@ -89,172 +47,38 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   onStoredWhileUnmounted,
 }) => {
   const { t } = useTranslation();
-  const [apiKey, setAPIKey] = useState('');
-  const [secret, setSecret] = useState('');
-  const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
-  // Shown only after a Connect press finds either field blank — Connect is
-  // always enabled now (kiko-code-style's form validation model), so this
-  // gates each field's OWN required reason (computed from only its own
-  // value) rather than a standing disabled state.
-  const [attemptedConnect, setAttemptedConnect] = useState(false);
-  const apiKeyError =
-    attemptedConnect && apiKey.trim() === '' ? t('accountDetail.apiKeyRequiredError') : undefined;
-  const secretError =
-    attemptedConnect && secret.trim() === '' ? t('accountDetail.secretRequiredError') : undefined;
-  const onDraftChange = reminder?.onDraftChange;
-  const isMounted = useIsMounted();
 
-  // The typed pair goes with the field, so a draft it reported must not outlive it.
-  useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
-
-  // Also runs on a clipboard paste (`ClipboardTextField` calls it with the
-  // already-trimmed pasted value), so typing and pasting reset the stale
-  // status identically.
-  const setField = (field: Field, value: string): void => {
-    if (field === 'apiKey') {
-      setAPIKey(value);
-    } else {
-      setSecret(value);
-    }
-
-    setStatus({ kind: 'idle' });
-
-    // Either input alone is a draft, so the other one's current text counts too.
-    const otherValue = field === 'apiKey' ? secret : apiKey;
-    onDraftChange?.(value.trim() !== '' || otherValue.trim() !== '');
-  };
-
-  const handleOpenBinance = (): void => {
-    Linking.openURL(BINANCE_API_MANAGEMENT_URL);
-  };
-
-  const connectStoredPair = async (token: BinanceWriteToken): Promise<void> => {
-    const connected = await onConnect(token);
-
-    if (connected) {
-      // A connected pair is not an unsaved draft; editing it again makes it one.
-      onDraftChange?.(false);
-    }
-
-    setStatus(
-      connected
-        ? { kind: 'success', message: t('accountDetail.binanceConnected') }
-        : { kind: 'saveError', message: t('accountDetail.couldNotConnectBinance') },
+  // Any failure of the account call reads as a pair Binance did not accept.
+  const verifyPair = async (apiKey: string, secret: string): Promise<string | undefined> =>
+    bifoldMap(
+      await either<unknown, unknown>(() => fetchAccount(apiKey, secret)),
+      (): string | undefined => t('accountDetail.invalidApiKeyOrSecret'),
+      (): string | undefined => undefined,
     );
-  };
-
-  const handleConnect = (): void => {
-    reminder?.onConnectPress();
-
-    if (apiKey.trim() === '' || secret.trim() === '') {
-      setAttemptedConnect(true);
-
-      return;
-    }
-
-    // A cooling account makes no request: the sync would skip quietly and the field would report a
-    // connection it never read.
-    if (isBinanceCoolingDown(accountId, Date.now())) {
-      setStatus({ kind: 'saveError', message: t('accountDetail.binanceCoolingDown') });
-
-      return;
-    }
-
-    // A running sync of this account holds the pair of an earlier connection, and the sync's join
-    // would hand this Connect that run: it would report a connection it never read.
-    if (isBinanceSyncRunning(accountId)) {
-      setStatus({ kind: 'saveError', message: t('accountDetail.binanceSyncStillRunning') });
-
-      return;
-    }
-
-    setStatus({ kind: 'checking' });
-    // Every step catches into a status, and onConnect (the shared sync action) never rejects.
-    // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
-    (async () => {
-      try {
-        await fetchAccount(apiKey, secret);
-      } catch {
-        setStatus({ kind: 'invalid', message: t('accountDetail.invalidApiKeyOrSecret') });
-
-        return;
-      }
-
-      const stored = await storePair(accountId, { apiKey, secret }, isMounted);
-
-      await match(stored)
-        .with({ kind: 'saveError' }, async () =>
-          setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') }),
-        )
-        .with({ kind: 'storedWhileUnmounted' }, async ({ token }) =>
-          onStoredWhileUnmounted?.(token),
-        )
-        .with({ kind: 'unmounted' }, async () => undefined)
-        .with({ kind: 'stored' }, async ({ token }) => connectStoredPair(token))
-        .exhaustive();
-    })();
-  };
 
   return (
-    <Box gap={3}>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={t('accountDetail.openBinanceLink')}
-        onPress={handleOpenBinance}
-        style={styles.linkPressable}
-      >
-        <Text variant="body" tone="accent">
-          {t('accountDetail.openBinanceLink')}
-        </Text>
-      </Pressable>
-
-      <ClipboardTextField
-        label={t('accountDetail.apiKeyLabel')}
-        value={apiKey}
-        onChangeText={(value) => setField('apiKey', value)}
-        placeholder={t('accountDetail.binanceApiKeyPlaceholder')}
-        pasteAccessibilityLabel={t('accountDetail.pasteApiKey')}
-        secureTextEntry
-        error={apiKeyError}
-      />
-
-      <ClipboardTextField
-        label={t('accountDetail.apiSecretLabel')}
-        value={secret}
-        onChangeText={(value) => setField('secret', value)}
-        placeholder={t('accountDetail.binanceApiSecretPlaceholder')}
-        pasteAccessibilityLabel={t('accountDetail.pasteApiSecret')}
-        secureTextEntry
-        error={secretError}
-      />
-
-      {/* Guideline 5.1.1 / 5.1.2 data-handling disclosure: the key pair never leaves the
-          device except straight to Binance's own API. */}
-      <Text variant="caption" tone="textSecondary">
-        {t('accountDetail.binanceKeychainDisclosure')}
-      </Text>
-
-      <View ref={reminder?.ref}>
-        <Box gap={2}>
-          <Box direction="row" gap={2} style={styles.statusLine}>
-            <Button
-              variant="secondaryTonal"
-              size="small"
-              fullWidth={false}
-              onPress={handleConnect}
-              disabled={status.kind === 'checking'}
-              icon="lock"
-            >
-              {t('accountDetail.connectBinance')}
-            </Button>
-
-            <SyncStatusLine status={status} />
-          </Box>
-
-          {reminder?.message !== undefined && <InfoHint message={reminder.message} />}
-        </Box>
-      </View>
-    </Box>
+    <ExchangeKeyForm
+      accountId={accountId}
+      onConnect={onConnect}
+      reminder={reminder}
+      onStoredWhileUnmounted={onStoredWhileUnmounted}
+      managementUrl={BINANCE_API_MANAGEMENT_URL}
+      copy={{
+        openLink: t('accountDetail.openBinanceLink'),
+        apiKeyPlaceholder: t('accountDetail.binanceApiKeyPlaceholder'),
+        apiSecretPlaceholder: t('accountDetail.binanceApiSecretPlaceholder'),
+        disclosure: t('accountDetail.binanceKeychainDisclosure'),
+        connect: t('accountDetail.connectBinance'),
+        connected: t('accountDetail.binanceConnected'),
+        couldNotConnect: t('accountDetail.couldNotConnectBinance'),
+        coolingDown: t('accountDetail.binanceCoolingDown'),
+        syncStillRunning: t('accountDetail.binanceSyncStillRunning'),
+      }}
+      isCoolingDown={isBinanceCoolingDown}
+      isSyncRunning={isBinanceSyncRunning}
+      verify={verifyPair}
+      save={saveCredentials}
+    />
   );
 };
 

@@ -1,8 +1,10 @@
+import { match } from 'ts-pattern';
 import {
   type BalanceProviderId,
   isBalanceProviderId,
   providerDisplayName,
 } from '@kiko/crypto-sync/provider';
+import { formatDate } from '@kiko/dates';
 import { type FC, useState } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
 import {
@@ -12,9 +14,20 @@ import {
   visibleExchangeEntries,
 } from '@kiko/crypto-sync/exchange-catalog';
 import { useTranslation } from 'react-i18next';
+import {
+  type NotImportedKind,
+  type ParsedExchangeState,
+  parseExchangeState,
+} from '@kiko/crypto-sync/exchange/walk-state';
 import { syncStateRepo } from '@kiko/sync-state';
 import {
+  balanceNotesOf,
   balanceSyncedAtOf,
+  denseSpansOf,
+  fundingHeldOf,
+  fundingLeftOutOf,
+  keyExpiryOf,
+  logKindsOf,
   type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,
@@ -29,15 +42,16 @@ import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
-import { isTrackedBinanceAsset } from '@kiko/crypto-sync/binance';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import NoticeBanner from '@kiko/design-system/components/notice-banner';
+import ExpandToggle from '@kiko/design-system/components/expand-toggle';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
-import { type NotImportedKind, parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
+import { type BybitLogKind, keyExpiryStateOf, walletLabelOf } from '@kiko/crypto-sync/bybit';
 
 import ProviderSheet from '../provider-sheet';
 import { styles } from '../account-detail.styles';
@@ -45,12 +59,16 @@ import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestBalanceSyncAt } from '../format-last-sync';
 
 import {
+  hasExchangeHistory,
+  hasKeyLines,
   historyOwesRange,
   historyOwesTrades,
   isBinanceHistoryBehind,
+  isTrackedAssetOf,
   p2pReadFailed,
   walkCursorsOf,
 } from './binance-history-status';
+import { conflictingExchangeHoldings, keepsBybitHoldings } from './conflicting-exchange-holdings';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
@@ -61,17 +79,17 @@ type CryptoSyncSectionProps = {
 const disconnectMessage = (providerId: BalanceProviderId, t: TFunction): string | undefined =>
   foldMap(maybe(exchangeProviderRegistry[providerId]), (entry) => t(entry.disconnectMessageKey));
 
-type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[] };
+type CoinLinesProps = { untrackedCoins: string[]; oversizedCoins: string[]; exchange: string };
 
 // Split out of the section so its own branches stay under the complexity budget.
-const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins }) => {
+const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins, exchange }) => {
   const { t } = useTranslation();
 
   return (
     <>
       {untrackedCoins.length > 0 && (
         <Text variant="caption" tone="textSecondary">
-          {t('accountDetail.untrackedCoins', { tickers: untrackedCoins.join(', ') })}
+          {t('accountDetail.untrackedCoins', { tickers: untrackedCoins.join(', '), exchange })}
         </Text>
       )}
 
@@ -81,6 +99,236 @@ const CoinLines: FC<CoinLinesProps> = ({ untrackedCoins, oversizedCoins }) => {
         </Text>
       ))}
     </>
+  );
+};
+
+type KeyLinesProps = {
+  provider: BalanceProviderId;
+  /** The state row is still on its first load, so no stored fact can be stated yet. */
+  loading: boolean;
+  walkState: ParsedExchangeState;
+};
+
+// The end of the key in one of its four states, under the last sync line. It reads the stored
+// date against the clock; all four states use the one caption tone. Split out of the section so
+// its own branches stay under the complexity budget.
+const KeyExpiryLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+
+  if (loading || !hasKeyLines(provider)) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {match(keyExpiryStateOf(keyExpiryOf(walkState), Date.now()))
+        .returnType<string>()
+        .with({ state: 'far' }, ({ endsAtMs }) =>
+          t('accountDetail.bybitKeyValidUntil', { date: formatDate(endsAtMs) }),
+        )
+        .with({ state: 'near' }, ({ daysLeft }) =>
+          t('accountDetail.bybitKeyEndsSoon', { count: daysLeft }),
+        )
+        .with({ state: 'expired' }, ({ endsAtMs }) =>
+          t('accountDetail.bybitKeyEnded', { date: formatDate(endsAtMs) }),
+        )
+        .with({ state: 'unknown' }, () => t('accountDetail.bybitKeyExpiryUnknown'))
+        .exhaustive()}
+    </Text>
+  );
+};
+
+// The coin names its wallet: the same coin can be set aside in one wallet and held in another.
+const coinLabelOf = ({ wallet, coin }: { wallet: string; coin: string }): string =>
+  `${coin} (${walletLabelOf(wallet)})`;
+
+// What the last balance reads left out: a coin set aside for a loan or an open order, a coin Bybit
+// sent in a shape that could not be read, a wallet the key was refused for or that was not read.
+// Split out like `CoinLines`.
+const BalanceNotesLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+
+  if (loading || !hasKeyLines(provider)) {
+    return null;
+  }
+
+  const { borrowed, openOrder, refusedCoins, refusedWallets, notReadWallets } =
+    balanceNotesOf(walkState);
+
+  return (
+    <>
+      {borrowed.map((note) => (
+        <Text key={coinLabelOf(note)} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinBorrowed', { coin: coinLabelOf(note) })}
+        </Text>
+      ))}
+
+      {openOrder.map((note) => (
+        <Text key={coinLabelOf(note)} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinOpenOrder', { coin: coinLabelOf(note) })}
+        </Text>
+      ))}
+
+      {refusedCoins.map((note) => (
+        <Text key={coinLabelOf(note)} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitCoinRefused', { coin: coinLabelOf(note) })}
+        </Text>
+      ))}
+
+      {refusedWallets.map((wallet) => (
+        <Text key={wallet} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitWalletRefused', { wallet: walletLabelOf(wallet) })}
+        </Text>
+      ))}
+
+      {notReadWallets.map((wallet) => (
+        <Text key={wallet} variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitWalletNotRead', { wallet: walletLabelOf(wallet) })}
+        </Text>
+      ))}
+    </>
+  );
+};
+
+type LeftOutLogKind = Exclude<BybitLogKind, 'spotTrade' | 'coveredElsewhere'>;
+
+// The kinds of log entry the log walk names and does not import. Keyed by the kind, so a kind that
+// is added or renamed fails the type check here. A kind the stored list holds that this build does
+// not name is left out of the line.
+const logKindCopyKeys: Record<LeftOutLogKind, ParseKeys> = {
+  derivatives: 'accountDetail.bybitLogKind.derivatives',
+  convertEntries: 'accountDetail.bybitLogKind.convertEntries',
+  interestAndLoans: 'accountDetail.bybitLogKind.interestAndLoans',
+  bonuses: 'accountDetail.bybitLogKind.bonuses',
+  earn: 'accountDetail.bybitLogKind.earn',
+  stocks: 'accountDetail.bybitLogKind.stocks',
+  custody: 'accountDetail.bybitLogKind.custody',
+  other: 'accountDetail.bybitLogKind.other',
+};
+
+// The order of the closed list.
+const LOG_KIND_ORDER: readonly LeftOutLogKind[] = [
+  'derivatives',
+  'convertEntries',
+  'interestAndLoans',
+  'bonuses',
+  'earn',
+  'stocks',
+  'custody',
+  'other',
+];
+
+// The entries of the transaction log the last reads met and did not import. Split out like
+// `CoinLines`.
+const LogLeftOutLine: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+  const met = logKindsOf(walkState);
+  const kinds = LOG_KIND_ORDER.filter((kind) => met.includes(kind)).map((kind) =>
+    t(logKindCopyKeys[kind]),
+  );
+
+  if (loading || !hasKeyLines(provider) || kinds.length === 0) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {t('accountDetail.bybitLogLeftOut', { kinds: kinds.join(', ') })}
+    </Text>
+  );
+};
+
+// The Funding moves the last reconcile held back for looking like a move Kiko already has, and the
+// ledger rows Bybit gave no id. Both are standing facts of the stored state. Split out like
+// `CoinLines`.
+const FundingLines: FC<KeyLinesProps> = ({ provider, loading, walkState }) => {
+  const { t } = useTranslation();
+  const heldCount = fundingHeldOf(walkState);
+
+  if (loading || !hasKeyLines(provider)) {
+    return null;
+  }
+
+  return (
+    <>
+      {heldCount > 0 && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitFundingHeld', { count: heldCount })}
+        </Text>
+      )}
+
+      {fundingLeftOutOf(walkState) && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitFundingNoId')}
+        </Text>
+      )}
+    </>
+  );
+};
+
+type HistoryCaptionProps = KeyLinesProps & { isBehind: boolean; exchange: string };
+
+// The caption under the lines of a history that is not whole. A burst of records inside one second
+// that a read cannot pass stands in place of the pending caption, whose "will keep importing" does
+// not hold there. Its mark is a standing fact of the last run, so it needs no lag. Split out of the
+// section so its own branches stay under the complexity budget.
+const HistoryCaption: FC<HistoryCaptionProps> = ({
+  provider,
+  loading,
+  walkState,
+  isBehind,
+  exchange,
+}) => {
+  const { t } = useTranslation();
+  const [denseSince] = Object.values(denseSpansOf(walkState))
+    .filter((start): start is number => typeof start === 'number')
+    .sort((first, second) => first - second);
+
+  if (!loading && hasKeyLines(provider) && denseSince !== undefined) {
+    return (
+      <Text variant="caption" tone="textSecondary">
+        {t('accountDetail.bybitHistoryDense', { date: formatDate(denseSince) })}
+      </Text>
+    );
+  }
+
+  if (!isBehind) {
+    return null;
+  }
+
+  return (
+    <Text variant="caption" tone="textSecondary">
+      {t('accountDetail.exchangeHistoryPending', { exchange })}
+    </Text>
+  );
+};
+
+// What Kiko reads of the exchange and what it leaves out. It states no stored fact, so it needs no
+// loaded state. The text is long, so it renders only once the shared toggle opens it; the toggle
+// stays above it, so it does not move when the text appears.
+const KindsLine: FC<Pick<KeyLinesProps, 'provider'>> = ({ provider }) => {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+
+  if (!hasKeyLines(provider)) {
+    return null;
+  }
+
+  return (
+    <Box gap={1}>
+      <ExpandToggle
+        expanded={expanded}
+        onPress={() => setExpanded((isExpanded) => !isExpanded)}
+        collapsedLabel={t('accountDetail.bybitSyncDetails')}
+        testID="bybit-kinds-toggle"
+      />
+
+      {expanded && (
+        <Text variant="caption" tone="textSecondary">
+          {t('accountDetail.bybitKinds')}
+        </Text>
+      )}
+    </Box>
   );
 };
 
@@ -120,8 +368,10 @@ const NotImportedLine: FC<NotImportedLineProps> = ({ counts, exchange }) => {
 
 type ConnectExchangeProps = {
   account: AccountRow;
+  holdings: HoldingRow[];
   onConnectWallet: (address: string) => Promise<boolean>;
   onConnectBinance: () => Promise<boolean>;
+  onConnectBybit: () => Promise<boolean>;
 };
 
 // The bank section's "Add a bank" pattern for a crypto account: the provider's field directly when
@@ -130,8 +380,10 @@ type ConnectExchangeProps = {
 // own branches stay under the complexity budget.
 const ConnectExchange: FC<ConnectExchangeProps> = ({
   account,
+  holdings,
   onConnectWallet,
   onConnectBinance,
+  onConnectBybit,
 }) => {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<ExchangeCatalogId | undefined>(undefined);
@@ -146,6 +398,12 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
     label: exchangeLabelOf(entry, t),
     captions: [t(entry.captionKey)],
   }));
+  // The pick is refused, and its form never shown, while the account keeps another provider's
+  // holdings: a disconnect keeps their keys, so they would read as synced with no sync behind
+  // them.
+  const isRefused =
+    shownId !== undefined && conflictingExchangeHoldings(shownId, holdings).length > 0;
+  const shownLabel = providerSheetEntries.find((entry) => entry.id === shownId)?.label ?? '';
 
   return (
     <>
@@ -161,12 +419,21 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
         </Button>
       ) : (
         <Box gap={2}>
-          <CryptoSyncForm
-            accountId={account.id}
-            source={shownId}
-            onConnectWallet={onConnectWallet}
-            onConnectBinance={onConnectBinance}
-          />
+          {isRefused ? (
+            <NoticeBanner
+              message={t('accountDetail.exchangeSwitchRefused', { exchange: shownLabel })}
+              testID="exchange-switch-refused"
+            />
+          ) : (
+            <CryptoSyncForm
+              accountId={account.id}
+              source={shownId}
+              onConnectWallet={onConnectWallet}
+              onConnectBinance={onConnectBinance}
+              onConnectBybit={onConnectBybit}
+              keepsBybitHoldings={keepsBybitHoldings(holdings)}
+            />
+          )}
 
           {/* Hidden when the bank id itself names the provider: the live bank id would put the
               same pick straight back, so pressing it would visibly change nothing. */}
@@ -238,6 +505,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   const connectBinance = (): Promise<boolean> =>
     connectThenReplan({ providerId: 'binance', targetAccountId: account.id });
 
+  const connectBybit = (): Promise<boolean> =>
+    connectThenReplan({ providerId: 'bybit', targetAccountId: account.id });
+
   const runDisconnect = async (providerId: BalanceProviderId): Promise<void> => {
     try {
       await disconnectCryptoAccount(account.id, providerId);
@@ -266,21 +536,21 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   };
 
   if (connectedProvider !== undefined) {
-    // Only Binance imports a separate transaction history behind the balance —
+    // Only an exchange imports a separate transaction history behind the balance —
     // a wallet's balance IS the whole synced picture, so it never lags. Hidden
     // while a sync is in flight: `syncedAt` moves the instant the balance leg
     // commits, but the history walk's own cursor only catches up a few seconds
     // later (a SEPARATE, slower step), so the caption would otherwise flash on
     // every sync after more than a day away.
+    const exchangeHistory = hasExchangeHistory(connectedProvider);
     const walkState = parseExchangeState(syncStateRows.at(0)?.exchangeState ?? null);
     // A state this build cannot read pauses the history (the run starts no walk on it), and its
     // caption replaces the "behind" one: a null cursor of such a state would read as behind. It is
     // a standing fact of the stored state, not a lag a sync closes, so a sync in flight keeps it.
-    const historyPaused =
-      !syncStateLoading && connectedProvider === 'binance' && walkState.kind === 'malformed';
+    const historyPaused = !syncStateLoading && exchangeHistory && walkState.kind === 'malformed';
     // The coin lines state what the last read found, so a sync in flight keeps them; a state that
     // is malformed holds no list, and a wallet has none.
-    const coinLinesShown = !syncStateLoading && connectedProvider === 'binance';
+    const coinLinesShown = !syncStateLoading && exchangeHistory;
     // An account with no tracked holding has no holding stamp, so the state's stamp is its sync
     // time; a wallet's state holds none, so it reads its holdings alone.
     const lastBalanceSyncAt = latestBalanceSyncAt(holdings, balanceSyncedAtOf(walkState));
@@ -288,11 +558,11 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
       !isSyncing &&
       !syncStateLoading &&
       !historyPaused &&
-      connectedProvider === 'binance' &&
+      exchangeHistory &&
       isBinanceHistoryBehind({
-        cursors: walkCursorsOf(walkState),
+        cursors: walkCursorsOf(walkState, connectedProvider),
         lastBalanceSyncAt,
-        owesRange: historyOwesRange(walkState, lastBalanceSyncAt),
+        owesRange: historyOwesRange(walkState, lastBalanceSyncAt, connectedProvider),
         tradesUnread: historyOwesTrades(walkState),
       });
 
@@ -315,10 +585,17 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           </Box>
 
+          <KeyExpiryLine
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
+
           {coinLinesShown && (
             <CoinLines
-              untrackedCoins={untrackedCoinsOf(walkState, isTrackedBinanceAsset)}
+              untrackedCoins={untrackedCoinsOf(walkState, isTrackedAssetOf(connectedProvider))}
               oversizedCoins={oversizedCoinsOf(walkState)}
+              exchange={providerDisplayName(connectedProvider, t)}
             />
           )}
 
@@ -328,6 +605,24 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               exchange={providerDisplayName(connectedProvider, t)}
             />
           )}
+
+          <LogLeftOutLine
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
+
+          <FundingLines
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
+
+          <BalanceNotesLines
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+          />
 
           {historyPaused && (
             <Text variant="caption" tone="textSecondary">
@@ -347,13 +642,15 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
             </Text>
           )}
 
-          {historyBehind && (
-            <Text variant="caption" tone="textSecondary">
-              {t('accountDetail.exchangeHistoryPending', {
-                exchange: providerDisplayName(connectedProvider, t),
-              })}
-            </Text>
-          )}
+          <HistoryCaption
+            provider={connectedProvider}
+            loading={syncStateLoading}
+            walkState={walkState}
+            isBehind={historyBehind}
+            exchange={providerDisplayName(connectedProvider, t)}
+          />
+
+          <KindsLine provider={connectedProvider} />
 
           {/* Sync and Disconnect share a single row — the shared
               SyncDisconnectActionsRow (both the neutral `secondaryTonal`
@@ -401,8 +698,10 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
       <ConnectExchange
         account={account}
+        holdings={holdings}
         onConnectWallet={connectWallet}
         onConnectBinance={connectBinance}
+        onConnectBybit={connectBybit}
       />
 
       {error !== undefined && (

@@ -245,6 +245,8 @@ string:
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence. A Binance
   product or wallet name is a whole PHRASE in `BINANCE_PRODUCT_PHRASES` (same en file), never a
   single word added to `PROPER_NOUNS`: "Card" or "Spot" alone would then pass in every string.
+  A Bybit phrase is a whole phrase in `BYBIT_PHRASES` (same en file), never a word in
+  `PROPER_NOUNS`.
   "Enable Reading" (Binance's own API-key permission label, quoted by the connectCrypto help
   step) is also in `BINANCE_PRODUCT_PHRASES` (`src/i18n/locales/en.casing-by-role.test.ts`).
   Untracked-wallet product names (`UNTRACKED_WALLETS`,
@@ -401,10 +403,11 @@ and `*Hint` keys always end "." (`*Message` also allows "?"); a
 `kindSubtitle.*` path always
 ends "."; and a value shaped like a plain `"Label: {{value}}"`
 fragment (no "." in the label part) never ends "." either, except the
-DECISION's one named exception (`accountDetail.unsupportedCurrencyCode`,
-which keeps its period on purpose — an explicit allow-list entry, not
-a pattern gap). Each of these is a safe, already-verified name/path/
-value-based check for its own role — unlike the Title role, a
+entries of `LABEL_VALUE_ALLOWLIST` in
+`src/i18n/locales/en.final-stop-by-role.test.ts` (each keeps its period
+on purpose: an explicit allow-list entry, not a pattern gap; read the
+set there, and add an entry only with a stated reason). Each of these is a
+safe, already-verified name/path/value-based check for its own role — unlike the Title role, a
 wrongly-matched key fails LOUDLY here (an actual violation caught),
 never silently exempts something from a check it should have run.
 This does not re-derive the full per-key audit for every other

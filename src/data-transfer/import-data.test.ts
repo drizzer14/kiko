@@ -244,6 +244,7 @@ describe('importData', () => {
     const goodSecrets = {
       monobankTokens: [{ accountId: 'a1', token: 'mono-token' }],
       binanceCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 's' }],
+      bybitCredentials: [{ accountId: 'a1', apiKey: 'bybit-k', secret: 'bybit-s' }],
     };
 
     it.each([
@@ -268,6 +269,25 @@ describe('importData', () => {
         'a Binance entry without its secret',
         { ...goodSecrets, binanceCredentials: [{ accountId: 'a1', apiKey: 'k' }] },
       ],
+      ['bybitCredentials that is a string', { ...goodSecrets, bybitCredentials: 'k' }],
+      ['bybitCredentials that is an object', { ...goodSecrets, bybitCredentials: {} }],
+      [
+        'a Bybit entry without its secret',
+        { ...goodSecrets, bybitCredentials: [{ accountId: 'a1', apiKey: 'k' }] },
+      ],
+      [
+        'a Bybit entry without its key',
+        { ...goodSecrets, bybitCredentials: [{ accountId: 'a1', secret: 's' }] },
+      ],
+      [
+        'a Bybit entry without its account',
+        { ...goodSecrets, bybitCredentials: [{ apiKey: 'k', secret: 's' }] },
+      ],
+      [
+        'a Bybit entry whose secret is not text',
+        { ...goodSecrets, bybitCredentials: [{ accountId: 'a1', apiKey: 'k', secret: 7 }] },
+      ],
+      ['a Bybit entry that is not an object', { ...goodSecrets, bybitCredentials: ['k'] }],
     ])('refuses %s before the restore touches the data', async (_name, secrets) => {
       const { fileText, keyBase64 } = encryptedWithSecrets(secrets);
       mockReadFile.mockResolvedValue(fileText);
@@ -318,6 +338,15 @@ describe('importData', () => {
       ['both arrays empty', { monobankTokens: [], binanceCredentials: [] }],
       ['no Binance array', { monobankTokens: goodSecrets.monobankTokens }],
       ['no Monobank array', { binanceCredentials: goodSecrets.binanceCredentials }],
+      [
+        'no Bybit array, as an earlier build wrote it',
+        { monobankTokens: [], binanceCredentials: [] },
+      ],
+      ['only a Bybit array', { bybitCredentials: goodSecrets.bybitCredentials }],
+      [
+        'a Bybit entry for an account the file does not carry',
+        { ...goodSecrets, bybitCredentials: [{ accountId: 'ghost', apiKey: 'k', secret: 's' }] },
+      ],
       [
         'a secret for an account the file does not carry',
         { ...goodSecrets, monobankTokens: [{ accountId: 'ghost', token: 'mono-token' }] },

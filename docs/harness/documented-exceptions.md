@@ -431,7 +431,7 @@ verified usage, not dead weight:
   identifier chosen freely in the SAME file (`BinanceTxSyncDeps`, this
   codebase's own type name, since renamed to `BinanceTransactionSyncDeps`
   during the R1.d sweep — a word-only, file-wide exemption would have
-  silently skipped that one too). Each of the 22 entries is a real,
+  silently skipped that one too). Each of the 24 entries is a real,
   verified external-format mirror, not a style preference:
   `src/db/run-migrations.ts` + its test + the six
   `src/db/schema.*.test.ts` fixtures (`idx`) mirror drizzle-kit's own
@@ -441,6 +441,13 @@ verified usage, not dead weight:
   `val_code` and from `payments[].pay_val`) mirror the National Bank of
   Ukraine securities register's own external JSON fields; `src/crypto-sync/binance/binance.client.ts` +
   its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
+  `src/crypto-sync/bybit/bybit.client-test-fixtures.ts` (`msg`, from `retMsg`) mirrors the text
+  field of Bybit's own answer envelope `{retCode, retMsg, result}`;
+  `src/crypto-sync/bybit/bybit.history-test-fixtures.ts` (`tx`, from `txID`) mirrors the literal
+  `txID` field of Bybit's internal deposit page, so the fixture carries a sentinel in it; the same
+  fixture file, `src/crypto-sync/bybit/bybit.history-client.ts` and
+  `src/crypto-sync/bybit/bybit.history-client.convert.test.ts` (`tx`, from `exchangeTxId`) mirror
+  the literal `exchangeTxId` field of Bybit's convert history page;
   `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts`/`.placement.test.ts`
   and `binance.pay-history.real-sqlite.test.ts` (`tx`, from `txId`) mirror the literal field name on Binance's deposit/withdraw
   history records (`GET /sapi/v1/capital/deposit/hisrec` and
@@ -906,7 +913,7 @@ verified usage, not dead weight:
   `check:rules`.
 
 - **`kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
-  excludes `__tests__/**`, and five tests carry one per-line override.**
+  excludes `__tests__/**`, and six tests carry one per-line override.**
   The exclude: harness tests read rules, scripts, docs, and temp projects,
   never a mutable source; their paths are mostly computed, so the rule
   would fire on nearly every one.
@@ -932,6 +939,11 @@ verified usage, not dead weight:
   - `drizzle/migrations/0044-move-crypto-cash-holdings.test.ts`: searches
     `drizzle/` and `src/` text for the literal `crypto-from-`; Stryker
     keeps the original string beside its mutant.
+  - `src/crypto-sync/bybit/bybit.endpoints.test.ts`: searches the text of every source module
+    that is not a test for the three hosts Bybit's key must never reach (`api.bybit.eu`, the
+    testnet host and `api.bytick.com`); a walked path is one the rule cannot prove a data file.
+    The search parses nothing, so Stryker's instrumentation changes nothing it finds. The suite
+    walks the tree, so `scripts/checks/jest-inventory-suites.txt` lists it.
   - `e2e/screenshot/fixtures/generate-demo-kiko.test.ts`: reads its
     `.kiko` fixtures by a `fileName` from the `DEMO_FILES` table, which
     the rule cannot resolve through the loop.

@@ -42,11 +42,16 @@ export const isAssetTicker = (ticker: string): boolean => ticker !== '' && !tick
 export const untrackedAssetCode = (ticker: string): `asset:${string}` | undefined =>
   isAssetTicker(ticker) ? `asset:${ticker}` : undefined;
 
+// The code of a listed Funding ledger row. It names no counterpart, so its label is one fixed text
+// and no server text is stored or read.
+export const FUNDING_LEDGER_CODE = 'ledger:funding';
+
 type FiatCounterpartKind = 'p2p' | 'card' | 'bank';
 
 type UntrackedCounterpart =
   | { kind: 'wallet'; name: string }
   | { kind: 'asset'; code: string }
+  | { kind: 'ledger' }
   | { kind: FiatCounterpartKind; fiat: string; totalMinorUnits: number | undefined };
 
 const splitOnce = (text: string): [string, string | undefined] => {
@@ -136,6 +141,9 @@ export const parseUntrackedCounterpart = (code: string | null): UntrackedCounter
       .with('wallet', () => walletCounterpartOf(rest))
       .with('asset', (): UntrackedCounterpart | undefined =>
         isAssetTicker(rest) ? { kind: 'asset', code: rest } : undefined,
+      )
+      .with('ledger', (): UntrackedCounterpart | undefined =>
+        value === FUNDING_LEDGER_CODE ? { kind: 'ledger' } : undefined,
       )
       .with('p2p', 'card', 'bank', (fiatKind) => fiatCounterpartOf(fiatKind, rest))
       .otherwise(() => undefined);

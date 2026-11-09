@@ -17,5 +17,5 @@ export const resyncRequest = (
   targetAccountId: string,
 ): CryptoSyncRequest =>
   match(providerId)
-    .with('btc_wallet', 'binance', (id) => ({ providerId: id, targetAccountId }))
+    .with('btc_wallet', 'binance', 'bybit', (id) => ({ providerId: id, targetAccountId }))
     .exhaustive();

@@ -12,6 +12,7 @@ import {
 
 const NOW = 1_704_326_400_000;
 const HOUR_MS = 60 * 60 * 1000;
+const SECOND_MS = 1_000;
 
 const stateOf = (seeds: Partial<Record<WalkName, WalkMarkSeed>>) =>
   parseExchangeState(JSON.stringify(withWalkMarkSeeds({}, 'acc-1', seeds)));
@@ -115,7 +116,7 @@ describe('historyOwesRange', () => {
         ],
       ],
     ])('is true for %s', (_label, owed) => {
-      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(true);
+      expect(historyOwesRange(owing(walkName, owed), NOW, 'binance')).toBe(true);
     });
 
     it.each([
@@ -140,7 +141,7 @@ describe('historyOwesRange', () => {
       ],
       ['a list that is not well formed', 'x'],
     ])('is false for %s', (_label, owed) => {
-      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(false);
+      expect(historyOwesRange(owing(walkName, owed), NOW, 'binance')).toBe(false);
     });
 
     it.each([
@@ -150,7 +151,7 @@ describe('historyOwesRange', () => {
     ])('is true for a point owed since %s', (_label, since) => {
       const owed = [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING', since }];
 
-      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(true);
+      expect(historyOwesRange(owing(walkName, owed), NOW, 'binance')).toBe(true);
     });
 
     it('is true for an old point beside fresh ones', () => {
@@ -160,13 +161,13 @@ describe('historyOwesRange', () => {
         { start: 9, end: 11, kind: 'point', since: NOW - 2 * DAY_MS },
       ];
 
-      expect(historyOwesRange(owing(walkName, owed), NOW)).toBe(true);
+      expect(historyOwesRange(owing(walkName, owed), NOW, 'binance')).toBe(true);
     });
 
     it('is false for an old point while the account has never synced', () => {
       const owed = [{ start: 1, end: 3, kind: 'point', since: NOW - 2 * DAY_MS }];
 
-      expect(historyOwesRange(owing(walkName, owed), null)).toBe(false);
+      expect(historyOwesRange(owing(walkName, owed), null, 'binance')).toBe(false);
     });
   });
 
@@ -184,7 +185,7 @@ describe('historyOwesRange', () => {
       ['ending at the cursor', dayEndingAt(NOW)],
       ['ending before the cursor', dayEndingAt(NOW - 2 * HOUR_MS)],
     ])('is not owed by the fiat orders walk when it is the day %s', (_label, day) => {
-      expect(historyOwesRange(owing('fiatOrders', [day]), NOW)).toBe(false);
+      expect(historyOwesRange(owing('fiatOrders', [day]), NOW, 'binance')).toBe(false);
     });
 
     it.each([
@@ -194,55 +195,111 @@ describe('historyOwesRange', () => {
       ['a range a millisecond narrower than the day', { start: NOW - DAY_MS + 1, end: NOW }],
       ['a range wider than the day, ending at the cursor', { start: NOW - 3 * DAY_MS, end: NOW }],
     ])('is owed by the fiat orders walk as %s', (_label, range) => {
-      expect(historyOwesRange(owing('fiatOrders', [range]), NOW)).toBe(true);
+      expect(historyOwesRange(owing('fiatOrders', [range]), NOW, 'binance')).toBe(true);
     });
 
     it('is owed by the fiat orders walk beside a range that is not the day', () => {
       const owed = [dayEndingAt(NOW), { start: 1, end: 3 }];
 
-      expect(historyOwesRange(owing('fiatOrders', owed), NOW)).toBe(true);
+      expect(historyOwesRange(owing('fiatOrders', owed), NOW, 'binance')).toBe(true);
     });
 
     it('is owed by the fiat orders walk that has no cursor', () => {
       const state = stateOf({ fiatOrders: { pending: [dayEndingAt(NOW)] } });
 
-      expect(historyOwesRange(state, NOW)).toBe(true);
+      expect(historyOwesRange(state, NOW, 'binance')).toBe(true);
     });
 
     it.each(NOT_KEPT_WALK_NAMES)(
       'is owed by the %s walk, which reads that day in the run that plans it',
       (walkName) => {
-        expect(historyOwesRange(owing(walkName, [dayEndingAt(NOW)]), NOW)).toBe(true);
-        expect(historyOwesRange(owing(walkName, [dayEndingAt(NOW - 2 * HOUR_MS)]), NOW)).toBe(true);
+        expect(historyOwesRange(owing(walkName, [dayEndingAt(NOW)]), NOW, 'binance')).toBe(true);
+        expect(
+          historyOwesRange(owing(walkName, [dayEndingAt(NOW - 2 * HOUR_MS)]), NOW, 'binance'),
+        ).toBe(true);
       },
     );
   });
 
-  it('is true when one walk owes a range, whichever the others hold', () => {
-    expect(
-      historyOwesRange(
-        stateOf({
-          capital: { cursor: NOW, pending: [] },
-          earn: { cursor: NOW, pending: [{ start: 1, end: 3, kind: 'point' }] },
-          fiatPayments: { cursor: NOW, pending: [{ start: 1, end: 3 }] },
-        }),
-        NOW,
-      ),
-    ).toBe(true);
+  describe('the ground a Bybit re-scan reads again', () => {
+    // The forward pass read this ground whole, and the re-scan window behind the balance sync reads
+    // it again for late rows, so the caption's "not imported yet" would be false for it.
+    const rescanned = { start: NOW - 3 * DAY_MS, end: NOW - 2 * DAY_MS };
+
+    const owesOn = (
+      provider: 'binance' | 'bybit',
+      walkName: WalkName,
+      range: Record<string, unknown>,
+      lastBalanceSyncAt: number | null = NOW,
+    ) => historyOwesRange(owing(walkName, [range]), lastBalanceSyncAt, provider);
+
+    it('owes nothing to the caption for a range with no series inside the last re-scan window', () => {
+      expect(owesOn('bybit', 'log', rescanned)).toBe(false);
+    });
+
+    it.each([
+      ['a range owed in one series', { ...rescanned, series: 'log' }],
+      ['a range that starts before the window', { start: NOW - 8 * DAY_MS, end: NOW - 2 * DAY_MS }],
+      ['a range that ends after the cursor', { start: NOW - 3 * DAY_MS, end: NOW + 1 }],
+      ['a range of a scope', { ...rescanned, scope: 'backfill' }],
+    ])('owes to the caption for %s', (_label, range) => {
+      expect(owesOn('bybit', 'log', range)).toBe(true);
+    });
+
+    it('owes to the caption for the same range on a Binance walk', () => {
+      expect(owesOn('binance', 'capital', rescanned)).toBe(true);
+    });
+
+    it('reads the window of the capital walk as 29 days', () => {
+      const inside = { start: NOW - 29 * DAY_MS, end: NOW - DAY_MS };
+      const outside = { start: NOW - 29 * DAY_MS - 1, end: NOW - DAY_MS };
+
+      expect(owesOn('bybit', 'capital', inside)).toBe(false);
+      expect(owesOn('bybit', 'capital', outside)).toBe(true);
+    });
+
+    // The routes accept 7 days at most, and the walks ask for a second less: the ledger's bounds
+    // round out to whole seconds, and the route may read a start of transfer or log at its second.
+    it.each(['transfer', 'log', 'fundingLedger'] as const)(
+      'reads the window of the %s walk as 7 days less 1 second',
+      (walkName) => {
+        const start = NOW - (7 * DAY_MS - SECOND_MS);
+
+        expect(owesOn('bybit', walkName, { start, end: NOW - DAY_MS })).toBe(false);
+        expect(owesOn('bybit', walkName, { start: start - 1, end: NOW - DAY_MS })).toBe(true);
+      },
+    );
+
+    it('owes to the caption while the account has never synced', () => {
+      expect(owesOn('bybit', 'log', rescanned, null)).toBe(true);
+    });
+
+    it('owes to the caption for a walk with no window', () => {
+      expect(owesOn('bybit', 'convert', rescanned)).toBe(true);
+    });
   });
 
-  it('is true when one walk owes an old point, whichever the others hold', () => {
+  it.each([
+    ['a range', { fiatPayments: { cursor: NOW, pending: [{ start: 1, end: 3 }] } }],
+    [
+      'an old point',
+      {
+        p2p: {
+          cursor: NOW,
+          pending: [{ start: 1, end: 3, kind: 'point', since: NOW - 2 * DAY_MS }],
+        },
+      },
+    ],
+  ])('is true when one walk owes %s, whichever the others hold', (_label, owingWalk) => {
     expect(
       historyOwesRange(
         stateOf({
           capital: { cursor: NOW, pending: [] },
           earn: { cursor: NOW, pending: [{ start: 1, end: 3, kind: 'point' }] },
-          p2p: {
-            cursor: NOW,
-            pending: [{ start: 1, end: 3, kind: 'point', since: NOW - 2 * DAY_MS }],
-          },
+          ...owingWalk,
         }),
         NOW,
+        'binance',
       ),
     ).toBe(true);
   });
@@ -251,7 +308,7 @@ describe('historyOwesRange', () => {
     ['no state row', null],
     ['a state that is not readable', '{not json'],
   ])('is false for %s', (_label, text) => {
-    expect(historyOwesRange(parseExchangeState(text), NOW)).toBe(false);
+    expect(historyOwesRange(parseExchangeState(text), NOW, 'binance')).toBe(false);
   });
 });
 
@@ -263,9 +320,9 @@ describe('the history caption while a backfill range is owed', () => {
     const state = withEveryCursor(caughtUp, { [walkName]: { cursor: caughtUp, pending: owed } });
 
     return isBinanceHistoryBehind({
-      cursors: walkCursorsOf(state),
+      cursors: walkCursorsOf(state, 'binance'),
       lastBalanceSyncAt: NOW,
-      owesRange: historyOwesRange(state, NOW),
+      owesRange: historyOwesRange(state, NOW, 'binance'),
     });
   };
 
@@ -290,7 +347,7 @@ describe('the history caption over the trade symbols', () => {
 
   const behindWith = (state: ReturnType<typeof parseExchangeState>, syncedAt: number | null) =>
     isBinanceHistoryBehind({
-      cursors: walkCursorsOf(state),
+      cursors: walkCursorsOf(state, 'binance'),
       lastBalanceSyncAt: syncedAt,
       tradesUnread: historyOwesTrades(state),
     });
@@ -348,11 +405,11 @@ describe('walkCursorsOf', () => {
       fiatPayments: { cursor: 8 },
     });
 
-    expect(walkCursorsOf(state)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(walkCursorsOf(state, 'binance')).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it('reads a cursor a walk has not written yet as null', () => {
-    expect(walkCursorsOf(stateOf({ capital: { cursor: NOW } }))).toEqual([
+    expect(walkCursorsOf(stateOf({ capital: { cursor: NOW } }), 'binance')).toEqual([
       NOW,
       ...Array.from({ length: 7 }, () => null),
     ]);
@@ -361,7 +418,7 @@ describe('walkCursorsOf', () => {
   it.each(CAPTION_WALK_NAMES.map((walkName, position) => [walkName, position] as const))(
     'reads the %s walk by its own cursor, whichever other walks have one',
     (walkName, position) => {
-      expect(walkCursorsOf(stateOf({ [walkName]: { cursor: NOW } }))).toEqual(
+      expect(walkCursorsOf(stateOf({ [walkName]: { cursor: NOW } }), 'binance')).toEqual(
         CAPTION_WALK_NAMES.map((_unused, index) => (index === position ? NOW : null)),
       );
     },
@@ -371,7 +428,9 @@ describe('walkCursorsOf', () => {
     ['no state row', null],
     ['a state that is not readable', '{not json'],
   ])('is eight nulls for %s', (_label, text) => {
-    expect(walkCursorsOf(parseExchangeState(text))).toEqual(Array.from({ length: 8 }, () => null));
+    expect(walkCursorsOf(parseExchangeState(text), 'binance')).toEqual(
+      Array.from({ length: 8 }, () => null),
+    );
   });
 
   it('does not read an owed point as a cursor: a list of ground changes nothing', () => {
@@ -382,6 +441,7 @@ describe('walkCursorsOf', () => {
           pending: [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' }],
         },
       }),
+      'binance',
     );
 
     expect(cursors).toEqual(Array.from({ length: 8 }, () => NOW));
@@ -393,14 +453,14 @@ describe('the history caption over the P2P and fiat walks', () => {
 
   const behindWith = (walkName: WalkName, cursor: number | undefined): boolean =>
     isBinanceHistoryBehind({
-      cursors: walkCursorsOf(withEveryCursor(caughtUp, { [walkName]: { cursor } })),
+      cursors: walkCursorsOf(withEveryCursor(caughtUp, { [walkName]: { cursor } }), 'binance'),
       lastBalanceSyncAt: NOW,
     });
 
   it('is not behind while all eight walks are within a day of the balance sync', () => {
     expect(
       isBinanceHistoryBehind({
-        cursors: walkCursorsOf(withEveryCursor(caughtUp, {})),
+        cursors: walkCursorsOf(withEveryCursor(caughtUp, {}), 'binance'),
         lastBalanceSyncAt: NOW,
       }),
     ).toBe(false);
@@ -418,6 +478,166 @@ describe('the history caption over the P2P and fiat walks', () => {
   it('is behind while the P2P walk is held more than a day by a page it cannot read', () => {
     expect(behindWith('p2p', NOW - DAY_MS)).toBe(false);
     expect(behindWith('p2p', NOW - DAY_MS - 1)).toBe(true);
+  });
+});
+
+describe('the caption walks of each provider', () => {
+  const owedCapital = () => stateOf({ capital: { cursor: NOW, pending: [{ start: 1, end: 3 }] } });
+
+  it('Binance compares its 8 walks and Bybit compares its capital, transfer, log, convert and Funding ledger walks', () => {
+    const state = withEveryCursor(NOW, { log: { cursor: NOW }, fundingLedger: { cursor: NOW } });
+
+    expect(walkCursorsOf(state, 'binance')).toHaveLength(8);
+    expect(walkCursorsOf(state, 'bybit')).toEqual([NOW, NOW, NOW, NOW, NOW]);
+  });
+
+  it('Binance stays its 8 walks: a log walk with an old cursor and an owed range is not read', () => {
+    const state = withEveryCursor(NOW, {
+      log: { cursor: NOW - 9 * DAY_MS, pending: [{ start: 1, end: 3 }] },
+    });
+
+    expect(walkCursorsOf(state, 'binance')).toEqual(Array(8).fill(NOW));
+    expect(historyOwesRange(state, NOW, 'binance')).toBe(false);
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(state, 'binance'),
+        lastBalanceSyncAt: NOW,
+        owesRange: historyOwesRange(state, NOW, 'binance'),
+      }),
+    ).toBe(false);
+  });
+
+  it('Bybit compares its capital, transfer, log, convert and Funding ledger walks alone, and no cursor of a state it cannot read', () => {
+    const state = stateOf({
+      capital: { cursor: NOW - HOUR_MS },
+      transfer: { cursor: NOW - 2 * HOUR_MS },
+      log: { cursor: NOW - 3 * HOUR_MS },
+      convert: { cursor: NOW - 4 * HOUR_MS },
+      fundingLedger: { cursor: NOW - 5 * HOUR_MS },
+      pay: { cursor: NOW - 9 * DAY_MS },
+    });
+
+    expect(walkCursorsOf(state, 'bybit')).toEqual([
+      NOW - HOUR_MS,
+      NOW - 2 * HOUR_MS,
+      NOW - 3 * HOUR_MS,
+      NOW - 4 * HOUR_MS,
+      NOW - 5 * HOUR_MS,
+    ]);
+    expect(walkCursorsOf(parseExchangeState('{not json'), 'bybit')).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(walkCursorsOf(stateOf({}), 'bybit')).toEqual([null, null, null, null, null]);
+  });
+
+  it('Bybit owes a range of its Funding ledger walk, and is behind while its cursor lags a day', () => {
+    const owedLedger = stateOf({
+      fundingLedger: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'fundingLedger' }] },
+    });
+    const lagging = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW },
+      log: { cursor: NOW },
+      convert: { cursor: NOW },
+      fundingLedger: { cursor: NOW - 2 * DAY_MS },
+    });
+
+    expect(historyOwesRange(owedLedger, NOW, 'bybit')).toBe(true);
+    expect(historyOwesRange(owedLedger, NOW, 'binance')).toBe(false);
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(lagging, 'bybit'),
+        lastBalanceSyncAt: NOW,
+      }),
+    ).toBe(true);
+  });
+
+  it('Bybit owes a range of its convert walk, and is behind while its convert cursor lags a day', () => {
+    const owedConvert = stateOf({
+      convert: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'convert' }] },
+    });
+    const lagging = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW },
+      log: { cursor: NOW },
+      convert: { cursor: NOW - 2 * DAY_MS },
+    });
+
+    expect(historyOwesRange(owedConvert, NOW, 'bybit')).toBe(true);
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(lagging, 'bybit'),
+        lastBalanceSyncAt: NOW,
+      }),
+    ).toBe(true);
+  });
+
+  it('Bybit owes a range of its log walk, and is behind while its log cursor lags a day', () => {
+    const owedLog = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW },
+      log: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'log' }] },
+    });
+    const lagging = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW },
+      log: { cursor: NOW - 2 * DAY_MS },
+    });
+
+    expect(historyOwesRange(owedLog, NOW, 'bybit')).toBe(true);
+    expect(historyOwesRange(owedLog, NOW, 'binance')).toBe(false);
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(lagging, 'bybit'),
+        lastBalanceSyncAt: NOW,
+      }),
+    ).toBe(true);
+  });
+
+  it('Bybit owes a range of its capital walk and of its transfer walk, and no range of a walk it does not read', () => {
+    const owedPay = stateOf({ pay: { cursor: NOW, pending: [{ start: 1, end: 3 }] } });
+    const owedTransfer = stateOf({
+      capital: { cursor: NOW },
+      transfer: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'transfer' }] },
+    });
+
+    expect(historyOwesRange(owedCapital(), NOW, 'bybit')).toBe(true);
+    expect(historyOwesRange(owedTransfer, NOW, 'bybit')).toBe(true);
+    expect(historyOwesRange(owedPay, NOW, 'bybit')).toBe(false);
+    expect(historyOwesRange(owedPay, NOW, 'binance')).toBe(true);
+  });
+
+  it('Bybit shows the caption for a range tagged with a series, as it does for any owed range', () => {
+    const owedDeposit = stateOf({
+      capital: { cursor: NOW, pending: [{ start: 1, end: 3, series: 'deposit' }] },
+    });
+
+    expect(historyOwesRange(owedDeposit, NOW, 'bybit')).toBe(true);
+  });
+
+  const WITHOUT_WALKS = ['btc_wallet'] as const;
+
+  it.each(WITHOUT_WALKS)('compares no walk for %s, a state it cannot read too', (provider) => {
+    expect(walkCursorsOf(withEveryCursor(NOW, {}), provider)).toEqual([]);
+    expect(walkCursorsOf(parseExchangeState('{not json'), provider)).toEqual([]);
+  });
+
+  it.each(WITHOUT_WALKS)('is never behind for %s, whatever the Binance walks hold', (provider) => {
+    const state = owedCapital();
+
+    expect(historyOwesRange(state, NOW, 'binance')).toBe(true);
+    expect(historyOwesRange(state, NOW, provider)).toBe(false);
+    expect(
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(stateOf({}), provider),
+        lastBalanceSyncAt: NOW,
+        owesRange: historyOwesRange(state, NOW, provider),
+      }),
+    ).toBe(false);
   });
 });
 

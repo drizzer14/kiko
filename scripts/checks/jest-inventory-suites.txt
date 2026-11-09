@@ -31,6 +31,7 @@ __tests__/tracked-scripts-executable.test.ts
 __tests__/wrapper-missing-path.test.ts
 __tests__/wrapper-stderr-exit-zero.test.ts
 drizzle/migrations/0044-move-crypto-cash-holdings.test.ts
+src/crypto-sync/bybit/bybit.endpoints.test.ts
 src/db/schema.category-overrides.test.ts
 src/db/settings-columns.test.ts
 src/help/help-topics.test.ts

@@ -152,7 +152,7 @@ describe('help topic registry', () => {
   it.each([
     ['addAccount', 5],
     ['connectMonobank', 5],
-    ['connectCrypto', 5],
+    ['connectCrypto', 6],
     ['importStatement', 6],
     ['setReminder', 4],
     ['addHolding', 5],
@@ -339,6 +339,22 @@ describe('reading how a catalogue key is used in source', () => {
         ['shown.key', 'visible'],
       ]),
     ).toEqual(new Set(['read.key']));
+  });
+});
+
+// A holding a sync owns takes no copy, so the sentence that says what "Duplicate" does
+// names the exception, in each language.
+describe('the Duplicate sentence of the edit-transaction help', () => {
+  const lastSentenceOf = (values: Map<string, string>): string | undefined =>
+    values.get('help.topics.editTransaction.steps.3')?.split('. ').at(-1);
+
+  it('the Duplicate sentence names the synced exception, in en and uk', () => {
+    expect(lastSentenceOf(valueByPath(en))).toBe(
+      'On one you added yourself, "Duplicate" makes a copy dated now, unless its holding is synced.',
+    );
+    expect(lastSentenceOf(valueByPath(uk))).toBe(
+      'Для доданої вами транзакції «Дублювати» створює копію з поточною датою, якщо її актив не синхронізується.',
+    );
   });
 });
 
@@ -701,6 +717,46 @@ describe('the Binance key the connectCrypto help topic asks for', () => {
   );
 });
 
+describe('the order of the connectCrypto help steps', () => {
+  it.each([
+    [
+      'en',
+      valueByPath(en),
+      'Connect Binance, Bybit or a Bitcoin Wallet',
+      'Connect Binance, Bybit or a Bitcoin wallet',
+      ['Binance', 'Bybit', 'Bitcoin wallet'],
+      ['For Binance', 'For Bybit', 'For a Bitcoin wallet', 'Tap "Save"'],
+    ],
+    [
+      'uk',
+      valueByPath(uk),
+      'Підключення Binance, Bybit або гаманця Bitcoin',
+      'Підключення Binance, Bybit або гаманця Bitcoin',
+      ['Binance', 'Bybit', 'Гаманець Bitcoin'],
+      ['Для Binance', 'Для Bybit', 'Для гаманця Bitcoin', 'Натисніть «Зберегти»'],
+    ],
+  ] as const)(
+    'names Bybit in the title, the row and the exchange choice, and gives the steps 3 to 6 to Binance, Bybit, the wallet and Save in %s',
+    (_language, values, title, rowLabel, choices, openings) => {
+      const step = (index: number): string =>
+        values.get(`help.topics.connectCrypto.steps.${index}`) ?? '';
+
+      expect(values.get('help.topics.connectCrypto.title')).toBe(title);
+      expect(values.get('help.topics.connectCrypto.rowLabel')).toBe(rowLabel);
+
+      for (const choice of choices) {
+        expect(step(2)).toContain(choice);
+      }
+
+      openings.forEach((opening, offset) => {
+        expect(step(3 + offset).startsWith(opening)).toBe(true);
+      });
+
+      expect(step(3)).not.toContain('Bybit');
+    },
+  );
+});
+
 describe('the Ukrainian wording of the help topics', () => {
   const ukValues = valueByPath(uk);
   const stepValues = HELP_TOPICS.flatMap((topic) =>
@@ -710,7 +766,7 @@ describe('the Ukrainian wording of the help topics', () => {
   const TOPIC_TITLES = [
     ['addAccount', 'Додавання рахунку'],
     ['connectMonobank', 'Підключення Monobank'],
-    ['connectCrypto', 'Підключення Binance або гаманця Bitcoin'],
+    ['connectCrypto', 'Підключення Binance, Bybit або гаманця Bitcoin'],
     ['importStatement', 'Імпорт банківської виписки'],
     ['setReminder', 'Налаштування нагадування'],
     ['addHolding', 'Додавання активу'],

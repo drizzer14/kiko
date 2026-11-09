@@ -18,7 +18,7 @@ const TOGGLE_HIT_SLOP = { top: 10, bottom: 10 } as const;
  * The one "Show all" / "Show less" link that expands or collapses a bounded list: the pie
  * legend, the statement-import raw preview, and the loan's scheduled payments share it.
  */
-const ExpandToggle: FC<ExpandToggleProps> = ({ expanded, onPress, testID }) => {
+const ExpandToggle: FC<ExpandToggleProps> = ({ expanded, onPress, collapsedLabel, testID }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
 
@@ -33,7 +33,9 @@ const ExpandToggle: FC<ExpandToggleProps> = ({ expanded, onPress, testID }) => {
     >
       <Box direction="row" gap={1} style={styles.toggleContent}>
         <Text variant="caption" tone="accent">
-          {expanded ? t('components.expandToggle.showLess') : t('components.expandToggle.showAll')}
+          {expanded
+            ? t('components.expandToggle.showLess')
+            : (collapsedLabel ?? t('components.expandToggle.showAll'))}
         </Text>
 
         <SymbolIcon

@@ -19,6 +19,7 @@ const mockClearCredentials = jest.fn();
 jest.mock('@kiko/crypto-sync/binance', () => ({
   clearCredentials: (accountId: string) => mockClearCredentials(accountId),
 }));
+jest.mock('@kiko/crypto-sync/bybit', () => ({ clearBybitCredentials: jest.fn() }));
 
 import { DatabaseSync } from 'node:sqlite';
 import { accountsRepo } from '@kiko/accounts';

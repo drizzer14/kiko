@@ -636,24 +636,29 @@ The established patterns grouped under this heading:
   asserts the item list has a `pencil` item labelled "Edit" whose
   `onPress` opens the edit form, and no `type: 'custom'` item.
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
-  `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
+  `BybitCredentialsField`, `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
   action, so it follows the same form validation model as a Save
   button: always enabled, never `disabled={... || field.trim() ===
   ''}`. A blank required field shows its own `*RequiredError` message
   (via the field's `error` prop) on a Connect press instead —
   `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
-  `BinanceCredentialsField` also takes an optional `onStoredWhileUnmounted`, called
-  instead of `onConnect` when the field unmounted after the Keychain write stored the pair.
-  Both callbacks receive the write's `BinanceWriteToken`; `CryptoSyncForm`'s `onConnectBinance`
-  and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
-  `fetchAccount` (the check) and `saveCredentials`. `CryptoSyncForm` takes a required `source`
-  and renders that source's field, nothing for `'other'`; the caller picks the source.
-  `BinanceCredentialsField` checks `isBinanceCoolingDown` after the blank-field check and
-  before `fetchAccount`. On a cooling account it shows the localized
-  `accountDetail.binanceCoolingDown` text, makes no request or write, and keeps the typed
-  pair, so a later press connects once the cooldown ends. After that check it also checks
-  `isBinanceSyncRunning` and shows `accountDetail.binanceSyncStillRunning`.
+  `BinanceCredentialsField` and `BybitCredentialsField` are thin wrappers over the shared
+  `ExchangeKeyForm`
+  (`src/design-system/components/exchange-key-form/exchange-key-form.component.tsx`).
+  Each takes an optional `onStoredWhileUnmounted`, called instead of `onConnect` when the field
+  unmounted after the Keychain write stored the pair. Both callbacks receive the write's token
+  (`BinanceWriteToken`, or `WriteToken` for Bybit). The props of each field and of
+  `CryptoSyncForm` (`src/design-system/components/crypto-sync-form/crypto-sync-form.component.tsx`)
+  are in those files: read them there. The pair leaves the field only into `fetchAccount` (the
+  check) and `saveCredentials`. `CryptoSyncForm` takes a required `source` and renders that
+  source's field, nothing for `'other'`; the caller picks the source.
+  `ExchangeKeyForm` checks its `isCoolingDown` prop after the blank-field check and before
+  `fetchAccount`. On a cooling account it shows the localized cooldown text
+  (`accountDetail.binanceCoolingDown` for Binance), makes no request or write, and keeps the
+  typed pair, so a later press connects once the cooldown ends. After that check it also
+  checks its `isSyncRunning` prop and shows the exchange's still-running text
+  (`accountDetail.binanceSyncStillRunning`, `accountDetail.bybitSyncStillRunning`).
   `MonobankConnectField` takes a required `accountId` prop; after the blank check it checks
   `isMonobankSyncRunning(accountId)` and shows `accountDetail.monobankSyncStillRunning`,
   with no request.

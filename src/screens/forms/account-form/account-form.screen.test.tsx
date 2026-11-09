@@ -87,6 +87,7 @@ const mockUpdate = jest.fn();
 const mockSaveToken = jest.fn();
 const mockSaveCredentials = jest.fn();
 const mockClearCredentialsIfWrittenBy = jest.fn();
+const mockClearBybitCredentialsIfWrittenBy = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
 const mockRefreshMarketData = jest.fn();
@@ -124,6 +125,7 @@ beforeEach(() => {
   mockExistsCalls = [];
   mockExistsAnswer = undefined;
   mockBinanceStoredWhileUnmounted = undefined;
+  mockBybitStoredWhileUnmounted = undefined;
   mockFieldPair = defaultFieldPair;
   mockKeychain = undefined;
 });
@@ -142,6 +144,9 @@ let mockFieldPair: BinancePair = defaultFieldPair;
 // What the Binance field was last given to run when it unmounted during the Keychain write that
 // stored its pair: a test calls it with the token of that write after the field is gone.
 let mockBinanceStoredWhileUnmounted: ((stored: symbol) => Promise<void>) | undefined;
+
+// The same hand-over of the Bybit field.
+let mockBybitStoredWhileUnmounted: ((stored: symbol) => Promise<void>) | undefined;
 
 // The Keychain item of the account being created, as the real credentials module keeps it: the
 // pair and the token of the one write that stored it. For the tests that tell which write a clear
@@ -220,6 +225,10 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
 jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
 }));
+jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
+  clearBybitCredentialsIfWrittenBy: (...args: unknown[]) =>
+    mockClearBybitCredentialsIfWrittenBy(...args),
+}));
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 // The currency pick's and the cash create's refresh would otherwise reach the real network.
 jest.mock('@kiko/sync/refresh-market-data', () =>
@@ -292,7 +301,10 @@ jest.mock('@kiko/design-system/components/wallet-address-field', () => {
     },
   };
 });
-jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
+// The two key-pair exchanges share one field double, named by its exchange: `name` gives the test
+// ids and `remember` keeps the hand-over the field was last given. A function declaration, so the
+// hoisted factories below can call it before the file reaches it.
+function mockKeyPairField(name: 'binance' | 'bybit', remember: (hand: unknown) => void) {
   const { useEffect } = require('react');
   const { Pressable, Text, TextInput, View } = require('react-native');
 
@@ -307,19 +319,19 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
       reminder?: ConnectReminder;
       onStoredWhileUnmounted?: (stored: symbol) => Promise<void>;
     }) => {
-      mockBinanceStoredWhileUnmounted = onStoredWhileUnmounted;
+      remember(onStoredWhileUnmounted);
       const onDraftChange = reminder?.onDraftChange;
       useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
 
       return (
         <View ref={reminder?.ref}>
           <TextInput
-            testID="binance-input"
+            testID={`${name}-input`}
             onChangeText={(text: string) => reminder?.onDraftChange(text.trim() !== '')}
           />
 
           <Pressable
-            accessibilityLabel="binance-field"
+            accessibilityLabel={`${name}-field`}
             onPress={async () => {
               reminder?.onConnectPress();
 
@@ -328,17 +340,27 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
               }
             }}
           >
-            <Text>binance field</Text>
+            <Text>{`${name} field`}</Text>
           </Pressable>
 
           {reminder?.message !== undefined && (
-            <Text testID="binance-reminder">{reminder.message}</Text>
+            <Text testID={`${name}-reminder`}>{reminder.message}</Text>
           )}
         </View>
       );
     },
   };
-});
+}
+jest.mock('@kiko/design-system/components/binance-credentials-field', () =>
+  mockKeyPairField('binance', (hand) => {
+    mockBinanceStoredWhileUnmounted = hand as typeof mockBinanceStoredWhileUnmounted;
+  }),
+);
+jest.mock('@kiko/design-system/components/bybit-credentials-field', () =>
+  mockKeyPairField('bybit', (hand) => {
+    mockBybitStoredWhileUnmounted = hand as typeof mockBybitStoredWhileUnmounted;
+  }),
+);
 // The bank create form now offers the SAME explicit-Connect pattern as crypto,
 // through MonobankConnectField. It owns its own token input, live validation, and
 // status (covered by its own test); here it renders one pressable that fires the
@@ -2762,6 +2784,80 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
   // The field reports a pair it stored after it unmounted: a fold or a kind switch removed it
   // during the Keychain write, so no Connect ever ran for it.
+  // The Bybit field stores its pair the same way, so the same two ends leave no pair behind.
+  describe('the key pair the Bybit field stored before the connect', () => {
+    it('is cleared when the account row cannot be inserted, and no sync runs', async () => {
+      mockClearBybitCredentialsIfWrittenBy.mockResolvedValue(undefined);
+      mockCreate.mockRejectedValueOnce(new Error('db locked'));
+      const { getByLabelText, getByTestId } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await selectExchange(getByTestId, 'bybit');
+      await fireEvent.press(getByLabelText('bybit-field'));
+
+      await waitFor(() => expect(mockClearBybitCredentialsIfWrittenBy).toHaveBeenCalledTimes(1));
+      expect(mockClearBybitCredentialsIfWrittenBy).toHaveBeenCalledWith(
+        (mockCreate.mock.calls[0][0] as { id: string }).id,
+        mockKeychain?.token,
+      );
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
+      expect(mockCryptoSync).not.toHaveBeenCalled();
+    });
+
+    it('is cleared when the field unmounted during the write and no row owns it', async () => {
+      mockClearBybitCredentialsIfWrittenBy.mockResolvedValue(undefined);
+      const oldWrite = Symbol('write of the Bybit pair');
+      const { getByLabelText, getByTestId } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await selectExchange(getByTestId, 'bybit');
+      const stored = mockBybitStoredWhileUnmounted;
+
+      expect(stored).toBeDefined();
+      await selectKind(getByTestId, 'bank');
+      await act(async () => stored?.(oldWrite));
+
+      expect(mockClearBybitCredentialsIfWrittenBy).toHaveBeenCalledWith(
+        mockExistsCalls[0],
+        oldWrite,
+      );
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
+    });
+
+    it('stays when a row owns it', async () => {
+      mockExistsAnswer = true;
+      const { getByLabelText, getByTestId } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await selectExchange(getByTestId, 'bybit');
+      const stored = mockBybitStoredWhileUnmounted;
+      await selectKind(getByTestId, 'bank');
+      await act(async () => stored?.(Symbol('write')));
+
+      expect(mockClearBybitCredentialsIfWrittenBy).not.toHaveBeenCalled();
+    });
+  });
+
+  it('runs the Bybit sync against the pre-generated id after the row is created', async () => {
+    mockCryptoSync.mockResolvedValue(true);
+    const { getByLabelText, getByTestId } = await renderForm();
+
+    await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+    await selectKind(getByTestId, 'crypto');
+    await selectExchange(getByTestId, 'bybit');
+    await fireEvent.press(getByLabelText('bybit-field'));
+
+    await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+    expect(mockCryptoSync).toHaveBeenCalledWith({
+      providerId: 'bybit',
+      targetAccountId: (mockCreate.mock.calls[0][0] as { id: string }).id,
+    });
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ bankId: 'bybit' }));
+  });
+
   describe('the key pair the Binance field stored while it unmounted', () => {
     const oldPair: BinancePair = { apiKey: 'old-key', secret: 'old-secret' };
     const oldWrite = Symbol('write of the old pair');
@@ -3122,6 +3218,7 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
     buttonLabelKey:
       | 'accountDetail.connectMonobank'
       | 'accountDetail.connectBinance'
+      | 'accountDetail.connectBybit'
       | 'accountDetail.connectWallet';
     hintText: string;
   };
@@ -3139,6 +3236,11 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
   const openBinance = async (view: FormView): Promise<void> => {
     await selectKind(view.getByTestId, 'crypto');
     await selectExchange(view.getByTestId, 'binance');
+  };
+
+  const openBybit = async (view: FormView): Promise<void> => {
+    await selectKind(view.getByTestId, 'crypto');
+    await selectExchange(view.getByTestId, 'bybit');
   };
 
   const sourceCases: SourceCase[] = [
@@ -3168,6 +3270,15 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
       reminderTestID: 'wallet-reminder',
       buttonLabelKey: 'accountDetail.connectWallet',
       hintText: 'Tap “Connect wallet” to link this account.',
+    },
+    {
+      source: 'Bybit key or secret',
+      open: openBybit,
+      input: 'bybit-input',
+      connectLabel: 'bybit-field',
+      reminderTestID: 'bybit-reminder',
+      buttonLabelKey: 'accountDetail.connectBybit',
+      hintText: 'Tap “Connect Bybit” to link this account.',
     },
   ];
 
