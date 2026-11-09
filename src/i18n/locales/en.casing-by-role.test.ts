@@ -179,7 +179,8 @@ const BINANCE_PRODUCT_PHRASES = new RegExp(
   'g',
 );
 
-// The Bybit wallet and product names `accountDetail.bybitKinds` writes, the iOS clock labels
+// The Bybit wallet and product names `accountDetail.bybitKinds` and the Bybit footer
+// (`holdingDetail.exchangeNotListed.bybit`) write, the iOS clock labels
 // `bybitClockOff` names, the title of the Synchronization section that `bybitBalancesNotRead`
 // names, and the proper nouns of `bybitKinds` and `bybitForbidden` (a date, a country), as whole
 // phrases for the same reason: "Funding", "Unified" or "Earn" alone would then pass in every en
@@ -190,6 +191,11 @@ const BYBIT_PHRASES = new RegExp(
     'between Funding and Unified',
     "Funding wallet's",
     'other Earn products',
+    'Unified log entries',
+    'Earn orders',
+    'Earn products',
+    'Flexible Savings and On-Chain',
+    'Funding wallet move',
     'On Unified',
     'On Funding',
     'on Funding',

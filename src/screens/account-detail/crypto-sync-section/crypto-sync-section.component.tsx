@@ -67,7 +67,7 @@ import {
   p2pReadFailed,
   walkCursorsOf,
 } from './binance-history-status';
-import { conflictingExchangeHoldings } from './conflicting-exchange-holdings';
+import { conflictingExchangeHoldings, keepsBybitHoldings } from './conflicting-exchange-holdings';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
@@ -357,6 +357,7 @@ type ConnectExchangeProps = {
   holdings: HoldingRow[];
   onConnectWallet: (address: string) => Promise<boolean>;
   onConnectBinance: () => Promise<boolean>;
+  onConnectBybit: () => Promise<boolean>;
 };
 
 // The bank section's "Add a bank" pattern for a crypto account: the provider's field directly when
@@ -368,6 +369,7 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
   holdings,
   onConnectWallet,
   onConnectBinance,
+  onConnectBybit,
 }) => {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<ExchangeCatalogId | undefined>(undefined);
@@ -414,6 +416,8 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
               source={shownId}
               onConnectWallet={onConnectWallet}
               onConnectBinance={onConnectBinance}
+              onConnectBybit={onConnectBybit}
+              keepsBybitHoldings={keepsBybitHoldings(holdings)}
             />
           )}
 
@@ -486,6 +490,9 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
 
   const connectBinance = (): Promise<boolean> =>
     connectThenReplan({ providerId: 'binance', targetAccountId: account.id });
+
+  const connectBybit = (): Promise<boolean> =>
+    connectThenReplan({ providerId: 'bybit', targetAccountId: account.id });
 
   const runDisconnect = async (providerId: BalanceProviderId): Promise<void> => {
     try {
@@ -680,6 +687,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         holdings={holdings}
         onConnectWallet={connectWallet}
         onConnectBinance={connectBinance}
+        onConnectBybit={connectBybit}
       />
 
       {error !== undefined && (

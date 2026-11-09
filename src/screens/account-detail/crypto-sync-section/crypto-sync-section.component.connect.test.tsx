@@ -60,8 +60,21 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
   };
 });
 
+// The marker also reports whether the section told the field that the account keeps Bybit holdings.
+jest.mock('@kiko/design-system/components/bybit-credentials-field', () => {
+  const { Text } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: ({ keepsBybitHoldings }: { keepsBybitHoldings?: boolean }) => (
+      <Text accessibilityLabel="bybit-field">{`bybit ${String(keepsBybitHoldings)}`}</Text>
+    ),
+  };
+});
+
 const fieldLabelById: Record<ExchangeCatalogId, string | null> = {
   binance: 'binance-field',
+  bybit: 'bybit-field',
   btc_wallet: 'wallet-field',
   other: null,
 };
@@ -143,17 +156,30 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
   );
 
   it('lists every wired exchange and wallet in the connect sheet', async () => {
-    const { getByText, getByTestId, queryByTestId } = await renderSection();
+    const { getByText, getAllByText, getByTestId, queryByTestId } = await renderSection();
 
     await fireEvent.press(getByText(CONNECT));
 
     expect(getByTestId('connect-exchange-option-binance')).toBeTruthy();
+    expect(getByTestId('connect-exchange-option-bybit')).toBeTruthy();
     expect(getByTestId('connect-exchange-option-btc_wallet')).toBeTruthy();
     expect(queryByTestId('connect-exchange-option-other')).toBeNull();
     expect(getByText('Binance')).toBeTruthy();
+    expect(getByText('Bybit')).toBeTruthy();
     expect(getByText('Bitcoin wallet')).toBeTruthy();
-    expect(getByText('Connect with a read-only API key.')).toBeTruthy();
+    expect(getAllByText('Connect with a read-only API key.')).toHaveLength(2);
     expect(getByText('Connect with a public address.')).toBeTruthy();
+  });
+
+  it('shows the Bybit key field and Change exchange or wallet after a sheet pick of Bybit', async () => {
+    const { getByText, getByTestId, getByLabelText, queryByLabelText } = await renderSection();
+
+    await fireEvent.press(getByText(CONNECT));
+    await fireEvent.press(getByTestId('connect-exchange-option-bybit'));
+
+    expect(getByLabelText('bybit-field')).toBeTruthy();
+    expect(queryByLabelText('binance-field')).toBeNull();
+    expect(getByText('Change exchange or wallet')).toBeTruthy();
   });
 
   it("shows the picked provider's field and Change exchange or wallet after a sheet pick", async () => {
@@ -249,6 +275,82 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
 
       expect(getByText(CONNECT)).toBeTruthy();
       expect(queryByText(/cannot connect here/)).toBeNull();
+    });
+  });
+
+  // A Bybit pick goes through the same gate: the holdings of Binance or a wallet would read as
+  // synced with no Bybit sync behind them.
+  describe('a Bybit pick on an account that holds the holdings of another exchange or wallet', () => {
+    it.each([
+      ['Binance', holdingKeyedBy('binanceAsset')],
+      ['a Bitcoin wallet', holdingKeyedBy('walletAddress')],
+    ])('shows the refusal in place of the Bybit field over %s holdings', async (_name, holding) => {
+      const { getByText, queryByLabelText } = await renderSection({ bankId: 'bybit' }, [holding]);
+
+      expect(getByText(`Bybit ${REFUSED_TAIL}`)).toBeTruthy();
+      expect(queryByLabelText('bybit-field')).toBeNull();
+      expect(queryByLabelText('binance-field')).toBeNull();
+    });
+
+    it.each([
+      ['Binance', holdingKeyedBy('binanceAsset')],
+      ['a Bitcoin wallet', holdingKeyedBy('walletAddress')],
+    ])(
+      'refuses a sheet pick of Bybit over %s holdings, keeps Change and writes nothing',
+      async (_name, holding) => {
+        const { getByText, getByTestId, queryByLabelText } = await renderSection({}, [holding]);
+
+        await fireEvent.press(getByText(CONNECT));
+        await fireEvent.press(getByTestId('connect-exchange-option-bybit'));
+
+        expect(getByText(`Bybit ${REFUSED_TAIL}`)).toBeTruthy();
+        expect(queryByLabelText('bybit-field')).toBeNull();
+        expect(getByText('Change exchange or wallet')).toBeTruthy();
+        expect(mockAccountsRepoCall).not.toHaveBeenCalled();
+        expect(mockSync).not.toHaveBeenCalled();
+      },
+    );
+
+    it('lets the user leave the Bybit refusal through Change exchange or wallet', async () => {
+      const { getByText, getByTestId, queryByText } = await renderSection({}, [
+        holdingKeyedBy('binanceAsset'),
+      ]);
+
+      await fireEvent.press(getByText(CONNECT));
+      await fireEvent.press(getByTestId('connect-exchange-option-bybit'));
+      await fireEvent.press(getByText('Change exchange or wallet'));
+
+      expect(getByText(CONNECT)).toBeTruthy();
+      expect(queryByText(`Bybit ${REFUSED_TAIL}`)).toBeNull();
+    });
+
+    it('connects a sheet pick of Bybit over manual holdings and no holdings', async () => {
+      for (const holdings of [[{ id: 'manual', metadata: null } as HoldingRow], []]) {
+        const { getByText, getByTestId, getByLabelText, queryByText } = await renderSection(
+          {},
+          holdings,
+        );
+
+        await fireEvent.press(getByText(CONNECT));
+        await fireEvent.press(getByTestId('connect-exchange-option-bybit'));
+
+        expect(getByLabelText('bybit-field')).toBeTruthy();
+        expect(queryByText(/cannot connect here/)).toBeNull();
+      }
+    });
+  });
+
+  // The field compares the key's owner only on an account that keeps a Bybit holding, so the
+  // section is what tells it.
+  describe('the owner check of the Bybit field', () => {
+    it.each([
+      ['keeps a Bybit holding', [holdingKeyedBy('bybitAsset')], 'bybit true'],
+      ['holds a manual holding', [{ id: 'manual', metadata: null } as HoldingRow], 'bybit false'],
+      ['holds nothing', [], 'bybit false'],
+    ])('tells the Bybit field the account %s', async (_state, holdings, marker) => {
+      const { getByLabelText } = await renderSection({ bankId: 'bybit' }, holdings);
+
+      expect(getByLabelText('bybit-field')).toHaveTextContent(marker);
     });
   });
 

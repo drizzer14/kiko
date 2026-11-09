@@ -10,6 +10,7 @@ import { isBybitSyncRunning } from '@kiko/crypto-sync/run-crypto-sync';
 import type { WriteToken } from '@kiko/crypto-sync/exchange/credentials';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
+import Box from '../box';
 import Text from '../text';
 import ExchangeKeyForm from '../exchange-key-form';
 
@@ -37,6 +38,12 @@ type BybitCredentialsFieldProps = {
    * Bybit account. A create form has no holding, so it leaves this off.
    */
   keepsBybitHoldings?: boolean;
+  /**
+   * The text of a failed Connect, shown under the form: the form's own status only says that the
+   * connection failed, and a refusal (a key Bybit ended, a cooldown) has a text of its own. A
+   * screen with an error line of its own leaves this off.
+   */
+  connectError?: string;
 };
 
 // The Bybit counterpart of the Binance field, over the shared `ExchangeKeyForm`. Connect refuses a
@@ -50,46 +57,55 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
   reminder,
   onStoredWhileUnmounted,
   keepsBybitHoldings = false,
+  connectError,
 }) => {
   const { t } = useTranslation();
 
   return (
-    <ExchangeKeyForm
-      accountId={accountId}
-      onConnect={onConnect}
-      reminder={reminder}
-      onStoredWhileUnmounted={onStoredWhileUnmounted}
-      managementUrl={BYBIT_API_MANAGEMENT_URL}
-      copy={{
-        openLink: t('accountDetail.openBybitLink'),
-        apiKeyPlaceholder: t('accountDetail.bybitApiKeyPlaceholder'),
-        apiSecretPlaceholder: t('accountDetail.bybitApiSecretPlaceholder'),
-        disclosure: t('accountDetail.bybitKeychainDisclosure'),
-        connect: t('accountDetail.connectBybit'),
-        connected: t('accountDetail.bybitConnected'),
-        couldNotConnect: t('accountDetail.couldNotConnectBybit'),
-        // The cooldown keeps no cause, and this text fits a rate refusal and a 403 alike.
-        coolingDown: t('accountDetail.bybitForbidden'),
-        syncStillRunning: t('accountDetail.bybitSyncStillRunning'),
-      }}
-      isCoolingDown={isBybitCoolingDown}
-      isSyncRunning={isBybitSyncRunning}
-      verify={(apiKey, secret) =>
-        bybitKeyRefusalOf(apiKey, secret, keepsBybitHoldings ? { ownerCheck: { accountId } } : {})
-      }
-      save={saveBybitCredentials}
-      intro={
-        <>
-          <Text variant="caption" tone="textSecondary">
-            {t('accountDetail.bybitConnectLimits')}
-          </Text>
+    <Box gap={3}>
+      <ExchangeKeyForm
+        accountId={accountId}
+        onConnect={onConnect}
+        reminder={reminder}
+        onStoredWhileUnmounted={onStoredWhileUnmounted}
+        managementUrl={BYBIT_API_MANAGEMENT_URL}
+        copy={{
+          openLink: t('accountDetail.openBybitLink'),
+          apiKeyPlaceholder: t('accountDetail.bybitApiKeyPlaceholder'),
+          apiSecretPlaceholder: t('accountDetail.bybitApiSecretPlaceholder'),
+          disclosure: t('accountDetail.bybitKeychainDisclosure'),
+          connect: t('accountDetail.connectBybit'),
+          connected: t('accountDetail.bybitConnected'),
+          couldNotConnect: t('accountDetail.couldNotConnectBybit'),
+          // The cooldown keeps no cause, and this text fits a rate refusal and a 403 alike.
+          coolingDown: t('accountDetail.bybitForbidden'),
+          syncStillRunning: t('accountDetail.bybitSyncStillRunning'),
+        }}
+        isCoolingDown={isBybitCoolingDown}
+        isSyncRunning={isBybitSyncRunning}
+        verify={(apiKey, secret) =>
+          bybitKeyRefusalOf(apiKey, secret, keepsBybitHoldings ? { ownerCheck: { accountId } } : {})
+        }
+        save={saveBybitCredentials}
+        intro={
+          <>
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.bybitConnectLimits')}
+            </Text>
 
-          <Text variant="caption" tone="textSecondary">
-            {t('accountDetail.bybitKinds')}
-          </Text>
-        </>
-      }
-    />
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.bybitKinds')}
+            </Text>
+          </>
+        }
+      />
+
+      {connectError !== undefined && (
+        <Text variant="body" tone="negative">
+          {connectError}
+        </Text>
+      )}
+    </Box>
   );
 };
 

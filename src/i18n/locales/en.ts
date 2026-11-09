@@ -872,6 +872,7 @@ export const en = {
     binanceSyncStillRunning: 'Kiko is still finishing the last Binance sync. Try again later.',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
+    bybit: 'Bybit',
     bybitApiKeyPlaceholder: 'Bybit API key',
     bybitApiSecretPlaceholder: 'Bybit API secret',
     bybitBalancesNotRead: {
@@ -994,6 +995,8 @@ export const en = {
     disconnectProviderMessage: {
       binance:
         'This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot.',
+      bybit:
+        'This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot.',
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
     emptyHoldings: {
@@ -1092,6 +1095,8 @@ export const en = {
     exchangeNotListed: {
       binance:
         'Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot.',
+      bybit:
+        "Not listed: interest, bonuses, airdrops and other Unified log entries that are not spot trades; converts made on the website or in the app before 10 September 2025; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than two years. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. A spot trade's amount already holds its fee. A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted.",
     },
     expectedProfit: 'Expected profit',
     // A priced type's (property, metal) breakdown gain row: gross value minus
@@ -1480,6 +1485,10 @@ export const en = {
   statistics: {
     accountContribution: 'Account Contribution',
     byType: 'By Type',
+    // The line under the net-worth chart while a Bybit account is in scope: what that account's
+    // past cannot hold, and the rule for a coin Kiko could not read.
+    bybitPastLimits:
+      "Bybit: the past of this line can be off. Kiko cannot read every move: P2P credits, Earn yield and stakes, interest, bonuses, loans, stocks, card spending, sub-account moves and derivatives, or anything older than two years. It can also rarely count a move twice. Your current balances are not affected. The account's details say more. A coin Kiko could not read stays on this line at its last read balance, or stays off it with no earlier sync.",
     // The "Debts" total shown under the account pie — a debt's own
     // negative held value, rendered through MoneyText.
     debtsTotal: 'Debts',

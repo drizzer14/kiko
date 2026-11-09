@@ -1,5 +1,6 @@
 import { i18n } from '@kiko/i18n/init';
 import { syncedMetadataFieldOf } from '@kiko/holdings/deletable';
+import { exchangeProviderRegistry } from '@kiko/crypto-sync/exchange/registry';
 
 import { bybitProvider } from '../bybit';
 import { binanceProvider } from '../binance';
@@ -58,8 +59,18 @@ describe('balance provider ids', () => {
     expect(providerDisplayName('binance', i18n.t)).toBe('Binance');
   });
 
-  it('reads the Bybit id as its raw id, since the registry wires no Bybit entry yet', () => {
-    expect(providerDisplayName('bybit', i18n.t)).toBe('bybit');
+  it('names the Bybit id from its registry entry', () => {
+    expect(providerDisplayName('bybit', i18n.t)).toBe('Bybit');
+  });
+
+  it('reads an id the registry does not wire as its raw id', () => {
+    jest.replaceProperty(exchangeProviderRegistry, 'bybit', undefined);
+
+    try {
+      expect(providerDisplayName('bybit', i18n.t)).toBe('bybit');
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('resolves the wallet display name in Ukrainian once the active language switches', async () => {

@@ -28,6 +28,12 @@ const EN_NOTE =
 const UK_NOTE =
   'Не показано: угоди з фʼючерсами, маржею та опціонами; витрати з Binance Card і подарункових карток; Auto-Invest; позики; стейкінг ETH і SOL; майнінг; NFT; копітрейдинг; Dual Investment; субакаунти; розподіли, крім винагород Simple Earn; продажі P2P і замовлення P2P, які ви розмістили у ролі рекламодавця; угоди з монетами, які ви продали до цієї версії і які Кіко більше ніде не бачив; записи, старіші за ті, що зберігає Binance. Binance не вказує гаманець для операцій P2P і фіатних операцій: Кіко показує замовлення P2P на Funding, а фіатні операції — на Spot.';
 
+const EN_BYBIT_NOTE =
+  "Not listed: interest, bonuses, airdrops and other Unified log entries that are not spot trades; converts made on the website or in the app before 10 September 2025; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than two years. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. A spot trade's amount already holds its fee. A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted.";
+
+const UK_BYBIT_NOTE =
+  'Не показано: відсотки, бонуси, аірдропи й інші записи журналу Unified, крім спотових угод; конвертації на сайті чи в застосунку до 10 вересня 2025 року; замовлення й дохід Earn; замовлення P2P, бо API Bybit відкритий для них лише рекламодавцям; продукти Earn, крім Flexible Savings і On-Chain; прибуток і збитки деривативів; позики; субакаунти; записи, старіші за два роки. Записи Bybit про поповнення й виведення не вказують, який гаманець використано, тож Кіко показує їх усі на Funding. Це не впливає на ваші поточні баланси. Суми поповнень і виведень показано так, як їх повідомляє Bybit, без окремого рядка комісії. Сума спотової угоди вже містить її комісію. Рух коштів у гаманці Funding — це запис, якого не пояснює жоден інший запис Bybit; він не рахується як витрата, а рух, схожий на вже наявний запис, Кіко не показує. Кіко не підтримує акаунти Bybit EU, а ключ з іншого регіонального сайту може не підійти.';
+
 describe('ExchangeHistoryFooter', () => {
   it.each([
     ['BTC', 1_234_567_891, [1_000_000_000, 234_567_000], 891],
@@ -115,6 +121,105 @@ describe('ExchangeHistoryFooter', () => {
     );
 
     expect(toJSON()).toBeNull();
+  });
+});
+
+describe('ExchangeHistoryFooter on a Bybit holding', () => {
+  const bybitAccount = { institution: 'bybit' };
+  const bybitHolding = (balanceMinorUnits: number): Holding => ({
+    currency: 'BTC',
+    balanceMinorUnits,
+    metadata: { bybitAsset: 'BTC' },
+  });
+
+  it('a Bybit holding shows no earlier history line; a Binance holding keeps it', async () => {
+    const bybit = await render(
+      <ExchangeHistoryFooter
+        holding={bybitHolding(1_234_567_891)}
+        account={bybitAccount}
+        transactions={rowsOf(1_000_000_000, 234_567_000)}
+      />,
+    );
+
+    expect(bybit.queryByText(EARLIER_HISTORY)).toBeNull();
+    expect(bybit.getByText(NOT_LISTED)).toBeTruthy();
+
+    const binance = await render(
+      <ExchangeHistoryFooter
+        holding={holdingOf('BTC', 1_234_567_891)}
+        account={binanceAccount}
+        transactions={rowsOf(1_000_000_000, 234_567_000)}
+      />,
+    );
+
+    expect(binance.getByText(EARLIER_HISTORY)).toHaveTextContent('Earlier history: ₿0.00000891');
+  });
+
+  it('shows no earlier history line for a Bybit holding whose rows exceed its balance', async () => {
+    const { queryByText } = await render(
+      <ExchangeHistoryFooter
+        holding={bybitHolding(100_000_000)}
+        account={bybitAccount}
+        transactions={rowsOf(150_000_000)}
+      />,
+    );
+
+    expect(queryByText(EARLIER_HISTORY)).toBeNull();
+  });
+
+  it('writes the Bybit note under the holding', async () => {
+    const { getByText } = await render(
+      <ExchangeHistoryFooter
+        holding={bybitHolding(100_000_000)}
+        account={bybitAccount}
+        transactions={rowsOf(100_000_000)}
+      />,
+    );
+
+    expect(getByText(NOT_LISTED)).toHaveTextContent(EN_BYBIT_NOTE);
+  });
+
+  it.each([
+    ['holds the Bybit EU sentence', /Kiko does not support Bybit EU accounts/],
+    ['holds clause F2', /A spot trade's amount already holds its fee\./],
+    ['holds clause F3', /A Funding wallet move is one no other Bybit record explains/],
+    ['names the two-year limit', /records older than two years/],
+  ])('the Bybit note %s', async (_label, pattern) => {
+    const { getByText } = await render(
+      <ExchangeHistoryFooter
+        holding={bybitHolding(100_000_000)}
+        account={bybitAccount}
+        transactions={rowsOf(100_000_000)}
+      />,
+    );
+
+    expect(getByText(NOT_LISTED)).toHaveTextContent(pattern);
+  });
+});
+
+describe('ExchangeHistoryFooter on a Bybit holding in Ukrainian', () => {
+  beforeEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('reads the Bybit note in Ukrainian', async () => {
+    const { getByText } = await render(
+      <ExchangeHistoryFooter
+        holding={{ currency: 'BTC', balanceMinorUnits: 1, metadata: { bybitAsset: 'BTC' } }}
+        account={{ institution: 'bybit' }}
+        transactions={rowsOf(1)}
+      />,
+    );
+
+    expect(getByText(/^Не показано:/)).toHaveTextContent(UK_BYBIT_NOTE);
   });
 });
 

@@ -3,6 +3,7 @@ export { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
 export { isBybitCoolingDown, setBybitCooldownUntil } from './bybit.cooldown';
 export {
   clearBybitCredentials,
+  clearBybitCredentialsIfWrittenBy,
   readBybitCredentials,
   saveBybitCredentials,
 } from './bybit.credentials';

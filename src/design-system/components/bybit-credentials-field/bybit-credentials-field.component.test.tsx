@@ -160,6 +160,24 @@ describe('BybitCredentialsField', () => {
     expect(at(i18n.t('accountDetail.bybitKinds'))).toBeLessThan(at('Bybit API key'));
   });
 
+  it('shows the text of a failed Connect that it is given, in the negative tone, and none otherwise', async () => {
+    const without = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
+
+    expect(without.queryByTestId('text-tone-negative')).toBeNull();
+
+    const refused = await render(
+      <BybitCredentialsField
+        accountId="acc-1"
+        onConnect={onConnect}
+        connectError="Bybit refused the connection."
+      />,
+    );
+
+    expect(refused.getByTestId('text-tone-negative')).toHaveTextContent(
+      'Bybit refused the connection.',
+    );
+  });
+
   it('shows a required error per blank field and calls no network when Connect is pressed', async () => {
     const view = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
 
