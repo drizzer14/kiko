@@ -8,17 +8,19 @@ import DataTable from '.';
 import { resolveHeaderShift } from './data-table.layout';
 import type { DataTableProps } from './data-table.props';
 
+const SIDE_MARGIN = 16;
+
 const mockClearance = { automatic: 37, plain: 99 };
+const mockMargin = { value: SIDE_MARGIN };
 
 jest.mock('@kiko/design-system/components/screen', () => ({
   ...jest.requireActual('@kiko/design-system/components/screen'),
   useAutomaticScrollClearance: () => mockClearance.automatic,
   useBottomClearance: () => mockClearance.plain,
-  useContentMargin: () => 16,
+  useContentMargin: () => mockMargin.value,
 }));
 
 const PREFIX = 'table';
-const SIDE_MARGIN = 16;
 const ROOT = PREFIX;
 
 const makeCells = (texts: string[]) =>
@@ -51,6 +53,7 @@ const renderTable = async (props: Partial<DataTableProps> = {}) =>
 describe('DataTable with a bar inset', () => {
   afterEach(() => {
     jest.restoreAllMocks();
+    mockMargin.value = SIDE_MARGIN;
   });
 
   describe('the root', () => {
@@ -231,6 +234,22 @@ describe('DataTable with a bar inset', () => {
       expect(flat(rendered.getByTestId(`${PREFIX}-fixed-column`)).width).toBe(
         (400 - SIDE_MARGIN * 2) * 0.4,
       );
+    });
+
+    it('refits the columns to a side margin that changes at the same scroll width', async () => {
+      const barInset = new Animated.Value(100);
+      const rendered = await renderTable({ barInset });
+      await fireEvent(rendered.getByTestId(ROOT), 'layout', layoutEvent(400));
+      await fireEvent(
+        rendered.getByTestId(`${PREFIX}-measure-labels`, { includeHiddenElements: true }),
+        'layout',
+        layoutEvent(500),
+      );
+
+      mockMargin.value = 40;
+      await rendered.rerender(<DataTable {...baseProps} barInset={barInset} />);
+
+      expect(flat(rendered.getByTestId(`${PREFIX}-fixed-column`)).width).toBe((400 - 40 * 2) * 0.4);
     });
 
     it('is the whole width without a bar inset', async () => {
