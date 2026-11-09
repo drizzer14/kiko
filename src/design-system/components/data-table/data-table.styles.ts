@@ -11,6 +11,10 @@ export const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     flexGrow: 1,
   },
+  // Above the body rows it slides over.
+  shiftedHeader: {
+    zIndex: 1,
+  },
   top: {
     gap: theme.spacing(3),
   },

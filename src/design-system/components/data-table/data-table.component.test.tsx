@@ -569,7 +569,7 @@ describe('DataTable', () => {
 
     it('puts the caption, the header and the body in the vertical scroll, in that order', async () => {
       const rendered = await renderTable();
-      const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
+      const vertical = rendered.getByTestId(PREFIX);
       const parts = within(vertical).getAllByTestId(/^table-(caption|header-row|body-row)$/, {
         includeHiddenElements: true,
       });
@@ -589,9 +589,7 @@ describe('DataTable', () => {
     it('makes only the header row sticky, so the caption scrolls away', async () => {
       const rendered = await renderTable();
 
-      expect(rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices).toEqual([
-        1,
-      ]);
+      expect(rendered.getByTestId(PREFIX).props.stickyHeaderIndices).toEqual([1]);
     });
 
     // The real sticky wrapper moves the child's style onto itself and gives the child a fill
@@ -599,7 +597,7 @@ describe('DataTable', () => {
     // not run that wrapper: this pins the nesting only, and the layout is measured on a device.
     it('makes a plain view with no style of its own the sticky child, holding the row', async () => {
       const rendered = await renderTable();
-      const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
+      const vertical = rendered.getByTestId(PREFIX);
       const row = rendered.getByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true });
       const sticky = row.parent;
       const siblings = sticky?.parent?.children ?? [];
@@ -624,9 +622,7 @@ describe('DataTable', () => {
           .getAllByTestId(/^(filters|table-caption)$/)
           .map((part) => part.props.testID),
       ).toEqual(['filters', `${PREFIX}-caption`]);
-      expect(rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices).toEqual([
-        1,
-      ]);
+      expect(rendered.getByTestId(PREFIX).props.stickyHeaderIndices).toEqual([1]);
     });
 
     it('keeps the caption as the table summary beside top content', async () => {
@@ -640,7 +636,8 @@ describe('DataTable', () => {
       const top = rendered.getByTestId(`${PREFIX}-top`);
 
       expect(within(top).getByTestId(`${PREFIX}-caption`)).toBeTruthy();
-      expect(top.parent?.children).toHaveLength(3);
+      // The top content, the header, the body and the measuring layer.
+      expect(top.parent?.children).toHaveLength(4);
     });
 
     describe('with empty content', () => {
@@ -657,9 +654,7 @@ describe('DataTable', () => {
           rendered.queryByTestId(`${PREFIX}-header-row`, { includeHiddenElements: true }),
         ).toBeNull();
         expect(rendered.queryByTestId(`${PREFIX}-body-row`)).toBeNull();
-        expect(
-          rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.stickyHeaderIndices,
-        ).toBeUndefined();
+        expect(rendered.getByTestId(PREFIX).props.stickyHeaderIndices).toBeUndefined();
       });
 
       it('lets the empty content fill the room under the top content', async () => {
@@ -668,7 +663,7 @@ describe('DataTable', () => {
         expect(
           flat({
             props: {
-              style: rendered.getByTestId(`${PREFIX}-vertical-scroll`).props.contentContainerStyle,
+              style: rendered.getByTestId(PREFIX).props.contentContainerStyle,
             },
           }),
         ).toMatchObject({ flexGrow: 1 });
@@ -706,13 +701,22 @@ describe('DataTable', () => {
       expect(flat(row).backgroundColor).toBe(darkTheme.colors.surface);
     });
 
-    it('keeps the measuring layer outside the vertical scroll', async () => {
+    // The scroll is the table's root, so the layer sits in it as its last child, out of flow, and
+    // after the sticky child's index.
+    it('keeps the measuring layer as the last child of the vertical scroll, out of flow', async () => {
       const rendered = await renderTable();
-      const vertical = rendered.getByTestId(`${PREFIX}-vertical-scroll`);
+      const layer = rendered.getByTestId(`${PREFIX}-measure-layer`, {
+        includeHiddenElements: true,
+      });
+      const siblings = layer.parent?.children ?? [];
 
       expect(
-        within(vertical).queryByTestId(`${PREFIX}-measure-layer`, { includeHiddenElements: true }),
-      ).toBeNull();
+        within(rendered.getByTestId(PREFIX)).getByTestId(`${PREFIX}-measure-layer`, {
+          includeHiddenElements: true,
+        }),
+      ).toBeTruthy();
+      expect(siblings.indexOf(layer as never)).toBe(siblings.length - 1);
+      expect(flat(layer).position).toBe('absolute');
     });
 
     it('moves the header by the negative live offset of the body', async () => {

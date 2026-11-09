@@ -1,7 +1,7 @@
 import {
+  Animated as NativeAnimated,
   type LayoutChangeEvent,
   Pressable,
-  ScrollView,
   type ScrollViewInstance,
   Text as RNText,
   View,
@@ -11,6 +11,11 @@ import Animated, {
   useAnimatedStyle,
   useScrollOffset,
 } from 'react-native-reanimated';
+import maybe, { foldMap } from 'fnts/maybe';
+import {
+  useAutomaticScrollClearance,
+  useContentMargin,
+} from '@kiko/design-system/components/screen';
 import { useUnistyles } from 'react-native-unistyles';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -60,9 +65,35 @@ const DataTable: FC<DataTableProps> = ({
   topContent,
   emptyContent,
   initialColumnIndex,
+  barInset,
   testID = 'data-table',
 }) => {
   const { theme } = useUnistyles();
+  const hasBarInset = barInset !== undefined;
+  const sideMargin = useContentMargin();
+  const bottomClearance = useAutomaticScrollClearance();
+  const scrollOffsetY = useRef(new NativeAnimated.Value(0)).current;
+  const [headerY, setHeaderY] = useState(0);
+  // `resolveHeaderShift` as one native-driven expression: the bar's height and the offset both
+  // change on the native side, and the header row is drawn there too.
+  const headerShift = useMemo(
+    () =>
+      foldMap(maybe(barInset), (inset) =>
+        NativeAnimated.add(scrollOffsetY, NativeAnimated.subtract(inset, headerY)).interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 1],
+          extrapolateLeft: 'clamp',
+        }),
+      ),
+    [barInset, scrollOffsetY, headerY],
+  );
+  const onScroll = useMemo(
+    () =>
+      NativeAnimated.event([{ nativeEvent: { contentOffset: { y: scrollOffsetY } } }], {
+        useNativeDriver: true,
+      }),
+    [scrollOffsetY],
+  );
   const isEmpty = emptyContent !== undefined;
   const [containerWidth, setContainerWidth] = useState(0);
   const [labelWidth, setLabelWidth] = useState(0);
@@ -214,6 +245,19 @@ const DataTable: FC<DataTableProps> = ({
     </View>
   );
 
+  // The scroll view's own sticky handling reads the raw offset and would stick the row behind the
+  // bar, so with a bar inset the row is shifted here instead.
+  const headerBlock =
+    foldMap(maybe(headerShift), (shift) => (
+      <NativeAnimated.View
+        style={[styles.shiftedHeader, { transform: [{ translateY: shift }] }]}
+        onLayout={(event) => setHeaderY(event.nativeEvent.layout.y)}
+        testID={`${testID}-header-shift`}
+      >
+        {headerNode}
+      </NativeAnimated.View>
+    )) ?? headerNode;
+
   const bodyNode = (
     <View style={styles.bodyRow} testID={`${testID}-body-row`}>
       <View style={[styles.fixedColumn, { width: fixedWidth }]} testID={`${testID}-fixed-column`}>
@@ -309,28 +353,38 @@ const DataTable: FC<DataTableProps> = ({
   );
 
   return (
-    <View
+    // The scroll is the root: UIKit finds the scroll view a large title collapses with down the
+    // first-child chain, and a view wrapping it leaves none.
+    <NativeAnimated.ScrollView
       style={styles.container}
-      onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
+      onLayout={(event) =>
+        setContainerWidth(event.nativeEvent.layout.width - (hasBarInset ? sideMargin * 2 : 0))
+      }
       testID={testID}
+      stickyHeaderIndices={isEmpty || hasBarInset ? undefined : STICKY_HEADER_INDICES}
+      contentInsetAdjustmentBehavior={hasBarInset ? 'automatic' : undefined}
+      scrollEventThrottle={hasBarInset ? 16 : undefined}
+      onScroll={hasBarInset ? onScroll : undefined}
+      contentContainerStyle={
+        hasBarInset
+          ? {
+              paddingHorizontal: sideMargin,
+              paddingBottom: bottomClearance + theme.spacing(4),
+            }
+          : styles.scrollContent
+      }
     >
-      <ScrollView
-        testID={`${testID}-vertical-scroll`}
-        stickyHeaderIndices={isEmpty ? undefined : STICKY_HEADER_INDICES}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* One child holds both, so the header stays the scroll's child at the sticky index. It
-            stays the first child in the empty state too, so a control in it is never remounted. */}
-        <View style={styles.top} testID={`${testID}-top`}>
-          {topContent}
+      {/* One child holds both, so the header stays the scroll's child at the sticky index. It
+          stays the first child in the empty state too, so a control in it is never remounted. */}
+      <View style={styles.top} testID={`${testID}-top`}>
+        {topContent}
 
-          {isEmpty ? null : captionNode}
-        </View>
+        {isEmpty ? null : captionNode}
+      </View>
 
-        {isEmpty ? emptyContent : headerNode}
+      {isEmpty ? emptyContent : headerBlock}
 
-        {isEmpty ? null : bodyNode}
-      </ScrollView>
+      {isEmpty ? null : bodyNode}
 
       {isEmpty ? null : (
         <View
@@ -373,7 +427,7 @@ const DataTable: FC<DataTableProps> = ({
           ))}
         </View>
       )}
-    </View>
+    </NativeAnimated.ScrollView>
   );
 };
 
