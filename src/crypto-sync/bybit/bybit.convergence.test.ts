@@ -1106,7 +1106,7 @@ describe('Bybit convergence of the log and the convert walk', () => {
       expect(outcome.isFinished || (await denseMarkOf(account.log)) !== undefined).toBe(true);
     }, 120_000);
 
-    // The same burst 3 days old lies inside the 7-day re-scan, whatever the overlap day owes, so
+    // The same burst 3 days old lies inside the re-scan window, whatever the overlap day owes, so
     // this one needs the 1 ms split outside the forward pass on its own. MEASURED, 2026-11-07: with
     // a split to 1 second there, it never ends at a gap of 1 hour (it ends at the other two).
     it('a burst of 1,001 rows in 300 ms, 3 days old, ends its owed ground, or its mark stands', async () => {

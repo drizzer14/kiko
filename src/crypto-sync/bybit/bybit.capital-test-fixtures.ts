@@ -134,7 +134,8 @@ export const fakeBybit = (options: FakeOptions = {}) => {
         () => endTime - Math.floor(startTime / SECOND_MS) * SECOND_MS > 7 * DAY_MS,
       )
       .with('fundingLedger', () => endTime - startTime > 7 * DAY_MS)
-      .otherwise(() => false);
+      .with('deposit', 'internal', 'withdraw', () => false)
+      .exhaustive();
 
     if (isPastLimit) {
       return envelopeOf(131203);
