@@ -13,10 +13,14 @@ const ROOT = join(__dirname, '..');
 const JEST_BIN = require.resolve('jest/bin/jest');
 const JEST_CONFIG = require('../jest.config.js');
 
-// These two render the real app and so import src logic on purpose. Add a file here only when
+// These render the real app and so import src logic on purpose. Add a file here only when
 // it genuinely imports src; never for a fixture string. Each entry is listed in
 // docs/harness/documented-exceptions.md with the import that justifies it.
-const GENUINE_SRC_TESTS = ['__tests__/App.test.tsx', '__tests__/symbol-deployment-target.test.tsx'];
+const GENUINE_SRC_TESTS = [
+  '__tests__/App.csv-export-cleanup.test.tsx',
+  '__tests__/App.test.tsx',
+  '__tests__/symbol-deployment-target.test.tsx',
+];
 
 const isSourceFile = (path: string): boolean =>
   /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) && !/\.d\.ts$/.test(path);

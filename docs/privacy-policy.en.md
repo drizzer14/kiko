@@ -2,7 +2,7 @@
 
 > 🇺🇦 [Українською](./privacy-policy.md) · 🇬🇧 English
 
-**Effective date:** 3 November 2026
+**Effective date:** 8 November 2026
 
 Kiko is a personal finance app developed by Dmytro Vasylkivskyi ("we", "us").
 This policy explains how Kiko handles your information.
@@ -39,12 +39,21 @@ This data is kept in an on-device database encrypted with AES-256 (SQLCipher).
 Your API credentials are stored in the iOS Keychain, the system's secure
 credential store.
 
-**Exports.** When you export your data, Kiko writes an encrypted file
-(AES-256-GCM) with a key that is shown only to you. The file includes your
-saved tokens and keys only if you turn on "Include saved passwords & keys"
-(off by default) and confirm with Face ID or your device passcode. Kiko never
-uploads an export anywhere; you choose where to save or share it. Keep the file
-and its key safe.
+**Exports.** Kiko has two exports. A backup is an encrypted file (AES-256-GCM)
+with a key that is shown only to you. The backup includes your saved tokens and
+keys only if you turn on "Include saved passwords & keys" (off by default) and
+confirm with Face ID or your device passcode. A CSV file is plain text, and
+anyone with the file can read it: it holds your transactions (dates, amounts,
+currencies, categories, descriptions and comments, with each transaction's type,
+whether it is pending, and its source, such as a bank or an exchange) and the
+names of your accounts and holdings, and no tokens or keys. A holding name can
+hold a card number mask, and a description can name another person. On a device
+that has a passcode, Kiko asks you to confirm with Face ID or your device
+passcode before it writes a CSV file, and it deletes the file from the app's
+temporary storage once you finish sharing it, or at the next app launch. Kiko
+never uploads an export anywhere; you choose where to save or share it. Keep
+the backup file and its key safe, and share a CSV file only with people and apps
+you trust.
 
 ## 3. Connections to third-party services
 

@@ -85,11 +85,18 @@ describe('expenseRowsOf', () => {
 
     expect(row).toEqual({
       id: 'coffee',
+      transactionId: 'coffee',
       time: BASE_TIME,
       description: 'Coffee',
       native: Money.of('UAH', 1_500),
       base: Money.of('UAH', 1_500),
     });
+  });
+
+  it('names the row itself as the transaction of a plain expense row', () => {
+    const [row] = expenseRows([rowOf('coffee', -1_500)]);
+
+    expect(row.transactionId).toBe('coffee');
   });
 
   it('converts a foreign amount at the rate, as the breakdown does', () => {
@@ -120,6 +127,7 @@ describe('expenseRowsOf', () => {
       expect(rows).toEqual([
         {
           id: 'loan-interest:loan-payment',
+          transactionId: 'loan-payment',
           time: payment.time,
           description: 'Mortgage payment',
           native: Money.of('UAH', 9_000),
@@ -150,6 +158,21 @@ describe('expenseRowsOf', () => {
         ['loan-excess:loan-payment', 'fee'],
         ['loan-interest:loan-payment', 'interest'],
       ]);
+    });
+
+    it('names the payment as the transaction of a loan interest row', () => {
+      const [row] = expenseRows([payment]);
+
+      expect(row.id).toBe('loan-interest:loan-payment');
+      expect(row.transactionId).toBe('loan-payment');
+    });
+
+    it('names the payment as the transaction of a loan fee row', () => {
+      const withFee = { ...payment, amountMinorUnits: -(909_000 + 300) };
+      const fee = expenseRows([withFee]).find((row) => row.loanPart === 'fee');
+
+      expect(fee?.id).toBe('loan-excess:loan-payment');
+      expect(fee?.transactionId).toBe('loan-payment');
     });
 
     it('has no loanPart on a row that is no part of a loan payment', () => {
@@ -297,6 +320,7 @@ describe('incomeRowsOf', () => {
     expect(rows).toEqual([
       {
         id: 'gift',
+        transactionId: 'gift',
         time: BASE_TIME + MINUTE,
         // No description of its own: the default label of its holding, as Home reads it.
         description: i18n.t('transactions.defaultDescriptionIncome', { name: CARD.name }),
@@ -305,12 +329,19 @@ describe('incomeRowsOf', () => {
       },
       {
         id: 'salary',
+        transactionId: 'salary',
         time: BASE_TIME,
         description: 'Salary',
         native: Money.of('UAH', 50_000),
         base: Money.of('UAH', 50_000),
       },
     ]);
+  });
+
+  it('names the credit itself as the transaction of an income row', () => {
+    const [row] = incomeRows([rowOf('salary', 50_000)]);
+
+    expect(row.transactionId).toBe('salary');
   });
 
   it('never shows a credit that a rule excludes: a transfer, a move or a coin purchase', () => {

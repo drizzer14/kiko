@@ -1,4 +1,4 @@
-import { act, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
@@ -12,6 +12,7 @@ const COIN_TIME = new Date(2025, 0, 10, 12).getTime();
 
 const COFFEE: CellRow = {
   id: 'coffee',
+  transactionId: 'coffee',
   time: COFFEE_TIME,
   description: 'Coffee',
   native: Money.of('UAH', 1_500),
@@ -19,6 +20,7 @@ const COFFEE: CellRow = {
 };
 const COIN: CellRow = {
   id: 'coin',
+  transactionId: 'coin',
   time: COIN_TIME,
   description: 'Coin purchase',
   native: Money.of('USDT', 250_000_000),
@@ -26,6 +28,7 @@ const COIN: CellRow = {
 };
 const INTEREST: CellRow = {
   id: 'loan-interest:payment',
+  transactionId: 'payment',
   time: COIN_TIME - 1,
   description: 'Mortgage payment',
   native: Money.of('UAH', 9_000),
@@ -34,6 +37,7 @@ const INTEREST: CellRow = {
 };
 const FEE: CellRow = {
   id: 'loan-excess:payment',
+  transactionId: 'payment',
   time: COIN_TIME - 1,
   description: 'Mortgage payment',
   native: Money.of('UAH', 300),
@@ -43,6 +47,9 @@ const FEE: CellRow = {
 // More rows than a sheet can mount at once: a 12-month Total on a synced card holds this many.
 const MANY_ROWS = 400;
 
+const onPressRow = jest.fn();
+const onClosed = jest.fn();
+
 const shown = (rows: readonly CellRow[], visible = true) =>
   render(
     <CellRowsSheet
@@ -51,6 +58,8 @@ const shown = (rows: readonly CellRow[], visible = true) =>
       rows={rows}
       baseCurrency="UAH"
       onDismiss={jest.fn()}
+      onPressRow={onPressRow}
+      onClosed={onClosed}
     />,
   );
 
@@ -139,10 +148,27 @@ describe('CellRowsSheet', () => {
     expect(within(getByTestId('cell-rows-list')).queryByTestId('cell-rows-total')).toBeNull();
   });
 
-  it('is read-only: no row can be pressed', async () => {
+  it('hands a pressed row to onPressRow', async () => {
     const { getByTestId } = await shown([COFFEE, COIN]);
 
-    expect(within(getByTestId('cell-rows-sheet')).queryAllByRole('button')).toEqual([]);
+    await fireEvent.press(getByTestId('cell-row-coffee'));
+
+    expect(onPressRow).toHaveBeenCalledTimes(1);
+    expect(onPressRow).toHaveBeenCalledWith(COFFEE);
+  });
+
+  it('makes each row a button', async () => {
+    const { getByTestId } = await shown([COFFEE, COIN]);
+
+    expect(within(getByTestId('cell-rows-sheet')).getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('calls onClosed when its sheet has finished closing', async () => {
+    const { getByTestId } = await shown([COFFEE]);
+
+    await fireEvent(getByTestId('cell-rows-sheet-modal'), 'dismiss');
+
+    expect(onClosed).toHaveBeenCalledTimes(1);
   });
 
   it('shows nothing while it is not visible', async () => {

@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import { type FC, useId } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
-import { entityIconTileGradient, isLightEntityColor } from '@kiko/design-system/entity-tint';
+import { entityIconTileGradient, prefersDarkGlyph } from '@kiko/design-system/entity-tint';
 
 import SymbolIcon from '../symbol';
 
@@ -52,15 +52,12 @@ const EntityIconTile: FC<EntityIconTileProps> = ({
 
   const [topStop, bottomStop] = entityIconTileGradient(color);
   const tileSize = iconTileSize(theme, compact);
-  // A fixed white `onAccent` glyph fails
-  // WCAG AA contrast on the palette's lighter swatches (`white`, `yellow`,
-  // `khaki`, `mint`, `teal` — see `isLightEntityColor`'s own doc comment in
-  // `entity-tint.ts`), reading as a near-invisible icon, so the glyph tint
-  // adapts to the tile's own resolved hue: `theme.colors.glyphOnLightTile`
-  // on a light tile (not `background`, which is a pale gray in the light
-  // theme), the standard white `onAccent` on a dark one — never a raw hex
-  // literal for either.
-  const glyphTintColor = isLightEntityColor(color)
+  // A fixed white `onAccent` glyph fails WCAG contrast on the palette's lighter swatches, reading
+  // as a near-invisible icon, so the glyph tint follows the tile's own resolved hue and the
+  // active scheme (see `prefersDarkGlyph` in `entity-tint.ts`): `theme.colors.glyphOnLightTile`
+  // when the dark glyph reads stronger (not `background`, a pale gray in the light theme), the
+  // standard white `onAccent` otherwise — never a raw hex literal for either.
+  const glyphTintColor = prefersDarkGlyph(color, theme.colorScheme)
     ? theme.colors.glyphOnLightTile
     : theme.colors.onAccent;
 

@@ -1,6 +1,9 @@
 import { Pressable } from 'react-native';
 import { type FC, useState } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 
 import Box from '../box';
 import Text from '../text';
@@ -30,6 +33,7 @@ const IconEditor: FC<IconEditorProps> = ({
   onRemove,
 }) => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   const [pickerOpen, setPickerOpen] = useState(false);
   const displayIcon = icon ?? fallbackIcon;
   const toggleLabel =
@@ -67,7 +71,7 @@ const IconEditor: FC<IconEditorProps> = ({
         <SymbolIcon
           name={displayIcon}
           tone="textSecondary"
-          color={iconColor}
+          color={foldMap(maybe(iconColor), (color) => markColor(color, scheme))}
           accessibilityLabel={t('common.iconLabel', { name: displayIcon })}
         />
       </Pressable>

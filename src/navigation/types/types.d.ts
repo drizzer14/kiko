@@ -7,7 +7,6 @@ import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { HoldingType } from '@kiko/holdings/holding-type';
 import type { TablesView } from '@kiko/statistics/tables-view';
-import type { TablePeriod } from '@kiko/statistics/table-period';
 import type { RecurringPeriod } from '@kiko/recurring/detection';
 import type { EntryTab } from '@kiko/screens/forms/transaction-form';
 import type { NavigatorScreenParams } from '@react-navigation/native';
@@ -178,11 +177,11 @@ type HoldingFormParams = (
 };
 
 /**
- * The Tables screen's period and view. They live in the route params, so a fold or a resize that
- * remounts the screen keeps them, and a new push has none, which reads as this year of the
- * category table.
+ * The Tables screen's view. It lives in the route params, so a fold or a resize that remounts the
+ * screen keeps it, and a new push has none, which reads as the category table. The period is not
+ * here: it has to survive the pop, so it lives in `use-tables-period-selection`.
  */
-export type TablesParams = { period?: TablePeriod; view?: TablesView };
+export type TablesParams = { view?: TablesView };
 
 // `Statistics` is the companion pane of the Home tab on a wide window, and Home with
 // `TransactionForm` are the same on the Statistics tab: each tab shows the other's root beside
@@ -357,6 +356,7 @@ export type SettingsStackParamList = {
   // No `ruleId`: a new rule for the category.
   CategoryRuleForm: { categoryKey: string; ruleId?: string; draft?: CategoryRuleFormDraft };
   ExportData: undefined;
+  ExportCsv: undefined;
   ImportData: undefined;
   Reminders: undefined;
   ReminderForm: ReminderFormParams;

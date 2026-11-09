@@ -4,7 +4,7 @@ import { render } from '@testing-library/react-native';
 import { mockFindNodeHandle } from '@kiko/test-support/node-handles';
 import { findNodeHandle, View, type ViewInstance } from 'react-native';
 
-import { shareAnchorOf } from './share-anchor';
+import { shareAnchorOf, toFileShareUrl } from './share-anchor';
 
 jest.mock('react-native/Libraries/ReactNative/RendererProxy', () => ({
   ...jest.requireActual('react-native/Libraries/ReactNative/RendererProxy'),
@@ -37,5 +37,17 @@ describe('shareAnchorOf', () => {
 
   it('returns undefined when the control is gone', () => {
     expect(shareAnchorOf(null)).toBeUndefined();
+  });
+});
+
+describe('toFileShareUrl', () => {
+  it('puts the file scheme in front of a bare path', () => {
+    expect(toFileShareUrl('/tmp/kiko-transactions-1.csv')).toBe(
+      'file:///tmp/kiko-transactions-1.csv',
+    );
+  });
+
+  it('leaves a path that already has the scheme as it is', () => {
+    expect(toFileShareUrl('file:///tmp/x.kiko')).toBe('file:///tmp/x.kiko');
   });
 });

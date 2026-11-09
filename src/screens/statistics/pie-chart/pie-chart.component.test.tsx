@@ -5,8 +5,12 @@ import {
   buildCategoryBreakdown,
   categoryColor,
 } from '@kiko/statistics/category-breakdown';
-import { darkTheme } from '@kiko/design-system/theme';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import type { Currency } from '@kiko/currency/currency';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { categoryDisplayColor } from '@kiko/design-system/entity-tint';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
@@ -486,5 +490,29 @@ describe('PieChart', () => {
 
     expect(getByTestId('pie-chart-empty')).toBeTruthy();
     expect(queryByTestId('pie-chart-arc-a1')).toBeNull();
+  });
+
+  describe('in the light world', () => {
+    beforeEach(() => {
+      registerLightThemeFirst();
+    });
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('paints a yellow wedge and its legend swatch with the tile, never the line mark', async () => {
+      const yellowTile = lightTheme.colors.entityColors.yellow;
+      const yellowSlices: AccountSlice[] = [
+        { accountId: 'y1', name: 'Yellow', amount: 100_00, share: 1, color: yellowTile },
+      ];
+      const { getByTestId } = await render(<PieChart slices={yellowSlices} baseCurrency="UAH" />);
+      const swatchColor = styleLayers(getByTestId('pie-chart-swatch-y1').props.style)
+        .map((layer) => layer.backgroundColor)
+        .find((value): value is string => typeof value === 'string');
+
+      expect(getByTestId('pie-chart-arc-y1').props.fill).toBe(yellowTile);
+      expect(swatchColor).toBe(yellowTile);
+    });
   });
 });

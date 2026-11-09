@@ -696,16 +696,19 @@ verified usage, not dead weight:
   `--findRelatedTests`; every other file under `__tests__/` must not be, so a
   Semgrep-spawning harness test never joins a Stryker run or its dry run. The
   test asserts the related set EQUALS this list, so a stale entry fails too.
-  Two entries, each a real import of app source:
+  Three entries, each a real import of app source:
   `__tests__/App.test.tsx` renders the real root component (`import App from
   '../App'`), imports `@kiko/reminders/native` and
   `@kiko/navigation/navigation-ref`, and mocks and requires the actual
-  `@kiko/accounts/accounts.repo`; and
+  `@kiko/accounts/accounts.repo`;
+  `__tests__/App.csv-export-cleanup.test.tsx` renders the same root component
+  (`import App from '../App'`) and mocks `@kiko/data-transfer` and
+  `@kiko/migration/migrations-gate`; and
   `__tests__/symbol-deployment-target.test.tsx` renders
   `@kiko/navigation/root-navigator` and imports `@kiko/holdings/entity-symbols`,
   `@kiko/holdings/entity-icon-pool`, `@kiko/design-system/components/icon-pools`,
   `@kiko/design-system/edit-bar-item`, and `@kiko/navigation/navigation-theme`.
-  Neither spawns Semgrep. A new entry needs the same: a real import of src
+  None spawns Semgrep. A new entry needs the same: a real import of src
   logic, never a fixture string (build that specifier at runtime instead).
 - **`jest.config.js` `testPathIgnorePatterns`**:
   `<rootDir>/__tests__/test-support/(?!.*\.test\.[jt]sx?$)` (beside Jest's

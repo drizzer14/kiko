@@ -111,6 +111,10 @@ new component can land between reviews of this skill:
   header height — see
   `src/navigation/use-scroll-to-top-on-tab-press/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
+  A control that moves between rows by pose (the Tables period field sits beside the filters only
+  with a vertical bar edge and the `columns` layout) reads `useVerticalBarEdge` and the SETTLED
+  layout mode (`useSettledLayoutMode`), never the raw mode: a raw change shows one wrong frame
+  and would close an open sheet. See `src/screens/tables/tables.screen.tsx`.
   Keyboard offset: `react-native` 0.87.1 is patched
   (`patches/react-native+0.87.1.patch`, listed in `docs/harness/documented-exceptions.md`) so a
   ScrollView with `automaticallyAdjustKeyboardInsets` moves its content offset only when the
@@ -157,7 +161,12 @@ new component can land between reviews of this skill:
   measured widths reset while it shows
   (`src/design-system/components/data-table/data-table.component.tsx`);
   the header follows the body's horizontal offset through reanimated's `useScrollOffset`, and a
-  horizontal scroll that turns on only when the columns overflow. Every width and row height comes
+  horizontal scroll that turns on only when the columns overflow, measured against the natural
+  widths. Columns that all fit share the spare room evenly (`fillColumnWidths`,
+  `src/design-system/components/data-table/data-table.layout.ts`), so the grid reaches the right
+  edge. Zebra rows use `colors.rowBand`; sum columns use `colors.sumTint` (not
+  `sheetBackground`); read both in `src/design-system/theme/theme.ts`.
+  Every width and row height comes
   from `onLayout` (a hidden measuring layer for text widths; a row is `minHeight` of the taller
   part, at least 44pt), never the window or the device type, so Dynamic Type is followed. Cell
   text is a plain RN `Text` for `fontVariant: ['tabular-nums']`. One VoiceOver element per cell

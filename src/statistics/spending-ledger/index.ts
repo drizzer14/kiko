@@ -3,6 +3,8 @@ export {
   buildSpendingLedger,
   excludedIdsOf,
   ledgerRowsOf,
+  loanHoldingsOf,
+  balanceSetIdsOf,
   ownIbansOf,
   spendingRowsIn,
   accountKindByHoldingIdOf,

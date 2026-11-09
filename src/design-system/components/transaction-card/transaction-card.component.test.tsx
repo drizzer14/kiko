@@ -2,7 +2,12 @@ import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
-import { darkTheme } from '@kiko/design-system/theme';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import TransactionCard from '.';
@@ -194,5 +199,46 @@ describe('TransactionCard', () => {
     );
 
     expect(JSON.stringify(toJSON())).not.toContain('link');
+  });
+});
+
+describe('TransactionCard category glyph mark', () => {
+  const lightTile = lightTheme.colors.entityColors.yellow;
+  const glyphTintOf = async (selected?: boolean) => {
+    const { getByLabelText } = await render(
+      <TransactionCard
+        title="Coffee"
+        categoryIcon="cup.and.saucer"
+        categoryIconColor={lightTile}
+        categoryAccessibilityLabel="Dining"
+        money={Money.of('UAH', -1_000)}
+        selected={selected}
+      />,
+    );
+
+    return getByLabelText('Dining').props.tintColor;
+  };
+
+  it('tints the glyph with the tile unchanged in the dark world', async () => {
+    expect(await glyphTintOf()).toBe(lightTile);
+  });
+
+  describe('in the light world', () => {
+    beforeEach(() => {
+      registerLightThemeFirst();
+    });
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('tints the glyph with the light mark, not the tile', async () => {
+      expect(markColor(lightTile, 'light')).not.toBe(lightTile);
+      expect(await glyphTintOf()).toBe(markColor(lightTile, 'light'));
+    });
+
+    it('still passes no color on the accent fill, so the glyph takes onAccent', async () => {
+      expect(await glyphTintOf(true)).toBe(lightTheme.colors.onAccent);
+    });
   });
 });

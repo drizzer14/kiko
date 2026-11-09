@@ -1,7 +1,7 @@
 import { Dimensions } from 'react-native';
 import { act } from '@testing-library/react-native';
-import type { HorizontalSizeClass } from '@kiko/display-regions';
 import type { Spec } from '@kiko/native-specs/NativeDisplayRegions';
+import type { HorizontalSizeClass, VerticalBarEdge } from '@kiko/display-regions';
 
 // Read through the registry, not a value import: only the display-regions wrapper may load the
 // native module.
@@ -16,7 +16,9 @@ const setDimensions = (width: number, height: number): void => {
 };
 
 /**
- * The window a test renders into: the size class the native module reports and the window size.
+ * The window a test renders into: the size class and the vertical-bar edge (the side bar's edge;
+ * `none` is no side bar: a bottom bar on an iPhone or a Duo, a top bar on an iPad) the native
+ * module reports, and the window size.
  * The wrapper reads the size class once per mounted tree, so call this before the first render;
  * `resizeWindow` changes the size of a mounted one.
  */
@@ -24,11 +26,12 @@ export const reportWindow = (
   horizontalSizeClass: HorizontalSizeClass,
   width: number,
   height: number,
+  verticalBarEdge: VerticalBarEdge = 'none',
 ): void => {
   nativeModule.getSnapshot.mockReturnValue(
     JSON.stringify({
       horizontalSizeClass,
-      verticalBarEdge: 'none',
+      verticalBarEdge,
       tabBarEdge: 'none',
       foldRegion: null,
     }),

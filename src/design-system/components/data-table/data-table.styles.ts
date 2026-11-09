@@ -62,6 +62,29 @@ export const styles = StyleSheet.create((theme) => ({
   bodyScroll: {
     flex: 1,
   },
+  // The rows fill the room beside the fixed column even when every column fits, so a band runs to
+  // the table's right edge.
+  bodyScrollContent: {
+    flexGrow: 1,
+  },
+  bodyContent: {
+    flexGrow: 1,
+  },
+  // Translucent, so it lies over the opaque `surface` of the fixed column and over the screen's
+  // background under the scrolled cells alike.
+  bandedRow: {
+    backgroundColor: theme.colors.rowBand,
+  },
+  // One line per column edge, drawn over the track outside the cells' layout: a border would take
+  // the hairline from the text's room, and the measured column width would not hold the amount on
+  // one line. The caller sets `left`.
+  columnSeparator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: theme.layout.hairline,
+    backgroundColor: theme.colors.border,
+  },
   fixedRow: {
     justifyContent: 'center',
     paddingHorizontal: theme.spacing(CELL_PADDING_UNITS),
@@ -81,8 +104,9 @@ export const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
     paddingHorizontal: theme.spacing(CELL_PADDING_UNITS),
   },
+  // Translucent, so a banded row's band shows through the sum columns as through the months.
   sumColumn: {
-    backgroundColor: theme.colors.sheetBackground,
+    backgroundColor: theme.colors.sumTint,
   },
   // `Text`'s style Pick excludes `fontVariant`, so the cell text is a plain RN Text.
   cellText: {

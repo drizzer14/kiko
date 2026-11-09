@@ -3,7 +3,8 @@
 // `NitroSfsymbolsProps.tintColor` in the library's `.nitro.ts` spec) — the
 // native bridge parses hex directly and has no CSS color parser behind it.
 // Most theme tokens (see `design-system/theme/theme.ts`) are already hex, but
-// `colors.textSecondary` is `'rgba(235,235,245,0.60)'` (the iOS
+// `colors.textSecondary` is an `rgba(...)` value in both schemes (dark
+// `'rgba(235,235,245,0.60)'`; the iOS
 // `secondaryLabel` translucency convention, shared with `Text`/`MoneyText`,
 // which both go through React Native's own color parser and have no
 // trouble with `rgba(...)`). Handed to `tintColor` as-is, that string fails

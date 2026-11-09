@@ -1,6 +1,8 @@
 import type { FC } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { Pressable, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { markColor } from '@kiko/design-system/entity-tint';
 
 import Text from '../text';
 import SymbolIcon from '../symbol';
@@ -54,7 +56,13 @@ const SelectableRow: FC<SelectableRowProps> = ({
               <SymbolIcon
                 name={icon}
                 size={theme.iconSizes.body}
-                {...(selected ? { tone: 'onAccent' as const } : { color: iconColor })}
+                {...(selected
+                  ? { tone: 'onAccent' as const }
+                  : {
+                      color: foldMap(maybe(iconColor), (color) =>
+                        markColor(color, theme.colorScheme),
+                      ),
+                    })}
               />
             )}
 

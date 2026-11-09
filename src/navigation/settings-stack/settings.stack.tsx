@@ -7,6 +7,7 @@ import SettingsScreen from '@kiko/screens/settings/settings';
 import RemindersScreen from '@kiko/screens/settings/reminders';
 import { LIST_SHARE } from '@kiko/design-system/pane-geometry';
 import HelpTopicScreen from '@kiko/screens/settings/help-topic';
+import ExportCsvScreen from '@kiko/screens/settings/export-csv';
 import CategoriesScreen from '@kiko/screens/settings/categories';
 import AccountFormScreen from '@kiko/screens/forms/account-form';
 import HoldingFormScreen from '@kiko/screens/forms/holding-form';
@@ -97,6 +98,12 @@ const SettingsStack: FC = () => {
         name="ExportData"
         component={ExportDataScreen}
         options={{ title: t('settings.dataExport.title') }}
+      />
+
+      <Stack.Screen
+        name="ExportCsv"
+        component={ExportCsvScreen}
+        options={{ title: t('settings.csvExport.title') }}
       />
 
       <Stack.Screen

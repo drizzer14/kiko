@@ -17,6 +17,7 @@ import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CELL_PADDING_UNITS,
   cellHeightKey,
+  fillColumnWidths,
   labelHeightKey,
   resolveColumnWidths,
   resolveFixedWidth,
@@ -24,11 +25,15 @@ import {
   resolveRowHeights,
 } from './data-table.layout';
 import { styles } from './data-table.styles';
-import type { DataTableProps } from './data-table.props';
+import type { DataTableProps, DataTableRow } from './data-table.props';
 
 const STICKY_HEADER_INDICES = [1];
 
 const NO_WIDTHS: Record<string, number> = {};
+
+// Every second body row takes the band, the first stays plain; the total row keeps the plain
+// ground that sets it apart.
+const isBanded = (row: DataTableRow, rowIndex: number) => rowIndex % 2 === 1 && !row.isSummary;
 
 const HIDDEN_FROM_ACCESSIBILITY = {
   accessibilityElementsHidden: true,
@@ -41,12 +46,12 @@ const HIDDEN_FROM_ACCESSIBILITY = {
  * and display flags, and one node of the caller's (`topContent`) to scroll above the caption; the
  * caller formats every amount and owns the vertical room.
  *
- * Every width comes from measured text, never from the window or the device type, so an amount
- * is never cut, shrunk or wrapped, and the table follows Dynamic Type. A row is as tall as the
- * taller of its fixed label and its scrolled cells, set as `minHeight` on both. The header sits
- * inside the vertical scroll after the caption and sticks while the caption scrolls away, so a
- * large type size cannot take the body's room; it follows the body's horizontal offset on the UI
- * thread.
+ * Every width comes from measured text, and columns that all fit share the measured room left
+ * over evenly, so an amount is never cut, shrunk or wrapped, and the table follows Dynamic Type.
+ * A row is as tall as the taller of its fixed label and its scrolled cells, set as `minHeight`
+ * on both. The header sits inside the vertical scroll after the caption and sticks while the
+ * caption scrolls away, so a large type size cannot take the body's room; it follows the body's
+ * horizontal offset on the UI thread.
  */
 const DataTable: FC<DataTableProps> = ({
   columns,
@@ -71,14 +76,26 @@ const DataTable: FC<DataTableProps> = ({
 
   const padding = theme.spacing(CELL_PADDING_UNITS * 2);
   const fixedWidth = resolveFixedWidth(labelWidth, containerWidth, padding, theme.layout.hairline);
-  const columnWidths = resolveColumnWidths(columns, columnTextWidths, padding);
+  const availableWidth = Math.max(containerWidth - fixedWidth, 0);
+  const naturalWidths = resolveColumnWidths(columns, columnTextWidths, padding);
+  const columnWidths = fillColumnWidths(naturalWidths, availableWidth);
   const rowHeights = useMemo(
     () => resolveRowHeights(rows, columns, textHeights, padding),
     [rows, columns, textHeights, padding],
   );
-  const contentWidth = columnWidths.reduce((sum, width) => sum + width, 0);
-  const availableWidth = Math.max(containerWidth - fixedWidth, 0);
-  const overflows = containerWidth > 0 && contentWidth > availableWidth;
+  // One line per column edge but the last, laid over the track: the edge less the hairline, so the
+  // line sits inside its own column, not over the next one.
+  const separatorOffsets = columnWidths
+    .slice(0, -1)
+    .map(
+      (_, columnIndex) =>
+        columnWidths.slice(0, columnIndex + 1).reduce((sum, width) => sum + width, 0) -
+        theme.layout.hairline,
+    );
+  // Judged on the natural widths: a filled sum can edge past the room by a float, and the table
+  // then fits.
+  const naturalWidth = naturalWidths.reduce((sum, width) => sum + width, 0);
+  const overflows = containerWidth > 0 && naturalWidth > availableWidth;
   const isMeasured =
     containerWidth > 0 &&
     labelWidth > 0 &&
@@ -104,7 +121,7 @@ const DataTable: FC<DataTableProps> = ({
       return;
     }
 
-    const furthestOffset = Math.max(contentWidth - availableWidth, 0);
+    const furthestOffset = Math.max(naturalWidth - availableWidth, 0);
     const currentOffset = bodyOffset.value;
     const isNewIndex =
       initialColumnIndex !== undefined && scrolledToIndex.current !== initialColumnIndex;
@@ -129,7 +146,7 @@ const DataTable: FC<DataTableProps> = ({
     isEmpty,
     isMeasured,
     columnWidths,
-    contentWidth,
+    naturalWidth,
     availableWidth,
     bodyRef,
     bodyOffset,
@@ -182,6 +199,15 @@ const DataTable: FC<DataTableProps> = ({
                 </RNText>
               </View>
             ))}
+
+            {separatorOffsets.map((offset, columnIndex) => (
+              <View
+                key={columns[columnIndex].key}
+                style={[styles.columnSeparator, { left: offset }]}
+                pointerEvents="none"
+                testID={`${testID}-header-separator-${columns[columnIndex].key}`}
+              />
+            ))}
           </Animated.View>
         </View>
       </View>
@@ -191,10 +217,14 @@ const DataTable: FC<DataTableProps> = ({
   const bodyNode = (
     <View style={styles.bodyRow} testID={`${testID}-body-row`}>
       <View style={[styles.fixedColumn, { width: fixedWidth }]} testID={`${testID}-fixed-column`}>
-        {rows.map((row) => (
+        {rows.map((row, rowIndex) => (
           <View
             key={row.key}
-            style={[styles.fixedRow, { minHeight: rowHeights[row.key] }]}
+            style={[
+              styles.fixedRow,
+              isBanded(row, rowIndex) && styles.bandedRow,
+              { minHeight: rowHeights[row.key] },
+            ]}
             testID={`${testID}-fixed-row-${row.key}`}
           >
             <RNText
@@ -214,13 +244,18 @@ const DataTable: FC<DataTableProps> = ({
         scrollEnabled={overflows}
         showsHorizontalScrollIndicator={false}
         style={styles.bodyScroll}
+        contentContainerStyle={styles.bodyScrollContent}
         testID={`${testID}-body-scroll`}
       >
-        <View>
-          {rows.map((row) => (
+        <View style={styles.bodyContent} testID={`${testID}-body-content`}>
+          {rows.map((row, rowIndex) => (
             <View
               key={row.key}
-              style={[styles.scrolledRow, { minHeight: rowHeights[row.key] }]}
+              style={[
+                styles.scrolledRow,
+                isBanded(row, rowIndex) && styles.bandedRow,
+                { minHeight: rowHeights[row.key] },
+              ]}
               testID={`${testID}-scrolled-row-${row.key}`}
             >
               {row.cells.map((cell, cellIndex) => {
@@ -258,6 +293,15 @@ const DataTable: FC<DataTableProps> = ({
                 );
               })}
             </View>
+          ))}
+
+          {separatorOffsets.map((offset, columnIndex) => (
+            <View
+              key={columns[columnIndex].key}
+              style={[styles.columnSeparator, { left: offset }]}
+              pointerEvents="none"
+              testID={`${testID}-separator-${columns[columnIndex].key}`}
+            />
           ))}
         </View>
       </Animated.ScrollView>

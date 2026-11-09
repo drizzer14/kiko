@@ -8,8 +8,10 @@ import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
 import { type DimensionValue, View } from 'react-native';
 import { G, Line, Polyline, Svg } from 'react-native-svg';
+import { markColor } from '@kiko/design-system/entity-tint';
 import type { CategoryTrendSeries } from '@kiko/statistics/category-trend';
 import { chooseCompactUnit, formatCompactMoney } from '@kiko/currency/compact';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 
 import { styles } from './category-trend-line.styles';
 
@@ -188,9 +190,11 @@ const xLabelStyle = (tick: XTick) => {
 };
 
 const LegendEntry: FC<{ series: CategoryTrendSeries }> = ({ series }) => {
+  const scheme = useActiveColorScheme();
+
   return (
     <View testID={`category-trend-line-legend-${series.key}`} style={styles.legendEntry}>
-      <View style={[styles.swatch, { backgroundColor: series.color }]} />
+      <View style={[styles.swatch, { backgroundColor: markColor(series.color, scheme) }]} />
 
       <Text variant="caption" tone="textPrimary">
         {series.title}
@@ -303,7 +307,7 @@ const CategoryTrendLine: FC<CategoryTrendLineProps> = ({
                   testID={`category-trend-line-line-${entry.key}`}
                   points={toPolylinePoints(entry.points, scales)}
                   fill="none"
-                  stroke={entry.color}
+                  stroke={markColor(entry.color, theme.colorScheme)}
                   strokeWidth={LINE_STROKE_WIDTH}
                 />
               ))}

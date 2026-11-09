@@ -2,11 +2,6 @@ import type { ComponentProps, ReactNode } from 'react';
 import { Alert, StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import {
-  categoryColorsLight,
-  entityColorsDark,
-  entityColorsLight,
-} from '@kiko/design-system/palette';
 import { i18n } from '@kiko/i18n/init';
 import {
   asNavigationProp,
@@ -19,8 +14,9 @@ import {
   registerLightThemeFirst,
   restoreThemeOrder,
 } from '@kiko/test-support/light-theme-registered';
-import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
+import { entityColorsDark } from '@kiko/design-system/palette';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -1302,8 +1298,9 @@ describe('CategoryFormScreen in the light world', () => {
   it('a light category form paints the preview through the category map', async () => {
     const { getByLabelText } = await renderForm('groceries');
 
-    expect(entityColorsLight.khaki).not.toBe(categoryColorsLight.khaki);
-    expect(glyphTintsWithin(getByLabelText('Change Icon'))).toEqual([categoryColorsLight.khaki]);
+    expect(glyphTintsWithin(getByLabelText('Change Icon'))).toEqual([
+      lightTheme.colors.categoryColors.khaki,
+    ]);
   });
 
   it('paints the swatches from the category set and rings the swatch of the stored dark hex', async () => {
@@ -1311,7 +1308,7 @@ describe('CategoryFormScreen in the light world', () => {
 
     expect(getByLabelText('Color khaki').props.accessibilityState.selected).toBe(true);
     expect(StyleSheet.flatten(getByTestId('color-swatch-white').props.style).backgroundColor).toBe(
-      categoryColorsLight.white,
+      lightTheme.colors.categoryColors.white,
     );
   });
 
