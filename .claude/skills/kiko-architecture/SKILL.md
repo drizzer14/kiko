@@ -1034,10 +1034,12 @@ Chunk such a chain by term count (`MAX_OR_TERMS` in
 `src/transaction-templates/repo/transaction-templates.repo.ts`).
 
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
-shared `upsertDedupRowsDatabaseTransaction`
-(`src/transactions/repo/transactions.repo.ts`, called by both
-`transactionsRepo.addManyDedup` and, through
-`insertDedupRowsDatabaseTransaction`, `importRows`) — two shared helpers
+shared upsert of dedup rows
+(`src/transactions/repo/transactions.repo.ts`, reached by
+`transactionsRepo.addManyDedup` and `importRows` through the exported
+`addManyDedupDatabaseTransaction` form; a caller that needs a record
+plus its row in one write calls that exported `*DatabaseTransaction`
+form) — two shared helpers
 also chunk a per-row `inArray(...)` select directly at a safe item-count
 margin (the category-rule lookup in `withCategoryRules`, the
 existing-key lookup in `partitionNewRows`), since a one-column `inArray`

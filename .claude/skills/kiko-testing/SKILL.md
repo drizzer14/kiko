@@ -268,6 +268,11 @@ test from being decorative.
 - A counted-work pin counts the work itself (sort comparisons, calls of the inner function), not
   reads on input rows: a copy of a field hides later reads. See
   `src/recurring/detection/detection.performance.test.ts`.
+- A fake of a limited route refuses what the server refuses (its refusal code), so a width fault
+  turns the suite red. A window-limit pin runs from a clock inside a second, not on a whole one.
+- A burst or edge seed derives from the window geometry (the halving edges move with the width),
+  never from a shift by a fixed number of seconds. After a width change, re-seed by geometry and
+  check that no earlier pin went vacuous.
 - A hook memo over several live reads is gated on readiness, and its pin settles the reads one
   at a time, so a half-loaded set is seen to run nothing. See
   `src/recurring/use-recurring-series/use-recurring-series.test.tsx`.

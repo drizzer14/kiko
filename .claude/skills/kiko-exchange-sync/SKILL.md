@@ -1052,9 +1052,9 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
 
 ## Bybit balance sync — notes, set-aside coins, cooling
 
-Status: sets 5, 6 and 9 of 1.4-bybit are in (the capital, transfer, log and convert walks); later
-sets extend this section. The code is in `src/crypto-sync/bybit/`; read it there and copy no list
-from here.
+Status: sets 5, 6, 9 and 10 of 1.4-bybit are in (capital, transfer, log, convert, Funding
+ledger); later sets extend this section. The code is in `src/crypto-sync/bybit/`; read it there
+and copy no list from here.
 
 - `readCursorSpan` (`bybit.cursor-span.ts`) counts a refused call (`recordBybitFailedCall`) and
   rethrows it. The reader does not sort rows; the walk sorts them by time, then key
@@ -1067,9 +1067,13 @@ from here.
   in at most 3 runs (the burst property in `src/crypto-sync/bybit/bybit.convergence.test.ts`).
   Binance passes no `outcomeOf`, so its run is
   unchanged.
-- The transfer walk (`bybit.transfer-history.ts`) reads 7-day windows (`WINDOW_MS`), writes both
-  legs of a transfer with one pair id per coin (`exchangePairIdOf`), in the series `transfer`
-  (`TRANSFER_SERIES`). A wallet name Kiko does not know owes the point
+- A window sent to a 7-day route is 7 days less a second: the route reads a start at its whole
+  second, so a full 7 days can send one second too many and the route answers 131203 on every
+  read. Read each width in `BYBIT_RESCAN_WINDOWS_MS`
+  (`src/crypto-sync/bybit/bybit.rescan-window.ts`).
+- The transfer walk (`bybit.transfer-history.ts`) reads windows of `BYBIT_RESCAN_WINDOWS_MS`,
+  writes both legs of a transfer with one pair id per coin (`exchangePairIdOf`), in the series
+  `transfer` (`TRANSFER_SERIES`). A wallet name Kiko does not know owes the point
   (`TRANSFER_WALLET_UNKNOWN`). In `legsOf`, a zero amount and a transfer from a wallet to the
   same wallet give no row and owe nothing; a negative amount owes (`TRANSFER_AMOUNT_INVALID`;
   the capital walk's code is `capital-amount-invalid`, `CAPITAL_AMOUNT_INVALID`).
@@ -1108,6 +1112,20 @@ from here.
 - A COMPUTED call count in the spec's convergence tables is the windows plus the pages of a short
   last window, not a full last window and not an overlap read. Derive it from the code before you
   pin a floor, and pin a MEASURED value only after a run.
+- Stage F (set 10), the Funding ledger. The walk is `fundingLedger` in
+  `src/crypto-sync/bybit/bybit.funding-ledger.ts`; its lane is in `bybit.history-budget.ts`. The
+  pure rule is `matchFundingLedger` in `bybit.funding-match.ts`; read the other parts in
+  `bybit.funding-reconcile.ts`, `bybit.funding-source.ts`, `bybit.funding-words.ts` and
+  `bybit.dense-read.ts`. A listed row carries `FUNDING_LEDGER_CODE`
+  (`src/transactions/untracked-counterpart/untracked-counterpart.ts`). The caption reads
+  `fundingHeldOf` and `fundingLeftOutOf` (`history-status.ts`) and shows `FundingLines`
+  (`crypto-sync-section.component.tsx`).
+  - The match row and the synced row go in one write: `addManyDedupDatabaseTransaction` and
+    `removeSyncedRowsDatabaseTransaction` in `src/transactions/repo/transactions.repo.ts`.
+  - The reconcile writes nothing for a ledger row that starts before `historyFloorOf(now)`
+    (PLANNER CALL 143).
+  - The dense mark and span are read in `bybit.dense-read.ts`; `series` is a parameter there.
+    `LOG_MIN_SPLIT_MS` and `LOG_REREAD_MIN_SPLIT_MS` stay in `bybit.log-history.ts`.
 
 - The provider (`bybit.provider.ts`) returns state patches. Patch kind `balanceNotes`
   (`src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`, `withBalanceNotes`): a good read
