@@ -237,9 +237,10 @@ string:
   the majority role — assume sentence case for a new string unless it
   is unambiguously one of the three Title Case roles above.
 - **Keep as written** — proper nouns and brand names (for example
-  Kiko/Кіко, Monobank, Binance; the closed set is `PROPER_NOUNS` in
+  Kiko/Кіко, Monobank, Binance, Bybit; the closed set is `PROPER_NOUNS` in
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
-  — read them there, add a new name to the right one). An en weekday plural used mid-sentence
+  — read them there, add a new name to the right one). Ukrainian term rule (O93): «рахунок»
+  is a Kiko account, «акаунт» is an account at an exchange. An en weekday plural used mid-sentence
   goes in the en `PROPER_NOUNS` too. A uk rule: "since" before a date is «з»; «від» before a
   date reads as "dated"; "newer than" is «новіший за». A uk word
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence. A Binance

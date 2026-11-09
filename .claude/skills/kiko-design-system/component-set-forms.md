@@ -442,8 +442,9 @@
   shared "Show all" / "Show less" link with a chevron. `testID` is required
   (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its
   copy reads `components.expandToggle.*` (en, uk). Never inline a second Show all / Show less
-  copy. A consumer: `scheduled-payments-toggle`, the last child of the loan
-  list header, shown only past `SCHEDULED_PAYMENT_PREVIEW_COUNT`.
+  copy. `collapsedLabel` is only for a toggle that must say what it hides; "Show less" stays.
+  Find the consumers with a search for `ExpandToggle`; one is `scheduled-payments-toggle`, the
+  last child of the loan list header, shown only past `SCHEDULED_PAYMENT_PREVIEW_COUNT`.
 - Characterization first: before extracting a shared component, pin the
   current rendered tree with `layoutOf` BEFORE moving any JSX, and keep that
   pin as a consumer test when the visual is locked.
