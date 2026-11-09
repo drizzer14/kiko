@@ -9,6 +9,7 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import { MCC_NAMES } from '@kiko/categories/mcc-names';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
@@ -42,6 +43,7 @@ let mockRulesLoading = false;
 let mockSettingsLoading = false;
 let mockAccounts: AccountData[] = [];
 let mockAccountsLoading = false;
+let mockMccOwnRows: Array<{ mcc: number; rowCount: number }> = [];
 
 jest.mock('@kiko/accounts', () => ({
   accountsRepo: {
@@ -58,6 +60,11 @@ jest.mock('@kiko/categories/category-rules-repo', () => ({
     saveRule: (...args: unknown[]) => mockSaveRule(...args),
   },
 }));
+jest.mock('@kiko/transactions/repo', () => ({
+  transactionsRepo: {
+    mccCountsQuery: () => ({ __kind: 'mccCounts', toSQL: () => ({ sql: '', params: [] }) }),
+  },
+}));
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
@@ -68,6 +75,10 @@ jest.mock(
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (query: { __kind?: string }, keys: string[]) => {
+    if (query.__kind === 'mccCounts') {
+      return { data: mockMccOwnRows, isLoading: false, isFresh: true };
+    }
+
     if (query.__kind === 'accounts') {
       return { data: mockAccounts, isLoading: mockAccountsLoading, isFresh: true };
     }
@@ -111,6 +122,8 @@ const ruleOf = (id: string, category: string, matchers: CategoryRuleMatcher[]): 
 
 const SILPO: CategoryRuleMatcher = { type: 'nameIs', text: 'Silpo' };
 
+const GROCERY_NAME = MCC_NAMES.find(({ code }) => code === '5411')?.en;
+
 const AMOUNT_NEGATIVE_ERROR = 'Enter an amount of 0 or more.';
 
 const pickType = async (screen: Screen, position: number, type: string): Promise<void> => {
@@ -141,6 +154,7 @@ beforeEach(() => {
   mockSettingsLoading = false;
   mockAccounts = [];
   mockAccountsLoading = false;
+  mockMccOwnRows = [];
   holdCurrencies([]);
   mockCountRuleRewrite.mockResolvedValue(0);
   mockSaveRule.mockResolvedValue({ id: 'saved', changed: 0 });
@@ -285,11 +299,33 @@ describe('CategoryRuleFormScreen — a new rule', () => {
     const screen = await renderCreate();
 
     await pickType(screen, 0, 'mcc');
-    await fireEvent.changeText(screen.getByLabelText('Merchant code (MCC)'), '5411');
+    await fireEvent.press(screen.getByText('Select a code'));
+    await fireEvent.press(screen.getByTestId('mcc-other-row'));
+    await fireEvent.changeText(screen.getByLabelText('Four-digit code'), '5411');
     await pickType(screen, 0, 'direction');
     await pickType(screen, 0, 'mcc');
 
-    expect(screen.getByLabelText('Merchant code (MCC)').props.value).toBe('5411');
+    expect(screen.getByText(`5411 – ${GROCERY_NAME}`)).toBeTruthy();
+  });
+
+  it('saves a picked code as the code only', async () => {
+    mockMccOwnRows = [{ mcc: 5411, rowCount: 2 }];
+
+    const screen = await renderCreate();
+
+    await pickType(screen, 0, 'mcc');
+    await fireEvent.press(screen.getByText('Select a code'));
+    await fireEvent.press(screen.getByTestId('mcc-own-5411'));
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(mockSaveRule).toHaveBeenCalledWith({
+        id: null,
+        category: 'food',
+        matchers: [{ type: 'mcc', code: 5411 }],
+        applyToExisting: false,
+      }),
+    );
   });
 });
 
@@ -401,6 +437,29 @@ describe('CategoryRuleFormScreen — an existing rule', () => {
           { type: 'nameIs', text: 'Silpo Market' },
           { type: 'amount', operator: 'gt', minorUnits: 50000, currency: 'UAH' },
         ],
+        applyToExisting: false,
+      }),
+    );
+  });
+
+  it('edits a stored unlisted code through Other code', async () => {
+    mockRules = [ruleOf('mine', 'food', [{ type: 'mcc', code: 42 }])];
+
+    const screen = await renderEdit('mine');
+
+    await fireEvent.press(screen.getByText('0042'));
+    await fireEvent.press(screen.getByTestId('mcc-other-row'));
+
+    expect(screen.getByLabelText('Four-digit code').props.value).toBe('0042');
+
+    await fireEvent.changeText(screen.getByLabelText('Four-digit code'), '0043');
+    await pressSave(navigation.setOptions);
+
+    await waitFor(() =>
+      expect(mockSaveRule).toHaveBeenCalledWith({
+        id: 'mine',
+        category: 'food',
+        matchers: [{ type: 'mcc', code: 43 }],
         applyToExisting: false,
       }),
     );
