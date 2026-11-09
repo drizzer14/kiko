@@ -264,6 +264,20 @@ describe('holdingsRepo.upsertExchangeMany on a Binance or a wallet holding', () 
   );
 
   it.each(DATED)(
+    'a read of an existing %s holding sends four statements in all, the read of the ledger one of them',
+    async (_, field, key) => {
+      seedDated(field, key);
+      seedRow('row-typed', 'manual');
+
+      const prepare = jest.spyOn(mockDatabase, 'prepare');
+
+      await upsertOf(field, key);
+
+      expect(prepare).toHaveBeenCalledTimes(4);
+    },
+  );
+
+  it.each(DATED)(
     'a %s holding of 100,000 typed rows takes all of them in one list',
     async (_, field, key) => {
       seedDated(field, key);
