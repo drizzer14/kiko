@@ -162,6 +162,36 @@ const bybitEntryOf = (text: string): string => {
   return section.slice(start, end);
 };
 
+// The entry's start: its bold name and host, as the markdown and the built page write them.
+const entryLabelOf = (name: string, host: string, isHtml: boolean): string =>
+  isHtml ? `<strong>${name}</strong> (<code>${host}</code>) — ` : `**${name}** (\`${host}\`) — `;
+
+const entryStartingAt = (text: string, name: string): string => {
+  const section = sectionThreeOf(text);
+
+  return section.slice(
+    section.search(new RegExp(`(?:\\*\\*|<strong>)${name}(?:\\*\\*|</strong>) \\(`)),
+  );
+};
+
+describe('the label of a provider entry of section 3 of the privacy policy', () => {
+  it.each(POLICY_FILES)(
+    'the Bybit entry starts with its name and host, then " — ", as the Monobank and Binance entries do, in %s',
+    (file, _language, text) => {
+      const isHtml = file.endsWith('.html');
+
+      expect(
+        entryStartingAt(text, 'Binance').startsWith(
+          entryLabelOf('Binance', 'api.binance.com', isHtml),
+        ),
+      ).toBe(true);
+      expect(
+        entryStartingAt(text, 'Bybit').startsWith(entryLabelOf('Bybit', 'api.bybit.com', isHtml)),
+      ).toBe(true);
+    },
+  );
+});
+
 describe('the Bybit paths the app calls and section 3 of the privacy policy', () => {
   it.each(POLICY_FILES)(
     'names every Bybit path the app calls in section 3 of %s',

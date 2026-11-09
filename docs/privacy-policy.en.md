@@ -78,7 +78,7 @@ service can see your device's IP address.
   `.kiko` export. Also, for any user, public market prices of a coin CoinGecko
   did not price: Kiko sends only the market symbol (for example `BTCUSDT`) and
   the dates of the prices it needs; no key, address, or amount is sent.
-- **Bybit** (`api.bybit.com`): using your read-only API key: details of the
+- **Bybit** (`api.bybit.com`) — using your read-only API key: details of the
   key itself (whether it is read-only, whether it belongs to your main account,
   and when it ends); your balances of every coin and fiat currency (Unified,
   Funding); your deposit history, including deposits sent by another Bybit
