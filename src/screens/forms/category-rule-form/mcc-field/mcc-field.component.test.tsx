@@ -1,17 +1,12 @@
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Keyboard } from 'react-native';
-import type { ComponentType } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-type OwnRow = { mcc: number; rowCount: number };
+import MccField from './mcc-field.component';
+import type { MccFieldProps } from './mcc-field.props';
 
-type MccFieldProps = {
-  value: string;
-  onChange: (mccText: string) => void;
-  error: string | undefined;
-  testID: string;
-};
+type OwnRow = { mcc: number; rowCount: number };
 
 type RowsInput = { ownLoading: boolean };
 
@@ -53,18 +48,15 @@ jest.mock('./mcc-picker-rows', () => {
   };
 });
 
-// A runtime lookup, so the suite loads before the component exists and each pin fails on its own.
-const loadMccField = (): ComponentType<MccFieldProps> => require('./mcc-field.component').default;
-
 type Screen = Awaited<ReturnType<typeof render>>;
 
 const GROCERY = 'Grocery Stores, Supermarkets';
 
 const SEARCH_PLACEHOLDER = 'Search by code or name';
 
-const renderField = async (overrides: Partial<MccFieldProps> = {}) => {
-  const MccField = loadMccField();
+const TYPED_LABEL = 'Four-digit code';
 
+const renderField = async (overrides: Partial<MccFieldProps> = {}) => {
   return render(
     <MccField value="" onChange={jest.fn()} error={undefined} testID="mcc-field" {...overrides} />,
   );
@@ -198,7 +190,7 @@ describe('MccField', () => {
     await fireEvent.press(screen.getByTestId('mcc-other-row'));
 
     expect(screen.queryByPlaceholderText(SEARCH_PLACEHOLDER)).toBeNull();
-    expect(screen.getByTestId('mcc-typed-field').props.value).toBe('54');
+    expect(screen.getByLabelText(TYPED_LABEL).props.value).toBe('54');
   });
 
   it('Other code opens the typed field with the current code when the query is not digits', async () => {
@@ -207,7 +199,7 @@ describe('MccField', () => {
     await search(screen, 'grocery');
     await fireEvent.press(screen.getByTestId('mcc-other-row'));
 
-    expect(screen.getByTestId('mcc-typed-field').props.value).toBe('0042');
+    expect(screen.getByLabelText(TYPED_LABEL).props.value).toBe('0042');
   });
 
   it('filters the typed field to digits and four at most', async () => {
@@ -222,7 +214,7 @@ describe('MccField', () => {
   it('starts typing for a half-typed code and not for a four-digit one', async () => {
     const half = await renderField({ value: '54' });
 
-    expect(half.getByTestId('mcc-typed-field').props.value).toBe('54');
+    expect(half.getByLabelText(TYPED_LABEL).props.value).toBe('54');
 
     await half.unmount();
 
@@ -300,13 +292,16 @@ describe('MccField', () => {
   it('marks the picked code selected in both sections', async () => {
     const screen = await renderField({ value: '5411' });
     await open(screen);
-    await search(screen, '5');
+    await search(screen, '5411');
 
     const selectedOf = (testID: string): unknown =>
       screen.getByTestId(testID).props.accessibilityState?.selected;
 
     expect(selectedOf('mcc-own-5411')).toBe(true);
     expect(selectedOf('mcc-all-5411')).toBe(true);
+
+    await search(screen, '5812');
+
     expect(selectedOf('mcc-own-5812')).toBe(false);
   });
 });
