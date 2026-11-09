@@ -1,5 +1,6 @@
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { StyleSheet } from 'react-native';
 import { SETTLE_DELAY_MS } from '@kiko/navigation/pane-stack';
 import { relativeTablePeriodsOf } from '@kiko/statistics/table-period';
 import { act, fireEvent, within } from '@testing-library/react-native';
@@ -24,12 +25,18 @@ jest.mock('@react-navigation/native-stack', () =>
 const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 
 const CONTROLS = /^tables-(period|account-filter|category-filter)$/;
+const CONTROLS_AND_SPACER = /^tables-(period|account-filter|category-filter|filter-bar-spacer)$/;
 
 type Rendered = Awaited<ReturnType<typeof renderTables>>;
 
 const idsInFilterBar = (rendered: Rendered): string[] =>
   within(rendered.getByTestId('tables-filter-bar'))
     .getAllByTestId(CONTROLS)
+    .map((control) => control.props.testID);
+
+const idsAndSpacerInFilterBar = (rendered: Rendered): string[] =>
+  within(rendered.getByTestId('tables-filter-bar'))
+    .getAllByTestId(CONTROLS_AND_SPACER)
     .map((control) => control.props.testID);
 
 describe('the period field on the Tables screen', () => {
@@ -58,6 +65,41 @@ describe('the period field on the Tables screen', () => {
       const rendered = await renderTables({ view: 'cashFlow' });
 
       expect(idsInFilterBar(rendered)).toEqual(['tables-period', 'tables-account-filter']);
+    });
+
+    it('pushes the account and category filters to the trailing end behind a growing spacer', async () => {
+      const rendered = await renderTables();
+
+      expect(idsAndSpacerInFilterBar(rendered)).toEqual([
+        'tables-period',
+        'tables-filter-bar-spacer',
+        'tables-account-filter',
+        'tables-category-filter',
+      ]);
+      expect(rendered.getByTestId('tables-filter-bar-spacer')).toHaveStyle({ flexGrow: 1 });
+    });
+
+    it('pushes the one filter of a view without a category filter behind the spacer', async () => {
+      const rendered = await renderTables({ view: 'cashFlow' });
+
+      expect(idsAndSpacerInFilterBar(rendered)).toEqual([
+        'tables-period',
+        'tables-filter-bar-spacer',
+        'tables-account-filter',
+      ]);
+    });
+
+    it('keeps the least distance from the period to the account filter at one gap', async () => {
+      const { getByTestId } = await renderTables();
+      const gap = StyleSheet.flatten(getByTestId('tables-filter-bar').props.style).gap;
+      const spacerMargin = StyleSheet.flatten(
+        getByTestId('tables-filter-bar-spacer').props.style,
+      ).marginStart;
+
+      // The spacer is a flex item, so the bar's gap lands on both of its sides: a negative start
+      // margin of one gap takes the first of them back.
+      expect(gap).toBeGreaterThan(0);
+      expect(spacerMargin).toBe(-gap);
     });
 
     it('is on screen once, not repeated in a row of its own', async () => {
@@ -136,6 +178,7 @@ describe('the period field on the Tables screen', () => {
 
       expect(idsInFilterBar(rendered)).toEqual(['tables-account-filter', 'tables-category-filter']);
       expect(top.getByTestId('tables-period')).toBeTruthy();
+      expect(rendered.queryByTestId('tables-filter-bar-spacer')).toBeNull();
     });
   });
 });

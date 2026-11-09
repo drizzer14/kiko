@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-export const styles = StyleSheet.create({
+export const styles = StyleSheet.create((theme) => ({
   // The two filters on one row, wrapping when a narrow device cannot hold both.
   filterBar: {
     flexWrap: 'wrap',
@@ -11,4 +11,11 @@ export const styles = StyleSheet.create({
   filterBarWithPeriod: {
     alignItems: 'flex-end',
   },
-});
+  // Takes the free room of the row, so the period stays at the leading end and the filters go to
+  // the trailing end. The bar's gap lands on both sides of this flex item, so the negative start
+  // margin of one gap keeps the least distance from the period to the first filter at one gap.
+  filterBarSpacer: {
+    flexGrow: 1,
+    marginStart: -theme.spacing(3),
+  },
+}));

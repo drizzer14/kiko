@@ -273,6 +273,10 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
       >
         {isPeriodBesideFilters && periodField}
 
+        {isPeriodBesideFilters && (
+          <Box style={styles.filterBarSpacer} testID="tables-filter-bar-spacer" />
+        )}
+
         <FilterMenu
           key={`account-filter-${sheetGeneration}`}
           label={t('statistics.filterAccounts')}
