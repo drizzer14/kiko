@@ -2,7 +2,7 @@ import { categoryForMcc } from '@kiko/monobank/mcc-category';
 
 import { MCC_NAMES_NOTICE } from './mcc-names.notice';
 import { MCC_NAMES_NOTICE as BARREL_NOTICE } from '.';
-import { MCC_NAMES, MCC_NAME_SEPARATOR, mccNameOf, mccLabelOf } from './mcc-names';
+import { type MccName, MCC_NAMES, MCC_NAME_SEPARATOR, mccNameOf, mccLabelOf } from './mcc-names';
 
 const MEASURED_CODE_COUNT = 981;
 const CODE_PATTERN = /^\d{4}$/;
@@ -27,9 +27,7 @@ const codesTheSourcesLeaveOut = [
 
 const nameOfCode = (code: string) => MCC_NAMES.find((entry) => entry.code === code);
 
-type ListedEntry = { code: string; en: string; uk: string; listed?: unknown };
-
-const entries: readonly ListedEntry[] = MCC_NAMES;
+const entries = MCC_NAMES;
 const JOIN_SEPARATOR = ' — ';
 const FIRST_GROUP_CODE = 3000;
 const LAST_GROUP_CODE = 3999;
@@ -38,10 +36,10 @@ const HIDDEN_COUNT = 261;
 const GROUP_NAMES_EN = ['Airlines', 'Car Rental', 'Hotels/Motels/Inns/Resorts'];
 const GROUP_NAMES_UK = ['Авіалінії', 'Оренда авто', 'Готелі. Курорти'];
 
-const inGroupRange = ({ code }: ListedEntry) =>
+const inGroupRange = ({ code }: MccName) =>
   Number(code) >= FIRST_GROUP_CODE && Number(code) <= LAST_GROUP_CODE;
-const isJoined = ({ en, uk }: ListedEntry) => uk.endsWith(`${JOIN_SEPARATOR}${en}`);
-const isHidden = ({ listed }: ListedEntry) => listed === false;
+const isJoined = ({ en, uk }: MccName) => uk.endsWith(`${JOIN_SEPARATOR}${en}`);
+const isHidden = ({ listed }: MccName) => listed === false;
 const ukOfEntry = (code: string) => entries.find((entry) => entry.code === code)?.uk;
 
 describe('MCC_NAMES', () => {
@@ -107,7 +105,7 @@ describe('MCC_NAMES merchant names and hidden group codes', () => {
     expect(joined.filter((entry) => !inGroupRange(entry))).toEqual([]);
     expect(ukOfEntry('3000')).toBe('Авіалінії — UNITED AIRLINES');
     expect(ukOfEntry('3005')).toBe('Авіалінії — BRITISH AIRWAYS');
-    expect(isJoined(entries.find((entry) => entry.code === '3501') as ListedEntry)).toBe(true);
+    expect(isJoined(entries.find((entry) => entry.code === '3501') as MccName)).toBe(true);
     expect(ukOfEntry('3816')).toBe('Готелі — Home2Suites');
     expect(nameOfCode('3000')?.en).toBe('UNITED AIRLINES');
   });

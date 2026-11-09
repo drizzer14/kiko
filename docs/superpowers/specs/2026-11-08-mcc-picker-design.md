@@ -162,7 +162,7 @@ scratch Node script, the 3.2 group-text rule applied to the committed data):
 | group-only, `listed: false` | 261: en "Airlines" 128, "Hotels/Motels/Inns/Resorts" 92, "Car Rental" 41; uk «Авіалінії», «Готелі. Курорти», «Оренда авто» in the same counts; first 3003, last 3790; none has a usda text or a combined text other than its en |
 | listed codes (blank query) | 720 of 981; 4511, 7011, 7512 listed, not joined |
 | longest uk | 64 characters (was 37) |
-| data file after the regeneration | 113362 bytes (+8657 joined names, +5481 = 261 x 21 bytes of `,\n    "listed": false`); the developer records the written size |
+| data file after the regeneration | 113362 bytes (+8657 joined names, +5481 = 261 x 21 bytes of `,\n    "listed": false`); the regeneration wrote 113362 bytes, as projected |
 
 The coordinator counted 420 merchant codes (all four greggles text fields filled); the 2 more,
 3816 and 3835, name a merchant in `edited_description` itself with a blank `irs_description`.

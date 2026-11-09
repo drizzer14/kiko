@@ -72,3417 +72,3678 @@
   {
     "code": "3000",
     "en": "UNITED AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — UNITED AIRLINES"
   },
   {
     "code": "3001",
     "en": "AMERICAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AMERICAN AIRLINES"
   },
   {
     "code": "3002",
     "en": "PAN AMERICAN",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — PAN AMERICAN"
   },
   {
     "code": "3003",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3004",
     "en": "TRANS WORLD AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TRANS WORLD AIRLINES"
   },
   {
     "code": "3005",
     "en": "BRITISH AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BRITISH AIRWAYS"
   },
   {
     "code": "3006",
     "en": "JAPAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — JAPAN AIRLINES"
   },
   {
     "code": "3007",
     "en": "AIR FRANCE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR FRANCE"
   },
   {
     "code": "3008",
     "en": "LUFTHANSA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LUFTHANSA"
   },
   {
     "code": "3009",
     "en": "AIR CANADA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR CANADA"
   },
   {
     "code": "3010",
     "en": "KLM (ROYAL DUTCH AIRLINES)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — KLM (ROYAL DUTCH AIRLINES)"
   },
   {
     "code": "3011",
     "en": "AEORFLOT",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AEORFLOT"
   },
   {
     "code": "3012",
     "en": "QANTAS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — QANTAS"
   },
   {
     "code": "3013",
     "en": "ALITALIA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ALITALIA"
   },
   {
     "code": "3014",
     "en": "SAUDIA ARABIAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SAUDIA ARABIAN AIRLINES"
   },
   {
     "code": "3015",
     "en": "SWISSAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SWISSAIR"
   },
   {
     "code": "3016",
     "en": "SAS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SAS"
   },
   {
     "code": "3017",
     "en": "SOUTH AFRICAN AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SOUTH AFRICAN AIRWAYS"
   },
   {
     "code": "3018",
     "en": "VARIG (BRAZIL)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — VARIG (BRAZIL)"
   },
   {
     "code": "3019",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3020",
     "en": "AIR-INDIA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR-INDIA"
   },
   {
     "code": "3021",
     "en": "AIR ALGERIE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR ALGERIE"
   },
   {
     "code": "3022",
     "en": "PHILIPPINE AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — PHILIPPINE AIRLINES"
   },
   {
     "code": "3023",
     "en": "MEXICANA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — MEXICANA"
   },
   {
     "code": "3024",
     "en": "PAKISTAN INTERNATIONAL",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — PAKISTAN INTERNATIONAL"
   },
   {
     "code": "3025",
     "en": "AIR NEW ZEALAND",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR NEW ZEALAND"
   },
   {
     "code": "3026",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3027",
     "en": "UTA/INTERAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — UTA/INTERAIR"
   },
   {
     "code": "3028",
     "en": "AIR MALTA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR MALTA"
   },
   {
     "code": "3029",
     "en": "SABENA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SABENA"
   },
   {
     "code": "3030",
     "en": "AEROLINEAS ARGENTINAS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AEROLINEAS ARGENTINAS"
   },
   {
     "code": "3031",
     "en": "OLYMPIC AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — OLYMPIC AIRWAYS"
   },
   {
     "code": "3032",
     "en": "EL AL",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — EL AL"
   },
   {
     "code": "3033",
     "en": "ANSETT AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ANSETT AIRLINES"
   },
   {
     "code": "3034",
     "en": "AUSTRAINLIAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AUSTRAINLIAN AIRLINES"
   },
   {
     "code": "3035",
     "en": "TAP (PORTUGAL)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TAP (PORTUGAL)"
   },
   {
     "code": "3036",
     "en": "VASP (BRAZIL)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — VASP (BRAZIL)"
   },
   {
     "code": "3037",
     "en": "EGYPTAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — EGYPTAIR"
   },
   {
     "code": "3038",
     "en": "KUWAIT AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — KUWAIT AIRLINES"
   },
   {
     "code": "3039",
     "en": "AVIANCA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AVIANCA"
   },
   {
     "code": "3040",
     "en": "GULF AIR (BAHRAIN)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — GULF AIR (BAHRAIN)"
   },
   {
     "code": "3041",
     "en": "BALKAN-BULGARIAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BALKAN-BULGARIAN AIRLINES"
   },
   {
     "code": "3042",
     "en": "FINNAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — FINNAIR"
   },
   {
     "code": "3043",
     "en": "AER LINGUS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AER LINGUS"
   },
   {
     "code": "3044",
     "en": "AIR LANKA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR LANKA"
   },
   {
     "code": "3045",
     "en": "NIGERIA AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — NIGERIA AIRWAYS"
   },
   {
     "code": "3046",
     "en": "CRUZEIRO DO SUL (BRAZIJ)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CRUZEIRO DO SUL (BRAZIJ)"
   },
   {
     "code": "3047",
     "en": "THY (TURKEY)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — THY (TURKEY)"
   },
   {
     "code": "3048",
     "en": "ROYAL AIR MAROC",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ROYAL AIR MAROC"
   },
   {
     "code": "3049",
     "en": "TUNIS AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TUNIS AIR"
   },
   {
     "code": "3050",
     "en": "ICELANDAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ICELANDAIR"
   },
   {
     "code": "3051",
     "en": "AUSTRIAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AUSTRIAN AIRLINES"
   },
   {
     "code": "3052",
     "en": "LANCHILE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LANCHILE"
   },
   {
     "code": "3053",
     "en": "AVIACO (SPAIN)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AVIACO (SPAIN)"
   },
   {
     "code": "3054",
     "en": "LADECO (CHILE)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LADECO (CHILE)"
   },
   {
     "code": "3055",
     "en": "LAB (BOLIVIA)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LAB (BOLIVIA)"
   },
   {
     "code": "3056",
     "en": "QUEBECAIRE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — QUEBECAIRE"
   },
   {
     "code": "3057",
     "en": "EASTWEST AIRLINES (AUSTRALIA)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — EASTWEST AIRLINES (AUSTRALIA)"
   },
   {
     "code": "3058",
     "en": "DELTA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — DELTA"
   },
   {
     "code": "3059",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3060",
     "en": "NORTHWEST",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — NORTHWEST"
   },
   {
     "code": "3061",
     "en": "CONTINENTAL",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CONTINENTAL"
   },
   {
     "code": "3062",
     "en": "WESTERN",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — WESTERN"
   },
   {
     "code": "3063",
     "en": "US AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — US AIR"
   },
   {
     "code": "3064",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3065",
     "en": "AIRINTER",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIRINTER"
   },
   {
     "code": "3066",
     "en": "SOUTHWEST",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SOUTHWEST"
   },
   {
     "code": "3067",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3068",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3069",
     "en": "SUN COUNTRY AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SUN COUNTRY AIRLINES"
   },
   {
     "code": "3070",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3071",
     "en": "AIR BRITISH COLUBIA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR BRITISH COLUBIA"
   },
   {
     "code": "3072",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3073",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3074",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3075",
     "en": "SINGAPORE AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SINGAPORE AIRLINES"
   },
   {
     "code": "3076",
     "en": "AEROMEXICO",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AEROMEXICO"
   },
   {
     "code": "3077",
     "en": "THAI AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — THAI AIRWAYS"
   },
   {
     "code": "3078",
     "en": "CHINA AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CHINA AIRLINES"
   },
   {
     "code": "3079",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3080",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3081",
     "en": "NORDAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — NORDAIR"
   },
   {
     "code": "3082",
     "en": "KOREAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — KOREAN AIRLINES"
   },
   {
     "code": "3083",
     "en": "AIR AFRIGUE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR AFRIGUE"
   },
   {
     "code": "3084",
     "en": "EVA AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — EVA AIRLINES"
   },
   {
     "code": "3085",
     "en": "MIDWEST EXPRESS AIRLINES, INC.",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — MIDWEST EXPRESS AIRLINES, INC."
   },
   {
     "code": "3086",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3087",
     "en": "METRO AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — METRO AIRLINES"
   },
   {
     "code": "3088",
     "en": "CROATIA AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CROATIA AIRLINES"
   },
   {
     "code": "3089",
     "en": "TRANSAERO",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TRANSAERO"
   },
   {
     "code": "3090",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3091",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3092",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3093",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3094",
     "en": "ZAMBIA AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ZAMBIA AIRWAYS"
   },
   {
     "code": "3095",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3096",
     "en": "AIR ZIMBABWE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR ZIMBABWE"
   },
   {
     "code": "3097",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3098",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3099",
     "en": "CATHAY PACIFIC",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CATHAY PACIFIC"
   },
   {
     "code": "3100",
     "en": "MALAYSIAN AIRLINE SYSTEM",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — MALAYSIAN AIRLINE SYSTEM"
   },
   {
     "code": "3101",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3102",
     "en": "IBERIA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — IBERIA"
   },
   {
     "code": "3103",
     "en": "GARUDA (INDONESIA)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — GARUDA (INDONESIA)"
   },
   {
     "code": "3104",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3105",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3106",
     "en": "BRAATHENS S.A.F.E. (NORWAY)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BRAATHENS S.A.F.E. (NORWAY)"
   },
   {
     "code": "3107",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3108",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3109",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3110",
     "en": "WINGS AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — WINGS AIRWAYS"
   },
   {
     "code": "3111",
     "en": "BRITISH MIDLAND",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BRITISH MIDLAND"
   },
   {
     "code": "3112",
     "en": "WINDWARD ISLAND",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — WINDWARD ISLAND"
   },
   {
     "code": "3113",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3114",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3115",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3116",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3117",
     "en": "VIASA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — VIASA"
   },
   {
     "code": "3118",
     "en": "VALLEY AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — VALLEY AIRLINES"
   },
   {
     "code": "3119",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3120",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3121",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3122",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3123",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3124",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3125",
     "en": "TAN",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TAN"
   },
   {
     "code": "3126",
     "en": "TALAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TALAIR"
   },
   {
     "code": "3127",
     "en": "TACA INTERNATIONAL",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TACA INTERNATIONAL"
   },
   {
     "code": "3128",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3129",
     "en": "SURINAM AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SURINAM AIRWAYS"
   },
   {
     "code": "3130",
     "en": "SUN WORLD INTERNATIONAL",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SUN WORLD INTERNATIONAL"
   },
   {
     "code": "3131",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3132",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3133",
     "en": "SUNBELT AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SUNBELT AIRLINES"
   },
   {
     "code": "3134",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3135",
     "en": "SUDAN AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SUDAN AIRWAYS"
   },
   {
     "code": "3136",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3137",
     "en": "SINGLETON",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SINGLETON"
   },
   {
     "code": "3138",
     "en": "SIMMONS AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SIMMONS AIRLINES"
   },
   {
     "code": "3139",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3140",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3141",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3142",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3143",
     "en": "SCENIC AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SCENIC AIRLINES"
   },
   {
     "code": "3144",
     "en": "VIRGIN ATLANTIC",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — VIRGIN ATLANTIC"
   },
   {
     "code": "3145",
     "en": "SAN JUAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SAN JUAN AIRLINES"
   },
   {
     "code": "3146",
     "en": "LUXAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LUXAIR"
   },
   {
     "code": "3147",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3148",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3149",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3150",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3151",
     "en": "AIR ZAIRE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR ZAIRE"
   },
   {
     "code": "3152",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3153",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3154",
     "en": "PRINCEVILLE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — PRINCEVILLE"
   },
   {
     "code": "3155",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3156",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3157",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3158",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3159",
     "en": "PBA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — PBA"
   },
   {
     "code": "3160",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3161",
     "en": "ALL NIPPON AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ALL NIPPON AIRWAYS"
   },
   {
     "code": "3162",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3163",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3164",
     "en": "NORONTAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — NORONTAIR"
   },
   {
     "code": "3165",
     "en": "NEW YORK HELICOPTER",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — NEW YORK HELICOPTER"
   },
   {
     "code": "3166",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3167",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3168",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3169",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3170",
     "en": "NOUNT COOK",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — NOUNT COOK"
   },
   {
     "code": "3171",
     "en": "CANADIAN AIRLINES INTERNATIONAL",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CANADIAN AIRLINES INTERNATIONAL"
   },
   {
     "code": "3172",
     "en": "NATIONAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — NATIONAIR"
   },
   {
     "code": "3173",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3174",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3175",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3176",
     "en": "METROFLIGHT AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — METROFLIGHT AIRLINES"
   },
   {
     "code": "3177",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3178",
     "en": "MESA AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — MESA AIR"
   },
   {
     "code": "3179",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3180",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3181",
     "en": "MALEV",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — MALEV"
   },
   {
     "code": "3182",
     "en": "LOT (POLAND)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LOT (POLAND)"
   },
   {
     "code": "3183",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3184",
     "en": "LIAT",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LIAT"
   },
   {
     "code": "3185",
     "en": "LAV (VENEZUELA)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LAV (VENEZUELA)"
   },
   {
     "code": "3186",
     "en": "LAP (PARAGUAY)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LAP (PARAGUAY)"
   },
   {
     "code": "3187",
     "en": "LACSA (COSTA RICA)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — LACSA (COSTA RICA)"
   },
   {
     "code": "3188",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3189",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3190",
     "en": "JUGOSLAV AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — JUGOSLAV AIR"
   },
   {
     "code": "3191",
     "en": "ISLAND AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ISLAND AIRLINES"
   },
   {
     "code": "3192",
     "en": "IRAN AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — IRAN AIR"
   },
   {
     "code": "3193",
     "en": "INDIAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — INDIAN AIRLINES"
   },
   {
     "code": "3194",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3195",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3196",
     "en": "HAWAIIAN AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — HAWAIIAN AIR"
   },
   {
     "code": "3197",
     "en": "HAVASU AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — HAVASU AIRLINES"
   },
   {
     "code": "3198",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3199",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3200",
     "en": "FUYANA AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — FUYANA AIRWAYS"
   },
   {
     "code": "3201",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3202",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3203",
     "en": "GOLDEN PACIFIC AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — GOLDEN PACIFIC AIR"
   },
   {
     "code": "3204",
     "en": "FREEDOM AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — FREEDOM AIR"
   },
   {
     "code": "3205",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3206",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3207",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3208",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3209",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3210",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3211",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3212",
     "en": "DOMINICANA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — DOMINICANA"
   },
   {
     "code": "3213",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3214",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3215",
     "en": "DAN AIR SERVICES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — DAN AIR SERVICES"
   },
   {
     "code": "3216",
     "en": "CUMBERLAND AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CUMBERLAND AIRLINES"
   },
   {
     "code": "3217",
     "en": "CSA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CSA"
   },
   {
     "code": "3218",
     "en": "CROWN AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CROWN AIR"
   },
   {
     "code": "3219",
     "en": "COPA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — COPA"
   },
   {
     "code": "3220",
     "en": "COMPANIA FAUCETT",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — COMPANIA FAUCETT"
   },
   {
     "code": "3221",
     "en": "TRANSPORTES AEROS MILITARES ECCUATORANOS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TRANSPORTES AEROS MILITARES ECCUATORANOS"
   },
   {
     "code": "3222",
     "en": "COMMAND AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — COMMAND AIRWAYS"
   },
   {
     "code": "3223",
     "en": "COMAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — COMAIR"
   },
   {
     "code": "3224",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3225",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3226",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3227",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3228",
     "en": "CAYMAN AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CAYMAN AIRWAYS"
   },
   {
     "code": "3229",
     "en": "SAETA SOCIAEDAD ECUATORIANOS DE TRANSPORTES AEREOS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SAETA SOCIAEDAD ECUATORIANOS DE TRANSPORTES AEREOS"
   },
   {
     "code": "3230",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3231",
     "en": "SASHA SERVICIO AERO DE HONDURAS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — SASHA SERVICIO AERO DE HONDURAS"
   },
   {
     "code": "3232",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3233",
     "en": "CAPITOL AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CAPITOL AIR"
   },
   {
     "code": "3234",
     "en": "BWIA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BWIA"
   },
   {
     "code": "3235",
     "en": "BROKWAY AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BROKWAY AIR"
   },
   {
     "code": "3236",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3237",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3238",
     "en": "BEMIDJI AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BEMIDJI AIRLINES"
   },
   {
     "code": "3239",
     "en": "BAR HARBOR AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BAR HARBOR AIRLINES"
   },
   {
     "code": "3240",
     "en": "BAHAMASAIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — BAHAMASAIR"
   },
   {
     "code": "3241",
     "en": "AVIATECA (GUATEMALA)",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AVIATECA (GUATEMALA)"
   },
   {
     "code": "3242",
     "en": "AVENSA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AVENSA"
   },
   {
     "code": "3243",
     "en": "AUSTRIAN AIR SERVICE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AUSTRIAN AIR SERVICE"
   },
   {
     "code": "3244",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3245",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3246",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3247",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3248",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3249",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3250",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3251",
     "en": "ALOHA AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ALOHA AIRLINES"
   },
   {
     "code": "3252",
     "en": "ALM",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ALM"
   },
   {
     "code": "3253",
     "en": "AMERICA WEST",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AMERICA WEST"
   },
   {
     "code": "3254",
     "en": "TRUMP AIRLINE",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — TRUMP AIRLINE"
   },
   {
     "code": "3255",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3256",
     "en": "ALASKA AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ALASKA AIRLINES"
   },
   {
     "code": "3257",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3258",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3259",
     "en": "AMERICAN TRANS AIR",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AMERICAN TRANS AIR"
   },
   {
     "code": "3260",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3261",
     "en": "AIR CHINA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR CHINA"
   },
   {
     "code": "3262",
     "en": "RENO AIR, INC.",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — RENO AIR, INC."
   },
   {
     "code": "3263",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3264",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3265",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3266",
     "en": "AIR SEYCHELLES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR SEYCHELLES"
   },
   {
     "code": "3267",
     "en": "AIR PANAMA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR PANAMA"
   },
   {
     "code": "3268",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3269",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3270",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3271",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3272",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3273",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3274",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3275",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3276",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3277",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3278",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3279",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3280",
     "en": "AIR JAMAICA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR JAMAICA"
   },
   {
     "code": "3281",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3282",
     "en": "AIR DJIBOUTI",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR DJIBOUTI"
   },
   {
     "code": "3283",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3284",
     "en": "AERO VIRGIN ISLANDS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AERO VIRGIN ISLANDS"
   },
   {
     "code": "3285",
     "en": "AERO PERU",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AERO PERU"
   },
   {
     "code": "3286",
     "en": "AEROLINEAS NICARAGUENSIS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AEROLINEAS NICARAGUENSIS"
   },
   {
     "code": "3287",
     "en": "AERO COACH AVAIATION",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AERO COACH AVAIATION"
   },
   {
     "code": "3288",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3289",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3290",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3291",
     "en": "ARIANA AFGHAN",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ARIANA AFGHAN"
   },
   {
     "code": "3292",
     "en": "CYPRUS AIRWAYS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — CYPRUS AIRWAYS"
   },
   {
     "code": "3293",
     "en": "ECUATORIANA",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ECUATORIANA"
   },
   {
     "code": "3294",
     "en": "ETHIOPIAN AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — ETHIOPIAN AIRLINES"
   },
   {
     "code": "3295",
     "en": "KENYA AIRLINES",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — KENYA AIRLINES"
   },
   {
     "code": "3296",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3297",
     "en": "Airlines",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії",
+    "listed": false
   },
   {
     "code": "3298",
     "en": "AIR MAURITIUS",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — AIR MAURITIUS"
   },
   {
     "code": "3299",
     "en": "WIDERO’S FLYVESELSKAP",
-    "uk": "Авіалінії"
+    "uk": "Авіалінії — WIDERO’S FLYVESELSKAP"
   },
   {
     "code": "3351",
     "en": "AFFILIATED AUTO RENTAL",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AFFILIATED AUTO RENTAL"
   },
   {
     "code": "3352",
     "en": "AMERICAN INTL RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AMERICAN INTL RENT-A-CAR"
   },
   {
     "code": "3353",
     "en": "BROOKS RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — BROOKS RENT-A-CAR"
   },
   {
     "code": "3354",
     "en": "ACTION AUTO RENTAL",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ACTION AUTO RENTAL"
   },
   {
     "code": "3355",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3356",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3357",
     "en": "HERTZ RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — HERTZ RENT-A-CAR"
   },
   {
     "code": "3358",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3359",
     "en": "PAYLESS CAR RENTAL",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — PAYLESS CAR RENTAL"
   },
   {
     "code": "3360",
     "en": "SNAPPY CAR RENTAL",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — SNAPPY CAR RENTAL"
   },
   {
     "code": "3361",
     "en": "AIRWAYS RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AIRWAYS RENT-A-CAR"
   },
   {
     "code": "3362",
     "en": "ALTRA AUTO RENTAL",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ALTRA AUTO RENTAL"
   },
   {
     "code": "3363",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3364",
     "en": "AGENCY RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AGENCY RENT-A-CAR"
   },
   {
     "code": "3365",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3366",
     "en": "BUDGET RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — BUDGET RENT-A-CAR"
   },
   {
     "code": "3367",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3368",
     "en": "HOLIDAY RENT-A-WRECK",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — HOLIDAY RENT-A-WRECK"
   },
   {
     "code": "3369",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3370",
     "en": "RENT-A-WRECK",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — RENT-A-WRECK"
   },
   {
     "code": "3371",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3372",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3373",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3374",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3375",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3376",
     "en": "AJAX RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AJAX RENT-A-CAR"
   },
   {
     "code": "3377",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3378",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3379",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3380",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3381",
     "en": "EUROP CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — EUROP CAR"
   },
   {
     "code": "3382",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3383",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3384",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3385",
     "en": "TROPICAL RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — TROPICAL RENT-A-CAR"
   },
   {
     "code": "3386",
     "en": "SHOWCASE RENTAL CARS",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — SHOWCASE RENTAL CARS"
   },
   {
     "code": "3387",
     "en": "ALAMO RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ALAMO RENT-A-CAR"
   },
   {
     "code": "3388",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3389",
     "en": "AVIS RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AVIS RENT-A-CAR"
   },
   {
     "code": "3390",
     "en": "DOLLAR RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — DOLLAR RENT-A-CAR"
   },
   {
     "code": "3391",
     "en": "EUROPE BY CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — EUROPE BY CAR"
   },
   {
     "code": "3392",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3393",
     "en": "NATIONAL CAR RENTAL",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — NATIONAL CAR RENTAL"
   },
   {
     "code": "3394",
     "en": "KEMWELL GROUP RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — KEMWELL GROUP RENT-A-CAR"
   },
   {
     "code": "3395",
     "en": "THRIFTY RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — THRIFTY RENT-A-CAR"
   },
   {
     "code": "3396",
     "en": "TILDEN TENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — TILDEN TENT-A-CAR"
   },
   {
     "code": "3397",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3398",
     "en": "ECONO-CAR RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ECONO-CAR RENT-A-CAR"
   },
   {
     "code": "3399",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3400",
     "en": "AUTO HOST COST CAR RENTALS",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AUTO HOST COST CAR RENTALS"
   },
   {
     "code": "3401",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3402",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3403",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3404",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3405",
     "en": "ENTERPRISE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ENTERPRISE RENT-A-CAR"
   },
   {
     "code": "3406",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3407",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3408",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3409",
     "en": "GENERAL RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — GENERAL RENT-A-CAR"
   },
   {
     "code": "3410",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3411",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3412",
     "en": "A-1 RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — A-1 RENT-A-CAR"
   },
   {
     "code": "3413",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3414",
     "en": "GODFREY NATL RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — GODFREY NATL RENT-A-CAR"
   },
   {
     "code": "3415",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3416",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3417",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3418",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3419",
     "en": "ALPHA RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ALPHA RENT-A-CAR"
   },
   {
     "code": "3420",
     "en": "ANSA INTL RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ANSA INTL RENT-A-CAR"
   },
   {
     "code": "3421",
     "en": "ALLSTAE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — ALLSTAE RENT-A-CAR"
   },
   {
     "code": "3422",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3423",
     "en": "AVCAR RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AVCAR RENT-A-CAR"
   },
   {
     "code": "3424",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3425",
     "en": "AUTOMATE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AUTOMATE RENT-A-CAR"
   },
   {
     "code": "3426",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3427",
     "en": "AVON RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AVON RENT-A-CAR"
   },
   {
     "code": "3428",
     "en": "CAREY RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — CAREY RENT-A-CAR"
   },
   {
     "code": "3429",
     "en": "INSURANCE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — INSURANCE RENT-A-CAR"
   },
   {
     "code": "3430",
     "en": "MAJOR RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — MAJOR RENT-A-CAR"
   },
   {
     "code": "3431",
     "en": "REPLACEMENT RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — REPLACEMENT RENT-A-CAR"
   },
   {
     "code": "3432",
     "en": "RESERVE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — RESERVE RENT-A-CAR"
   },
   {
     "code": "3433",
     "en": "UGLY DUCKLING RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — UGLY DUCKLING RENT-A-CAR"
   },
   {
     "code": "3434",
     "en": "USA RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — USA RENT-A-CAR"
   },
   {
     "code": "3435",
     "en": "VALUE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — VALUE RENT-A-CAR"
   },
   {
     "code": "3436",
     "en": "AUTOHANSA RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — AUTOHANSA RENT-A-CAR"
   },
   {
     "code": "3437",
     "en": "CITE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — CITE RENT-A-CAR"
   },
   {
     "code": "3438",
     "en": "INTERENT RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — INTERENT RENT-A-CAR"
   },
   {
     "code": "3439",
     "en": "MILLEVILLE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — MILLEVILLE RENT-A-CAR"
   },
   {
     "code": "3440",
     "en": "VIA ROUTE RENT-A-CAR",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто — VIA ROUTE RENT-A-CAR"
   },
   {
     "code": "3441",
     "en": "Car Rental",
-    "uk": "Оренда авто"
+    "uk": "Оренда авто",
+    "listed": false
   },
   {
     "code": "3501",
     "en": "HOLIDAY INNS, HOLIDAY INN EXPRESS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOLIDAY INNS, HOLIDAY INN EXPRESS"
   },
   {
     "code": "3502",
     "en": "BEST WESTERN HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — BEST WESTERN HOTELS"
   },
   {
     "code": "3503",
     "en": "SHERATON HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SHERATON HOTELS"
   },
   {
     "code": "3504",
     "en": "HILTON HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HILTON HOTELS"
   },
   {
     "code": "3505",
     "en": "FORTE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FORTE HOTELS"
   },
   {
     "code": "3506",
     "en": "GOLDEN TULIP HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — GOLDEN TULIP HOTELS"
   },
   {
     "code": "3507",
     "en": "FRIENDSHIP INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FRIENDSHIP INNS"
   },
   {
     "code": "3508",
     "en": "QUALITY INNS, QUALITY SUITES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — QUALITY INNS, QUALITY SUITES"
   },
   {
     "code": "3509",
     "en": "MARRIOTT HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MARRIOTT HOTELS"
   },
   {
     "code": "3510",
     "en": "DAYS INN, DAYSTOP",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DAYS INN, DAYSTOP"
   },
   {
     "code": "3511",
     "en": "ARABELLA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ARABELLA HOTELS"
   },
   {
     "code": "3512",
     "en": "INTER-CONTINENTAL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — INTER-CONTINENTAL HOTELS"
   },
   {
     "code": "3513",
     "en": "WESTIN HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — WESTIN HOTELS"
   },
   {
     "code": "3514",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3515",
     "en": "RODEWAY INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RODEWAY INNS"
   },
   {
     "code": "3516",
     "en": "LA QUINTA MOTOR INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — LA QUINTA MOTOR INNS"
   },
   {
     "code": "3517",
     "en": "AMERICANA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — AMERICANA HOTELS"
   },
   {
     "code": "3518",
     "en": "SOL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SOL HOTELS"
   },
   {
     "code": "3519",
     "en": "PULLMAN INTERNATIONAL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PULLMAN INTERNATIONAL HOTELS"
   },
   {
     "code": "3520",
     "en": "MERIDIEN HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MERIDIEN HOTELS"
   },
   {
     "code": "3521",
     "en": "CREST HOTELS (see FORTE HOTELS)",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CREST HOTELS (see FORTE HOTELS)"
   },
   {
     "code": "3522",
     "en": "TOKYO HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — TOKYO HOTEL"
   },
   {
     "code": "3523",
     "en": "PENNSULA HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PENNSULA HOTEL"
   },
   {
     "code": "3524",
     "en": "WELCOMGROUP HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — WELCOMGROUP HOTELS"
   },
   {
     "code": "3525",
     "en": "DUNFEY HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DUNFEY HOTELS"
   },
   {
     "code": "3526",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3527",
     "en": "DOWNTOWNER-PASSPORT HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DOWNTOWNER-PASSPORT HOTEL"
   },
   {
     "code": "3528",
     "en": "RED LION HOTELS, RED LION INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RED LION HOTELS, RED LION INNS"
   },
   {
     "code": "3529",
     "en": "CP HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CP HOTELS"
   },
   {
     "code": "3530",
     "en": "RENAISSANCE HOTELS, STOUFFER HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RENAISSANCE HOTELS, STOUFFER HOTELS"
   },
   {
     "code": "3531",
     "en": "ASTIR HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ASTIR HOTELS"
   },
   {
     "code": "3532",
     "en": "SUN ROUTE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SUN ROUTE HOTELS"
   },
   {
     "code": "3533",
     "en": "HOTEL IBIS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOTEL IBIS"
   },
   {
     "code": "3534",
     "en": "SOUTHERN PACIFIC HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SOUTHERN PACIFIC HOTELS"
   },
   {
     "code": "3535",
     "en": "HILTON INTERNATIONAL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HILTON INTERNATIONAL"
   },
   {
     "code": "3536",
     "en": "AMFAC HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — AMFAC HOTELS"
   },
   {
     "code": "3537",
     "en": "ANA HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ANA HOTEL"
   },
   {
     "code": "3538",
     "en": "CONCORDE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CONCORDE HOTELS"
   },
   {
     "code": "3539",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3540",
     "en": "IBEROTEL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — IBEROTEL HOTELS"
   },
   {
     "code": "3541",
     "en": "HOTEL OKURA",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOTEL OKURA"
   },
   {
     "code": "3542",
     "en": "ROYAL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ROYAL HOTELS"
   },
   {
     "code": "3543",
     "en": "FOUR SEASONS HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FOUR SEASONS HOTELS"
   },
   {
     "code": "3544",
     "en": "CIGA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CIGA HOTELS"
   },
   {
     "code": "3545",
     "en": "SHANGRI-LA INTERNATIONAL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SHANGRI-LA INTERNATIONAL"
   },
   {
     "code": "3546",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3547",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3548",
     "en": "HOTELES MELIA",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOTELES MELIA"
   },
   {
     "code": "3549",
     "en": "AUBERGE DES GOVERNEURS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — AUBERGE DES GOVERNEURS"
   },
   {
     "code": "3550",
     "en": "REGAL 8 INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — REGAL 8 INNS"
   },
   {
     "code": "3551",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3552",
     "en": "COAST HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — COAST HOTELS"
   },
   {
     "code": "3553",
     "en": "PARK INNS INTERNATIONAL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PARK INNS INTERNATIONAL"
   },
   {
     "code": "3554",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3555",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3556",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3557",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3558",
     "en": "JOLLY HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — JOLLY HOTELS"
   },
   {
     "code": "3559",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3560",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3561",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3562",
     "en": "COMFORT INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — COMFORT INNS"
   },
   {
     "code": "3563",
     "en": "JOURNEY’S END MOTLS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — JOURNEY’S END MOTLS"
   },
   {
     "code": "3564",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3565",
     "en": "RELAX INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RELAX INNS"
   },
   {
     "code": "3566",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3567",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3568",
     "en": "LADBROKE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — LADBROKE HOTELS"
   },
   {
     "code": "3569",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3570",
     "en": "FORUM HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FORUM HOTELS"
   },
   {
     "code": "3571",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3572",
     "en": "MIYAKO HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MIYAKO HOTELS"
   },
   {
     "code": "3573",
     "en": "SANDMAN HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SANDMAN HOTELS"
   },
   {
     "code": "3574",
     "en": "VENTURE INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — VENTURE INNS"
   },
   {
     "code": "3575",
     "en": "VAGABOND HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — VAGABOND HOTELS"
   },
   {
     "code": "3576",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3577",
     "en": "MANDARIN ORIENTAL HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MANDARIN ORIENTAL HOTEL"
   },
   {
     "code": "3578",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3579",
     "en": "HOTEL MERCURE",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOTEL MERCURE"
   },
   {
     "code": "3580",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3581",
     "en": "DELTA HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DELTA HOTEL"
   },
   {
     "code": "3582",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3583",
     "en": "SAS HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SAS HOTELS"
   },
   {
     "code": "3584",
     "en": "PRINCESS HOTELS INTERNATIONAL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PRINCESS HOTELS INTERNATIONAL"
   },
   {
     "code": "3585",
     "en": "HUNGAR HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HUNGAR HOTELS"
   },
   {
     "code": "3586",
     "en": "SOKOS HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SOKOS HOTELS"
   },
   {
     "code": "3587",
     "en": "DORAL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DORAL HOTELS"
   },
   {
     "code": "3588",
     "en": "HELMSLEY HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HELMSLEY HOTELS"
   },
   {
     "code": "3589",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3590",
     "en": "FAIRMONT HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FAIRMONT HOTELS"
   },
   {
     "code": "3591",
     "en": "SONESTA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SONESTA HOTELS"
   },
   {
     "code": "3592",
     "en": "OMNI HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — OMNI HOTELS"
   },
   {
     "code": "3593",
     "en": "CUNARD HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CUNARD HOTELS"
   },
   {
     "code": "3594",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3595",
     "en": "HOSPITALITY INTERNATIONAL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOSPITALITY INTERNATIONAL"
   },
   {
     "code": "3596",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3597",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3598",
     "en": "REGENT INTERNATIONAL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — REGENT INTERNATIONAL HOTELS"
   },
   {
     "code": "3599",
     "en": "PANNONIA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PANNONIA HOTELS"
   },
   {
     "code": "3600",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3601",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3602",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3603",
     "en": "NOAH’S HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — NOAH’S HOTELS"
   },
   {
     "code": "3604",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3605",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3606",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3607",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3608",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3609",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3610",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3611",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3612",
     "en": "MOVENPICK HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MOVENPICK HOTELS"
   },
   {
     "code": "3613",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3614",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3615",
     "en": "TRAVELODGE",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — TRAVELODGE"
   },
   {
     "code": "3616",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3617",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3618",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3619",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3620",
     "en": "TELFORD INTERNATIONAL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — TELFORD INTERNATIONAL"
   },
   {
     "code": "3621",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3622",
     "en": "MERLIN HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MERLIN HOTELS"
   },
   {
     "code": "3623",
     "en": "DORINT HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DORINT HOTELS"
   },
   {
     "code": "3624",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3625",
     "en": "HOTLE UNIVERSALE",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOTLE UNIVERSALE"
   },
   {
     "code": "3626",
     "en": "PRINCE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PRINCE HOTELS"
   },
   {
     "code": "3627",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3628",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3629",
     "en": "DAN HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DAN HOTELS"
   },
   {
     "code": "3630",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3631",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3632",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3633",
     "en": "RANK HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RANK HOTELS"
   },
   {
     "code": "3634",
     "en": "SWISSOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SWISSOTEL"
   },
   {
     "code": "3635",
     "en": "RESO HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RESO HOTELS"
   },
   {
     "code": "3636",
     "en": "SAROVA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SAROVA HOTELS"
   },
   {
     "code": "3637",
     "en": "RAMADA INNS, RAMADA LIMITED",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RAMADA INNS, RAMADA LIMITED"
   },
   {
     "code": "3638",
     "en": "HO JO INN, HOWARD JOHNSON",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HO JO INN, HOWARD JOHNSON"
   },
   {
     "code": "3639",
     "en": "MOUNT CHARLOTTE THISTLE",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MOUNT CHARLOTTE THISTLE"
   },
   {
     "code": "3640",
     "en": "HYATT HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HYATT HOTEL"
   },
   {
     "code": "3641",
     "en": "SOFITEL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SOFITEL HOTELS"
   },
   {
     "code": "3642",
     "en": "NOVOTEL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — NOVOTEL HOTELS"
   },
   {
     "code": "3643",
     "en": "STEIGENBERGER HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — STEIGENBERGER HOTELS"
   },
   {
     "code": "3644",
     "en": "ECONO LODGES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ECONO LODGES"
   },
   {
     "code": "3645",
     "en": "QUEENS MOAT HOUSES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — QUEENS MOAT HOUSES"
   },
   {
     "code": "3646",
     "en": "SWALLOW HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SWALLOW HOTELS"
   },
   {
     "code": "3647",
     "en": "HUSA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HUSA HOTELS"
   },
   {
     "code": "3648",
     "en": "DE VERE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DE VERE HOTELS"
   },
   {
     "code": "3649",
     "en": "RADISSON HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RADISSON HOTELS"
   },
   {
     "code": "3650",
     "en": "RED ROOK INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RED ROOK INNS"
   },
   {
     "code": "3651",
     "en": "IMPERIAL LONDON HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — IMPERIAL LONDON HOTEL"
   },
   {
     "code": "3652",
     "en": "EMBASSY HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — EMBASSY HOTELS"
   },
   {
     "code": "3653",
     "en": "PENTA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PENTA HOTELS"
   },
   {
     "code": "3654",
     "en": "LOEWS HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — LOEWS HOTELS"
   },
   {
     "code": "3655",
     "en": "SCANDIC HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SCANDIC HOTELS"
   },
   {
     "code": "3656",
     "en": "SARA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SARA HOTELS"
   },
   {
     "code": "3657",
     "en": "OBEROI HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — OBEROI HOTELS"
   },
   {
     "code": "3658",
     "en": "OTANI HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — OTANI HOTELS"
   },
   {
     "code": "3659",
     "en": "TAJ HOTELS INTERNATIONAL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — TAJ HOTELS INTERNATIONAL"
   },
   {
     "code": "3660",
     "en": "KNIGHTS INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — KNIGHTS INNS"
   },
   {
     "code": "3661",
     "en": "METROPOLE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — METROPOLE HOTELS"
   },
   {
     "code": "3662",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3663",
     "en": "HOTELES EL PRESIDENTS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOTELES EL PRESIDENTS"
   },
   {
     "code": "3664",
     "en": "FLAG INN",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FLAG INN"
   },
   {
     "code": "3665",
     "en": "HAMPTON INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HAMPTON INNS"
   },
   {
     "code": "3666",
     "en": "STAKIS HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — STAKIS HOTELS"
   },
   {
     "code": "3667",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3668",
     "en": "MARITIM HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MARITIM HOTELS"
   },
   {
     "code": "3669",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3670",
     "en": "ARCARD HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ARCARD HOTELS"
   },
   {
     "code": "3671",
     "en": "ARCTIA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ARCTIA HOTELS"
   },
   {
     "code": "3672",
     "en": "CAMPANIEL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CAMPANIEL HOTELS"
   },
   {
     "code": "3673",
     "en": "IBUSZ HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — IBUSZ HOTELS"
   },
   {
     "code": "3674",
     "en": "RANTASIPI HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RANTASIPI HOTELS"
   },
   {
     "code": "3675",
     "en": "INTERHOTEL CEDOK",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — INTERHOTEL CEDOK"
   },
   {
     "code": "3676",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3677",
     "en": "CLIMAT DE FRANCE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CLIMAT DE FRANCE HOTELS"
   },
   {
     "code": "3678",
     "en": "CUMULUS HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CUMULUS HOTELS"
   },
   {
     "code": "3679",
     "en": "DANUBIUS HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DANUBIUS HOTEL"
   },
   {
     "code": "3680",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3681",
     "en": "ADAMS MARK HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ADAMS MARK HOTELS"
   },
   {
     "code": "3682",
     "en": "ALLSTAR INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ALLSTAR INNS"
   },
   {
     "code": "3683",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3684",
     "en": "BUDGET HOST INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — BUDGET HOST INNS"
   },
   {
     "code": "3685",
     "en": "BUDGETEL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — BUDGETEL HOTELS"
   },
   {
     "code": "3686",
     "en": "SUISSE CHALETS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SUISSE CHALETS"
   },
   {
     "code": "3687",
     "en": "CLARION HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CLARION HOTELS"
   },
   {
     "code": "3688",
     "en": "COMPRI HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — COMPRI HOTELS"
   },
   {
     "code": "3689",
     "en": "CONSORT HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CONSORT HOTELS"
   },
   {
     "code": "3690",
     "en": "COURTYARD BY MARRIOTT",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — COURTYARD BY MARRIOTT"
   },
   {
     "code": "3691",
     "en": "DILLION INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DILLION INNS"
   },
   {
     "code": "3692",
     "en": "DOUBLETREE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DOUBLETREE HOTELS"
   },
   {
     "code": "3693",
     "en": "DRURY INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — DRURY INNS"
   },
   {
     "code": "3694",
     "en": "ECONOMY INNS OF AMERICA",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ECONOMY INNS OF AMERICA"
   },
   {
     "code": "3695",
     "en": "EMBASSY SUITES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — EMBASSY SUITES"
   },
   {
     "code": "3696",
     "en": "EXEL INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — EXEL INNS"
   },
   {
     "code": "3697",
     "en": "FARFIELD HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FARFIELD HOTELS"
   },
   {
     "code": "3698",
     "en": "HARLEY HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HARLEY HOTELS"
   },
   {
     "code": "3699",
     "en": "MIDWAY MOTOR LODGE",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MIDWAY MOTOR LODGE"
   },
   {
     "code": "3700",
     "en": "MOTEL 6",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MOTEL 6"
   },
   {
     "code": "3701",
     "en": "GUEST QUARTERS (Formally PICKETT SUITE HOTELS)",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — GUEST QUARTERS (Formally PICKETT SUITE HOTELS)"
   },
   {
     "code": "3702",
     "en": "THE REGISTRY HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — THE REGISTRY HOTELS"
   },
   {
     "code": "3703",
     "en": "RESIDENCE INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RESIDENCE INNS"
   },
   {
     "code": "3704",
     "en": "ROYCE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ROYCE HOTELS"
   },
   {
     "code": "3705",
     "en": "SANDMAN INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SANDMAN INNS"
   },
   {
     "code": "3706",
     "en": "SHILO INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SHILO INNS"
   },
   {
     "code": "3707",
     "en": "SHONEY’S INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SHONEY’S INNS"
   },
   {
     "code": "3708",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3709",
     "en": "SUPER8 MOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SUPER8 MOTELS"
   },
   {
     "code": "3710",
     "en": "THE RITZ CARLTON HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — THE RITZ CARLTON HOTELS"
   },
   {
     "code": "3711",
     "en": "FLAG INNS (AUSRALIA)",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FLAG INNS (AUSRALIA)"
   },
   {
     "code": "3712",
     "en": "GOLDEN CHAIN HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — GOLDEN CHAIN HOTEL"
   },
   {
     "code": "3713",
     "en": "QUALITY PACIFIC HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — QUALITY PACIFIC HOTEL"
   },
   {
     "code": "3714",
     "en": "FOUR SEASONS HOTEL (AUSTRALIA)",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FOUR SEASONS HOTEL (AUSTRALIA)"
   },
   {
     "code": "3715",
     "en": "FARIFIELD INN",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — FARIFIELD INN"
   },
   {
     "code": "3716",
     "en": "CARLTON HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CARLTON HOTELS"
   },
   {
     "code": "3717",
     "en": "CITY LODGE HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CITY LODGE HOTELS"
   },
   {
     "code": "3718",
     "en": "KAROS HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — KAROS HOTELS"
   },
   {
     "code": "3719",
     "en": "PROTEA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PROTEA HOTELS"
   },
   {
     "code": "3720",
     "en": "SOUTHERN SUN HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SOUTHERN SUN HOTELS"
   },
   {
     "code": "3721",
     "en": "HILTON CONRAD",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HILTON CONRAD"
   },
   {
     "code": "3722",
     "en": "WYNDHAM HOTEL AND RESORTS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — WYNDHAM HOTEL AND RESORTS"
   },
   {
     "code": "3723",
     "en": "RICA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RICA HOTELS"
   },
   {
     "code": "3724",
     "en": "INER NOR HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — INER NOR HOTELS"
   },
   {
     "code": "3725",
     "en": "SEAINES PLANATION",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SEAINES PLANATION"
   },
   {
     "code": "3726",
     "en": "RIO SUITES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RIO SUITES"
   },
   {
     "code": "3727",
     "en": "BROADMOOR HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — BROADMOOR HOTEL"
   },
   {
     "code": "3728",
     "en": "BALLY’S HOTEL AND CASINO",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — BALLY’S HOTEL AND CASINO"
   },
   {
     "code": "3729",
     "en": "JOHN ASCUAGA’S NUGGET",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — JOHN ASCUAGA’S NUGGET"
   },
   {
     "code": "3730",
     "en": "MGM GRAND HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MGM GRAND HOTEL"
   },
   {
     "code": "3731",
     "en": "HARRAH’S HOTELS AND CASINOS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HARRAH’S HOTELS AND CASINOS"
   },
   {
     "code": "3732",
     "en": "OPRYLAND HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — OPRYLAND HOTEL"
   },
   {
     "code": "3733",
     "en": "BOCA RATON RESORT",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — BOCA RATON RESORT"
   },
   {
     "code": "3734",
     "en": "HARVEY/BRISTOL HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HARVEY/BRISTOL HOTELS"
   },
   {
     "code": "3735",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3736",
     "en": "COLORADO BELLE/EDGEWATER RESORT",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — COLORADO BELLE/EDGEWATER RESORT"
   },
   {
     "code": "3737",
     "en": "RIVIERA HOTEL AND CASINO",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — RIVIERA HOTEL AND CASINO"
   },
   {
     "code": "3738",
     "en": "TROPICANA RESORT AND CASINO",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — TROPICANA RESORT AND CASINO"
   },
   {
     "code": "3739",
     "en": "WOODSIDE HOTELS AND RESORTS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — WOODSIDE HOTELS AND RESORTS"
   },
   {
     "code": "3740",
     "en": "TOWNPLACE SUITES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — TOWNPLACE SUITES"
   },
   {
     "code": "3741",
     "en": "MILLENIUM BROADWAY HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — MILLENIUM BROADWAY HOTEL"
   },
   {
     "code": "3742",
     "en": "CLUB MED",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CLUB MED"
   },
   {
     "code": "3743",
     "en": "BILTMORE HOTEL AND SUITES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — BILTMORE HOTEL AND SUITES"
   },
   {
     "code": "3744",
     "en": "CAREFREE RESORTS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CAREFREE RESORTS"
   },
   {
     "code": "3745",
     "en": "ST. REGIS HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — ST. REGIS HOTEL"
   },
   {
     "code": "3746",
     "en": "THE ELIOT HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — THE ELIOT HOTEL"
   },
   {
     "code": "3747",
     "en": "CLUBCORP/CLUB RESORTS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CLUBCORP/CLUB RESORTS"
   },
   {
     "code": "3748",
     "en": "WELESLEY INNS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — WELESLEY INNS"
   },
   {
     "code": "3749",
     "en": "THE BEVERLY HILLS HOTEL",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — THE BEVERLY HILLS HOTEL"
   },
   {
     "code": "3750",
     "en": "CROWNE PLAZA HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — CROWNE PLAZA HOTELS"
   },
   {
     "code": "3751",
     "en": "HOMEWOOD SUITES",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — HOMEWOOD SUITES"
   },
   {
     "code": "3752",
     "en": "PEABODY HOTELS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — PEABODY HOTELS"
   },
   {
     "code": "3753",
     "en": "GREENBRIAH RESORTS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — GREENBRIAH RESORTS"
   },
   {
     "code": "3754",
     "en": "AMELIA ISLAND PLANATION",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — AMELIA ISLAND PLANATION"
   },
   {
     "code": "3755",
     "en": "THE HOMESTEAD",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — THE HOMESTEAD"
   },
   {
     "code": "3756",
     "en": "SOUTH SEAS RESORTS",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти — SOUTH SEAS RESORTS"
   },
   {
     "code": "3757",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3758",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3759",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3760",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3761",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3762",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3763",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3764",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3765",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3766",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3767",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3768",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3769",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3770",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3771",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3772",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3773",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3774",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3775",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3776",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3777",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3778",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3779",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3780",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3781",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3782",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3783",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3784",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3785",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3786",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3787",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3788",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3789",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3790",
     "en": "Hotels/Motels/Inns/Resorts",
-    "uk": "Готелі. Курорти"
+    "uk": "Готелі. Курорти",
+    "listed": false
   },
   {
     "code": "3816",
     "en": "Home2Suites",
-    "uk": "Готелі"
+    "uk": "Готелі — Home2Suites"
   },
   {
     "code": "3835",
     "en": "* MASTERS ECONOMY INNS",
-    "uk": "Готелі"
+    "uk": "Готелі — * MASTERS ECONOMY INNS"
   },
   {
     "code": "4011",

@@ -11,14 +11,12 @@ const allRow = (code: string, name: string | undefined): MccPickerRow => ({
 
 const nameOf = (code: string, language: string): string | undefined => mccNameOf(code, language);
 
-type ListedEntry = { code: string; listed?: unknown };
-
 const LISTED_CODE_COUNT = 720;
 
 const everyCodeRows = (language: string): MccPickerRow[] =>
-  (MCC_NAMES as readonly ListedEntry[])
-    .filter(({ listed }) => listed !== false)
-    .map(({ code }) => allRow(code, nameOf(code, language)));
+  MCC_NAMES.filter(({ listed }) => listed !== false).map(({ code }) =>
+    allRow(code, nameOf(code, language)),
+  );
 
 const allCodesOf = (rows: readonly MccPickerRow[]): string[] =>
   rows.flatMap((row) => (row.type === 'code' && row.section === 'all' ? [row.code] : []));

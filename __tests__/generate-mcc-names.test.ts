@@ -22,8 +22,6 @@ type SominemoFile = Record<string, { uk: string; ru: string }>;
 const REPOSITORY_ROOT = join(__dirname, '..');
 const DATA_PATH = join(REPOSITORY_ROOT, 'src/categories/mcc-names/mcc-names.data.json');
 
-type RenderedEntry = MccName & { listed?: boolean };
-
 const row = (
   mcc: string | number,
   edited: string,
@@ -311,13 +309,13 @@ describe('generate MCC names', () => {
       { code: '5411', en: 'Grocery Stores, Supermarkets', uk: 'Продукти' },
     ];
 
-    const hiddenEntry: RenderedEntry = {
+    const hiddenEntry: MccName = {
       code: '3003',
       en: 'Airlines',
       uk: 'Авіалінії',
       listed: false,
     };
-    const unlistedFlagTrue: RenderedEntry = {
+    const unlistedFlagTrue: MccName = {
       code: '3004',
       en: 'Airlines',
       uk: 'Авіалінії',
