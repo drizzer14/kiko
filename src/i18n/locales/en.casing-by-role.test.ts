@@ -187,14 +187,11 @@ const BINANCE_PRODUCT_PHRASES = new RegExp(
 // string.
 const BYBIT_PHRASES = new RegExp(
   `(?:${[
-    'Unified, Funding, Flexible Savings, On-Chain Earn',
+    'Unified, Funding',
     'between Funding and Unified',
     "Funding wallet's",
-    'other Earn products',
     'Unified log entries',
     'Earn orders',
-    'Earn products',
-    'Flexible Savings and On-Chain',
     'Funding wallet move',
     'On Unified',
     'On Funding',

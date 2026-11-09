@@ -939,7 +939,7 @@ export const en = {
     bybitKeyValidUntil: 'Bybit key ends on {{date}}.',
     // The first sentences are the kinds Kiko reads; the rest is what stays wrong.
     bybitKinds:
-      "Kiko reads your balances (Unified, Funding, Flexible Savings, On-Chain Earn), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet's record. It does not read P2P orders, other Earn products, derivatives or loans. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses, airdrops, loans, stocks, card purchases and rewards, or moves to a sub-account. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit's Funding record lists them, and a move that looks like one it already has stays out. Kiko can also rarely count a move twice. The past of your net worth can be off by those amounts.",
+      "Kiko reads your balances (Unified, Funding), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet's record. It does not read P2P orders, derivatives or loans. Earn is not read, so money there is not in your balance. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses, airdrops, loans, stocks, card purchases and rewards, or moves to a sub-account. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit's Funding record lists them, and a move that looks like one it already has stays out. Kiko can also rarely count a move twice. The past of your net worth can be off by those amounts.",
     bybitLogKind: {
       bonuses: 'bonuses and airdrops',
       convertEntries: 'convert and liquidation entries',
@@ -1096,7 +1096,7 @@ export const en = {
       binance:
         'Not listed: futures, margin and options trades; Binance Card and gift card spending; Auto-Invest; loans; ETH and SOL staking; mining; NFTs; copy trading; Dual Investment; sub-accounts; distributions other than Simple Earn rewards; P2P sales and P2P orders you placed as an advertiser; trades of coins sold before this version that Kiko saw nowhere else; and records older than Binance keeps. Binance does not say which wallet P2P and fiat operations use: Kiko shows P2P orders on Funding and fiat operations on Spot.',
       bybit:
-        "Not listed: interest, bonuses, airdrops and other Unified log entries that are not spot trades; converts made on the website or in the app before 10 September 2025; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; Earn products other than Flexible Savings and On-Chain; derivatives profit and loss; loans; sub-accounts; and records older than two years. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. A spot trade's amount already holds its fee. A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted.",
+        "Not listed: interest, bonuses, airdrops and other Unified log entries that are not spot trades; converts made on the website or in the app before 10 September 2025; Earn orders and yield; P2P orders, which Bybit's API opens only to advertisers; derivatives profit and loss; loans; sub-accounts; and records older than two years. Earn is not read, so money there is not in your balance. Bybit's deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. Deposit and withdrawal amounts are as Bybit reports them, with no separate fee line. A spot trade's amount already holds its fee. A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out. Kiko does not support Bybit EU accounts, and a key from another regional site may not be accepted.",
     },
     expectedProfit: 'Expected profit',
     // A priced type's (property, metal) breakdown gain row: gross value minus
@@ -1334,15 +1334,16 @@ export const en = {
         title: 'Set Categories Automatically',
       },
       connectCrypto: {
-        rowLabel: 'Connect Binance or a Bitcoin wallet',
+        rowLabel: 'Connect Binance, Bybit or a Bitcoin wallet',
         steps: {
           '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Crypto".',
-          '2': 'Under "Exchange or wallet", choose "Binance" or "Bitcoin wallet".',
+          '2': 'Under "Exchange or wallet", choose "Binance", "Bybit" or "Bitcoin wallet".',
           '3': 'For Binance, tap "Open Binance API management" and create an API key there with only "Enable Reading" turned on (no trading or withdrawal permission). Paste the "API key" and "API secret", then tap "Connect Binance".',
-          '4': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
-          '5': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
+          '4': 'For Bybit: Kiko works only with global accounts (bybit.com). It does not support Bybit EU accounts, and a key from another regional site may not be accepted. Tap "Open Bybit API management" and, on your main account, create a read-only key with every read box offered ticked and no IP restriction. Paste the "API key" and "API secret", then tap "Connect Bybit". Bybit ends the key after about 90 days; renew it there before that date, and the key stays the same. Kiko reads your balances (Unified, Funding), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet\'s record. It does not read P2P orders, derivatives or loans. Earn is not read, so money there is not in your balance. Bybit\'s deposit and withdrawal records do not say which wallet they used, so Kiko lists them all on Funding. Your current balances are not affected. On Unified, Kiko cannot read coins credited by P2P, converts made on the website or in the app before 10 September 2025, Earn yield, money moved into an Earn product it does not read, interest, bonuses, airdrops, loans, stocks, card purchases and rewards, or moves to a sub-account. It cannot read derivatives profit and loss, or anything older than two years. On Funding, it reads such moves only as far as Bybit\'s Funding record lists them, and a move that looks like one it already has stays out. Kiko can also rarely count a move twice. The past of your net worth can be off by those amounts.',
+          '5': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
+          '6': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
         },
-        title: 'Connect Binance or a Bitcoin Wallet',
+        title: 'Connect Binance, Bybit or a Bitcoin Wallet',
       },
       connectMonobank: {
         rowLabel: 'Connect Monobank',

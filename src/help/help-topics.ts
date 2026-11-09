@@ -97,6 +97,7 @@ const topicsById = {
       'help.topics.connectCrypto.steps.3',
       'help.topics.connectCrypto.steps.4',
       'help.topics.connectCrypto.steps.5',
+      'help.topics.connectCrypto.steps.6',
     ],
     action: 'addCryptoAccount',
   },

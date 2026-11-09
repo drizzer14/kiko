@@ -135,3 +135,214 @@ describe('the Bybit copy', () => {
     );
   });
 });
+
+const catalogues = { en, uk } as const;
+
+type Language = keyof typeof catalogues;
+
+const LANGUAGES = ['en', 'uk'] as const;
+
+const surfacesOf = (language: Language) => {
+  const catalogue = catalogues[language];
+
+  return {
+    connect: catalogue.accountDetail.bybitConnectLimits,
+    dense: catalogue.accountDetail.bybitHistoryDense,
+    footer: catalogue.holdingDetail.exchangeNotListed.bybit,
+    help: catalogue.help.topics.connectCrypto.steps[4],
+    kinds: catalogue.accountDetail.bybitKinds,
+    rejected: catalogue.accountDetail.bybitKeyRejected,
+    statistics: catalogue.statistics.bybitPastLimits,
+  };
+};
+
+// One row per kind set. A literal here picks the row, never an app flag: only the row that ships
+// has a place in the catalogue, and a mixed Earn result would add a row of its own.
+const KIND_SETS = [
+  {
+    name: 'E2 and E4: no Earn category is read',
+    en: {
+      readSentence:
+        "Kiko reads your balances (Unified, Funding), deposits, including those sent by another Bybit user, withdrawals, transfers between Funding and Unified, spot trades, converts and your Funding wallet's record.",
+      unreadSentences:
+        'It does not read P2P orders, derivatives or loans. Earn is not read, so money there is not in your balance.',
+      footerUnread: [
+        'Earn orders and yield',
+        'P2P orders',
+        'derivatives profit and loss',
+        'loans',
+        'sub-accounts',
+        'records older than two years. Earn is not read, so money there is not in your balance.',
+      ],
+      gone: /Flexible Savings|On-Chain|other Earn products|Earn products/,
+    },
+    uk: {
+      readSentence:
+        'Кіко читає ваші баланси (Unified, Funding), поповнення, зокрема від іншого користувача Bybit, виведення, перекази між Funding і Unified, спотові угоди, конвертації й журнал вашого гаманця Funding.',
+      unreadSentences:
+        'Він не читає замовлення P2P, деривативи й позики. Він не читає Earn, тож кошти там не входять до вашого балансу.',
+      footerUnread: [
+        'замовлення й дохід Earn',
+        'замовлення P2P',
+        'прибуток і збитки деривативів',
+        'позики',
+        'субакаунти',
+        'записи, старіші за два роки. Він не читає Earn, тож кошти там не входять до вашого балансу.',
+      ],
+      gone: /Flexible Savings|On-Chain|інші продукти Earn|продукти Earn/,
+    },
+  },
+] as const;
+
+describe('the Bybit kinds, footer and help step', () => {
+  describe.each(KIND_SETS)('the kind set $name', (kindSet) => {
+    it.each(LANGUAGES)(
+      'each surface names each shipped kind and each unread kind, and none of the Earn products the row drops, in %s',
+      (language) => {
+        const { footer, help, kinds } = surfacesOf(language);
+        const row = kindSet[language];
+
+        for (const surface of [kinds, help]) {
+          expect(surface).toContain(row.readSentence);
+          expect(surface).toContain(row.unreadSentences);
+        }
+
+        for (const phrase of row.footerUnread) {
+          expect(footer).toContain(phrase);
+        }
+
+        for (const surface of [kinds, footer, help]) {
+          expect(surface).not.toMatch(row.gone);
+        }
+      },
+    );
+  });
+
+  it.each(LANGUAGES)('the help step ends with the shipped kinds text, in %s', (language) => {
+    const { help, kinds } = surfacesOf(language);
+
+    expect(help.endsWith(` ${kinds}`)).toBe(true);
+  });
+
+  it.each([
+    ['en', 'does not support Bybit EU accounts', /may not/],
+    ['uk', 'не підтримує акаунти Bybit EU', /може не (спрацювати|підійти)/],
+  ] as const)(
+    'connect, rejected key, footer and help each say Kiko does not support Bybit EU accounts and keep may not for other regional sites, in %s',
+    (language, unsupported, maybeNot) => {
+      const { connect, footer, help, rejected } = surfacesOf(language);
+
+      for (const surface of [connect, rejected, footer, help]) {
+        expect(surface).toContain(unsupported);
+        expect(surface).toMatch(maybeNot);
+      }
+    },
+  );
+
+  it.each([
+    ['en', 'spot trades, converts', 'Earn yield and stakes, interest, bonuses, loans, stocks'],
+    ['uk', 'спотові угоди, конвертації', 'дохід і вклади Earn, відсотки, бонуси, позики, акції'],
+  ] as const)(
+    'kinds and help name trades and converts as read, and the Statistics line lists the Earn stakes and the other gaps, in %s',
+    (language, readPhrase, gapPhrase) => {
+      const { help, kinds, statistics } = surfacesOf(language);
+
+      expect(kinds).toContain(readPhrase);
+      expect(help).toContain(readPhrase);
+      expect(statistics).toContain(gapPhrase);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      'loans, stocks, card purchases and rewards, or moves to a sub-account',
+      'card spending, sub-account moves',
+      'rarely count a move twice',
+    ],
+    [
+      'uk',
+      'позики, акції, покупки й винагороди за карткою та перекази на субакаунт',
+      'витрати карткою, перекази на субакаунт',
+      'зрідка врахувати рух двічі',
+    ],
+  ] as const)(
+    'kinds and the Statistics line state what the past cannot hold and that a move can rarely count twice, in %s',
+    (language, kindsGaps, statisticsGaps, rarelyTwice) => {
+      const { kinds, statistics } = surfacesOf(language);
+
+      expect(kinds).toContain(kindsGaps);
+      expect(statistics).toContain(statisticsGaps);
+      expect(kinds).toContain(rarelyTwice);
+      expect(statistics).toContain(rarelyTwice);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      'A coin Kiko could not read stays on this line at its last read balance, or stays off it with no earlier sync.',
+      444,
+    ],
+    [
+      'uk',
+      'Монета, яку Кіко не зміг прочитати, лишається на цій лінії з останнім прочитаним балансом, а без попередньої синхронізації її на лінії немає.',
+      499,
+    ],
+  ] as const)(
+    'the Statistics line ends with the sentence on a coin not read, at the length of clause L1S, in %s',
+    (language, sentence, length) => {
+      const { statistics } = surfacesOf(language);
+
+      expect(statistics.endsWith(sentence)).toBe(true);
+      expect(statistics).toHaveLength(length);
+    },
+  );
+
+  it.each([
+    ['en', 'Not listed: interest, bonuses, airdrops and other Unified log entries'],
+    ['uk', 'Не показано: відсотки, бонуси, аірдропи й інші записи журналу Unified'],
+  ] as const)('the footer names what is not listed, in %s', (language, opening) => {
+    expect(surfacesOf(language).footer.startsWith(opening)).toBe(true);
+  });
+
+  it.each([
+    ['en', /can be off by those amounts\.$/, /\b(will|always|every|all|exact\w*)\b/i],
+    ['uk', /може відрізнятися на ці суми\.$/, /завжди|усі|точн/i],
+  ] as const)(
+    'the dense line says the past can be off and makes no promise, in %s',
+    (language, canBeOff, promise) => {
+      const { dense } = surfacesOf(language);
+
+      expect(dense).toMatch(canBeOff);
+      expect(dense).not.toMatch(promise);
+    },
+  );
+
+  it.each([
+    [
+      'en',
+      "your Funding wallet's record",
+      "On Funding, it reads such moves only as far as Bybit's Funding record lists them, and a move that looks like one it already has stays out.",
+      'A Funding wallet move is one no other Bybit record explains; it does not count as spending, and one that looks like a record Kiko already has stays out.',
+    ],
+    [
+      'uk',
+      'журнал вашого гаманця Funding',
+      'У Funding він читає такі рухи лише настільки, наскільки їх показує журнал Funding у Bybit, а рух, схожий на вже наявний запис, не показує.',
+      'Рух коштів у гаманці Funding — це запис, якого не пояснює жоден інший запис Bybit; він не рахується як витрата, а рух, схожий на вже наявний запис, Кіко не показує.',
+    ],
+  ] as const)(
+    'kinds, footer and help state the Funding record, what it leaves out and that a move is no spending, in %s',
+    (language, record, leavesOut, noSpending) => {
+      const { footer, help, kinds } = surfacesOf(language);
+
+      for (const surface of [kinds, help]) {
+        expect(surface).toContain(record);
+        expect(surface).toContain(leavesOut);
+      }
+
+      expect(footer).toContain(noSpending);
+    },
+  );
+});
