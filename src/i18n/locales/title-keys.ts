@@ -152,6 +152,7 @@ export const TITLE_KEYS = new Set([
   'ruleForm.addTitle',
   'ruleForm.conditionSheetTitle',
   'ruleForm.editTitle',
+  'ruleForm.mccSheetTitle',
   'ruleForm.operatorSheetTitle',
   'ruleRewrite.title',
   'settings.baseCurrencySheetTitle',

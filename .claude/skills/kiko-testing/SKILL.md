@@ -395,6 +395,9 @@ test from being decorative.
   Wait on an on-screen readout where one is visible, else take frames from the recording
   (the video file; ffmpeg is not installed here, a Swift script with the AVFoundation image
   generator works).
+- `TextField` puts `testID` on its outer Box: read the input value by its accessibility label.
+- A FlatList renders 10 rows at first: a pin on a row deep in a long list narrows the list by
+  search first.
 - Maestro: a `tapOn` by `id` taps the element centre. A full-screen backdrop behind a raised sheet
   put the tap on a list row and changed data for later steps; close a sheet by a named control.
 
