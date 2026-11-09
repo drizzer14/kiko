@@ -14,10 +14,6 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { transactionsRepo } from './transactions.repo';
 
-type CountRow = { mcc: number; rowCount: number };
-
-const readCounts = async (): Promise<CountRow[]> => await transactionsRepo.mccCountsQuery();
-
 let nextRow = 0;
 
 const insertRow = (
@@ -74,7 +70,7 @@ describe('transactionsRepo.mccCountsQuery', () => {
     insertRows(4829, 2);
     insertRows(6011, 1);
 
-    expect(await readCounts()).toEqual([
+    expect(await transactionsRepo.mccCountsQuery()).toEqual([
       { mcc: 5411, rowCount: 3 },
       { mcc: 4829, rowCount: 2 },
       { mcc: 5812, rowCount: 2 },
@@ -89,7 +85,7 @@ describe('transactionsRepo.mccCountsQuery', () => {
     insertRows(9999, 1);
     insertRows(10000, 1);
 
-    expect(await readCounts()).toEqual([
+    expect(await transactionsRepo.mccCountsQuery()).toEqual([
       { mcc: 0, rowCount: 1 },
       { mcc: 9999, rowCount: 1 },
     ]);
@@ -102,13 +98,13 @@ describe('transactionsRepo.mccCountsQuery', () => {
     insertRow(5411, { change_group_id: 'split-1' });
     insertRow(5411, { exchange_pair_id: 'pair-1', exchange_counterpart_holding_id: 'other' });
 
-    expect(await readCounts()).toEqual([{ mcc: 5411, rowCount: 5 }]);
+    expect(await transactionsRepo.mccCountsQuery()).toEqual([{ mcc: 5411, rowCount: 5 }]);
   });
 
   it('returns no rows for a ledger with no code', async () => {
     insertRows(null, 3);
 
-    expect(await readCounts()).toEqual([]);
+    expect(await transactionsRepo.mccCountsQuery()).toEqual([]);
   });
 
   it('is one statement', async () => {
