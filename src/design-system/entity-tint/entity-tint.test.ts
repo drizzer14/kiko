@@ -98,10 +98,10 @@ describe('prefersDarkGlyph', () => {
     'gray',
   ];
   const WHITE_GLYPH_DARK: SwatchName[] = ['brown', 'blue', 'violet', 'red', 'pink', 'indigo'];
-  const BLACK_GLYPH_LIGHT: SwatchName[] = ['yellow', 'mint', 'pink', 'indigo', 'gray'];
+  const BLACK_GLYPH_LIGHT: SwatchName[] = ['yellow', 'mint', 'pink', 'violet', 'gray'];
   // The user chose a white glyph on these three light tiles on the device; black would contrast
-  // more, and white on violet is 1.91:1, under the 3:1 floor.
-  const USER_WHITE_GLYPH_LIGHT: SwatchName[] = ['orange', 'teal', 'violet'];
+  // more, and white on orange is 4.16:1, under the 4.5:1 text floor.
+  const USER_WHITE_GLYPH_LIGHT: SwatchName[] = ['orange', 'teal', 'indigo'];
   const WHITE_GLYPH_LIGHT: SwatchName[] = [
     'white',
     'khaki',

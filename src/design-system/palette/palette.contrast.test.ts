@@ -29,10 +29,18 @@ const casesOf = (label: string, scheme: Scheme, swatches: Record<string, string>
   Object.entries(swatches).map(([name, hex]) => [`${label} ${name}`, hex, scheme] as const);
 
 const darkCases = casesOf('dark entity', darkTheme, darkTheme.colors.entityColors);
-const lightCases = [
+// The user chose a white glyph on these light swatches on the device; white sits under the floors
+// on them on purpose, so they are excluded from the floor cases and asserted white instead.
+const USER_WHITE_GLYPH_SWATCHES = ['orange', 'teal', 'indigo'];
+const isFloorSwatch = ([label]: readonly [string, ...unknown[]]): boolean =>
+  !USER_WHITE_GLYPH_SWATCHES.some((name) => label.endsWith(` ${name}`));
+
+const allLightCases = [
   ...casesOf('light entity', lightTheme, lightTheme.colors.entityColors),
   ...casesOf('light category', lightTheme, lightTheme.colors.categoryColors),
 ];
+const lightCases = allLightCases.filter(isFloorSwatch);
+const userWhiteLightCases = allLightCases.filter((entry) => !isFloorSwatch(entry));
 
 const glyphOf = (hex: string, scheme: Scheme, which: 'dark' | 'light'): string =>
   prefersDarkGlyph(hex, which) ? scheme.colors.glyphOnLightTile : scheme.colors.onAccent;
@@ -64,7 +72,17 @@ describe('palette contrast: light tiles', () => {
     }
   });
 
-  it.each(lightCases)('%s mark holds 3.05:1 on page and card', (_label, hex, scheme) => {
+  it.each(userWhiteLightCases)(
+    '%s keeps the white glyph below the floors',
+    (_label, hex, scheme) => {
+      const glyph = glyphOf(hex, scheme, 'light');
+
+      expect(glyph).toBe(scheme.colors.onAccent);
+      expect(wcagContrastRatio(glyph, hex)).toBeGreaterThan(4);
+    },
+  );
+
+  it.each(allLightCases)('%s mark holds 3.05:1 on page and card', (_label, hex, scheme) => {
     const mark = markColor(hex, 'light');
 
     expect(wcagContrastRatio(mark, scheme.colors.background)).toBeGreaterThanOrEqual(MARK_FLOOR);

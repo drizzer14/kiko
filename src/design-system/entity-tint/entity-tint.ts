@@ -184,17 +184,33 @@ const contrastRatio = (luminanceA: number, luminanceB: number): number => {
 // criterion rather than the stricter 4.5:1 text-contrast ratio.
 const GLYPH_CONTRAST_MINIMUM = 3;
 
+const SWATCHES_WITH_WHITE_GLYPH_ON_LIGHT: readonly SwatchName[] = ['orange', 'teal', 'indigo'];
+
+// The light hexes of those swatches in both the entity and the category set, so an account tile and
+// a category tile of one color agree.
+const LIGHT_HEXES_WITH_WHITE_GLYPH: ReadonlySet<string> = new Set(
+  SWATCHES_WITH_WHITE_GLYPH_ON_LIGHT.flatMap((name) =>
+    [entityColorsLight[name], categoryColorsLight[name]].map((hex) => hex.toUpperCase()),
+  ),
+);
+
 // Whether the glyph on a tile of this hue is the dark tint rather than the white `onAccent`. Dark
 // scheme: only when white would fall under the 3:1 WCAG glyph-contrast floor, so a saturated
 // mid-tone tile keeps its white glyph. Light scheme: whichever of black and white contrasts more,
 // because its tiles are mid-tone and the floor rule would leave white glyphs where black reads
-// far stronger. See the method note above.
+// far stronger; except the three swatches the user chose white for on the device, which sit under
+// the contrast floor on purpose. See the method note above.
 export const prefersDarkGlyph = (colorHex: string, scheme: ColorScheme): boolean => {
   const luminance = relativeLuminance(colorHex);
 
   return match(scheme)
     .with('dark', () => contrastRatio(1, luminance) < GLYPH_CONTRAST_MINIMUM)
-    .with('light', () => contrastRatio(0, luminance) > contrastRatio(1, luminance))
+    .with(
+      'light',
+      () =>
+        !LIGHT_HEXES_WITH_WHITE_GLYPH.has(colorHex.toUpperCase()) &&
+        contrastRatio(0, luminance) > contrastRatio(1, luminance),
+    )
     .exhaustive();
 };
 
