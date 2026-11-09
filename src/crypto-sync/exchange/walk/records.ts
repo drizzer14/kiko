@@ -58,12 +58,13 @@ export const AMOUNT_STOP_CODES: readonly AmountError[] = [
  * The exact minor units of a history row's amount text, in the coin's own scale. A text the
  * parser refuses stops the record with the parser's code, and an amount past the safe integer
  * names its coin, so the walk lists it as oversized. Only the trade read passes `'trade-row'`,
- * which also rounds a fiat amount past its scale.
+ * which also rounds a fiat amount past its scale, and only a Bybit log or convert leg passes
+ * `'rounded-row'`, which rounds a coin of any scale.
  */
 export const rowMinorUnits = (
   currency: Currency,
   text: string,
-  use: Extract<AmountUse, 'row' | 'trade-row'> = 'row',
+  use: Extract<AmountUse, 'row' | 'trade-row' | 'rounded-row'> = 'row',
 ): number =>
   bifoldMap(
     exchangeMinorUnits(currency, text, use),

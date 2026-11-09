@@ -370,7 +370,8 @@ Every fill is the DISPLAY hex of the active scheme, never the stored one:
 `buildCategoryBreakdown` and `buildCategoryTrend` through
 `resolveCategoryColor` (the category set), each taking a required
 `scheme` from `useActiveColorScheme()`, and `bar-chart` maps
-`defaultHoldingColor[type]` through `entityDisplayColor`. A pie wedge,
-its legend swatch and a trend stroke read one `slice.color` or
-`series.color`, so they cannot differ. The net-worth stroke stays
+`defaultHoldingColor[type]` through `entityDisplayColor`. Pie arcs, pie
+legend swatches and bar fills keep the tile color; a trend stroke and
+its legend dot use `markColor(hex, scheme)` (`entity-tint.ts`; in
+light a darker mark, at least 3.05:1 on page and card). The net-worth stroke stays
 sign-colored.

@@ -51,6 +51,7 @@ const fileNameFrom = (value: string): string => {
 const CONNECTION_NAMES: Record<ExportSecretKind, string> = {
   monobank: 'Monobank',
   binance: 'Binance',
+  bybit: 'Bybit',
 };
 
 // The error copy for a failed import, picked by the prefix `importData`'s own

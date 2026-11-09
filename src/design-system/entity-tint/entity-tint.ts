@@ -7,12 +7,13 @@ import {
   entityColorsDark,
   entityColorsLight,
 } from '../palette';
+import { lightTheme } from '../theme';
 
 // Entity-color derivations shared across the design system: resolving an
 // account/holding/category's effective hue (`resolveEntityColor`), the two
 // channel-blend helpers (`lightenHex`/`darkenHex`), the squircle icon-tile
 // gradient stops (`entityIconTileGradient`), and the WCAG glyph-contrast test
-// (`isLightEntityColor`). Every entity-hue derivation lives here, in one place,
+// (`prefersDarkGlyph`). Every entity-hue derivation lives here, in one place,
 // per the design-system rule — never re-derived at a call site.
 
 const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
@@ -22,7 +23,7 @@ const HEX_PATTERN = /^#([0-9a-f]{6})$/i;
 // hand-rolling a second copy — every entity-hue derivation lives here, in one
 // place, per the design-system rule. Not exported: nothing outside this
 // module needs a raw RGB triple, only the higher-level derivations built on
-// top of it (`entityIconTileGradient`, `isLightEntityColor`, `darkenHex`,
+// top of it (`entityIconTileGradient`, `prefersDarkGlyph`, `darkenHex`,
 // etc.). An unparsable input means the caller passed something that was
 // never a theme token — failing loudly beats silently rendering an
 // invisible or wrong tint.
@@ -58,7 +59,7 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 // 1. A stored color that is a non-null, non-undefined but still unusable
 //    value — an empty string, most concretely — which `??` lets straight
 //    through (it only guards `null`/`undefined`) and `entityIconTileGradient`/
-//    `isLightEntityColor` (both feeding `EntityIconTile`) then throw on.
+//    `prefersDarkGlyph` (both feeding `EntityIconTile`) then throw on.
 // 2. An unmapped kind/type default lookup. `defaultAccountColor` /
 //    `defaultHoldingColor` are typed `Record<Kind, string>`, which is only a
 //    COMPILE-time guarantee. SQLite enforces no CHECK constraint on the
@@ -68,7 +69,7 @@ const FALLBACK_ENTITY_COLOR = entityColorsDark.gray;
 //    with no compiler in the way.
 //
 // Either gap, combined with a null/never-set stored color, would reach
-// `entityIconTileGradient`/`isLightEntityColor` with an unparsable value and
+// `entityIconTileGradient`/`prefersDarkGlyph` with an unparsable value and
 // throw mid-render — how "a card sometimes has no background at all"
 // manifests: not a silently blank tint, but the one throwing
 // card's whole row (its `EntityIconTile`) failing to render. This resolves
@@ -137,7 +138,7 @@ export const entityIconTileGradient = (colorHex: string): [top: string, bottom: 
 // gradient reads. Several palette swatches (`white`, `yellow`, `khaki`,
 // `mint`, `teal` — see `palette.ts`) are themselves light enough that a
 // white glyph on top of them fails WCAG contrast, reading as a
-// near-invisible icon. `isLightEntityColor` below
+// near-invisible icon. `prefersDarkGlyph` below
 // answers this with the REAL WCAG relative-luminance + contrast-ratio method
 // (https://www.w3.org/TR/WCAG21/#dfn-relative-luminance /
 // https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio), computed on the
@@ -183,22 +184,196 @@ const contrastRatio = (luminanceA: number, luminanceB: number): number => {
 // criterion rather than the stricter 4.5:1 text-contrast ratio.
 const GLYPH_CONTRAST_MINIMUM = 3;
 
-// Whether a resolved entity color is bright enough that the standard white
-// `onAccent` glyph on top of it would fail the 3:1 WCAG glyph-contrast floor
-// — if so, `EntityIconTile` must switch to the dark tint instead. See the
-// method note above.
-export const isLightEntityColor = (colorHex: string): boolean =>
-  contrastRatio(1, relativeLuminance(colorHex)) < GLYPH_CONTRAST_MINIMUM;
+const SWATCHES_WITH_WHITE_GLYPH_ON_LIGHT: readonly SwatchName[] = ['orange', 'teal', 'indigo'];
+
+// The light hexes of those swatches in both the entity and the category set, so an account tile and
+// a category tile of one color agree.
+const LIGHT_HEXES_WITH_WHITE_GLYPH: ReadonlySet<string> = new Set(
+  SWATCHES_WITH_WHITE_GLYPH_ON_LIGHT.flatMap((name) =>
+    [entityColorsLight[name], categoryColorsLight[name]].map((hex) => hex.toUpperCase()),
+  ),
+);
+
+// Whether the glyph on a tile of this hue is the dark tint rather than the white `onAccent`. Dark
+// scheme: only when white would fall under the 3:1 WCAG glyph-contrast floor, so a saturated
+// mid-tone tile keeps its white glyph. Light scheme: whichever of black and white contrasts more,
+// because its tiles are mid-tone and the floor rule would leave white glyphs where black reads
+// far stronger; except the three swatches the user chose white for on the device, which sit under
+// the contrast floor on purpose. See the method note above.
+export const prefersDarkGlyph = (colorHex: string, scheme: ColorScheme): boolean => {
+  const luminance = relativeLuminance(colorHex);
+
+  return match(scheme)
+    .with('dark', () => contrastRatio(1, luminance) < GLYPH_CONTRAST_MINIMUM)
+    .with(
+      'light',
+      () =>
+        !LIGHT_HEXES_WITH_WHITE_GLYPH.has(colorHex.toUpperCase()) &&
+        contrastRatio(0, luminance) > contrastRatio(1, luminance),
+    )
+    .exhaustive();
+};
 
 // The general-purpose WCAG contrast ratio between two `#RRGGBB` hex colors —
 // exported so a NON-entity contrast check (e.g. `SegmentedControl`'s
 // selected-segment-vs-track ratio) reuses this module's
 // one `relativeLuminance`/`contrastRatio` pair instead of a second hand-
-// rolled luminance implementation. `isLightEntityColor` above is the
+// rolled luminance implementation. `prefersDarkGlyph` above is the
 // entity-specific glyph-on-fill case; this is the same math for any other
 // two-hex comparison.
 export const wcagContrastRatio = (hexA: string, hexB: string): number =>
   contrastRatio(relativeLuminance(hexA), relativeLuminance(hexB));
+
+// The weakest contrast a light mark may have on the page and the card; 0.05 above the 3:1 floor of
+// WCAG 1.4.11 so rounding to bytes cannot drop it under.
+const MINIMUM_MARK_CONTRAST = 3.05;
+const MARK_LIGHTNESS_STEP = 0.25;
+const MARK_LIGHTNESS_FLOOR = 5;
+const GAMUT_BISECTION_ROUNDS = 14;
+const GAMUT_TOLERANCE = 0.0005;
+const WHITE_POINT_X = 0.95047;
+const WHITE_POINT_Z = 1.08883;
+const LAB_EPSILON = 216 / 24389;
+const LAB_KAPPA = 24389 / 27;
+
+const linearToSRGBChannel = (linear: number): number =>
+  linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055;
+
+const labPivot = (ratio: number): number =>
+  ratio > LAB_EPSILON ? Math.cbrt(ratio) : (LAB_KAPPA * ratio + 16) / 116;
+
+const labPivotInverse = (pivot: number): number =>
+  pivot ** 3 > LAB_EPSILON ? pivot ** 3 : (116 * pivot - 16) / LAB_KAPPA;
+
+// CIE LCH(ab) of a `#RRGGBB` hex, against the standard daylight white point.
+const lchOfHex = (hex: string): { lightness: number; chroma: number; hue: number } => {
+  const [red, green, blue] = parseHex(hex).map(sRGBChannelToLinear);
+  const pivotX = labPivot((0.4124564 * red + 0.3575761 * green + 0.1804375 * blue) / WHITE_POINT_X);
+  const pivotY = labPivot(0.2126729 * red + 0.7151522 * green + 0.072175 * blue);
+  const pivotZ = labPivot((0.0193339 * red + 0.119192 * green + 0.9503041 * blue) / WHITE_POINT_Z);
+  const a = 500 * (pivotX - pivotY);
+  const b = 200 * (pivotY - pivotZ);
+
+  return {
+    lightness: 116 * pivotY - 16,
+    chroma: Math.hypot(a, b),
+    hue: ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360,
+  };
+};
+
+// The sRGB hex of an LCH color, channels clamped into the gamut, with whether it fit before the
+// clamp.
+const hexOfLch = (
+  lightness: number,
+  chroma: number,
+  hue: number,
+): { hex: string; inGamut: boolean } => {
+  const a = chroma * Math.cos((hue * Math.PI) / 180);
+  const b = chroma * Math.sin((hue * Math.PI) / 180);
+  const pivotY = (lightness + 16) / 116;
+  const x = labPivotInverse(pivotY + a / 500) * WHITE_POINT_X;
+  const y = labPivotInverse(pivotY);
+  const z = labPivotInverse(pivotY - b / 200) * WHITE_POINT_Z;
+  const linear = [
+    3.2404542 * x - 1.5371385 * y - 0.4985314 * z,
+    -0.969266 * x + 1.8760108 * y + 0.041556 * z,
+    0.0556434 * x - 0.2040259 * y + 1.0572252 * z,
+  ];
+
+  return {
+    hex: `#${linear
+      .map((channel) =>
+        Math.round(linearToSRGBChannel(Math.min(1, Math.max(0, channel))) * 255)
+          .toString(16)
+          .padStart(2, '0')
+          .toUpperCase(),
+      )
+      .join('')}`,
+    inGamut: linear.every(
+      (channel) => channel >= -GAMUT_TOLERANCE && channel <= 1 + GAMUT_TOLERANCE,
+    ),
+  };
+};
+
+// The largest chroma at or below `chroma` that stays inside sRGB at this lightness and hue, found
+// by bisection.
+const clampChromaToGamut = (lightness: number, chroma: number, hue: number): number => {
+  if (hexOfLch(lightness, chroma, hue).inGamut) {
+    return chroma;
+  }
+
+  const narrow = (low: number, high: number, round: number): number => {
+    if (round === GAMUT_BISECTION_ROUNDS) {
+      return low;
+    }
+
+    const middle = (low + high) / 2;
+
+    return hexOfLch(lightness, middle, hue).inGamut
+      ? narrow(middle, high, round + 1)
+      : narrow(low, middle, round + 1);
+  };
+
+  return narrow(0, chroma, 0);
+};
+
+const holdsMarkContrast = (hex: string): boolean =>
+  Math.min(
+    wcagContrastRatio(hex, lightTheme.colors.background),
+    wcagContrastRatio(hex, lightTheme.colors.surface),
+  ) >= MINIMUM_MARK_CONTRAST;
+
+// A light hex that fails the mark contrast keeps its hue and chroma and loses CIE lightness in
+// quarter steps, the chroma clamped into the gamut at every step: lowering lightness at full chroma
+// leaves sRGB for saturated pale hues like yellow, and skipping those steps would never darken
+// them. Falls back to the input when no step passes before the floor.
+const computeLightMark = (hex: string): string => {
+  if (holdsMarkContrast(hex)) {
+    return hex;
+  }
+
+  const { lightness, chroma, hue } = lchOfHex(hex);
+  const lowered = (current: number): string => {
+    if (current <= MARK_LIGHTNESS_FLOOR) {
+      return hex;
+    }
+
+    const { hex: candidate } = hexOfLch(current, clampChromaToGamut(current, chroma, hue), hue);
+
+    return holdsMarkContrast(candidate) ? candidate : lowered(current - MARK_LIGHTNESS_STEP);
+  };
+
+  return lowered(lightness);
+};
+
+// A pale hex costs about a thousand LCH conversions to darken, and every list row asks for its mark
+// on each render; the input set is closed (the 14 swatches and the stored hexes), so the map stays
+// small.
+const lightMarkByHex = new Map<string, string>();
+
+const lightMark = (hex: string): string => {
+  const cached = lightMarkByHex.get(hex);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const mark = computeLightMark(hex);
+
+  lightMarkByHex.set(hex, mark);
+
+  return mark;
+};
+
+// The shade a LINE or a bare SF Symbol tint paints for a display color: the tile hex itself when it
+// already holds 3.05:1 on the page and the card, else a darker shade of the same hue. A tile, slice
+// or bar keeps the tile hex; only strokes and glyphs without a tile behind them need this. Dark is
+// the identity.
+export const markColor = (hex: string, scheme: ColorScheme): string =>
+  match(scheme)
+    .with('dark', () => hex)
+    .with('light', () => lightMark(hex))
+    .exhaustive();
 
 // Lowest contrast to a white card that a stored hex outside the 14 swatches may keep in the light
 // scheme: a tile below it reads as a hole in the card. Taken from the approved palette file's

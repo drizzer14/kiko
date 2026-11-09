@@ -11,7 +11,7 @@ import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
  * the `accounts.institution` value of an account connected to that provider,
  * and as a `transactions.source` literal.
  */
-export const balanceProviderIds = ['btc_wallet', 'binance'] as const;
+export const balanceProviderIds = ['btc_wallet', 'binance', 'bybit'] as const;
 
 export type BalanceProviderId = (typeof balanceProviderIds)[number];
 

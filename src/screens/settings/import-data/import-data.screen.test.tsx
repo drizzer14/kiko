@@ -302,6 +302,22 @@ describe('ImportDataScreen', () => {
       expect(alertSpy).not.toHaveBeenCalled();
     });
 
+    it('names Bybit by its brand when its saved key could not be written', async () => {
+      mockImportData.mockResolvedValue({
+        accountsRestored: 3,
+        languageRestored: null,
+        unrestoredCredentials: ['binance', 'bybit'],
+      });
+
+      const { findByText } = await pickAndConfirmImport();
+
+      expect(
+        await findByText(
+          'Your data was restored, but the saved keys for Binance, Bybit could not be stored on this iPhone. Add them again to reconnect.',
+        ),
+      ).toBeTruthy();
+    });
+
     it('writes the message in the restored language', async () => {
       mockImportData.mockResolvedValue({
         accountsRestored: 1,

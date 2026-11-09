@@ -59,6 +59,9 @@ const LABEL_VALUE_ALLOWLIST = new Set([
   // real error (it reports what went wrong reading a specific code), so it
   // keeps a final "." unlike every other "Label: {{value}}" string.
   'accountDetail.unsupportedCurrencyCode',
+  // A caption: phrased as a label, but a caption keeps its final "." (as
+  // `accountDetail.notImported` and `untrackedCoins` do), in en and uk.
+  'accountDetail.bybitLogLeftOut',
 ]);
 
 const leafName = (path: string): string => path.split('.').at(-1) ?? path;

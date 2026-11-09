@@ -16,6 +16,8 @@ import {
 import {
   type SQL,
   and,
+  asc,
+  between,
   desc,
   eq,
   gt,
@@ -38,6 +40,13 @@ import {
   removeDepositContributionDatabaseTransaction,
   removeHoldingDatabaseTransaction,
 } from '@kiko/holdings/repo';
+import {
+  SYNCED_HOLDING_REFUSAL,
+  hasSyncedKey,
+  isSyncedAccount,
+  isSyncedHolding,
+  isDeletableTransaction,
+} from '@kiko/holdings/deletable';
 import { match } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import {
@@ -51,13 +60,12 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
-import type { DepositContribution } from '@kiko/holdings/holding-metadata';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { readAllRulesDatabaseTransaction } from '@kiko/categories/category-rules-repo';
-import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
+import { type DepositContribution, isOverwrittenRow } from '@kiko/holdings/holding-metadata';
 
 import type {
   BalanceChange,
@@ -220,24 +228,59 @@ const readHoldingDatabaseTransaction = async (
   return rows.at(0);
 };
 
-/** Move a holding's stored balance by `delta`. A holding that is already gone
- * has no balance to move. */
-const moveBalanceDatabaseTransaction = async (
+/** Move the stored balance of the holding of an existing row by `delta`, the way a delete or an
+ * edit of that row does. A holding that is already gone has no balance to move. A row that a
+ * read overwrote moves none (`isOverwrittenRow`, the same gate as the net-worth line's): the
+ * read's figure replaced the balance, so the row has no part in it. This is the one way a delete
+ * or an edit reaches a balance, so no path can skip the check. */
+const moveBalanceOfRowDatabaseTransaction = async (
   databaseTransaction: typeof database,
-  holdingId: string,
+  row: Pick<TransactionRow, 'id' | 'holdingId'>,
   delta: number,
 ): Promise<void> => {
   await foldMap(
-    maybe(await readHoldingDatabaseTransaction(databaseTransaction, holdingId)),
-    (holding) => writeBalanceDeltaDatabaseTransaction(databaseTransaction, holding, delta),
+    maybe(await readHoldingDatabaseTransaction(databaseTransaction, row.holdingId)),
+    async (holding) => {
+      if (isOverwrittenRow(holding.metadata, row.id)) {
+        return;
+      }
+
+      await writeBalanceDeltaDatabaseTransaction(databaseTransaction, holding, delta);
+    },
   );
+};
+
+/** Refuse a new manual row on a holding a sync owns right now. The sync owns that holding's
+ * balance, so a row typed onto it would be a copy that the next read overwrites and that stays
+ * in the list and in spending. Only a holding with a sync's key reads its account, so every
+ * other holding costs no extra statement. The throw rolls back the rest of the caller's write.
+ * A form left open while its account connected reaches this at Save. */
+const refuseSyncedHoldingDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  holding: HoldingRow,
+): Promise<void> => {
+  if (!hasSyncedKey(holding.metadata)) {
+    return;
+  }
+
+  const accountRows = await databaseTransaction
+    .select({ institution: accounts.institution })
+    .from(accounts)
+    .where(eq(accounts.id, holding.accountId))
+    .limit(1);
+
+  if (isSyncedHolding(holding, accountRows.at(0))) {
+    throw new Error(SYNCED_HOLDING_REFUSAL);
+  }
 };
 
 // Insert a manual transaction and adjust its holding's balance by its full
 // amount, whatever its date, on an EXISTING transaction handle: every
 // transaction updates the balance. `recordManual` wraps this in its own
 // `write(...)`; `recordExchange` calls it directly for the source leg and for a
-// plain destination leg, keeping both legs in one transaction.
+// plain destination leg, keeping both legs in one transaction. A holding a sync owns
+// right now refuses the row (`refuseSyncedHoldingDatabaseTransaction`), so all four writers
+// that reach here are gated.
 //
 // The row carries its OWN category here — a picked category is never lost to
 // a blank description or a cancelled override sheet. `applyNameRule`
@@ -268,6 +311,10 @@ const recordManualTransaction = async (
   if (holding !== undefined && isLedgerlessHoldingType(holding.type)) {
     throw new Error('transactions/ledgerless-holding');
   }
+
+  await foldMap(maybe(holding), (found) =>
+    refuseSyncedHoldingDatabaseTransaction(databaseTransaction, found),
+  );
 
   const rowId = id();
 
@@ -328,7 +375,8 @@ const markExistingLegTransaction = async (
     .where(eq(transactions.id, existingTransactionId));
 };
 
-type NamedHolding = Pick<HoldingRow, 'id' | 'name' | 'type' | 'currency'>;
+// `metadata` is read for `balanceChangesOf`: a row on the mark moves no balance.
+type NamedHolding = Pick<HoldingRow, 'id' | 'name' | 'type' | 'currency' | 'metadata'>;
 
 const holdingIdsOf = (rows: TransactionRow[]): string[] => [
   ...new Set(
@@ -353,6 +401,7 @@ const readNamedHoldingsDatabaseTransaction = async (
       name: holdings.name,
       type: holdings.type,
       currency: holdings.currency,
+      metadata: holdings.metadata,
     })
     .from(holdings)
     .where(inArray(holdings.id, holdingIds));
@@ -483,15 +532,21 @@ const uniqueHoldingNamesOf = (
 ];
 
 // How far deleting `rows` moves each holding's balance, by holding name: the sum
-// of their full amounts taken back, in the holding's own currency. A holding
-// whose parts net to nothing has no entry, and none at all gives `undefined`.
+// of their full amounts taken back, in the holding's own currency. A row on the mark of a read
+// takes nothing back (`moveBalanceOfRowDatabaseTransaction`), so the confirm names only the move
+// that the delete makes. A holding whose parts net to nothing has no entry, and none at all gives
+// `undefined`.
 const balanceChangesOf = (
   rows: TransactionRow[],
   holdingsById: Map<string, NamedHolding>,
 ): BalanceChange[] | undefined => {
   const netByHoldingId = new Map<string, number>();
 
-  for (const row of rows) {
+  const movingRows = rows.filter(
+    (row) => !isOverwrittenRow(holdingsById.get(row.holdingId)?.metadata, row.id),
+  );
+
+  for (const row of movingRows) {
     netByHoldingId.set(
       row.holdingId,
       (netByHoldingId.get(row.holdingId) ?? 0) - row.amountMinorUnits,
@@ -764,7 +819,10 @@ const markerLegIsGone = (
 
 // Delete rows and give each one's full amount back to its OWN holding, in that
 // holding's currency, whatever the row's date or source: every row updated the
-// balance when it was written, so none can stay in it once the row is gone.
+// balance when it was written, so none can stay in it once the row is gone. The exception
+// is a row that a read of a dated balance overwrote (`isOverwrittenRow`, tested on the row's own
+// holding): the read's figure replaced the balance, so the row has no part in it and nothing
+// comes back.
 // Then take a deposit's contribution out with the leg that paid it. A bank-owned
 // row of the same movement (`kept`) stays. Its marker is cleared in the same write
 // only when the leg it names is gone with this delete (`markerLegIsGone`): a marker
@@ -786,7 +844,7 @@ const removeRowsDatabaseTransaction = async (
 
   for (const row of rows) {
     await databaseTransaction.delete(transactions).where(eq(transactions.id, row.id));
-    await moveBalanceDatabaseTransaction(databaseTransaction, row.holdingId, -row.amountMinorUnits);
+    await moveBalanceOfRowDatabaseTransaction(databaseTransaction, row, -row.amountMinorUnits);
     await removeContributionOfRowDatabaseTransaction(
       databaseTransaction,
       row,
@@ -872,7 +930,8 @@ const readLinksOfHoldingsDatabaseTransaction = async (
  * What deleting the holdings `holdingIds` must do to the rest of the ledger,
  * run on the caller's transaction BEFORE the holdings go (their rows are still
  * there to follow): delete the user's rows of the same movements on other
- * holdings, giving each row's full amount back to its holding, and take
+ * holdings, giving each row's full amount back to its holding unless a read of a dated balance
+ * overwrote the row (`removeRowsDatabaseTransaction`), and take
  * out of a deposit the contribution a deleted holding's leg made. A bank-owned
  * row of a movement stays, with its exchange marker cleared in the same write
  * when the marker names a deleted holding or a leg removed with it.
@@ -2089,6 +2148,53 @@ const afterPrefixOf = (prefix: string): string =>
 // terms go out in chunks well under that.
 const ORDER_PREFIX_CHUNK_SIZE = 250;
 
+type SyncedSource = Exclude<TransactionRow['source'], 'manual' | 'import'>;
+
+/**
+ * The write of `transactionsRepo.removeSyncedRows` on the caller's transaction, for a sync that
+ * takes a row back together with a record of its own, so a failure rolls both back.
+ */
+export const removeSyncedRowsDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  source: SyncedSource,
+  externalIds: readonly string[],
+): Promise<number> => {
+  let removed = 0;
+
+  for (const externalIdChunk of chunkRows([...new Set(externalIds)], IN_CLAUSE_CHUNK_SIZE)) {
+    const deleted = await databaseTransaction
+      .delete(transactions)
+      .where(
+        and(eq(transactions.source, source), inArray(transactions.externalId, externalIdChunk)),
+      )
+      .returning({ id: transactions.id });
+
+    removed += deleted.length;
+  }
+
+  return removed;
+};
+
+/**
+ * The write of `transactionsRepo.addManyDedup` on the caller's transaction, for a sync that adds
+ * a record of its own with its rows, so a failure rolls both back.
+ */
+export const addManyDedupDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  inputs: NewTransaction[],
+): Promise<number> => {
+  const batch = dedupByConflictKey(inputs);
+  const newRows = await partitionNewRows(databaseTransaction, batch);
+  const adopted = await adoptImportTwinsDatabaseTransaction(databaseTransaction, newRows);
+
+  await upsertDedupRowsDatabaseTransaction(
+    databaseTransaction,
+    batch.filter((input) => !adopted.has(input)),
+  );
+
+  return newRows.length - adopted.size;
+};
+
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
@@ -2203,6 +2309,29 @@ export const transactionsRepo = {
     }
 
     return new Set(prefixes.filter((prefix) => stored.some((key) => key.startsWith(prefix))));
+  },
+  /**
+   * The external ids of the rows of `source` that carry the `untrackedCounterpart` code `marker`,
+   * on the holdings of one account: the rows a reconcile has already written.
+   */
+  markedExternalIdsQuery: async (
+    accountId: string,
+    source: TransactionRow['source'],
+    marker: string,
+  ): Promise<Set<string>> => {
+    const rows = await database
+      .select({ externalId: transactions.externalId })
+      .from(transactions)
+      .innerJoin(holdings, eq(transactions.holdingId, holdings.id))
+      .where(
+        and(
+          eq(holdings.accountId, accountId),
+          eq(transactions.source, source),
+          eq(transactions.untrackedCounterpart, marker),
+        ),
+      );
+
+    return new Set(rows.flatMap((row) => row.externalId ?? []));
   },
   /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
@@ -2369,6 +2498,25 @@ export const transactionsRepo = {
       .groupBy(transactions.category)
       .orderBy(desc(sql`max(${transactions.time})`)),
   /**
+   * Each merchant code the user's own ledger holds once, with its row count, most rows
+   * first and then by code — the picker's "Your codes" section. ONE statement: a single
+   * scan of `transactions` grouped on a temporary B-tree, with no index on `mcc` and none
+   * added. `BETWEEN 0 AND 9999` is the range a rule can store and is false on NULL, so no
+   * `IS NOT NULL` is needed and the column's nullable type never reaches the result. Every
+   * row counts, whatever its category or hand flag, because a rule condition tests every
+   * row. One row comes back per distinct code, never one per transaction.
+   */
+  mccCountsQuery: () =>
+    database
+      .select({
+        mcc: sql<number>`${transactions.mcc}`,
+        rowCount: sql<number>`count(*)`,
+      })
+      .from(transactions)
+      .where(between(transactions.mcc, 0, 9999))
+      .groupBy(transactions.mcc)
+      .orderBy(desc(sql`count(*)`), asc(transactions.mcc)),
+  /**
    * The DISTINCT, non-empty descriptions of the user's own MANUAL rows, newest
    * first — the source of the create-form's inline description suggestions.
    * The `source = 'manual'` filter EXCLUDES synced/bank descriptions (a Monobank
@@ -2411,6 +2559,8 @@ export const transactionsRepo = {
    * on a partial failure. The balance moves by the row's full amount whatever
    * its date, a back-dated row included: every transaction updates the balance. Returns the new
    * row's id; `categorySetByHand` marks a category the user picked, which no rule replaces.
+   * Refuses a holding that a sync owns now (a synced key on an account that is connected): the
+   * write throws `SYNCED_HOLDING_REFUSAL` before the insert and rolls back, `alongside` included.
    */
   recordManual: (input: ManualTransaction, alongside?: Alongside) =>
     write(async (databaseTransaction) => {
@@ -2509,12 +2659,14 @@ export const transactionsRepo = {
    */
   recordExchangeCounterpart: (input: ExchangeCounterpartInput) =>
     write(async (databaseTransaction) => {
-      // Defense in depth: the picker already excludes a synced/syncable
-      // holding, but this write is reachable directly, so it
-      // re-reads the counterpart's OWN holding+account here, inside the
-      // transaction, rather than trust a caller-supplied flag — a sync
-      // already owns that holding's balance, and a manual leg written onto
-      // it would silently desync from the next sync run.
+      // The picker excludes a synced/syncable holding, but a Convert form left open while that
+      // holding connected still sends it, and this write is reachable directly. So it re-reads
+      // the counterpart's OWN holding+account here, inside the transaction, rather than trust a
+      // caller-supplied flag — a sync already owns that holding's balance, and a manual leg
+      // written onto it would silently desync from the next sync run. It runs first, so a
+      // Convert never reaches the gate of `recordManualTransaction` with a connected
+      // counterpart, and it alone covers the `contribution` path, which calls no gate. It throws
+      // the gate's own refusal, so the form can tell it from any other failed write.
       const counterpartHoldingRows = await databaseTransaction
         .select({ accountId: holdings.accountId, metadata: holdings.metadata })
         .from(holdings)
@@ -2534,9 +2686,7 @@ export const transactionsRepo = {
         counterpartHolding !== undefined &&
         isSyncedHolding(counterpartHolding, counterpartAccountRows.at(0))
       ) {
-        throw new Error(
-          `recordExchangeCounterpart: counterpart holding ${input.counterpartHoldingId} is synced`,
-        );
+        throw new Error(SYNCED_HOLDING_REFUSAL);
       }
 
       if (
@@ -2649,8 +2799,10 @@ export const transactionsRepo = {
    * actually persisted, never a stale render snapshot. The balance moves by the
    * difference of the amounts, whatever the row's date or mark (a row that set
    * a balance included): every transaction updates the balance, so a row's date
-   * never decides whether its amount counts. A synced (monobank) transaction is
-   * never mutated by this path — its amount is owned by the bank import — and a
+   * never decides whether its amount counts. The one exception is a row that a read of a dated
+   * balance overwrote (`isOverwrittenRow`): the read's figure replaced the balance, so the row
+   * has no part in it, and its edit writes the row and moves no balance. A synced (monobank)
+   * transaction is never mutated by this path — its amount is owned by the bank import — and a
    * missing id is a no-op rather than an error.
    */
   update: (
@@ -2673,9 +2825,9 @@ export const transactionsRepo = {
         .update(transactions)
         .set({ amountMinorUnits, time, description: description ?? '' })
         .where(eq(transactions.id, transactionId));
-      await moveBalanceDatabaseTransaction(
+      await moveBalanceOfRowDatabaseTransaction(
         databaseTransaction,
-        existing.holdingId,
+        existing,
         amountMinorUnits - existing.amountMinorUnits,
       );
       await alongside?.(databaseTransaction);
@@ -2687,10 +2839,11 @@ export const transactionsRepo = {
    * row's full amount back (`balance -= amountMinorUnits`): every transaction
    * updates the balance, so none can stay in it without its row. That holds
    * whatever the row's source, its date against THE BOUNDARY (`importRows`), and
-   * whether it set a balance. Only the balance moves: `balanceSetAt` stays, and
-   * no bank figure is stored, so deleting every row of an import ends on the
-   * statement's opening balance. A deleted import row with a stored key also
-   * leaves that key for its holding (`deleted_import_keys`), so a re-import can
+   * whether it set a balance, except for a row that a read of a dated balance overwrote
+   * (`isOverwrittenRow`), which has no part in the read's figure: it goes and moves no balance.
+   * Only the balance moves: `balanceSetAt` stays, and no bank figure is stored, so deleting
+   * every row of an import ends on the statement's opening balance. A deleted import row with a
+   * stored key also leaves that key for its holding (`deleted_import_keys`), so a re-import can
    * tell it from a row the holding never had; every row
    * `removeRowsDatabaseTransaction` deletes does the same, a cascaded partner
    * included. A synced (monobank) transaction is owned by the
@@ -2776,26 +2929,10 @@ export const transactionsRepo = {
    * again. The newest synced row sets `importRows`'s boundary, so deleting it can lower that
    * boundary on an account that was disconnected from the exchange and then given a statement.
    */
-  removeSyncedRows: (
-    source: Exclude<TransactionRow['source'], 'manual' | 'import'>,
-    externalIds: readonly string[],
-  ): Promise<number> =>
-    write(async (databaseTransaction) => {
-      let removed = 0;
-
-      for (const externalIdChunk of chunkRows([...new Set(externalIds)], IN_CLAUSE_CHUNK_SIZE)) {
-        const deleted = await databaseTransaction
-          .delete(transactions)
-          .where(
-            and(eq(transactions.source, source), inArray(transactions.externalId, externalIdChunk)),
-          )
-          .returning({ id: transactions.id });
-
-        removed += deleted.length;
-      }
-
-      return removed;
-    }),
+  removeSyncedRows: (source: SyncedSource, externalIds: readonly string[]): Promise<number> =>
+    write((databaseTransaction) =>
+      removeSyncedRowsDatabaseTransaction(databaseTransaction, source, externalIds),
+    ),
   /**
    * What deleting these holdings (one holding, or every holding of an account)
    * would take from OTHER holdings, for the delete confirm's text: nothing
@@ -2994,18 +3131,7 @@ export const transactionsRepo = {
    * place and is not inserted, so it is not counted, like a refresh.
    */
   addManyDedup: (inputs: NewTransaction[]) =>
-    write(async (databaseTransaction) => {
-      const batch = dedupByConflictKey(inputs);
-      const newRows = await partitionNewRows(databaseTransaction, batch);
-      const adopted = await adoptImportTwinsDatabaseTransaction(databaseTransaction, newRows);
-
-      await upsertDedupRowsDatabaseTransaction(
-        databaseTransaction,
-        batch.filter((input) => !adopted.has(input)),
-      );
-
-      return newRows.length - adopted.size;
-    }),
+    write((databaseTransaction) => addManyDedupDatabaseTransaction(databaseTransaction, inputs)),
   /**
    * Statement import's ONE write: upsert the parsed rows (the same
    * `(source, external_id)` dedup as `addManyDedup`) AND move the target
@@ -3040,7 +3166,8 @@ export const transactionsRepo = {
    * balance, so a manual row moves it by its full amount whatever its date, a
    * back-dated one included, and so does its edit and its delete, a row that
    * set a balance (an opening balance or a hand edit, known by its stored
-   * `transactions.setsBalance` mark) included. Only this function's own
+   * `transactions.setsBalance` mark) included, except a row that a read of a dated balance
+   * overwrote (`isOverwrittenRow`). Only this function's own
    * closing balance sets a figure outright. The mark stays for good, so such a
    * row never counts in `postClosingNet`, which would count it twice. This
    * function's closing-balance write clears `holdings.balanceSetRowId`, since

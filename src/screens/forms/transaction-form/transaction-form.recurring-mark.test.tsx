@@ -244,6 +244,7 @@ describe('the mark field on a stored debit', () => {
       currency: 'UAH',
       amountMinorUnits: 14_400,
       period: 'monthly',
+      transactionId: ROW_ID,
     });
     expect(mockTransactionWrite).not.toHaveBeenCalled();
     expect(saveItem(navigation.setOptions)).toBeUndefined();
@@ -261,6 +262,7 @@ describe('the mark field on a stored debit', () => {
       currency: 'UAH',
       amountMinorUnits: 14_400,
       period: 'monthly',
+      transactionId: ROW_ID,
     });
     expect(mockTransactionWrite).not.toHaveBeenCalled();
     expect(rendered.getByLabelText('Description').props.value).toBe('Spotify');
@@ -277,6 +279,7 @@ describe('the mark field on a stored debit', () => {
       currency: 'USD',
       amountMinorUnits: 14_400,
       period: 'yearly',
+      transactionId: ROW_ID,
     });
   });
 

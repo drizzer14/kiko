@@ -1,5 +1,7 @@
 import type { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 
 import SymbolIcon from '../symbol';
 
@@ -15,6 +17,7 @@ const ENTITY_ICON_SIZE = 28;
 
 const EntityHeaderIcon: FC<{ identity?: { icon: string; color: string } }> = ({ identity }) => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
 
   if (identity === undefined) {
     return null;
@@ -24,7 +27,7 @@ const EntityHeaderIcon: FC<{ identity?: { icon: string; color: string } }> = ({ 
     <SymbolIcon
       name={identity.icon}
       size={ENTITY_ICON_SIZE}
-      color={identity.color}
+      color={markColor(identity.color, scheme)}
       accessibilityLabel={t('common.iconLabel', { name: identity.icon })}
     />
   );

@@ -1,9 +1,17 @@
 import { notImportedEntry, parseExchangeState } from '../walk-state';
 
 import {
+  balanceNotesOf,
   balanceSyncedAtOf,
+  denseSpansOf,
+  fundingHeldOf,
+  fundingLeftOutOf,
+  keyExpiryOf,
+  keyOwnerOf,
+  logKindsOf,
   notImportedCountsOf,
   oversizedCoinsOf,
+  untrackedBalanceCoinsOf,
   untrackedCoinsOf,
 } from './history-status';
 
@@ -48,6 +56,35 @@ describe('untrackedCoinsOf', () => {
   });
 });
 
+describe('untrackedBalanceCoinsOf', () => {
+  it('the balance coins leave out the history list', () => {
+    const state = stateWith({
+      untrackedCoins: { balance: ['PEPE'], history: ['PEPE', 'XYZ'] },
+    });
+
+    expect(untrackedBalanceCoinsOf(state, () => false)).toEqual(['PEPE']);
+  });
+
+  it('leaves out a ticker that is a curated code now', () => {
+    const state = stateWith({
+      untrackedCoins: { balance: ['PEPE', 'USDC'], history: ['XYZ', 'DAI'] },
+    });
+
+    expect(untrackedBalanceCoinsOf(state, tracksNothingButCurated)).toEqual(['PEPE']);
+  });
+
+  it('lists nothing for a history list alone, for no list, and for a state that cannot be read', () => {
+    expect(
+      untrackedBalanceCoinsOf(
+        stateWith({ untrackedCoins: { balance: [], history: ['PEPE'] } }),
+        () => false,
+      ),
+    ).toEqual([]);
+    expect(untrackedBalanceCoinsOf(stateWith({}), () => false)).toEqual([]);
+    expect(untrackedBalanceCoinsOf(parseExchangeState('not json'), () => false)).toEqual([]);
+  });
+});
+
 describe('oversizedCoinsOf', () => {
   it('shows the sorted union of the balance and history lists without duplicates', () => {
     const state = stateWith({
@@ -88,6 +125,151 @@ describe('balanceSyncedAtOf', () => {
   });
 });
 
+describe('keyExpiryOf', () => {
+  it('reads the end of the key the last good key read stored', () => {
+    const keyExpiry = {
+      expiredAtMs: 1_800_000_000_000,
+      deadlineDay: 90,
+      readAtMs: 1_700_000_000_000,
+    };
+
+    expect(keyExpiryOf(stateWith({ keyExpiry }))).toEqual(keyExpiry);
+  });
+
+  it('reads nothing for a state with no entry, an unreadable entry or a state that is lost', () => {
+    expect(keyExpiryOf(stateWith({}))).toBeUndefined();
+    expect(keyExpiryOf(stateWith({ keyExpiry: 'x' }))).toBeUndefined();
+    expect(keyExpiryOf(parseExchangeState('not json'))).toBeUndefined();
+  });
+});
+
+describe('keyOwnerOf', () => {
+  it('reads the value the last good key read stored, O93', () => {
+    expect(keyOwnerOf(stateWith({ keyOwner: '9f2c' }))).toBe('9f2c');
+  });
+
+  it('reads nothing for a state with no value, an unreadable value or a state that is lost', () => {
+    expect(keyOwnerOf(stateWith({}))).toBeUndefined();
+    expect(keyOwnerOf(stateWith({ keyOwner: 7 }))).toBeUndefined();
+    expect(keyOwnerOf(parseExchangeState('not json'))).toBeUndefined();
+  });
+});
+
+describe('balanceNotesOf', () => {
+  it('lists each borrowed coin with its wallet, sorted by coin and then by wallet key', () => {
+    const state = stateWith({
+      balanceNotes: {
+        unified: { borrowed: ['USDT', 'BTC'] },
+        fund: { borrowed: ['BTC', 'ETH'] },
+      },
+    });
+
+    expect(balanceNotesOf(state)).toEqual({
+      borrowed: [
+        { wallet: 'fund', coin: 'BTC' },
+        { wallet: 'unified', coin: 'BTC' },
+        { wallet: 'fund', coin: 'ETH' },
+        { wallet: 'unified', coin: 'USDT' },
+      ],
+      openOrder: [],
+      refusedCoins: [],
+      refusedWallets: [],
+      notReadWallets: [],
+    });
+  });
+
+  it('lists each open-order coin with its wallet, apart from the borrowed coins', () => {
+    const state = stateWith({
+      balanceNotes: {
+        unified: { borrowed: ['LTC'], openOrder: ['USDT', 'BTC'] },
+        fund: { openOrder: ['BTC', 'ETH'] },
+      },
+    });
+
+    expect(balanceNotesOf(state)).toEqual({
+      borrowed: [{ wallet: 'unified', coin: 'LTC' }],
+      openOrder: [
+        { wallet: 'fund', coin: 'BTC' },
+        { wallet: 'unified', coin: 'BTC' },
+        { wallet: 'fund', coin: 'ETH' },
+        { wallet: 'unified', coin: 'USDT' },
+      ],
+      refusedCoins: [],
+      refusedWallets: [],
+      notReadWallets: [],
+    });
+  });
+
+  it('lists each refused coin with its wallet, apart from the other coins', () => {
+    const state = stateWith({
+      balanceNotes: {
+        unified: { borrowed: ['LTC'], refusedCoins: ['USDT', 'BTC'] },
+        fund: { refusedCoins: ['BTC', 'ETH'], openOrder: ['SOL'] },
+      },
+    });
+
+    expect(balanceNotesOf(state)).toEqual({
+      borrowed: [{ wallet: 'unified', coin: 'LTC' }],
+      openOrder: [{ wallet: 'fund', coin: 'SOL' }],
+      refusedCoins: [
+        { wallet: 'fund', coin: 'BTC' },
+        { wallet: 'unified', coin: 'BTC' },
+        { wallet: 'fund', coin: 'ETH' },
+        { wallet: 'unified', coin: 'USDT' },
+      ],
+      refusedWallets: [],
+      notReadWallets: [],
+    });
+  });
+
+  it('lists a coin once per wallet, whatever its stored list repeats', () => {
+    const state = stateWith({
+      balanceNotes: { unified: { openOrder: ['BTC', 'BTC'] }, fund: { openOrder: ['BTC'] } },
+    });
+
+    expect(balanceNotesOf(state).openOrder).toEqual([
+      { wallet: 'fund', coin: 'BTC' },
+      { wallet: 'unified', coin: 'BTC' },
+    ]);
+  });
+
+  it('names each wallet the key was refused for, in the order of the wallet keys', () => {
+    const state = stateWith({
+      balanceNotes: { unified: { refused: true }, fund: { refused: true }, earn: {} },
+    });
+
+    expect(balanceNotesOf(state).refusedWallets).toEqual(['fund', 'unified']);
+  });
+
+  it('names each wallet that was not read, apart from the refused ones, in the order of the wallet keys', () => {
+    const state = stateWith({
+      balanceNotes: {
+        unified: { notRead: true },
+        fund: { refused: true, notRead: true },
+        other: { notRead: true },
+        quiet: {},
+      },
+    });
+
+    expect(balanceNotesOf(state).notReadWallets).toEqual(['fund', 'other', 'unified']);
+    expect(balanceNotesOf(state).refusedWallets).toEqual(['fund']);
+  });
+
+  it('reads no note for a state with none, an unreadable entry or a state that is lost', () => {
+    const none = {
+      borrowed: [],
+      openOrder: [],
+      refusedCoins: [],
+      refusedWallets: [],
+      notReadWallets: [],
+    };
+
+    expect(balanceNotesOf(stateWith({}))).toEqual(none);
+    expect(balanceNotesOf(stateWith({ balanceNotes: 'x' }))).toEqual(none);
+    expect(balanceNotesOf(parseExchangeState('not json'))).toEqual(none);
+  });
+});
+
 describe('notImportedCountsOf', () => {
   it('counts the entries per kind in the order of the kind list, leaving out a kind with none', () => {
     const state = stateWith({
@@ -124,5 +306,51 @@ describe('notImportedCountsOf', () => {
 
   it('counts nothing for a list that is no list', () => {
     expect(notImportedCountsOf(stateWith({ notImported: 'p2p-sale:1:2' }))).toEqual([]);
+  });
+});
+
+describe('logKindsOf', () => {
+  it('lists the kinds a log read met, sorted and once each', () => {
+    const state = stateWith({ logKinds: ['transfer', 'interest', 'transfer'] });
+
+    expect(logKindsOf(state)).toEqual(['interest', 'transfer']);
+  });
+
+  it('lists none for a state with none, for a list that is no list, and for a state that cannot be read', () => {
+    expect(logKindsOf(stateWith({}))).toEqual([]);
+    expect(logKindsOf(stateWith({ logKinds: 'transfer' }))).toEqual([]);
+    expect(logKindsOf(parseExchangeState('not json'))).toEqual([]);
+  });
+});
+
+describe('fundingHeldOf and fundingLeftOutOf', () => {
+  it('give the stored count of held rows and the no-id mark', () => {
+    const state = stateWith({ fundingHeld: 3, fundingLeftOut: true });
+
+    expect(fundingHeldOf(state)).toBe(3);
+    expect(fundingLeftOutOf(state)).toBe(true);
+  });
+
+  it('give none for a state with none, for a value that is no count or mark, and for a state that cannot be read', () => {
+    expect(fundingHeldOf(stateWith({}))).toBe(0);
+    expect(fundingLeftOutOf(stateWith({}))).toBe(false);
+    expect(fundingHeldOf(stateWith({ fundingHeld: 'many' }))).toBe(0);
+    expect(fundingLeftOutOf(stateWith({ fundingLeftOut: 'yes' }))).toBe(false);
+    expect(fundingHeldOf(parseExchangeState('not json'))).toBe(0);
+    expect(fundingLeftOutOf(parseExchangeState('not json'))).toBe(false);
+  });
+});
+
+describe('denseSpansOf', () => {
+  it('gives the start of each series with a mark standing', () => {
+    expect(denseSpansOf(stateWith({ denseSpans: { log: 5, fundingLedger: 9 } }))).toEqual({
+      log: 5,
+      fundingLedger: 9,
+    });
+  });
+
+  it('gives none for a state with none, and for a state that cannot be read', () => {
+    expect(denseSpansOf(stateWith({}))).toEqual({});
+    expect(denseSpansOf(parseExchangeState('not json'))).toEqual({});
   });
 });

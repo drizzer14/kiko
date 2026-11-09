@@ -150,6 +150,10 @@ export const darkTheme = {
     // the exact layer this feeds.
     surfaceWashStrong: 'rgba(0,0,0,0.38)',
     surfaceHigh: '#2C2C2E', // tertiarySystemBackground
+    // The fill of an editable input (TextField, FieldTrigger). Transparent in dark: the approved
+    // dark field is unfilled over the page and sheet. Its own token because `surface` also fills
+    // a DISABLED field, which an active field must not match in dark.
+    fieldBackground: 'transparent',
     // The base fill for a presented bottom sheet — the iOS
     // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a
     // grouped surface: its base sits one level BELOW the cards/controls on it,
@@ -243,8 +247,8 @@ export const darkTheme = {
     // `scrim`.
     scrimFallback: 'rgba(0,0,0,0.55)',
     entityColors: entityColorsDark,
-    // Dark has one swatch set for accounts, holdings and categories alike, so the category
-    // set is the entity set; light splits them (see `categoryColorsLight`).
+    // One swatch set for accounts, holdings and categories alike, so the category set is the
+    // entity set; light does the same through `categoryColorsLight`.
     categoryColors: entityColorsDark,
     chartSeries: chartSeriesDark,
     glyphOnLightTile,
@@ -267,6 +271,7 @@ const lightColors = {
   surfaceTranslucentStrong: 'rgba(255,255,255,0.80)',
   surfaceWashStrong: 'rgba(255,255,255,0.38)',
   surfaceHigh: '#E5E5EA',
+  fieldBackground: '#FFFFFF',
   sheetBackground: '#F2F2F7',
   segmentSelected: '#FFFFFF',
   textPrimary: '#000000',

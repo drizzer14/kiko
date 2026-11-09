@@ -1,7 +1,7 @@
 import { bifold, isLeft } from 'fnts/either';
 import type { Currency } from '@kiko/currency/currency';
 
-import { type AmountError, exchangeMinorUnits } from '.';
+import { type AmountError, appearMinorUnitsOf, exchangeMinorUnits } from '.';
 
 // BTC stores 8 decimals and is not reduced; XRP stores 4, below the 8 its exchange sends.
 const FULL_SCALE: Currency = 'BTC';
@@ -10,7 +10,7 @@ const REDUCED_SCALE: Currency = 'XRP';
 const outcomeOf = (
   currency: Currency,
   text: string,
-  use: 'balance' | 'row' | 'trade-row',
+  use: 'balance' | 'row' | 'trade-row' | 'rounded-row',
 ): { error: AmountError } | { units: number } => {
   const result = exchangeMinorUnits(currency, text, use);
 
@@ -118,6 +118,50 @@ describe('exchangeMinorUnits', () => {
     });
   });
 
+  describe('a rounded row', () => {
+    it('rounded-row rounds any coin, and row and trade-row stay as they were', () => {
+      expect(outcomeOf(FULL_SCALE, '0.123456785', 'rounded-row')).toEqual({ units: 12_345_679 });
+      expect(outcomeOf(FULL_SCALE, '-0.123456785', 'rounded-row')).toEqual({ units: -12_345_679 });
+      expect(outcomeOf(FULL_SCALE, '0.123456784', 'rounded-row')).toEqual({ units: 12_345_678 });
+      expect(outcomeOf(REDUCED_SCALE, '1.23455', 'rounded-row')).toEqual({ units: 12346 });
+      expect(outcomeOf('EUR', '1.005', 'rounded-row')).toEqual({ units: 101 });
+      expect(outcomeOf('EUR', '0.004', 'rounded-row')).toEqual({ units: 0 });
+      expect(outcomeOf(FULL_SCALE, '0.123456789', 'row')).toEqual({ error: 'amount-precision' });
+      expect(outcomeOf(FULL_SCALE, '0.123456789', 'trade-row')).toEqual({
+        error: 'amount-precision',
+      });
+      expect(outcomeOf('EUR', '1.005', 'row')).toEqual({ error: 'amount-precision' });
+    });
+
+    it('logs the row tag once per rounded value and nothing for a value that fits', () => {
+      outcomeOf(FULL_SCALE, '0.12345678', 'rounded-row');
+
+      expect(warn).not.toHaveBeenCalled();
+
+      outcomeOf(FULL_SCALE, '0.123456789', 'rounded-row');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('row-precision-rounded', {
+        name: 'Error',
+        code: undefined,
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('123456789');
+    });
+
+    it('rounds a sample of 15 decimals, as the page of a convert sends one', () => {
+      expect(outcomeOf(FULL_SCALE, '0.000123456789012', 'rounded-row')).toEqual({ units: 12_346 });
+    });
+
+    it('still refuses an exponent form, a word and a value past the safe integer', () => {
+      expect(outcomeOf(FULL_SCALE, '1e-8', 'rounded-row')).toEqual({ error: 'amount-malformed' });
+      expect(outcomeOf(FULL_SCALE, 'x', 'rounded-row')).toEqual({ error: 'amount-malformed' });
+      expect(outcomeOf(FULL_SCALE, '90071992.54740992', 'rounded-row')).toEqual({
+        error: 'amount-too-large',
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
   it.each(['balance', 'row'] as const)('refuses above the safe integer for a %s', (use) => {
     expect(outcomeOf(FULL_SCALE, '90071992.54740992', use)).toEqual({ error: 'amount-too-large' });
     expect(outcomeOf(FULL_SCALE, '90071992.54740991', use)).toEqual({
@@ -145,5 +189,17 @@ describe('exchangeMinorUnits', () => {
     expect(outcomeOf(FULL_SCALE, '1e-8', use)).toEqual({ error: 'amount-malformed' });
     expect(outcomeOf(REDUCED_SCALE, '1.5E+3', use)).toEqual({ error: 'amount-malformed' });
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('appearMinorUnitsOf', () => {
+  it('is the dust threshold of a curated coin in its minor units', () => {
+    expect(appearMinorUnitsOf('BTC')).toBe(1_000);
+    expect(appearMinorUnitsOf('ETH')).toBe(40_000);
+  });
+
+  it('is one minor unit for a fiat currency, so any non-zero balance appears', () => {
+    expect(appearMinorUnitsOf('USD')).toBe(1);
+    expect(appearMinorUnitsOf('PLN')).toBe(1);
   });
 });

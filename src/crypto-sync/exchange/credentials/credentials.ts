@@ -32,7 +32,8 @@ const isCredentials = (value: unknown): value is ExchangeCredentials =>
  * holding metadata, or a log. Only the `service` differs between items; the hardening is derived
  * here from ONE place and reused verbatim by every writer. These helpers take no per-account lock,
  * so a caller must serialize its own writes and clears (Binance does, with its write tokens, in
- * `src/crypto-sync/binance/binance.credentials.ts`); never call `saveExchangeCredentials` or
+ * `src/crypto-sync/binance/binance.credentials.ts`, and Bybit with `createWriteSerial`, in
+ * `src/crypto-sync/bybit/bybit.credentials.ts`); never call `saveExchangeCredentials` or
  * `clearExchangeCredentials` directly from elsewhere.
  */
 export const hardenedFor = (service: string): Keychain.SetOptions => ({

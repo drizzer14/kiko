@@ -56,6 +56,30 @@ describe('ExpandToggle', () => {
     );
   });
 
+  it('draws the collapsed label it is given in place of "Show all", and "Show less" once expanded', async () => {
+    const { getByTestId, rerender } = await render(
+      <ExpandToggle
+        expanded={false}
+        onPress={jest.fn()}
+        testID="toggle"
+        collapsedLabel="Details"
+      />,
+    );
+
+    expect(layoutOf(getByTestId('toggle'))).toEqual(
+      toggleLayout('Details', 'chevron.down', 'toggle'),
+    );
+
+    await rerender(
+      <ExpandToggle expanded onPress={jest.fn()} testID="toggle" collapsedLabel="Details" />,
+    );
+
+    expect(getByTestId('toggle').props.accessibilityState).toEqual({ expanded: true });
+    expect(layoutOf(getByTestId('toggle'))).toEqual(
+      toggleLayout(i18n.t('components.expandToggle.showLess'), 'chevron.up', 'toggle'),
+    );
+  });
+
   it('calls onPress when pressed', async () => {
     const onPress = jest.fn();
     const { getByTestId } = await render(

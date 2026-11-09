@@ -6,6 +6,11 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   readCredentials: (id: string) => mockReadCredentials(id),
 }));
 
+const mockReadBybitCredentials = jest.fn();
+jest.mock('@kiko/crypto-sync/bybit/bybit.credentials', () => ({
+  readBybitCredentials: (id: string) => mockReadBybitCredentials(id),
+}));
+
 import type { AccountRow } from '@kiko/db';
 
 import { readExportSecrets } from './read-secrets';
@@ -39,5 +44,54 @@ describe('readExportSecrets', () => {
 
     expect(mockReadToken).not.toHaveBeenCalled();
     expect(mockReadCredentials).not.toHaveBeenCalled();
+    expect(mockReadBybitCredentials).not.toHaveBeenCalled();
+  });
+
+  describe('a Bybit account', () => {
+    beforeEach(() => {
+      mockReadToken.mockReset();
+      mockReadCredentials.mockReset();
+      mockReadBybitCredentials.mockReset();
+    });
+
+    it('reads its pair from the Bybit service only, and lists it by its own account', async () => {
+      mockReadBybitCredentials.mockImplementation((id: string) =>
+        Promise.resolve(id === 'byb1' ? { apiKey: 'bybit-k', secret: 'bybit-s' } : undefined),
+      );
+
+      const secrets = await readExportSecrets([
+        account('byb1', 'bybit'),
+        account('byb2', 'bybit'),
+        account('bin1', 'binance'),
+      ]);
+
+      expect(secrets.bybitCredentials).toEqual([
+        { accountId: 'byb1', apiKey: 'bybit-k', secret: 'bybit-s' },
+      ]);
+      expect(mockReadBybitCredentials.mock.calls).toEqual([['byb1'], ['byb2']]);
+      expect(mockReadCredentials.mock.calls).toEqual([['bin1']]);
+      expect(mockReadToken).not.toHaveBeenCalled();
+    });
+
+    it('keeps a Binance user export identical, with an empty Bybit list and no Bybit read', async () => {
+      mockReadCredentials.mockResolvedValue({ apiKey: 'k', secret: 's' });
+
+      const secrets = await readExportSecrets([account('bin1', 'binance')]);
+
+      expect(secrets).toEqual({
+        monobankTokens: [],
+        binanceCredentials: [{ accountId: 'bin1', apiKey: 'k', secret: 's' }],
+        bybitCredentials: [],
+      });
+      expect(mockReadBybitCredentials).not.toHaveBeenCalled();
+    });
+
+    it('skips a Bybit account that is disconnected', async () => {
+      mockReadBybitCredentials.mockResolvedValue(undefined);
+
+      const secrets = await readExportSecrets([account('byb1', 'bybit')]);
+
+      expect(secrets.bybitCredentials).toEqual([]);
+    });
   });
 });

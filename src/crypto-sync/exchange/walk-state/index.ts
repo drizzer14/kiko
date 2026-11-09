@@ -6,12 +6,15 @@ export {
 } from './exchange-state-patch';
 export {
   type CoinLists,
+  type DenseSeries,
   type ExchangeTrades,
   NOT_IMPORTED_KINDS,
   type NotImportedKind,
   notImportedEntry,
   notImportedKindOf,
   type ParsedExchangeState,
+  type ParsedKeyExpiry,
+  type ParsedWalletNotes,
   type ParsedWalkMarks,
   parseExchangeState,
   type WalkId,

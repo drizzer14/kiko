@@ -136,7 +136,9 @@ The token categories, defined once in a single theme module (read
 `src/design-system/theme/theme.ts` for the full set):
 
 - **color** — background, surface (per elevation level), primary
-  text, secondary text, accent(s), positive-money, negative-money.
+  text, secondary text, accent(s), positive-money, negative-money, and `fieldBackground`,
+  the input fill (`transparent` in dark, `#FFFFFF` in light; read it in
+  `src/design-system/theme/theme.ts`). Every text-like input uses it, not `surface`.
 - **spacing** — a scale used for all padding/margin/gap; components
   never hardcode a pixel value for spacing.
 - **typography** — font sizes/weights/line-heights for the type
@@ -636,24 +638,29 @@ The established patterns grouped under this heading:
   asserts the item list has a `pencil` item labelled "Edit" whose
   `onPress` opens the edit form, and no `type: 'custom'` item.
 - A field's own Connect (`MonobankConnectField`, `BinanceCredentialsField`,
-  `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
+  `BybitCredentialsField`, `WalletAddressField`, `src/design-system/components/`) is a PRIMARY
   action, so it follows the same form validation model as a Save
   button: always enabled, never `disabled={... || field.trim() ===
   ''}`. A blank required field shows its own `*RequiredError` message
   (via the field's `error` prop) on a Connect press instead —
   `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
-  `BinanceCredentialsField` also takes an optional `onStoredWhileUnmounted`, called
-  instead of `onConnect` when the field unmounted after the Keychain write stored the pair.
-  Both callbacks receive the write's `BinanceWriteToken`; `CryptoSyncForm`'s `onConnectBinance`
-  and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
-  `fetchAccount` (the check) and `saveCredentials`. `CryptoSyncForm` takes a required `source`
-  and renders that source's field, nothing for `'other'`; the caller picks the source.
-  `BinanceCredentialsField` checks `isBinanceCoolingDown` after the blank-field check and
-  before `fetchAccount`. On a cooling account it shows the localized
-  `accountDetail.binanceCoolingDown` text, makes no request or write, and keeps the typed
-  pair, so a later press connects once the cooldown ends. After that check it also checks
-  `isBinanceSyncRunning` and shows `accountDetail.binanceSyncStillRunning`.
+  `BinanceCredentialsField` and `BybitCredentialsField` are thin wrappers over the shared
+  `ExchangeKeyForm`
+  (`src/design-system/components/exchange-key-form/exchange-key-form.component.tsx`).
+  Each takes an optional `onStoredWhileUnmounted`, called instead of `onConnect` when the field
+  unmounted after the Keychain write stored the pair. Both callbacks receive the write's token
+  (`BinanceWriteToken`, or `WriteToken` for Bybit). The props of each field and of
+  `CryptoSyncForm` (`src/design-system/components/crypto-sync-form/crypto-sync-form.component.tsx`)
+  are in those files: read them there. The pair leaves the field only into `fetchAccount` (the
+  check) and `saveCredentials`. `CryptoSyncForm` takes a required `source` and renders that
+  source's field, nothing for `'other'`; the caller picks the source.
+  `ExchangeKeyForm` checks its `isCoolingDown` prop after the blank-field check and before
+  `fetchAccount`. On a cooling account it shows the localized cooldown text
+  (each exchange passes its own as `copy.coolingDown`), makes no request or write, and keeps the
+  typed pair, so a later press connects once the cooldown ends. After that check it also
+  checks its `isSyncRunning` prop and shows the exchange's still-running text
+  (`accountDetail.binanceSyncStillRunning`, `accountDetail.bybitSyncStillRunning`).
   `MonobankConnectField` takes a required `accountId` prop; after the blank check it checks
   `isMonobankSyncRunning(accountId)` and shows `accountDetail.monobankSyncStillRunning`,
   with no request.
@@ -883,9 +890,27 @@ where they can drift. The pipeline is:
   squircle icon tile: `entityIconTileGradient` (`entity-tint.ts`)
   derives its two vertical-gradient stops (lighter top, darker bottom)
   from the one resolved hue via `lightenHex`/`darkenHex`, and
-  `isLightEntityColor` (`entity-tint.ts`, a real WCAG contrast-ratio
-  check, not a naive brightness average) picks a white or dark glyph
-  tint so the SF Symbol on top stays legible on every palette swatch.
+  `prefersDarkGlyph(colorHex, scheme)` (`entity-tint.ts`, a real WCAG
+  contrast-ratio check) picks the glyph tint: dark scheme, black only
+  when white contrasts under 3:1; light scheme, white for the swatches
+  in `SWATCHES_WITH_WHITE_GLYPH_ON_LIGHT` (`entity-tint.ts`; user
+  ruling 2026-11-09, orange and indigo sit below 4.5 on purpose),
+  otherwise black when black contrasts more than white.
+
+Light palette v3.1 rules (source of truth
+`docs/design/light-palette/palette.json`, plus its `markSwatches`):
+
+- One light set serves entity and category
+  (`categoryColorsLight` equals `entityColorsLight`).
+- Light tiles are exempt from the page 3:1 floor; the glyph and the
+  mark carry the contrast. The glyph needs at least 4.5 on the base and
+  at least 3 on the worst gradient stop. Orange and
+  indigo (white glyph by user ruling) are excluded from the 4.5 base
+  floor only, in `src/design-system/palette/palette.contrast.test.ts`;
+  every swatch keeps the 3 stop floor, and teal meets both.
+- `markColor(hex, scheme)` (`entity-tint.ts`) is the color for icon and
+  line sinks: a gamut-safe chroma clamp with a module cache. The sinks
+  are icon and line tints only; tiles keep the tile color.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —

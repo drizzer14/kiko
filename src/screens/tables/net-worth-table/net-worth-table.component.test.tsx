@@ -50,7 +50,15 @@ const USD = holdingRow({
 });
 const OWED = holdingRow({ id: 'owed', accountId: 'loans', balanceMinorUnits: -50_000 });
 
-const TRANSACTIONS = [{ holdingId: 'card', time: at(2026, 1, 10), amountMinorUnits: 20_000 }];
+const TRANSACTIONS = [
+  {
+    id: 'opening',
+    holdingId: 'card',
+    time: at(2026, 1, 10),
+    amountMinorUnits: 20_000,
+    source: 'manual' as const,
+  },
+];
 
 const usdRow = (day: number, rate: string) => ({
   base: 'USD' as const,

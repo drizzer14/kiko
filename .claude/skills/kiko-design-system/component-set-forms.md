@@ -94,7 +94,9 @@
   and a refusal inside the write shows the shared save-error alert). A
   lot row is the user's own entry, so unlike every other derived ledger
   row it carries no marker subtitle (`derivedMarker` returns undefined for a lot row).
-  A transaction row keeps tap-to-edit and passes `onDuplicate` (manual rows) and the View actions
+  A transaction row keeps tap-to-edit and passes `onDuplicate` (a manual row whose holding no
+  sync owns; the consumer passes none when the row is synced or `isOnSyncedHolding` holds)
+  and the View actions
   (`use-view-actions`; Home's transaction row). A synced transaction row gets
   the View actions only, and an imported row lists View account, View
   holding and Delete: a hold never opens the delete confirm directly there. `closeAction`
@@ -138,7 +140,8 @@
   dropped and neither overwrites the text nor opens a confirm. A transaction row
   whose source is `import` is deletable but passes NO `onDuplicate` and no other
   action (`isSyncedTransaction` is every non-manual source), so its hold opens
-  the delete confirm directly; only a manual row is duplicable. The imported
+  the delete confirm directly; only a manual row on a holding no sync owns is duplicable
+  (`src/holdings/deletable/deletable.ts`). The imported
   row's confirm needs no boundary read: every delete takes the row's full
   amount back, and the confirm's `removeNotice` states each holding's balance
   change (`transactions.deleteLinked.balanceChange`).
@@ -178,7 +181,8 @@
   (render each hook instance's `closeSheet` once; a screen with two hook
   instances renders both). `account` is the HOLDING's own account,
   read by `isSyncedHolding`; a screen listing the implicit account's
-  holdings passes that row.
+  holdings passes that row. `syncedHoldingIds` (same file as `isSyncedHolding`) feeds both
+  row menus and the holding pickers.
 - **SymbolIcon** — wraps an SF Symbol glyph
   (`react-native-nitro-sfsymbols`); see "SF Symbol `tintColor` gotcha"
   in SKILL.md before passing it a color.
@@ -232,7 +236,16 @@
   elsewhere in the row, and it must then get `accessibilityLabel` so
   VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
-  theme tokens. It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
+  theme tokens; its fill is the `fieldBackground` token, as for `FieldTrigger`, `DateField`,
+  `TimeField`, the `HoldingIdentityField` name input and the `IconEditor` icon chip (white
+  in light, none in dark). In light a disabled field and an active one share a white fill;
+  the faded `surfaceHigh` border, the 0.5 opacity and the `textSecondary` text tell them
+  apart. `DateRangeField`, `FilterMenu` and `TrendFilterField` keep `surface`.
+  `fieldBackground` is opaque in light, so an absolutely positioned icon or adornment over a
+  field renders AFTER the field's input (a later sibling paints above it). Dark does not show
+  the fault because its fill is transparent. The `TextField` test "paints the leading icon
+  above the opaque input" pins the leading slot.
+  It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
   Screen's `onFieldBlur`. `HoldingIdentityField` calls `useFieldBlur(undefined)`; a text field
   outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity)
   comes from the shared `disabledFieldStyle(theme)` helper
@@ -310,7 +323,7 @@
   handler asks it after an await and drops its result when it is unmounted
   (the Connect fields do, so no credential is stored after a fold).
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
-  the shared "labeled field that opens a picker sheet" trigger: a
+  the shared "labeled field that opens a picker sheet" trigger (its fill is `fieldBackground`): a
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
   `BottomSheet`. Optional `capped` caps the trigger at
@@ -429,8 +442,9 @@
   shared "Show all" / "Show less" link with a chevron. `testID` is required
   (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its
   copy reads `components.expandToggle.*` (en, uk). Never inline a second Show all / Show less
-  copy. A consumer: `scheduled-payments-toggle`, the last child of the loan
-  list header, shown only past `SCHEDULED_PAYMENT_PREVIEW_COUNT`.
+  copy. `collapsedLabel` is only for a toggle that must say what it hides; "Show less" stays.
+  Find the consumers with a search for `ExpandToggle`; one is `scheduled-payments-toggle`, the
+  last child of the loan list header, shown only past `SCHEDULED_PAYMENT_PREVIEW_COUNT`.
 - Characterization first: before extracting a shared component, pin the
   current rendered tree with `layoutOf` BEFORE moving any JSX, and keep that
   pin as a consumer test when the visual is locked.
@@ -445,6 +459,10 @@
   and the group kinds. A heading row shows only while MORE THAN ONE group is showing, and a
   search drops a group it empties. Each group is ordered by `orderCurrencies` (read
   `currency-group.ts` for the rule), and an empty group is dropped.
+  `MccField` (`src/screens/forms/category-rule-form/mcc-field/`) is the second
+  searchable-picker user; it copies this sheet chrome (BottomSheet heading,
+  `scrollable={false}`, pinned search `TextField`, own `FlatList`,
+  `keyboardShouldPersistTaps="handled"`). Match it; do not add a third variant.
   Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
   a `disabled` read-only state. `error` follows every field's contract:
@@ -499,7 +517,8 @@
   there too; a screen-level consumer imports it from there like any
   other design-system component.
 - **AppearanceSwitch** (`src/design-system/components/appearance-switch/`)
-  — the System / Light / Dark control of the Settings system screen: a
+  — the Light / System / Dark control of the Settings system screen (chip order is user
+  ruling 2026-11-08; the parse fallback stays `system`): a
   `ChipRow` over `appearanceModes` with a label per mode from
   `appearance.*` (the active UI language, as a mode name is a word, not an
   endonym). It only reports the chosen mode; the screen writes the row

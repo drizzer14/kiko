@@ -1,8 +1,13 @@
 import { DAY_MS } from '@kiko/dates';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { render, within } from '@testing-library/react-native';
-import { categoryDisplayColor } from '@kiko/design-system/entity-tint';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
+import { categoryDisplayColor, markColor } from '@kiko/design-system/entity-tint';
 import { categoryColorsLight, entityColorsDark } from '@kiko/design-system/palette';
 
 import { categoryColor } from '@kiko/statistics/category-breakdown';
@@ -286,5 +291,63 @@ describe('CategoryTrendLine', () => {
     expect(getByTestId('category-trend-line-x-tick-0.00')).toBeTruthy();
     expect(queryByTestId('category-trend-line-x-tick-0.50')).toBeNull();
     expect(queryByTestId('category-trend-line-x-grid-0.50')).toBeNull();
+  });
+
+  describe('line and legend dot color', () => {
+    const yellowTile = lightTheme.colors.entityColors.yellow;
+    const yellowSeries: CategoryTrendSeries[] = [
+      {
+        key: 'groceries',
+        title: 'Groceries',
+        color: yellowTile,
+        points: [
+          { t: JAN, amount: 30 },
+          { t: FEB, amount: 0 },
+        ],
+      },
+    ];
+    const colorsOf = async () => {
+      const { getByTestId } = await render(
+        <CategoryTrendLine series={yellowSeries} baseCurrency="UAH" />,
+      );
+      const swatch = getByTestId('category-trend-line-legend-groceries')
+        .children[0] as unknown as RenderedElement;
+
+      return {
+        stroke: getByTestId('category-trend-line-line-groceries').props.stroke,
+        dot: styleLayers(swatch.props.style)
+          .map((layer) => layer.backgroundColor)
+          .find((value): value is string => typeof value === 'string'),
+      };
+    };
+
+    it('keeps the tile on the line and its legend dot in the dark world', async () => {
+      expect(darkTheme.colors.entityColors.yellow).not.toBe(yellowTile);
+      expect(await colorsOf()).toEqual({ stroke: yellowTile, dot: yellowTile });
+    });
+
+    describe('in the light world', () => {
+      beforeEach(() => {
+        registerLightThemeFirst();
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('strokes the line with the light mark, not the tile', async () => {
+        const mark = markColor(yellowTile, 'light');
+
+        expect(mark).not.toBe(yellowTile);
+        expect((await colorsOf()).stroke).toBe(mark);
+      });
+
+      it('paints the legend dot with the light mark, not the tile', async () => {
+        const mark = markColor(yellowTile, 'light');
+
+        expect(mark).not.toBe(yellowTile);
+        expect((await colorsOf()).dot).toBe(mark);
+      });
+    });
   });
 });

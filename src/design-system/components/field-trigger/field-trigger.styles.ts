@@ -4,8 +4,9 @@ import { disabledFieldStyle } from '@kiko/design-system/disabled-field-style';
 export const styles = StyleSheet.create((theme) => ({
   // The tappable field showing the current selection: a bordered chip matching
   // an ACTIVE TextField / the DateField field (same border color, radius,
-  // padding, and — crucially — no surface fill, which would read as disabled),
-  // so every form picker reads as one family. Lives here, not per-caller: it
+  // padding, and the `fieldBackground` fill: unfilled in dark, where a `surface`
+  // fill would read as disabled; white in light), so every form picker reads as
+  // one family. Lives here, not per-caller: it
   // was a byte-for-byte copy across CategoryField and HoldingSelectField
   // before both were unified onto this one shared trigger.
   field: {
@@ -13,6 +14,7 @@ export const styles = StyleSheet.create((theme) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.fieldBackground,
     paddingVertical: theme.spacing(3),
     paddingHorizontal: theme.spacing(3),
   },

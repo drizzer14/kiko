@@ -27,7 +27,13 @@ import {
 
 type Random = () => number;
 
-export type MarkSpec = [period: RecurringPeriod, amount: number, currency?: Currency];
+export type MarkSpec = [
+  period: RecurringPeriod,
+  amount: number,
+  currency?: Currency,
+  // The id of the row the mark was tapped on; a mark without it is one written before.
+  transactionId?: string,
+];
 export type ExpectedShown = ExpectedSeries & {
   isMarked: boolean;
   // Minor units of the stored amounts a marked series holds.
@@ -70,10 +76,11 @@ export const outcomeOf = (
   };
 };
 
-const markOf = ([period, amount, currency = 'UAH']: MarkSpec): RecurringMark => ({
+const markOf = ([period, amount, currency = 'UAH', transactionId]: MarkSpec): RecurringMark => ({
   currency,
   amountMinorUnits: Math.round(amount * MINOR_UNITS_PER_MAJOR),
   period,
+  ...foldMap(maybe(transactionId), (id) => ({ transactionId: id })),
 });
 
 export const entryOf = (name: string, marks: readonly MarkSpec[]): MarkedEntry => ({

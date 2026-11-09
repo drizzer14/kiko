@@ -20,9 +20,19 @@ export const WALK_IDS = [
   'p2p',
   'fiatOrders',
   'fiatPayments',
+  'log',
+  'fundingLedger',
 ] as const;
 
 export type WalkId = (typeof WALK_IDS)[number];
+
+/** The two series that can hold a dense span: Bybit's account log and its Funding ledger. */
+const DENSE_SERIES = ['log', 'fundingLedger'] as const;
+
+export type DenseSeries = (typeof DENSE_SERIES)[number];
+
+/** The start of the span each series could not read past, one entry per series at most. */
+type DenseSpans = Partial<Record<DenseSeries, number>>;
 
 /** Why a record was refused for good, as the first part of a `notImported` entry. */
 export const NOT_IMPORTED_KINDS = [
@@ -91,6 +101,22 @@ export type WalkMarks = {
    * next run that reads and resolves writes `null`. A disconnect drops it with the other marks.
    */
   readFailedAt?: number | null;
+  /**
+   * The next page of the convert read's pass (Bybit only). Absent on every other walk, so a Binance
+   * state keeps its text.
+   */
+  pageIndex?: number;
+  /**
+   * The clock of the run that last moved the walk's cursor (Bybit only), so a run can tell ground
+   * read near its time from ground read long after it. Absent on every other walk, so a Binance
+   * state keeps its text. A disconnect drops it with the cursor.
+   */
+  cursorReadAt?: number;
+  /**
+   * The points the convert read's pass has owed so far (Bybit only); the pass's end replaces
+   * `pending` with them.
+   */
+  passOwed?: BinancePendingRange[];
 };
 
 export type CoinLists = {
@@ -133,6 +159,25 @@ export type ExchangeTrades = {
   unreadSymbols?: string[];
 };
 
+/**
+ * The end of an API key as the last good key read stored it: the end in milliseconds, the days
+ * left at that read and the read time. A field that is not stored or not readable is absent.
+ */
+export type ParsedKeyExpiry = { expiredAtMs?: number; deadlineDay?: number; readAtMs?: number };
+
+/**
+ * What one wallet's last balance read left to show: the coins it set aside for a loan, the coins
+ * it set aside for an open order, the coins it could not read, whether the exchange refused the
+ * key for it, and whether its read failed for any other reason (`notRead`).
+ */
+export type ParsedWalletNotes = {
+  borrowed: string[];
+  openOrder: string[];
+  refusedCoins: string[];
+  refused: boolean;
+  notRead: boolean;
+};
+
 /** The JSON stored in `sync_state.exchange_state`. */
 export type ExchangeState = {
   version: 1;
@@ -142,8 +187,25 @@ export type ExchangeState = {
   oversizedCoins?: OversizedCoinLists;
   /** When the last good balance read ran (epoch ms), for an account with no holding to stamp. */
   balanceSyncedAt?: number;
+  /** The end of the connected key, replaced by each good read of the key; Bybit only. */
+  keyExpiry?: ParsedKeyExpiry;
+  /**
+   * The value made from the user id of the last good key read, which a disconnect keeps and a
+   * connect compares a new key against; Bybit only. The user id itself is never stored.
+   */
+  keyOwner?: string;
+  /** The notes of each wallet a balance read reached, by wallet; Bybit only. */
+  balanceNotes?: Record<string, Partial<ParsedWalletNotes>>;
   /** Each record a rule refused for good, once; only a disconnect clears it. */
   notImported?: string[];
+  /** The kinds of log row a read met and left out, by name and never by row; Bybit only. */
+  logKinds?: string[];
+  /** One start per series whose read stopped inside one second of rows; Bybit only. */
+  denseSpans?: DenseSpans;
+  /** How many Funding ledger rows the last reconcile held back, by count; Bybit only. */
+  fundingHeld?: number;
+  /** Set once a read met a Funding ledger row with no id, which it cannot store; Bybit only. */
+  fundingLeftOut?: true;
 };
 
 /**
@@ -157,7 +219,9 @@ export type ExchangeState = {
  * to the backfill (`backfillGroundOf`), which stores the floor in its place; a seen mark that is
  * not `true` is absent. A backfill cursor that is no finite number only orders the reads of the
  * backfill, so it is absent too, and so is a backfill turn that is not `true`: it only orders the
- * reads of the two groups of owed windows.
+ * reads of the two groups of owed windows. A convert page index or a pass's owed list that is
+ * unreadable is absent: the pass then starts again at page 1, and it reads every page, so it owes
+ * again each point it read.
  */
 export type ParsedWalkMarks = {
   cursor: number | null;
@@ -174,6 +238,9 @@ export type ParsedWalkMarks = {
   multiCoinSince?: number;
   multiCoinSeen?: true;
   readFailedAt?: number;
+  pageIndex?: number;
+  cursorReadAt?: number;
+  passOwed?: BinancePendingRange[];
 };
 
 /**
@@ -191,7 +258,14 @@ export type ParsedExchangeState =
       untrackedCoins: Required<CoinLists>;
       oversizedCoins: Required<CoinLists>;
       balanceSyncedAt: number | undefined;
+      keyExpiry: ParsedKeyExpiry | undefined;
+      keyOwner: string | undefined;
+      balanceNotes: Record<string, ParsedWalletNotes>;
       notImported: string[];
+      logKinds: string[];
+      denseSpans: DenseSpans;
+      fundingHeld: number;
+      fundingLeftOut: boolean;
       unreadable: string[];
     };
 
@@ -222,6 +296,13 @@ const listOrUndefined = (value: unknown): unknown[] | undefined =>
 /** A time is a non-negative whole number; any other stored value reads as absent, unrepaired. */
 const timeOrUndefined = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+
+/** A page of a list starts at 1: any other stored value reads as absent. */
+const pageIndexOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+
+const passOwedOf = (stored: unknown): BinancePendingRange[] | undefined =>
+  foldMap(maybe(stored), binanceWalkPendingValueOf);
 
 /**
  * A stored range start that is no finite number reads as the entry's cursor, and as none when that
@@ -258,6 +339,9 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => {
     ...foldMap(maybe(multiCoinSinceOf(entry, cursor)), (multiCoinSince) => ({ multiCoinSince })),
     ...(entry.multiCoinSeen === true ? { multiCoinSeen: true as const } : {}),
     ...foldMap(maybe(timeOrUndefined(entry.readFailedAt)), (readFailedAt) => ({ readFailedAt })),
+    ...foldMap(maybe(pageIndexOrUndefined(entry.pageIndex)), (pageIndex) => ({ pageIndex })),
+    ...foldMap(maybe(timeOrUndefined(entry.cursorReadAt)), (cursorReadAt) => ({ cursorReadAt })),
+    ...foldMap(maybe(passOwedOf(entry.passOwed)), (passOwed) => ({ passOwed })),
   };
 };
 
@@ -436,6 +520,82 @@ const notImportedOf = (stored: unknown): ReadEntry<string[]> => {
   };
 };
 
+/** A kind is named once, in the order stored: the list only grows, so a repeat is a stale copy. */
+export const logKindsEntryOf = (stored: unknown): ReadEntry<string[]> => {
+  const kinds = entryOf('logKinds', stored, stringListOrUndefined, emptyList);
+
+  return { value: [...new Set(kinds.value)], unreadable: kinds.unreadable };
+};
+
+/**
+ * Each series' start parses alone, so a start that is no time is dropped and named while the other
+ * stays. A key that is no series reads as nothing, so at most two entries are ever read.
+ */
+const denseSpansEntryOf = (stored: unknown): ReadEntry<DenseSpans> => {
+  const starts = recordOf('denseSpans', stored, timeOrUndefined);
+
+  return {
+    value: Object.fromEntries(
+      DENSE_SERIES.flatMap(
+        (series) =>
+          foldMap(maybe(starts.value[series]), (start): [DenseSeries, number][] => [
+            [series, start],
+          ]) ?? [],
+      ),
+    ),
+    unreadable: starts.unreadable,
+  };
+};
+
+/** A count that is stored is at least 1: none is the absent key, so a stored 0 is unreadable. */
+const heldCountOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+
+const trueOrUndefined = (value: unknown): true | undefined => (value === true ? true : undefined);
+
+const noCount = (): number => 0;
+
+const notSet = (): boolean => false;
+
+/** An end of a key is an instant after the epoch; the epoch itself is Bybit's "no date". */
+const instantOrUndefined = (value: unknown): number | undefined =>
+  isNumber(value) && value > 0 ? value : undefined;
+
+const keyExpiryFieldsOf = (entry: Metadata): ParsedKeyExpiry => ({
+  ...foldMap(maybe(instantOrUndefined(entry.expiredAtMs)), (expiredAtMs) => ({ expiredAtMs })),
+  ...foldMap(maybe(numberOrUndefined(entry.deadlineDay)), (deadlineDay) => ({ deadlineDay })),
+  ...foldMap(maybe(timeOrUndefined(entry.readAtMs)), (readAtMs) => ({ readAtMs })),
+});
+
+/**
+ * Each field of the entry parses alone and reads as absent when it is unreadable, since the state
+ * rule treats an absent field as unknown, the safe side. An entry that is no record reads as none.
+ */
+const keyExpiryEntryOf = (stored: unknown): ReadEntry<ParsedKeyExpiry | undefined> =>
+  entryOf<ParsedKeyExpiry | undefined>(
+    'keyExpiry',
+    stored,
+    (entry) => foldMap(maybe(recordOrUndefined(entry)), keyExpiryFieldsOf),
+    nothing,
+  );
+
+/** A value made from a user id is text with something in it, so an empty text reads as none. */
+const nonEmptyTextOrUndefined = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined;
+
+/**
+ * A field that is unreadable reads as its empty value, since a note shown by mistake would be worse
+ * than none. The entry names the keys it reads only, so any other key stored in it is ignored.
+ */
+const walletNotesOf = (stored: unknown): ParsedWalletNotes | undefined =>
+  foldMap(maybe(recordOrUndefined(stored)), (entry) => ({
+    borrowed: stringListOrUndefined(entry.borrowed) ?? [],
+    openOrder: stringListOrUndefined(entry.openOrder) ?? [],
+    refusedCoins: stringListOrUndefined(entry.refusedCoins) ?? [],
+    refused: entry.refused === true,
+    notRead: entry.notRead === true,
+  }));
+
 /** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */
 export type StoredExchangeState = Metadata & { walks: Metadata };
 
@@ -464,7 +624,24 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     numberOrUndefined,
     nothing,
   );
+  const keyExpiry = keyExpiryEntryOf(stored.keyExpiry);
+  const keyOwner = entryOf<string | undefined>(
+    'keyOwner',
+    stored.keyOwner,
+    nonEmptyTextOrUndefined,
+    nothing,
+  );
+  const balanceNotes = recordOf('balanceNotes', stored.balanceNotes, walletNotesOf);
   const notImported = notImportedOf(stored.notImported);
+  const logKinds = logKindsEntryOf(stored.logKinds);
+  const denseSpans = denseSpansEntryOf(stored.denseSpans);
+  const fundingHeld = entryOf('fundingHeld', stored.fundingHeld, heldCountOrUndefined, noCount);
+  const fundingLeftOut = entryOf<boolean>(
+    'fundingLeftOut',
+    stored.fundingLeftOut,
+    trueOrUndefined,
+    notSet,
+  );
 
   return {
     kind: 'parsed',
@@ -476,7 +653,14 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     untrackedCoins: untrackedCoins.value,
     oversizedCoins: oversizedCoins.value,
     balanceSyncedAt: balanceSyncedAt.value,
+    keyExpiry: keyExpiry.value,
+    keyOwner: keyOwner.value,
+    balanceNotes: balanceNotes.value,
     notImported: notImported.value,
+    logKinds: logKinds.value,
+    denseSpans: denseSpans.value,
+    fundingHeld: fundingHeld.value,
+    fundingLeftOut: fundingLeftOut.value,
     unreadable: [
       ...walks.flatMap(({ unreadable }) => unreadable),
       ...trades.unreadable,
@@ -484,7 +668,14 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...oversizedCoins.unreadable,
       ...oversizedByWallet.unreadable,
       ...balanceSyncedAt.unreadable,
+      ...keyExpiry.unreadable,
+      ...keyOwner.unreadable,
+      ...balanceNotes.unreadable,
       ...notImported.unreadable,
+      ...logKinds.unreadable,
+      ...denseSpans.unreadable,
+      ...fundingHeld.unreadable,
+      ...fundingLeftOut.unreadable,
     ],
   };
 };

@@ -420,7 +420,7 @@ MANUAL action may ever move `loanLinkRejected`.
   `loanHoldingId: null` also nulls `loanLinkSource`, keeping the two
   columns in lockstep. No `source`-column gate — exactly like `setCategory`,
   the link is user state, not a mutation of bank-owned ledger data, so it
-  is allowed on a synced (`monobank`/`binance`/`import`) row too.
+  is allowed on a synced row too (the `transactions.source` enum in `src/db/schema.ts`).
 - `transactionsRepo.setAutoLoanLinks(links: { transactionId, loanHoldingId }[])`
   is the matcher's path: writes every link in ONE `db.transaction()` call, NEVER touches
   `loanLinkRejected`, and its own WHERE clause skips any row that is

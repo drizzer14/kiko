@@ -14,7 +14,10 @@ export type NetWorthTableProps = {
   /** Closed holdings too: the table values a closed one up to the instant it closed. */
   holdings: readonly (SeriesHolding & Pick<HoldingRow, 'accountId'>)[];
   /** The whole ledger, which rebuilds each holding's balance at a past month end. */
-  transactions: readonly Pick<TransactionRow, 'holdingId' | 'time' | 'amountMinorUnits'>[];
+  transactions: readonly Pick<
+    TransactionRow,
+    'id' | 'holdingId' | 'time' | 'amountMinorUnits' | 'source'
+  >[];
   historyRows: Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>[];
   /** The period's whole months, oldest first. */
   months: readonly CalendarMonth[];

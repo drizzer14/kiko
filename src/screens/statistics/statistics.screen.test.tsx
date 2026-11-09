@@ -76,12 +76,9 @@ import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dat
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import '@kiko/design-system/unistyles';
-import {
-  categoryColorsLight,
-  entityColorsDark,
-  entityColorsLight,
-} from '@kiko/design-system/palette';
-import { darkTheme } from '@kiko/design-system/theme';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { entityColorsDark } from '@kiko/design-system/palette';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
@@ -205,6 +202,7 @@ type Transaction = {
   exchangeCounterpartHoldingId?: string | null;
   untrackedCounterpart?: string | null;
   loanHoldingId?: string | null;
+  source?: string;
 };
 type CategoryRow = { key: string; title: string; icon: string; color?: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
@@ -2137,7 +2135,7 @@ describe('StatisticsScreen', () => {
     ).toBe(categoryColor('groceries'));
   });
 
-  it('tints a category filter option through the light map in the light scheme', async () => {
+  it('tints a category filter option through the light map and the light mark in the light scheme', async () => {
     registerLightThemeFirst();
     seedSpending();
 
@@ -2151,7 +2149,7 @@ describe('StatisticsScreen', () => {
       const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart')?.props
         .tintColor;
 
-      expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
+      expect(tint).toBe(markColor(resolveCategoryColor(null, 'groceries', 'light'), 'light'));
       expect(tint).not.toBe(categoryColor('groceries'));
     } finally {
       restoreThemeOrder();
@@ -2160,7 +2158,7 @@ describe('StatisticsScreen', () => {
 
   // A manual trend key is held in the option list without being checked in the category filter, so
   // its glyph shows the tint; a checked row shows the white on-accent glyph instead.
-  it('tints a trend-held category with no spending through the category set in the light scheme', async () => {
+  it('tints a trend-held category with no spending through the category set and the light mark in the light scheme', async () => {
     registerLightThemeFirst();
     setLiveData({
       accounts: [CASH, BANK],
@@ -2185,8 +2183,7 @@ describe('StatisticsScreen', () => {
       const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-utilities`), 'bolt')?.props
         .tintColor;
 
-      expect(tint).toBe(categoryColorsLight.violet);
-      expect(tint).not.toBe(entityColorsLight.violet);
+      expect(tint).toBe(markColor(lightTheme.colors.categoryColors.violet, 'light'));
     } finally {
       restoreThemeOrder();
     }
@@ -3462,6 +3459,48 @@ describe('StatisticsScreen — paused while hidden', () => {
     });
 
     expect(mockRunBackfill.mock.calls.length).toBe(callsBefore);
+  });
+});
+
+describe('StatisticsScreen — a Bybit holding on the net-worth line', () => {
+  const READ_AT = localDaysFrom(now, -3);
+  const CRYPTO: Account = { id: 'c', name: 'Bybit', kind: 'crypto', color: null };
+  const BYBIT_COIN: Holding = {
+    id: 'hb',
+    accountId: 'c',
+    currency: 'BTC',
+    type: 'crypto_asset',
+    balanceMinorUnits: 100_000_000,
+    metadata: { bybitAsset: 'BTC:unified', syncedAt: READ_AT, balanceReadAt: READ_AT },
+    closedAt: null,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseIsScreenVisible.mockReturnValue(true);
+  });
+
+  it("hands each row's id and source to the net-worth line", async () => {
+    const fill = { id: 'f1', holdingId: 'hb', time: localDaysFrom(now, -1) };
+    const manual = { id: 'm1', holdingId: 'hb', time: localDaysFrom(now, -2) };
+
+    setLiveData({
+      accounts: [CRYPTO],
+      holdings: [BYBIT_COIN],
+      transactions: [
+        { ...fill, amountMinorUnits: -20_000_000, source: 'bybit' },
+        { ...manual, amountMinorUnits: 50_000_000, source: 'manual' },
+      ],
+      history: HISTORY,
+    });
+    await renderScreen();
+
+    const input = mockBuildNetWorthSeries.mock.calls.at(-1)?.[0];
+
+    expect(input.transactionsByHolding.get('hb')).toEqual([
+      { id: 'f1', time: fill.time, amountMinorUnits: -20_000_000, source: 'bybit' },
+      { id: 'm1', time: manual.time, amountMinorUnits: 50_000_000, source: 'manual' },
+    ]);
   });
 });
 

@@ -379,6 +379,19 @@ must show the bar at the same y on the first and every later visit, and, after a
 bottom tab bar, the parent's additional top inset back at 0 and its safe top back at the
 window's 32.
 
+The iOS 27.2 pane title lever: on iOS 27.2 UIKit lays the large title of the leading split pane
+out in a separate row under an empty bar row, while 27.1 and the trailing pane keep it in the bar
+row. `RNSInlineStackedPaneLargeTitle` (called after `syncParentSafeAreaTopInset` in
+`viewDidLayoutSubviews`) sets the top item's `largeTitleDisplayMode` from Always to Inline and
+asks the bar to lay out. The condition is measured, not only the version: `@available(iOS 27.2,
+*)`, a window, a stack narrower than the window (a pane), a view whose class name contains
+"LargeTitle" taller than 0.5 pt and at least 0.5 pt below the bar's top, and the mode still Always.
+So it does nothing on a full-width stack, below 27.2, or if UIKit stops stacking. It writes only
+while the mode is Always, so it cannot loop; a header config update writes Always back and the
+next layout pass applies Inline once more. Drop it once iOS stops stacking the title: re-measure
+on a 27.2 or later split left pane with the lever removed, and if the large title shares the bar
+row, delete the function, its call and the pin.
+
 The 20 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
 side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 20

@@ -9,6 +9,16 @@ import { emptyMatcherDraft } from '../rule-draft';
 import MatcherRow from './matcher-row.component';
 import type { MatcherRowProps } from './matcher-row.props';
 
+jest.mock('@kiko/transactions/repo', () => ({
+  transactionsRepo: {
+    mccCountsQuery: () => ({ __kind: 'mccCounts', toSQL: () => ({ sql: '', params: [] }) }),
+  },
+}));
+
+jest.mock('@kiko/db/use-live-query', () => ({
+  useLiveQuery: () => ({ data: [], isLoading: false, isFresh: true }),
+}));
+
 const CURRENCY_GROUPS: CurrencyGroup[] = [{ kind: 'fiat', currencies: ['UAH', 'USD', 'EUR'] }];
 
 const renderRow = (overrides: Partial<MatcherRowProps> = {}) =>
@@ -94,11 +104,15 @@ describe('MatcherRow', () => {
   describe('the nameContains and mcc conditions', () => {
     it('an mcc row shows a number-pad field limited to four digits', async () => {
       const onChange = jest.fn();
-      const { getByLabelText } = await renderRow({
+      const { getByLabelText, getByText, getByTestId } = await renderRow({
         draft: draftOf({ type: 'mcc', mccText: '0042' }),
         onChange,
       });
-      const field = getByLabelText('Merchant code (MCC)');
+
+      await fireEvent.press(getByText('0042'));
+      await fireEvent.press(getByTestId('mcc-other-row'));
+
+      const field = getByLabelText('Four-digit code');
 
       expect(field.props.value).toBe('0042');
       expect(field.props.keyboardType).toBe('number-pad');
@@ -372,6 +386,40 @@ describe('MatcherRow', () => {
     );
   });
 
+  describe('the MCC and IBAN hints', () => {
+    const MCC_HINT = 'A four-digit code the bank gives each type of shop.';
+    const IBAN_HINT = 'The account number of the other side, starting with the country code.';
+
+    it('explains the merchant code on an mcc condition', async () => {
+      const { getByText, getAllByText, queryByText } = await renderRow({
+        draft: draftOf({ type: 'mcc' }),
+      });
+
+      expect(getByText(MCC_HINT)).toBeTruthy();
+      expect(getAllByText(MCC_HINT)).toHaveLength(1);
+      expect(queryByText(IBAN_HINT)).toBeNull();
+    });
+
+    it('explains the counterparty IBAN on a counterIban condition', async () => {
+      const { getByText, queryByText } = await renderRow({
+        draft: draftOf({ type: 'counterIban' }),
+      });
+
+      expect(getByText(IBAN_HINT)).toBeTruthy();
+      expect(queryByText(MCC_HINT)).toBeNull();
+    });
+
+    it.each(['nameIs', 'amount', 'direction', 'time', 'account'] as const)(
+      'shows neither hint on a %s condition',
+      async (type) => {
+        const { queryByText } = await renderRow({ draft: draftOf({ type }) });
+
+        expect(queryByText(MCC_HINT)).toBeNull();
+        expect(queryByText(IBAN_HINT)).toBeNull();
+      },
+    );
+  });
+
   describe('removing the row', () => {
     it('offers Remove, labelled with the position of the row, when it can go', async () => {
       const onRemove = jest.fn();
@@ -416,6 +464,22 @@ describe('MatcherRow', () => {
       expect(
         getByText('Рядки виписки без часу рахуються як полудень у часовому поясі виписки.'),
       ).toBeTruthy();
+    });
+
+    it('explains the merchant code on an mcc condition, in Ukrainian', async () => {
+      const { getByText, queryByText } = await renderRow({ draft: draftOf({ type: 'mcc' }) });
+
+      expect(getByText(i18n.t('ruleForm.mccHint'))).toBeTruthy();
+      expect(queryByText(i18n.t('ruleForm.counterIbanHint'))).toBeNull();
+    });
+
+    it('explains the counterparty IBAN on a counterIban condition, in Ukrainian', async () => {
+      const { getByText, queryByText } = await renderRow({
+        draft: draftOf({ type: 'counterIban' }),
+      });
+
+      expect(getByText(i18n.t('ruleForm.counterIbanHint'))).toBeTruthy();
+      expect(queryByText(i18n.t('ruleForm.mccHint'))).toBeNull();
     });
   });
 });

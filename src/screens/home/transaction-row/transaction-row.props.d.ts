@@ -20,10 +20,13 @@ export type TransactionRowProps = {
   // Whether the detail pane shows this row's form: a boolean per row, so a change of the detail
   // route re-renders only the rows whose mark flipped.
   selected: boolean;
-  // Open the create form pre-filled from this row. Passed for MANUAL rows
-  // only; a synced row is not duplicable and never receives it, so its
-  // long-press keeps offering nothing.
+  // Open the create form pre-filled from this row. The row offers it only when it is MANUAL and
+  // its holding is not synced: a synced row is not duplicable, and a holding a sync owns takes
+  // no new row, so the copy would be refused at save.
   onDuplicate: (transactionId: string) => void;
+  // Whether the row's own holding is owned by a sync right now. A boolean per row, so a change of
+  // the holdings list re-renders only the rows whose answer flipped.
+  isOnSyncedHolding: boolean;
   // Open the account / the holding the row belongs to. Passed for EVERY row, synced or not: a
   // synced row has nothing else to offer, so these two are what its hold opens.
   onViewAccount: (item: HomeTransactionRow) => void;

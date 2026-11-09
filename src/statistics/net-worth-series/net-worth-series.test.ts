@@ -14,7 +14,7 @@ import { DAY_MS, endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import type { MonobankStatementItem } from '@kiko/monobank/monobank-types';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 
-import type { SeriesHolding } from '../holding-value-at';
+import type { SeriesHolding, SeriesTransaction } from '../holding-value-at';
 
 import { buildNetWorthSeries, type NetWorthSeries } from './net-worth-series';
 
@@ -1595,6 +1595,80 @@ describe('buildNetWorthSeries', () => {
 
     expect(series.points.at(-1)?.amount).toBe(toMajor(home.minorUnits, 'USD'));
     expect(series.points.at(-1)?.amount).toBe(3_578.68);
+  });
+
+  // A Bybit coin of 1 BTC read on day 1, valued in UAH at a live rate, with rows on given days.
+  type BybitCoinRow = Omit<SeriesTransaction, 'time'> & { daysFromStart: number };
+
+  const bybitCoinAmounts = (
+    extraMetadata: object,
+    rows: BybitCoinRow[],
+  ): { amounts: number[]; homeAmount: number } => {
+    const start = new Date(2026, 8, 1).getTime();
+    const day = (offset: number, hour = 0): number => addLocalDays(start, offset) + hour * HOUR;
+    const now = day(5, 12);
+    const readAt = day(1, 10);
+    const coin = holding({
+      id: 'bybit-btc',
+      currency: 'BTC',
+      type: 'crypto_asset',
+      balanceMinorUnits: 100_000_000,
+      metadata: {
+        bybitAsset: 'BTC:unified',
+        syncedAt: readAt,
+        balanceReadAt: readAt,
+        ...extraMetadata,
+      },
+    });
+    const liveRateTable = { BTC: 2_500_000 };
+    const series = buildNetWorthSeries({
+      holdings: [coin],
+      transactionsByHolding: new Map([
+        [
+          'bybit-btc',
+          rows.map(({ daysFromStart, ...row }) => ({ ...row, time: day(daysFromStart, 12) })),
+        ],
+      ]),
+      historyRows: [uahUsd(D0, '0.025')],
+      baseCurrency: 'UAH',
+      range: { from: day(-1), to: endOfLocalDay(now) },
+      liveRateTable,
+      today: now,
+    });
+
+    return {
+      amounts: series.points.map((point) => point.amount),
+      homeAmount: toMajor(guardedNetWorth([coin], 'UAH', liveRateTable, now).minorUnits, 'UAH'),
+    };
+  };
+
+  const expectBybitCoinFlatAtHome = ({
+    amounts,
+    homeAmount,
+  }: ReturnType<typeof bybitCoinAmounts>): void => {
+    expect(amounts.at(-1)).toBe(homeAmount);
+    expect(amounts.at(-1)).toBe(2_500_000);
+    expect(amounts[0]).toBe(0);
+    expect(amounts.slice(1)).toEqual(amounts.slice(1).map(() => 2_500_000));
+    expect(amounts.length).toBeGreaterThan(3);
+  };
+
+  it('ends on the net worth Home shows for a Bybit coin with a row after its read', () => {
+    expectBybitCoinFlatAtHome(
+      bybitCoinAmounts({}, [
+        { daysFromStart: 0, amountMinorUnits: 100_000_000, source: 'bybit' },
+        { daysFromStart: 3, amountMinorUnits: -20_000_000, source: 'bybit' },
+      ]),
+    );
+  });
+
+  it('ends on the net worth Home shows for a Bybit coin with a row on the mark', () => {
+    expectBybitCoinFlatAtHome(
+      bybitCoinAmounts({ overwrittenRowIds: ['typed'] }, [
+        { id: 'walk', daysFromStart: 0, amountMinorUnits: 100_000_000, source: 'bybit' },
+        { id: 'typed', daysFromStart: 3, amountMinorUnits: 50_000_000, source: 'manual' },
+      ]),
+    );
   });
 
   describe('the live rate backs a currency the stored history does not cover', () => {

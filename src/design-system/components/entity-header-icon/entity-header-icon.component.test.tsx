@@ -1,6 +1,12 @@
 import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 
 import EntityHeaderIcon from './entity-header-icon.component';
 
@@ -22,6 +28,37 @@ describe('EntityHeaderIcon', () => {
     const { toJSON } = await render(<EntityHeaderIcon />);
 
     expect(toJSON()).toBeNull();
+  });
+
+  describe('glyph tint', () => {
+    const yellowTile = lightTheme.colors.entityColors.yellow;
+    const tintOf = async () => {
+      const { getByLabelText } = await render(
+        <EntityHeaderIcon identity={{ icon: 'creditcard.fill', color: yellowTile }} />,
+      );
+
+      return getByLabelText('Icon creditcard.fill').props.tintColor;
+    };
+
+    it('keeps the tile on the glyph in the dark world', async () => {
+      expect(darkTheme.colors.entityColors.yellow).not.toBe(yellowTile);
+      expect(await tintOf()).toBe(yellowTile);
+    });
+
+    describe('in the light world', () => {
+      beforeEach(() => {
+        registerLightThemeFirst();
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('paints the light mark of the tile, not the tile', async () => {
+        expect(markColor(yellowTile, 'light')).not.toBe(yellowTile);
+        expect(await tintOf()).toBe(markColor(yellowTile, 'light'));
+      });
+    });
   });
 
   describe('localization', () => {

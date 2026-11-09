@@ -11,6 +11,8 @@ declare module '@env' {
   export const BTC_EXPLORER_ENDPOINT: string;
   export const BINANCE_API_ENDPOINT: string;
   export const BINANCE_API_MANAGEMENT_URL: string;
+  export const BYBIT_API_ENDPOINT: string;
+  export const BYBIT_API_MANAGEMENT_URL: string;
   // NBU's public bank.gov.ua host, shared by the fiat/metal rate clients and
   // the bond register; each call site appends its own path.
   export const NBU_API_ENDPOINT: string;

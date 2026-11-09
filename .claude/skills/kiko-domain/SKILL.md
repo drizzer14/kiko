@@ -1,6 +1,6 @@
 ---
 name: kiko-domain
-description: Invoke whenever you touch the domain model — the Account/Holding/Transaction schema, the Money value object, currency codes, or net worth calculation. Read before writing a Drizzle table, a repository, a form, or any code that handles an amount. For bonds, ISINs, the NBU register and bond coupons or yield, see kiko-bonds; for debt accounts, loan holdings, loan schedule math, loan payment links and the loan-payment matcher, see kiko-debts; for Binance and exchange legs, see kiko-exchange-sync.
+description: Invoke whenever you touch the domain model — the Account/Holding/Transaction schema, the Money value object, currency codes, or net worth calculation. Read before writing a Drizzle table, a repository, a form, or any code that handles an amount. For bonds, ISINs, the NBU register and bond coupons or yield, see kiko-bonds; for debt accounts, loan holdings, loan schedule math, loan payment links and the loan-payment matcher, see kiko-debts; for Binance, Bybit and exchange legs, see kiko-exchange-sync.
 ---
 
 # Kiko domain model
@@ -122,7 +122,8 @@ absent** — this skill states the shape and non-enum facts only:
   in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
   `pendingAccountId` and nothing about the row; the remounted form asks the
   write queue (`usePendingRowLock`) before it unlocks the kind and bank
-  picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`)
+  picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`,
+  `BybitCredentialsField`, and the shared `ExchangeKeyForm`)
   never calls its connect callback once it is unmounted (`useIsMounted`),
   and stores nothing when it unmounts before the Keychain write: a token
   checked before a fold or a kind/bank switch is not stored, and the user
@@ -131,9 +132,12 @@ absent** — this skill states the shape and non-enum facts only:
   `BinanceWriteToken` of that write, not the pair. The account form's
   `clearPairIfRowMissing(token)` calls `clearCredentialsIfWrittenBy`, which resets the pair only
   when that token is still the account's latest recorded write, so a later save (even of the same
-  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). Every write and
-  clear of the pair goes through that file's per-account lock; the exchange helpers
-  (`exchange/credentials`) are lock-free and have no other caller. The form clears
+  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). Bybit does the same
+  with `WriteToken` and `clearBybitCredentialsIfWrittenBy`
+  (`src/crypto-sync/bybit/bybit.credentials.ts`). Every write and clear of a pair goes through
+  that exchange's credentials file and its per-account lock (`createWriteSerial`); the exchange
+  helpers (`exchange/credentials`) are lock-free, and the two credentials files are their only
+  callers. The form clears
   when no row owns P, and account detail keeps the pair (user ruling 2026-10-10).
   Known limit after a fold: see kiko-architecture, "Form drafts". Re-picking the
   already-selected kind is a no-op (the bank/broker
@@ -164,8 +168,10 @@ absent** — this skill states the shape and non-enum facts only:
   section) — a dedicated format still wins whenever it
   actually matches. `bankId` is deliberately **never read** by
   `isSyncedAccount`/`isSyncedHolding`
-  (`src/holdings/deletable/`) or any provider-registry lookup — those
-  stay keyed on `institution` alone, so tagging an account
+  (`src/holdings/deletable/deletable.ts`) or any provider-registry lookup.
+  `isSyncedAccount` reads `institution` alone; `isSyncedHolding` reads
+  `institution`, then the key that `syncedMetadataFieldOf` names for it.
+  So tagging an account
   `bankId: 'privatbank'` can never make it look connected. This is the
   Guideline 2.5.19 invariant (see `guidelines-compliance-is-architecture-rule`
   in memory): never wire a picker selection into a connected-ness
@@ -185,7 +191,12 @@ entry, not a change to either caller. The registry is intentionally
 `Partial`: a `BankProviderId` with no entry here is simply not yet
 implemented, and callers must skip it rather than assume every id resolves.
 `exchangeProviderRegistry` (`src/crypto-sync/exchange/registry/`) is the crypto twin of
-`bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire. For exchange
+`bankProviderRegistry`; `syncJobsFor` skips a crypto id the registry does not wire. An
+`ExchangeProviderEntry` also carries optional display fields (`pastLimitsKeysOf` reads
+one of them); read the type in
+`src/crypto-sync/exchange/registry/registry.ts`. A new exchange is a catalog entry
+(`src/crypto-sync/exchange-catalog/exchange-catalog.ts`), a registry entry and an id in
+`balanceProviderIds` (`src/crypto-sync/provider/provider.ts`). For exchange
 sync and Exchange/Convert legs see `kiko-exchange-sync`.
 
   **Implicit accounts: at most one LIVE `property` account and one LIVE
@@ -362,7 +373,9 @@ through one of them:
 
 Why it matters concretely: `createHoldingValuer`
 (`src/statistics/holding-value-at/holding-value-at.ts`) back-derives a
-holding's opening balance as `currentBalance - sum(allTransactions)`, so a
+holding's opening balance from `currentBalance` and the rows that count (see
+`rowsHeldByBalance` in that file; a holding with a dated balance drops some rows, every other
+holding counts all of them), so a
 balance written
 without its ledger row retroactively shifts the ENTIRE historical
 net-worth series by that amount, and the holding-detail transaction list
@@ -398,7 +411,11 @@ by the difference of the amounts) and EVERY delete (`remove`, a cascaded part, a
 holding's partner) move the stored balance by the row's full amount, in its own
 holding's currency, whatever the row's date, source or mark: a back-dated row,
 an imported row, an opening-balance or hand-edit row (`setsBalance`) included.
-There is no manual boundary and no re-date guard. A delete moves the balance
+There is no manual boundary and no re-date guard. One exception: a row that a
+dated balance's last read overwrote (`isOverwrittenRow`; only a holding that
+`datedBalanceSourceOf` names keeps such a list) moves NO balance on edit, delete or cascade, and the
+delete confirm names no move (`balanceChangesOf`, `src/transactions/repo/transactions.repo.ts`).
+A delete moves the balance
 only: `balanceSetAt` stays and no bank figure is stored, so deleting every row
 of an import ends on the statement's opening balance. Only an IMPORT still
 judges its rows against the boundary, the later of `holdings.balanceSetAt` and
@@ -448,6 +465,17 @@ direction live in `src/holdings/exchange-convert/` (`canConvertToExchange`,
 works: its receive path `contribution` writes metadata, not a row. The
 transaction form's split change-return picker offers only
 `isTransactionEligibleType` holdings, the same gate as the primary picker.
+
+**A manual write also refuses a holding a sync owns.**
+`refuseSyncedHoldingDatabaseTransaction` (`src/transactions/repo/transactions.repo.ts`) throws
+`SYNCED_HOLDING_REFUSAL` (`src/holdings/deletable/deletable.ts`) when the holding carries a
+sync key (`hasSyncedKey`) and `isSyncedHolding` holds. `hasSyncedKey` takes any key and is
+only a cheap test before the account read; `isSyncedHolding` wants the key of the account's
+CURRENT provider, so an earlier provider's key reads as manual. The throw rolls back the whole
+write, an `alongside` write included. The transaction form shows
+`forms.transaction.syncedHoldingSaveError`
+(`forms.transaction.syncedCounterpartSaveError` for the counterpart). Read the gate in
+`deletable.ts`; copy no rule from here.
 
 **A balance-set row is a STORED mark, not a date.** Every row whose amount
 set the balance (an opening balance, a cash opening, a hand edit) carries
@@ -859,7 +887,7 @@ why this is the deliberate exception to functional-first). It holds
 - Any table column holding an amount is an integer minor-units
   column (`balanceMinorUnits`, `amountMinorUnits`), never a decimal
   or float column. Exception: `funding_match_rows` `amount`, `fee`, `tax`
-  are TEXT, because rule 51 compares `normalizeDecimal` text and no scale
+  are TEXT, because rule 51 compares the amount key (CALL 134) and no scale
   is known per coin (O70). Convert to/from `Money` at the repository
   boundary — a raw `row.balanceMinorUnits` read for a VALUE goes
   through `holdingsRepo.balanceOf(row): Money`, never a direct
@@ -1007,8 +1035,27 @@ A Semgrep rule (`kiko-no-bare-lowercase-category-fold`,
 
 Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
-(`src/monobank/`) emits the slug, not a display title,
-and migration `0014_lowercase_categories` lowercased the legacy rows a
+(`src/monobank/`) emits the slug, not a display title.
+An MCC is a 4-digit string (`describeMatcher` in
+`src/screens/forms/category-form/rule-summary/rule-summary.ts` pads it; the generator
+in `scripts/mcc-names/generate-mcc-names.js` pads with `CODE_DIGITS`).
+`mccLabelOf(code, language)` in `src/categories/mcc-names/mcc-names.ts`
+is code + `MCC_NAME_SEPARATOR` + name; a code with no source name shows its
+digits alone; `src/categories/mcc-names/mcc-names.data.json` holds the named codes (count
+there and in the generator header, never copied here). An entry with `listed: false` (a 3000-3999
+code named only by its group) still has `mccNameOf` and `mccLabelOf`, but
+`src/screens/forms/category-rule-form/mcc-field/mcc-picker-rows.ts` shows it under "All codes"
+only for a digits-only query.
+The rule form's mcc condition is `MccField`
+(`src/screens/forms/category-rule-form/mcc-field/`): a picker of "Your codes" (counts from
+`mccCountsQuery`, read by `useLiveQuery` on `['transactions']` only while the sheet is open) and
+"All codes" (hidden codes only via a digits-only query), plus an "Other code" row for any
+four digits. It still stores
+`{ type: 'mcc', code }`; `mccOutcome` in
+`src/screens/forms/category-rule-form/rule-draft/rule-draft.ts` refuses anything but four digits
+with `ruleForm.errorMcc` (the catalogues hold the text; do not copy it). What the trigger shows
+equals what is stored on every path.
+Migration `0014_lowercase_categories` lowercased the legacy rows a
 capitalized-title era had already written. Neither
 `transactions.category` nor `category_rules.category` is COLLATE NOCASE;
 `categoriesRepo.delete`'s reassignment compares case-insensitively on both
@@ -1086,14 +1133,17 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
 `src/recurring/row-recurrence/` (the row's detected or marked period) and
 `src/settings/recurring-merchant-choices.ts` (the one map). The rules, in words:
 - A mark stores the absolute stored amount and the currency of the marked row's holding, under the
-  merchant key. It covers one currency: the same amount in another currency never compares.
+  merchant key. It covers one currency: the same amount in another currency never compares. It
+  also stores the optional `transactionId` of the row it was tapped on (absent on older marks);
+  `onePerSlotOf` key 0 keeps that row (spec 8.2, 8.3).
 - A mark's chain is the amount chain that holds its stored amount, cut by the same 1.25 step as
   detection. The chain's charges are the series, with the mark's period; the stored amount joins
   the cut like a charge, so it can bridge two charges. Pieces share no row, and a detected series
   that shares a row with a marked one leaves whole.
-- A marked chain keeps charges more than half a step apart, near amounts first, no anchor:
-  `onePerSlotOf` in `src/recurring/detection/detection.ts` (spec 8.3; read it for the keys). A
-  row it drops reads 'Not marked' (or its detected text) and its mark field is disabled;
+- A marked chain keeps charges more than half a step apart, a tapped row
+  first (key 0), near amounts next, no anchor: `onePerSlotOf` in
+  `src/recurring/detection/detection.ts` (spec 8.3; read it for the keys). A row it
+  drops reads 'Not marked' (or its detected text) and its mark field is disabled;
   `markedChainOfAmount` in `src/recurring/marked-series/marked-series.ts` returns `holdsRow`.
 - The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
 - The accepted false stop: a subscription that goes on at a price outside the chain shows "No
@@ -1673,7 +1723,9 @@ contributes to the LINE's past but never to a current snapshot.
 Invariant: the LAST net-worth bucket always equals
 `guardedNetWorth(open holdings, now)` — the number Home shows. Pinned by
 `net-worth-series.test.ts` ("ends on the net worth Home shows for a bond,
-a lot holding, and a closed holding").
+a lot holding, and a closed holding"). For a holding with a dated balance the series
+sums only the rows that count (see `rowsHeldByBalance` in
+`src/statistics/holding-value-at/holding-value-at.ts`), so the same invariant rests on that list.
 
 `reconcile-bond-funding.ts`'s candidate-building pass was rewritten from a
 `.flatMap`/`.map`/`.filter` chain to a plain nested loop for the same

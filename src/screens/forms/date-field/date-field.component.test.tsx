@@ -58,6 +58,16 @@ describe('DateField', () => {
     expect(queryByTestId('Start Date calendar')).toBeNull();
   });
 
+  it('paints the shared field fill when active, and the surface fill when disabled', async () => {
+    const active = await renderDateField();
+    const disabled = await renderDateField({ disabled: true });
+    const fillOf = (text: ReturnType<typeof active.getByText>) =>
+      StyleSheet.flatten(text.parent?.props.style).backgroundColor;
+
+    expect(fillOf(active.getByText('Pick a day'))).toBe('transparent');
+    expect(fillOf(disabled.getByText('Pick a day'))).toBe('#111112');
+  });
+
   it('dims the field to read as locked when disabled', async () => {
     const { getByText } = await renderDateField({ disabled: true });
 

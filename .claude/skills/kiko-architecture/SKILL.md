@@ -1,6 +1,6 @@
 ---
 name: kiko-architecture
-description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, reminders or local notifications (`src/reminders/`), a write that connects, disconnects or deletes an account (it re-plans reminders), or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, any reminder schedule or notification-permission code, or any `.kiko` export/import code. For currency rates, price_points, or a priced holding's value, see kiko-pricing; for statement-import parsing or column mapping, see kiko-statement-import; for Binance and crypto-sync history walks, exchange_state marks and Exchange/Convert legs, see kiko-exchange-sync.
+description: Invoke whenever you touch storage, a repository, a screen's data hook, migrations, the Monobank sync pipeline, reminders or local notifications (`src/reminders/`), a write that connects, disconnects or deletes an account (it re-plans reminders), or backup export/import (data-transfer). Read before writing any op-sqlite/Drizzle code, any db.transaction call, any useLiveQuery consumer, any code that reads the Monobank API or the Keychain token, any reminder schedule or notification-permission code, or any `.kiko` export/import code. For currency rates, price_points, or a priced holding's value, see kiko-pricing; for statement-import parsing or column mapping, see kiko-statement-import; for Binance and Bybit crypto-sync history walks, exchange_state marks and Exchange/Convert legs, see kiko-exchange-sync.
 ---
 
 # Kiko architecture
@@ -363,6 +363,9 @@ project-level pointer to this section.
   an EXPLAIN QUERY PLAN test built from the repo's own query builder
   (`sqlite_autoindex_transactions_1 (id>?)`, no temp B-tree) — see
   `rewritePageQuery` in `src/categories/category-rules-repo/category-rules.repo.ts`.
+  A new aggregate read with no index gets the same pin shape: see
+  `src/transactions/repo/transactions.repo.mcc-counts.performance.test.ts` (one prepared
+  statement, one SCAN, only temp B-trees besides).
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the
@@ -790,8 +793,10 @@ with `rule-card/` and `rule-summary/` under it; the list card opens
   offered on the default.
 - The rule editor is the CategoryRuleForm route
   (`src/navigation/types/types.d.ts`), in
-  `src/screens/forms/category-rule-form/` (`matcher-row/`, `rule-draft/`,
-  `use-save-rule/`, `rule-rewrite-sheet/`). It has no Delete either; a
+  `src/screens/forms/category-rule-form/` (`matcher-row/`, `mcc-field/`
+  (MCC picker sheet; `mcc-picker-rows.ts` holds `matchesMccQuery`,
+  `mccPickerRows`, `DIGITS_ONLY`), `rule-draft/`, `use-save-rule/`,
+  `rule-rewrite-sheet/`). It has no Delete either; a
   rule is deleted from its rule card's hold menu on the category form.
   The rewrite confirm is a `BottomSheet` with buttons, opened from
   `use-save-rule/`, not a `ConfirmSheet`; a save that would rewrite
@@ -1034,10 +1039,12 @@ Chunk such a chain by term count (`MAX_OR_TERMS` in
 `src/transaction-templates/repo/transaction-templates.repo.ts`).
 
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
-shared `upsertDedupRowsDatabaseTransaction`
-(`src/transactions/repo/transactions.repo.ts`, called by both
-`transactionsRepo.addManyDedup` and, through
-`insertDedupRowsDatabaseTransaction`, `importRows`) — two shared helpers
+shared upsert of dedup rows
+(`src/transactions/repo/transactions.repo.ts`, reached by
+`transactionsRepo.addManyDedup` and `importRows` through the exported
+`addManyDedupDatabaseTransaction` form; a caller that needs a record
+plus its row in one write calls that exported `*DatabaseTransaction`
+form) — two shared helpers
 also chunk a per-row `inArray(...)` select directly at a safe item-count
 margin (the category-rule lookup in `withCategoryRules`, the
 existing-key lookup in `partitionNewRows`), since a one-column `inArray`
@@ -1082,6 +1089,19 @@ have their own, older, pre-existing chunking — don't assume they use
   first `src/` reader lands, an interim entry in
   `DOCUMENTED_READERLESS_COLUMNS` (`src/db/settings-columns.test.ts`)
   that the task adding that reader removes.
+- Bundled generated data: `src/categories/mcc-names/mcc-names.data.json` is committed JSON from
+  `scripts/mcc-names/generate-mcc-names.js` (provenance in its header). Regenerate with
+  `KIKO_REGEN_MCC=1 KIKO_MCC_GREGGLES=<path> KIKO_MCC_SOMINEMO=<path> KIKO_MCC_REVIEW_OUT=<path>
+  npx jest __tests__/generate-mcc-names.test.ts --maxWorkers=2`. Stryker globs `.ts`/`.tsx`, and
+  neither the pre-write guard nor guard-replay reads JSON, so check the file with
+  `./node_modules/.bin/biome check <file>` and the data pins in `mcc-names.test.ts`.
+  `src/categories/mcc-names/` holds `mcc-names.ts` (re-exports `MCC_NAMES_NOTICE`),
+  `mcc-names.notice.ts` (licence text; the Sominemo MIT notice ships as bundled text, no screen),
+  `mcc-names.data.json`, `mcc-names.test.ts`, `mcc-names.notice.test.ts` and `index.ts`. Notice
+  pins (licence hash, source credits) live in the colocated
+  `src/categories/mcc-names/mcc-names.notice.test.ts`, the barrel-reach pin in
+  `src/categories/mcc-names/mcc-names.test.ts`. A test that imports src code lives colocated in
+  src, never in `__tests__/` (`__tests__/harness-tests-do-not-depend-on-src.test.ts`).
 
 ## Repository module shape
 
@@ -1262,8 +1282,8 @@ on the row's own group alone; a settings fire (a hide or a mark write) runs no d
 `settingsRepo.getQuery()`), each a `useLiveQuery` with `paused: !isVisible`, gated by
 `useDataReady`; none is a whole-ledger read or detection.
 
-For the crypto re-sync request (`resyncRequest`) and the Binance exchange sync (balance reads,
-history walks, walk marks) see `kiko-exchange-sync`.
+For the crypto re-sync request (`resyncRequest`) and the Binance and Bybit exchange sync
+(balance reads, history walks, walk marks) see `kiko-exchange-sync`.
 
 ## Price data
 
@@ -1332,8 +1352,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   rules and the app exports every rule: a restore guard never rejects a state
   the app itself writes.
 - **Every Keychain secret class the export carries is read and restored.**
-  Read `payload.d.ts`'s `ExportSecrets` for the classes it carries: the
-  per-account `monobankTokens` and `binanceCredentials`. The
+  Read `ExportSecrets` in `src/data-transfer/payload.d.ts` for the classes it
+  carries (each is per account). The
   export never carries the SQLCipher DB key at all. Secrets are written only
   with the credentials toggle on. `secrets/read-secrets.ts` reads every class
   from the Keychain (skipping an account with no stored secret) and
@@ -1363,15 +1383,19 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   shape, checked through a `Record<keyof ExportSecrets, …>` so a new field
   needs its own check) is refused as "not a valid Kiko export file" while the
   live database is still untouched. A field a file lacks is not a fault:
-  a missing or empty `monobankTokens`/`binanceCredentials` means no
+  a missing or empty secret list (`ExportSecrets` in `src/data-transfer/payload.d.ts`) means no
   secrets and the restore goes on, and a secret whose account the file does
   not carry (an account deleted before the export) is dropped by
   `restoreExportSecrets(secrets, accountIds)` with no error. A new secret
-  class in `ExportSecrets` extends that guard in the same change. A Keychain
+  class in `ExportSecrets` extends that guard in the same change. A new OPTIONAL secret list
+  needs no `EXPORT_VERSION` bump (the comment on `bybitCredentials` in `payload.d.ts`), but it
+  extends `isExportSecrets`. `exchange_state` travels whole in the snapshot and a restore keeps
+  the owner value; a value made from an identity needs the policy clause (kiko-compliance,
+  "5.1.1 / 5.1.2 — data collection and privacy"). A Keychain
   write that fails after the commit is not an import failure:
   `restoreExportSecrets` never rejects, tries every secret on its own, and
-  resolves with the connections it could not write (`'monobank'`,
-  `'binance'`); `importData` returns them as
+  resolves with the connections it could not write (the `ExportSecretKind` values in
+  `src/data-transfer/secrets/restore-secrets.ts`); `importData` returns them as
   `unrestoredCredentials`, still runs the market refresh and the loan
   auto-link, and the screen shows the success plus a line naming the
   connections to set up again.
@@ -1810,7 +1834,8 @@ are built with `createPaneStackNavigator`.
   its own screen on a fresh route. The first blur writes a draft once: a new rule's blank row (the
   row appears after the settings read), and an edited category's or rule's stored values even
   unchanged (the autosave starts from the blank first render). Secrets, tokens, wallet and
-  Binance keys never go in a draft (a lender IBAN lives only in the in-memory loan draft). Not
+  an exchange key pair (Binance, Bybit) never go in a draft (`AccountFormDraft` holds no key)
+  (a lender IBAN lives only in the in-memory loan draft). Not
   saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`, `leavingKind`. The "Add
   holding" and "Add template" round-trip auto-select (`use-select-created-option`, an exact
   handback id) does not survive a fold: the fold unmounts the picker, which closes the handback,

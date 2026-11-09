@@ -8,6 +8,17 @@ import { logFailure, logOnFailure } from '@kiko/diagnostics';
 import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
+  bybitProvider,
+  createBybitHistoryRun,
+  defaultBybitDeps,
+  syncBybitCapitalHistory,
+  syncBybitLogHistory,
+  syncBybitFundingLedger,
+  syncBybitConvertHistory,
+  syncBybitTransferHistory,
+  reconcileBybitFundingLedger,
+} from '../bybit';
+import {
   type BinanceHistoryRun,
   binanceProvider,
   createBinanceHistoryRun,
@@ -32,7 +43,8 @@ import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
  */
 export type CryptoSyncRequest =
   | { providerId: 'btc_wallet'; targetAccountId: string; address?: string }
-  | { providerId: 'binance'; targetAccountId: string };
+  | { providerId: 'binance'; targetAccountId: string }
+  | { providerId: 'bybit'; targetAccountId: string };
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -145,26 +157,90 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
  */
 const inFlightBinanceSyncs = new Map<string, Promise<BalanceSyncResult>>();
 
+const inFlightBybitSyncs = new Map<string, Promise<BalanceSyncResult>>();
+
 export const isBinanceSyncRunning = (accountId: string): boolean =>
   inFlightBinanceSyncs.has(accountId);
 
-const runBinanceSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult> => {
-  const joined = inFlightBinanceSyncs.get(targetAccountId);
+/** The Bybit counterpart of `isBinanceSyncRunning`: a Connect checks it for the same reason. */
+export const isBybitSyncRunning = (accountId: string): boolean => inFlightBybitSyncs.has(accountId);
+
+const joinedOrStarted = (
+  inFlight: Map<string, Promise<BalanceSyncResult>>,
+  targetAccountId: string,
+  start: (targetAccountId: string) => Promise<BalanceSyncResult>,
+): Promise<BalanceSyncResult> => {
+  const joined = inFlight.get(targetAccountId);
 
   if (joined) {
     return joined;
   }
-  const run = runBinanceSyncAndImport(targetAccountId);
-  inFlightBinanceSyncs.set(targetAccountId, run);
+  const run = start(targetAccountId);
+  inFlight.set(targetAccountId, run);
   const release = (): void => {
-    if (inFlightBinanceSyncs.get(targetAccountId) === run) {
-      inFlightBinanceSyncs.delete(targetAccountId);
+    if (inFlight.get(targetAccountId) === run) {
+      inFlight.delete(targetAccountId);
     }
   };
   run.then(release, release);
 
   return run;
 };
+
+const runBinanceSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult> =>
+  joinedOrStarted(inFlightBinanceSyncs, targetAccountId, runBinanceSyncAndImport);
+
+/**
+ * The Bybit arm: the balance sync, the write of the lists it read, then the capital, transfer, log
+ * and convert history walks, then the Funding ledger. The join covers all of it, with the same
+ * per-account key as Binance's.
+ */
+const runBybitSyncAndWrite = async (targetAccountId: string): Promise<BalanceSyncResult> => {
+  const { syncedHoldings, exchangeState } = await runBalanceSync(bybitProvider, defaultBybitDeps, {
+    targetAccountId,
+  });
+
+  // Written here, not by the read, for the reason of Binance's arm: the write finds the account
+  // connected to Bybit only once the sync has marked it. A failed write only logs.
+  if (exchangeState !== undefined) {
+    await logOnFailure('[bybit sync] balance lists failed', () =>
+      exchangeStateDepsOf('bybit').patchExchangeState(targetAccountId, exchangeState),
+    );
+  }
+
+  // One gate and one call budget for every history walk of this run. The walk is supplementary to
+  // the balance sync, which has written the Funding wallets it reads, so a failure of the walk is
+  // only logged.
+  const run = createBybitHistoryRun({ now: () => Date.now(), sleep });
+
+  await logOnFailure('[bybit sync] capital history failed', () =>
+    syncBybitCapitalHistory({ targetAccountId, run }),
+  );
+  // After the capital walk, so a rate limit it met (the shared cooldown) skips this one, and each
+  // walk fails in its own log.
+  await logOnFailure('[bybit sync] transfer history failed', () =>
+    syncBybitTransferHistory({ targetAccountId, run }),
+  );
+  await logOnFailure('[bybit sync] log history failed', () =>
+    syncBybitLogHistory({ targetAccountId, run }),
+  );
+  await logOnFailure('[bybit sync] convert history failed', () =>
+    syncBybitConvertHistory({ targetAccountId, run }),
+  );
+  await logOnFailure('[bybit sync] Funding ledger history failed', () =>
+    syncBybitFundingLedger({ targetAccountId, run }),
+  );
+  // Last, and in its own log: it makes no call, so it needs no run, and it reads what every walk
+  // has stored by now, whether or not the ledger walk finished.
+  await logOnFailure('[bybit sync] Funding ledger reconcile failed', () =>
+    reconcileBybitFundingLedger({ targetAccountId }),
+  );
+
+  return { syncedHoldings };
+};
+
+const runBybitSyncOnce = (targetAccountId: string): Promise<BalanceSyncResult> =>
+  joinedOrStarted(inFlightBybitSyncs, targetAccountId, runBybitSyncAndWrite);
 
 /** Pick the concrete provider for the request and run the generic balance sync. */
 export const runCryptoSync = (request: CryptoSyncRequest): Promise<BalanceSyncResult> =>
@@ -177,4 +253,5 @@ export const runCryptoSync = (request: CryptoSyncRequest): Promise<BalanceSyncRe
       ),
     )
     .with({ providerId: 'binance' }, ({ targetAccountId }) => runBinanceSyncOnce(targetAccountId))
+    .with({ providerId: 'bybit' }, ({ targetAccountId }) => runBybitSyncOnce(targetAccountId))
     .exhaustive();

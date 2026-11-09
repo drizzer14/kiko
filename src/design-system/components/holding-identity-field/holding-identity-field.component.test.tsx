@@ -208,6 +208,14 @@ describe('HoldingIdentityField', () => {
     expect(queryByText('This field is required.')).toBeNull();
   });
 
+  it('fills the name field with the shared field background', async () => {
+    const { getByLabelText } = await setup();
+
+    expect(StyleSheet.flatten(getByLabelText('Name').props.style).backgroundColor).toBe(
+      theme.colors.fieldBackground,
+    );
+  });
+
   it('never applies a border for an invalid name (Option A: no outline) and renders the message below the whole row when error is set (captioned)', async () => {
     const { getByLabelText, getByText } = await setup({
       error: 'This field is required.',

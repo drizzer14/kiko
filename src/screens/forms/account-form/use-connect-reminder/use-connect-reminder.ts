@@ -3,19 +3,20 @@ import { type RefObject, useMemo, useRef, useState } from 'react';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
-const connectSources = ['monobank', 'binance', 'wallet'] as const;
+const connectSources = ['monobank', 'binance', 'bybit', 'wallet'] as const;
 type ConnectSource = (typeof connectSources)[number];
 
 // The Connect button each hint names, so the hint reads as the label the user sees.
 const BUTTON_LABEL_KEY = {
   monobank: 'accountDetail.connectMonobank',
   binance: 'accountDetail.connectBinance',
+  bybit: 'accountDetail.connectBybit',
   wallet: 'accountDetail.connectWallet',
 } as const;
 
 type SourceFlags = Record<ConnectSource, boolean>;
 
-const NO_SOURCES: SourceFlags = { monobank: false, binance: false, wallet: false };
+const NO_SOURCES: SourceFlags = { monobank: false, binance: false, bybit: false, wallet: false };
 
 type ConnectReminderControls = {
   // What to hand the source's Connect field so it reports its input and shows the hint.
@@ -40,8 +41,14 @@ export const useConnectReminder = (
   const [reminded, setReminded] = useState<ConnectSource | null>(null);
   const monobankRef = useRef<FieldInstance>(null);
   const binanceRef = useRef<FieldInstance>(null);
+  const bybitRef = useRef<FieldInstance>(null);
   const walletRef = useRef<FieldInstance>(null);
-  const fieldRefs = { monobank: monobankRef, binance: binanceRef, wallet: walletRef };
+  const fieldRefs = {
+    monobank: monobankRef,
+    binance: binanceRef,
+    bybit: bybitRef,
+    wallet: walletRef,
+  };
 
   // Stable per source: a field reports "not typed" when its callback changes or it unmounts, so a
   // fresh function on every render would clear the draft it had just reported.
@@ -57,6 +64,7 @@ export const useConnectReminder = (
     return {
       monobank: forSource('monobank'),
       binance: forSource('binance'),
+      bybit: forSource('bybit'),
       wallet: forSource('wallet'),
     };
   }, []);

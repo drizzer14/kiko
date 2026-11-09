@@ -1,0 +1,430 @@
+import { match, P } from 'ts-pattern';
+import { BYBIT_API_ENDPOINT } from '@env';
+import { isRecord } from '@kiko/type-guards';
+import either, { bifoldr } from 'fnts/either';
+import { signQuery } from '@kiko/crypto-sync/exchange/signing';
+
+import { setBybitCooldownUntil } from './bybit.cooldown';
+import type { BybitSignedPath } from './bybit.endpoints';
+
+export type BybitReadOptions = {
+  fetchImpl?: typeof fetch;
+  /** Injected clock (same seam as `SyncDeps.now`) so a clock test needs no real timer. */
+  now?: () => number;
+  /** The account a rate refusal puts in cooldown; a connect has no account yet. */
+  accountId?: string;
+  /** The stored end of the connected key, in milliseconds (see `isPastExpiry`). */
+  expiredAtMs?: number;
+};
+
+/**
+ * Bybit refuses a signed request whose `timestamp` is not within this many milliseconds of its
+ * server time (code 10002). 5000 is Bybit's default; 20000 and 60000 are accepted too, and a
+ * wider window would only let a captured request be replayed for longer.
+ */
+const RECV_WINDOW_MS = 5000;
+
+/** The wait when the reset header of a rate refusal is missing, past, or not believable. */
+const DEFAULT_COOLDOWN_MS = 60_000;
+
+/**
+ * The wait of an HTTP 403, which Bybit answers to a banned IP and to a US or China IP alike. It is
+ * also the longest wait a reset header may ask for: a header further off than this is not believed,
+ * so a wrong value cannot cool an account for good.
+ */
+const FORBIDDEN_COOLDOWN_MS = 600_000;
+
+const RESET_HEADER = 'X-Bapi-Limit-Reset-Timestamp';
+
+/**
+ * Why a read was refused, as the text and the next step need it. `malformed` is an answer that
+ * went through and holds no code or no list of its route: it is a failure, never a zero.
+ */
+export type BybitRefusalClass =
+  | 'expired'
+  | 'rejected'
+  | 'clock'
+  | 'sign'
+  | 'permission'
+  | 'window'
+  | 'ip'
+  | 'compliance'
+  | 'notUnified'
+  | 'unknown'
+  | 'malformed';
+
+/**
+ * Bybit refuses a read for its rate (codes 10006 and 10018, or HTTP 429 with no code) or answers
+ * HTTP 403: each carries how long the account waits, as ONE typed error, so a caller does not
+ * parse a message. The message is fixed: a server text never enters an error.
+ */
+export class BybitRateLimitError extends Error {
+  constructor(
+    public readonly code: number,
+    public readonly retryAfterMs: number,
+  ) {
+    super('Bybit rate limit');
+    this.name = 'BybitRateLimitError';
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
+    // `instanceof` relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, BybitRateLimitError.prototype);
+  }
+}
+
+/** Any other refusal of a read, with the code (or the HTTP status) it was read from. */
+export class BybitRefusalError extends Error {
+  constructor(
+    public readonly refusal: BybitRefusalClass,
+    public readonly code?: number,
+  ) {
+    super('Bybit refusal');
+    this.name = 'BybitRefusalError';
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
+    // `instanceof` relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, BybitRefusalError.prototype);
+  }
+}
+
+type FailureKind = BybitRefusalClass | 'rate' | 'forbidden';
+
+/** What a refused read was read from: a code of the body, or the HTTP status when it has none. */
+type Failure = { code: number; kind: FailureKind };
+
+const failureOfCode = (code: number): Failure => ({
+  code,
+  kind: match(code)
+    .returnType<FailureKind>()
+    .with(P.union(33004, -2015), () => 'expired')
+    .with(P.union(10003, 81007), () => 'rejected')
+    .with(10002, () => 'clock')
+    .with(10004, () => 'sign')
+    .with(10005, () => 'permission')
+    .with(131203, () => 'window')
+    .with(P.union(10006, 10018), () => 'rate')
+    .with(10010, () => 'ip')
+    .with(10024, () => 'compliance')
+    .with(10028, () => 'notUnified')
+    .otherwise(() => 'unknown'),
+});
+
+const failureOfStatus = (response: Response): Failure => ({
+  code: response.status,
+  kind: match(response.status)
+    .returnType<FailureKind>()
+    .with(403, () => 'forbidden')
+    .with(429, () => 'rate')
+    .with(401, () => 'rejected')
+    .otherwise(() => (response.ok ? 'malformed' : 'unknown')),
+});
+
+/**
+ * The wait to the reset time the answer names, when that is a time after now and within the
+ * longest wait; else the default.
+ */
+const retryAfterMsOf = (headers: Headers, now: number): number => {
+  const wait = Number(headers.get(RESET_HEADER)) - now;
+
+  return Number.isFinite(wait) && wait > 0 && wait <= FORBIDDEN_COOLDOWN_MS
+    ? wait
+    : DEFAULT_COOLDOWN_MS;
+};
+
+/**
+ * Bybit's key-info page shows an `expiredAt` at the epoch with a negative `deadlineDay`, which
+ * is no real end of a key. An instant at or before the epoch, or not a number, reads as unknown.
+ */
+const isKnownInstant = (milliseconds: number): boolean =>
+  Number.isFinite(milliseconds) && milliseconds > 0;
+
+/**
+ * Whether the stored end of the key has come. A refusal that says only "no" (a rejected key, a
+ * code this client does not know) reads as the key having ended when it has; one that names its
+ * cause keeps it.
+ */
+const isPastExpiry = (expiredAtMs: number | undefined, now: number): boolean =>
+  expiredAtMs !== undefined && isKnownInstant(expiredAtMs) && now >= expiredAtMs;
+
+const errorOf = (failure: Failure, response: Response, options: BybitReadOptions, now: number) =>
+  match(failure.kind)
+    .returnType<BybitRateLimitError | BybitRefusalError>()
+    .with('forbidden', () => new BybitRateLimitError(failure.code, FORBIDDEN_COOLDOWN_MS))
+    .with(
+      'rate',
+      () => new BybitRateLimitError(failure.code, retryAfterMsOf(response.headers, now)),
+    )
+    .with(
+      P.union('rejected', 'unknown'),
+      (refusal) =>
+        new BybitRefusalError(
+          isPastExpiry(options.expiredAtMs, now) ? 'expired' : refusal,
+          failure.code,
+        ),
+    )
+    .with(
+      P.union(
+        'expired',
+        'clock',
+        'sign',
+        'permission',
+        'window',
+        'ip',
+        'compliance',
+        'notUnified',
+        'malformed',
+      ),
+      (refusal) => new BybitRefusalError(refusal, failure.code),
+    )
+    .exhaustive();
+
+/** A body that is not JSON (a gateway page) is no body at all. */
+const bodyOf = async (response: Response): Promise<Record<string, unknown>> => {
+  const parsed = bifoldr(await either<unknown, unknown>(() => response.json()));
+
+  return isRecord(parsed) ? parsed : {};
+};
+
+/**
+ * The `result` of an answer. The code of the body is read first and decides, whatever the HTTP
+ * status says (Bybit answers HTTP 200 for most refusals); the status decides only when the body
+ * holds no code. A rate refusal also puts the account in cooldown.
+ */
+const resultOf = async (
+  response: Response,
+  options: BybitReadOptions,
+  now: number,
+): Promise<unknown> => {
+  const body = await bodyOf(response);
+
+  if (body.retCode === 0) {
+    return body.result;
+  }
+
+  const failure =
+    typeof body.retCode === 'number' && Number.isInteger(body.retCode)
+      ? failureOfCode(body.retCode)
+      : failureOfStatus(response);
+  const error = errorOf(failure, response, options, now);
+
+  if (error instanceof BybitRateLimitError && options.accountId !== undefined) {
+    setBybitCooldownUntil(options.accountId, now + error.retryAfterMs);
+  }
+
+  throw error;
+};
+
+/**
+ * One signed Bybit read. The signature is the HMAC-SHA256 of the timestamp, the key, the recv
+ * window and the query, in that order, under the API secret; it travels in a header with the key,
+ * the timestamp and the window, so the URL holds nothing secret. Only GET exists here, on a path of
+ * the closed list. `no-store` keeps the key header and the signed URL out of NSURLCache's Cache.db.
+ * Returns the `result` of an answer with code 0, and throws `BybitRateLimitError` or
+ * `BybitRefusalError` for every other answer.
+ */
+export const signedBybitGet = async (
+  apiKey: string,
+  secret: string,
+  path: BybitSignedPath,
+  params: Record<string, string>,
+  options: BybitReadOptions = {},
+): Promise<unknown> => {
+  const { fetchImpl = fetch, now: clock = Date.now } = options;
+  const now = clock();
+  const query = new URLSearchParams(params).toString();
+  const signature = signQuery(secret, String(now).concat(apiKey, String(RECV_WINDOW_MS), query));
+  const response = await fetchImpl(
+    `${BYBIT_API_ENDPOINT}${path}${query === '' ? '' : `?${query}`}`,
+    {
+      method: 'GET',
+      headers: {
+        'X-BAPI-API-KEY': apiKey,
+        'X-BAPI-TIMESTAMP': String(now),
+        'X-BAPI-RECV-WINDOW': String(RECV_WINDOW_MS),
+        'X-BAPI-SIGN': signature,
+        'Cache-Control': 'no-store',
+      },
+    },
+  );
+
+  return resultOf(response, options, now);
+};
+
+const recordOf = (value: unknown): Record<string, unknown> => {
+  if (!isRecord(value)) {
+    throw new BybitRefusalError('malformed');
+  }
+
+  return value;
+};
+
+const listOf = (value: unknown): unknown[] => {
+  if (!Array.isArray(value)) {
+    throw new BybitRefusalError('malformed');
+  }
+
+  return value;
+};
+
+const finiteNumberOf = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+/** The one shape of the date the key-info page measured (UTC, to the second). */
+const EXPIRED_AT_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+const expiredAtMsOf = (value: unknown): number | undefined => {
+  if (typeof value !== 'string' || !EXPIRED_AT_SHAPE.test(value)) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(value);
+
+  return isKnownInstant(parsed) ? parsed : undefined;
+};
+
+/**
+ * What the key-info read gives. `expiredAtMs` and `deadlineDay` are the key's end, read on a sync.
+ * `readOnly` (1 for a read-only key) and `isMaster` are read at connect only and never stored.
+ * `userId` is the one personal field kept: it is transient, read to make the value that tells one
+ * Bybit account's key from another's (at a sync and at connect), and the id itself reaches no
+ * state, log or row. Every other field of the answer (the permissions, the inviter id, the
+ * region, the note) is dropped here, so none of it reaches state. A field of another shape reads
+ * as absent.
+ */
+export type BybitKeyInfo = {
+  expiredAtMs: number | undefined;
+  deadlineDay: number | undefined;
+  readOnly: number | undefined;
+  isMaster: boolean | undefined;
+  userId: string | undefined;
+};
+
+/**
+ * A user id arrives as a JSON integer or as a digit string. Anything else (absent, fractional,
+ * negative, past 2^53, empty, non-digit) is no id, so a compare never matches a mangled value.
+ */
+const userIdOf = (value: unknown): string | undefined => {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? String(value) : undefined;
+  }
+
+  return typeof value === 'string' && /^\d+$/.test(value) ? value : undefined;
+};
+
+/** `GET /v5/user/query-api`: the key's own facts. Any key reads it, whatever its boxes. */
+export const fetchKeyInfo = async (
+  apiKey: string,
+  secret: string,
+  options: BybitReadOptions = {},
+): Promise<BybitKeyInfo> => {
+  const info = recordOf(await signedBybitGet(apiKey, secret, '/v5/user/query-api', {}, options));
+
+  return {
+    expiredAtMs: expiredAtMsOf(info.expiredAt),
+    deadlineDay: finiteNumberOf(info.deadlineDay),
+    readOnly: finiteNumberOf(info.readOnly),
+    isMaster: typeof info.isMaster === 'boolean' ? info.isMaster : undefined,
+    userId: userIdOf(info.userID),
+  };
+};
+
+/**
+ * One coin of the UNIFIED account. The values are passed on as the answer holds them (a decimal
+ * string, as Bybit sends), for the provider to read and to refuse one coin alone; no price and no
+ * value of the account is read. `locked` is the part held for an open spot order, which the
+ * provider reads only to set the coin aside.
+ */
+export type BybitUnifiedCoin = {
+  coin: string;
+  walletBalance: unknown;
+  spotBorrow: unknown;
+  borrowAmount: unknown;
+  locked: unknown;
+};
+
+/**
+ * The fields of one coin row. A row that is no object, or has no coin name, cannot be refused
+ * alone: the provider could not tell which stored coin it was, and would read it as not listed
+ * and write a zero for it. So it fails the whole read and the last balance stays.
+ */
+const coinRowOf = (row: unknown): { fields: Record<string, unknown>; coin: string } => {
+  const fields = recordOf(row);
+
+  if (typeof fields.coin !== 'string' || fields.coin === '') {
+    throw new BybitRefusalError('malformed');
+  }
+
+  return { fields, coin: fields.coin };
+};
+
+const unifiedCoinOf = (row: unknown): BybitUnifiedCoin => {
+  const { fields, coin } = coinRowOf(row);
+
+  return {
+    coin,
+    walletBalance: fields.walletBalance,
+    spotBorrow: fields.spotBorrow,
+    borrowAmount: fields.borrowAmount,
+    locked: fields.locked,
+  };
+};
+
+/**
+ * `GET /v5/account/wallet-balance`, the UNIFIED account: every coin it holds. An answer with no
+ * list, a list with no entry (Bybit sends one entry, with an empty coin list, for an account of no
+ * coin), an entry with no coin list, or a coin row with no name, is malformed and throws: it is
+ * never an account of no coin, which the provider would write as a zero for each coin held.
+ */
+export const fetchUnifiedBalance = async (
+  apiKey: string,
+  secret: string,
+  options: BybitReadOptions = {},
+): Promise<BybitUnifiedCoin[]> => {
+  const result = recordOf(
+    await signedBybitGet(
+      apiKey,
+      secret,
+      '/v5/account/wallet-balance',
+      { accountType: 'UNIFIED' },
+      options,
+    ),
+  );
+
+  const entries = listOf(result.list);
+
+  if (entries.length === 0) {
+    throw new BybitRefusalError('malformed');
+  }
+
+  return entries.flatMap((entry) => listOf(recordOf(entry).coin).map((row) => unifiedCoinOf(row)));
+};
+
+/** One coin of the FUND account, as `BybitUnifiedCoin` is. `transferBalance` is never read. */
+export type BybitFundCoin = { coin: string; walletBalance: unknown };
+
+const fundCoinOf = (row: unknown): BybitFundCoin => {
+  const { fields, coin } = coinRowOf(row);
+
+  return { coin, walletBalance: fields.walletBalance };
+};
+
+/**
+ * `GET /v5/asset/transfer/query-account-coins-balance`, the FUND account: every coin it holds,
+ * with no coin filter and no bonus parameter. An answer with no balance list, or a row with no
+ * coin name, is malformed.
+ */
+export const fetchFundBalance = async (
+  apiKey: string,
+  secret: string,
+  options: BybitReadOptions = {},
+): Promise<BybitFundCoin[]> => {
+  const result = recordOf(
+    await signedBybitGet(
+      apiKey,
+      secret,
+      '/v5/asset/transfer/query-account-coins-balance',
+      { accountType: 'FUND' },
+      options,
+    ),
+  );
+
+  return listOf(result.balance).map((row) => fundCoinOf(row));
+};

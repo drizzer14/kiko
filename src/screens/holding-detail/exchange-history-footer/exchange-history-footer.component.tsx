@@ -8,6 +8,7 @@ import { activeLocale } from '@kiko/i18n/active-locale';
 
 import { notListedKeyOf } from './not-listed-key';
 import { styles } from './exchange-history-footer.styles';
+import { showsEarlierHistory } from './shows-earlier-history';
 import type { ExchangeHistoryFooterProps } from './exchange-history-footer.props';
 
 // What the balance holds beyond the rows: the opening balance the Statistics net-worth series
@@ -30,7 +31,7 @@ const ExchangeHistoryFooter: FC<ExchangeHistoryFooterProps> = ({
 
   return (
     <Box gap={2} style={styles.root}>
-      {earlierMinorUnits !== 0 && (
+      {showsEarlierHistory(account) && earlierMinorUnits !== 0 && (
         <Text variant="caption" tone="textSecondary">
           {t('holdingDetail.earlierHistory', {
             amount: formatMoney(Money.of(holding.currency, earlierMinorUnits), activeLocale()),

@@ -180,6 +180,7 @@ describe('buildCsvText cells', () => {
     ['monobank', 'Monobank', 'Monobank'],
     ['btc_wallet', 'Bitcoin wallet', 'Гаманець Bitcoin'],
     ['binance', 'Binance', 'Binance'],
+    ['bybit', 'Bybit', 'Bybit'],
     ['import', 'Statement import', 'Імпорт виписки'],
   ] as const)('names the %s source in both languages', (source, inEnglish, inUkrainian) => {
     const transactions = [transactionRow({ ...CARD_ROW, id: 'sourced', source })];

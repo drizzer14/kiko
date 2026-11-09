@@ -1,5 +1,6 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
+import type { TransactionRow } from '@kiko/db';
 
 import { asLots, type Lot } from '../lots';
 import { asOwnershipChanges, type OwnershipChange } from '../ownership';
@@ -99,15 +100,22 @@ const isNumber = (value: unknown): value is number =>
 /**
  * The metadata fields that mark a holding as owned by a sync, one per
  * source: `monobankId` (a Monobank card/jar), `walletAddress` (a BTC
- * public-address wallet), `binanceAsset` (a Binance spot balance). The
- * single source of truth for `isSyncedHolding` and for the metadata-key
- * upserts in the holdings repo.
+ * public-address wallet), `binanceAsset` (a Binance spot balance), `bybitAsset`
+ * (a Bybit wallet balance, keyed `<COIN>:<wallet>`). The list of keys,
+ * for the metadata-key upserts in the holdings repo and for the test of
+ * "any key" (`hasSyncedKey`). `syncedMetadataFieldOf` in `deletable.ts`
+ * names the key of each provider, which `isSyncedHolding` reads.
  *
  * Guideline 2.3.1(a) remediation: `privatbankId`, `bunqId`, and `starlingId` were
  * removed — those bank-CONNECT providers were deleted entirely, and no user
  * release ever shipped a holding with one of those keys.
  */
-export const syncedMetadataFields = ['monobankId', 'walletAddress', 'binanceAsset'] as const;
+export const syncedMetadataFields = [
+  'monobankId',
+  'walletAddress',
+  'binanceAsset',
+  'bybitAsset',
+] as const;
 
 export type SyncedMetadataField = (typeof syncedMetadataFields)[number];
 
@@ -121,6 +129,26 @@ export type ExchangeMetadataField = Exclude<SyncedMetadataField, 'monobankId'>;
  * touching it would silently skip Monobank transactions.
  */
 export const SYNCED_AT_FIELD = 'syncedAt';
+
+/**
+ * The time that dates the balance a sync wrote, kept beside `syncedAt` by a provider on the dated
+ * list. The sync takes it after all of the run's reads have ended, so it is later than the answer
+ * that held a given coin's balance, and a row inside that stretch can fall on the wrong side of
+ * it. It is in neither `carriedMetadataKeys` nor the disconnect's stripped list: a carried key
+ * would overwrite the new read's time with the stored one, and a stripped one would leave a
+ * disconnected holding unable to tell "read, and its rows count" from "never read".
+ */
+export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
+
+/**
+ * The ids of the rows that the last balance read overwrote, written beside the balance by a
+ * provider on the dated list: every row of the holding that is not of the syncing source. The
+ * read's figure replaced the balance, so a row the user typed before that read has no part in it.
+ * It is in neither `carriedMetadataKeys` nor the disconnect's stripped list: a carried key would
+ * join the new read's list to the stored one, so the id of a row that is gone would never leave
+ * it, and a stripped one would put a disconnected holding's typed rows back on its line.
+ */
+export const OVERWRITTEN_ROW_IDS_FIELD = 'overwrittenRowIds';
 
 // The two stored shapes a balance sync writes (see the spec's "Data model"):
 //   wallet:  { walletAddress: string; syncedAt: number }
@@ -208,6 +236,69 @@ const numberFieldOf =
 export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 
 export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
+
+/**
+ * The time that dates the holding's balance, taken after the run's reads ended; null when the
+ * holding has none.
+ */
+export const balanceReadAtOf = numberFieldOf(BALANCE_READ_AT_FIELD);
+
+/**
+ * The ids of the rows that the holding's balance overwrote: the strings of the stored list. A
+ * value that is not a list, and an entry that is not text, read as nothing.
+ */
+export const overwrittenRowIdsOf = (metadata: unknown): string[] => {
+  if (!isRecord(metadata)) {
+    return [];
+  }
+
+  const rowIds = metadata[OVERWRITTEN_ROW_IDS_FIELD];
+
+  return Array.isArray(rowIds)
+    ? rowIds.filter((rowId): rowId is string => typeof rowId === 'string')
+    : [];
+};
+
+/**
+ * The sync-owned keys whose holdings carry a dated balance, each with the `source` of the ledger
+ * rows that such a balance holds. The one place that decides which holding the net-worth valuer
+ * dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is listed here and nowhere else,
+ * because the sync reads its write from `datesBalanceOf`, and the valuer reads its rows from
+ * `datedBalanceSourceOf`. The upsert of a holding on this list writes the list of overwritten row
+ * ids as well, and no other holding gets that read or that key.
+ */
+const datedBalances: readonly { field: SyncedMetadataField; source: TransactionRow['source'] }[] = [
+  { field: 'bybitAsset', source: 'bybit' },
+];
+
+/** Whether a sync of the provider that owns `field` writes `BALANCE_READ_AT_FIELD`. */
+export const datesBalanceOf = (field: SyncedMetadataField): boolean =>
+  datedBalances.some((entry) => entry.field === field);
+
+/**
+ * The row `source` that a holding's stored balance holds up to `balanceReadAtOf`, or `undefined`
+ * for a holding whose balance is not dated, which counts every row. A key that is not a string
+ * marks no holding, as in the provider's own reader of the key.
+ */
+export const datedBalanceSourceOf = (metadata: unknown): TransactionRow['source'] | undefined => {
+  if (!isRecord(metadata)) {
+    return undefined;
+  }
+
+  return datedBalances.find(({ field }) => typeof metadata[field] === 'string')?.source;
+};
+
+/**
+ * Whether a read overwrote the row `rowId`: the read's figure replaced the holding's balance, so
+ * the row has no part in it. A delete or an edit of such a row must not move the balance, and the
+ * confirm of a delete must not name a move. It is the gate of the net-worth valuer's
+ * `rowsHeldByBalance` (the dated source first, then the list), which counts the rows that are not
+ * overwritten, so Home and the line read one rule. Whether the figure also contains the row's
+ * amount depends on the world (the move reached the exchange or not), and this gate does not ask.
+ * A holding whose balance is not dated is never on it, whatever its metadata holds.
+ */
+export const isOverwrittenRow = (metadata: unknown, rowId: string): boolean =>
+  datedBalanceSourceOf(metadata) !== undefined && overwrittenRowIdsOf(metadata).includes(rowId);
 
 /**
  * Copies any `carriedMetadataKeys` present on `storedMetadata` onto

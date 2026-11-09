@@ -39,7 +39,6 @@ import type { ReminderKind } from '@kiko/reminders/schedule';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
-import EmptyState from '@kiko/design-system/components/empty-state';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import HoldingCard from '@kiko/design-system/components/holding-card';
@@ -67,6 +66,7 @@ import { useCloseHoldingAction } from '@kiko/design-system/components/close-hold
 import { styles } from './account-detail.styles';
 import BankSyncSection from './bank-sync-section';
 import CryptoSyncSection from './crypto-sync-section';
+import HoldingsEmptyState from './holdings-empty-state';
 
 const offerMessage = (kind: ReminderKind, t: TFunction): string =>
   match(kind)
@@ -484,16 +484,10 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
           <Text variant="heading">{t('accountDetail.holdingsHeading')}</Text>
 
           {!hasActiveHoldings ? (
-            <EmptyState
-              icon={genericEntitySymbol.holding}
-              title={t('accountDetail.emptyHoldings.title')}
-              message={t('accountDetail.emptyHoldings.message')}
-              action={{
-                label: t('accountDetail.addHolding'),
-                icon: genericEntitySymbol.holding,
-                onPress: openHoldingForm,
-              }}
-              testID="account-detail-holdings-empty"
+            <HoldingsEmptyState
+              accountId={accountId}
+              institution={account?.institution}
+              onAddHolding={openHoldingForm}
             />
           ) : (
             // A single-column drag-and-drop list of wide holding row cards

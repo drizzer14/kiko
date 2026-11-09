@@ -78,6 +78,15 @@ objects to dotted leaf paths and asserts the two sets are equal — read
 that file to see the current mechanism, do not restate the key list
 here; it drifts the moment either catalogue gains a key.
 
+Merchant-code (MCC) names are not catalogue keys: they live in
+`src/categories/mcc-names/mcc-names.data.json` (en from greggles, Unlicense; uk from Sominemo,
+MIT). The label separator is the code constant `MCC_NAME_SEPARATOR` in
+`src/categories/mcc-names/mcc-names.ts`, the same in en and uk (an en dash). The 3000-3999
+uk names join «<uk group> — <en merchant>» (user ruling A, 2026-11-09) with `EM_DASH_SEPARATOR`
+(an em dash with spaces, exported from `scripts/mcc-names/generate-mcc-names.js`). Both are
+code constants, not catalogue keys. Never hand-edit the data;
+regenerate it (kiko-architecture, bundled generated data).
+
 **i18next plurals keep parity by carrying every form in BOTH catalogues.**
 The parity test compares EXACT leaf-key sets, and `uk.ts` is typed
 `typeof en` (excess keys are a `tsc` error), so a plural key defines the
@@ -231,14 +240,17 @@ string:
   the majority role — assume sentence case for a new string unless it
   is unambiguously one of the three Title Case roles above.
 - **Keep as written** — proper nouns and brand names (for example
-  Kiko/Кіко, Monobank, Binance; the closed set is `PROPER_NOUNS` in
+  Kiko/Кіко, Monobank, Binance, Bybit; the closed set is `PROPER_NOUNS` in
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
-  — read them there, add a new name to the right one). An en weekday plural used mid-sentence
+  — read them there, add a new name to the right one). Ukrainian term rule (O93): «рахунок»
+  is a Kiko account, «акаунт» is an account at an exchange. An en weekday plural used mid-sentence
   goes in the en `PROPER_NOUNS` too. A uk rule: "since" before a date is «з»; «від» before a
   date reads as "dated"; "newer than" is «новіший за». A uk word
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence. A Binance
   product or wallet name is a whole PHRASE in `BINANCE_PRODUCT_PHRASES` (same en file), never a
   single word added to `PROPER_NOUNS`: "Card" or "Spot" alone would then pass in every string.
+  A Bybit phrase is a whole phrase in `BYBIT_PHRASES` (same en file), never a word in
+  `PROPER_NOUNS`.
   "Enable Reading" (Binance's own API-key permission label, quoted by the connectCrypto help
   step) is also in `BINANCE_PRODUCT_PHRASES` (`src/i18n/locales/en.casing-by-role.test.ts`).
   Untracked-wallet product names (`UNTRACKED_WALLETS`,
@@ -395,10 +407,11 @@ and `*Hint` keys always end "." (`*Message` also allows "?"); a
 `kindSubtitle.*` path always
 ends "."; and a value shaped like a plain `"Label: {{value}}"`
 fragment (no "." in the label part) never ends "." either, except the
-DECISION's one named exception (`accountDetail.unsupportedCurrencyCode`,
-which keeps its period on purpose — an explicit allow-list entry, not
-a pattern gap). Each of these is a safe, already-verified name/path/
-value-based check for its own role — unlike the Title role, a
+entries of `LABEL_VALUE_ALLOWLIST` in
+`src/i18n/locales/en.final-stop-by-role.test.ts` (each keeps its period
+on purpose: an explicit allow-list entry, not a pattern gap; read the
+set there, and add an entry only with a stated reason). Each of these is a
+safe, already-verified name/path/value-based check for its own role — unlike the Title role, a
 wrongly-matched key fails LOUDLY here (an actual violation caught),
 never silently exempts something from a check it should have run.
 This does not re-derive the full per-key audit for every other

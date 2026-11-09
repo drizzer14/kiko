@@ -1,7 +1,15 @@
 export {
+  balanceNotesOf,
   balanceSyncedAtOf,
+  denseSpansOf,
+  fundingHeldOf,
+  fundingLeftOutOf,
+  keyExpiryOf,
+  keyOwnerOf,
+  logKindsOf,
   type NotImportedCount,
   notImportedCountsOf,
   oversizedCoinsOf,
+  untrackedBalanceCoinsOf,
   untrackedCoinsOf,
 } from './history-status';

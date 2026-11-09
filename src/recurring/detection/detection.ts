@@ -85,6 +85,7 @@ const SOURCE_RANK: Record<RecurringLedgerRow['source'], number> = {
   monobank: 0,
   btc_wallet: 0,
   binance: 0,
+  bybit: 0,
   manual: 1,
   import: 2,
 };
@@ -289,17 +290,18 @@ const gapCostOf = (earlier: number, later: number, step: SlotStep): number => {
   );
 };
 
-// A run's keys, smaller is better in each: the near and the kept counts are negated, so one
+// A run's keys, smaller is better in each: the tapped, near and kept counts are negated, so one
 // lexicographic compare reads the whole order. The last key, a full tie, is the caller's.
-type RunScore = readonly [number, number, number, number];
+type RunScore = readonly [number, number, number, number, number];
 
 type Run = { score: RunScore; previous: number | undefined };
 
 const compareScores = (left: RunScore, right: RunScore): number =>
   left.reduce((difference, key, index) => difference || key - right[index], 0);
 
-// A predecessor more than half a step before another one can always be followed by it, so it
-// loses on the first two keys: only those within half a step of the latest one can tie.
+// A predecessor more than half a step before another one can always be followed by it, which
+// never lowers a run's tapped or near count and raises its kept count, so it loses by the
+// third key: only those within half a step of the latest one can tie.
 const predecessorIndexesOf = (
   sorted: readonly Charge[],
   index: number,
@@ -324,29 +326,33 @@ const predecessorIndexesOf = (
 
 /**
  * The charges of a marked chain, folded, split into the kept run and the dropped rest, both
- * oldest first. Kept charges sit more than half a step apart. Of all such runs the kept one has
- * the most charges at a near amount, then the most charges, then the least gap to each previous
- * step, then the nearest stored amounts, then the later charges. It reads only times, amounts and
- * ids, so neither the row order nor one charge's rhythm changes the answer.
+ * oldest first. Kept charges sit more than half a step apart. Of all such runs the kept one holds
+ * the most tapped rows (`tappedIds`, none by default), then the most charges at a near amount,
+ * then the most charges, then the least gap to each previous step, then the nearest stored
+ * amounts, then the later charges. It reads only times, amounts and ids, so neither the row order
+ * nor one charge's rhythm changes the answer.
  */
 export const onePerSlotOf = (
   charges: readonly Charge[],
   period: RecurringPeriod,
   storedAmounts: readonly number[],
+  tappedIds: ReadonlySet<string> = new Set(),
 ): { kept: Charge[]; dropped: Charge[] } => {
   const step = SLOT_STEPS[period];
   const sorted = [...charges].sort(compareCharges);
   const runs: Run[] = [];
 
-  sorted.forEach(({ amount, time }, index) => {
+  sorted.forEach(({ id, amount, time }, index) => {
+    const tapped = Number(tappedIds.has(id));
     const near = Number(isNearAmount(amount, storedAmounts));
     const reach = amountReachOf(amount, storedAmounts);
-    let best: Run = { score: [-near, -1, 0, reach], previous: undefined };
+    let best: Run = { score: [-tapped, -near, -1, 0, reach], previous: undefined };
 
     // Oldest first, so `<=` hands a full tie to the later predecessor.
     for (const previous of predecessorIndexesOf(sorted, index, step.slotDays / 2)) {
-      const [nearCount, count, cost, totalReach] = runs[previous].score;
+      const [tappedCount, nearCount, count, cost, totalReach] = runs[previous].score;
       const score: RunScore = [
+        tappedCount - tapped,
         nearCount - near,
         count - 1,
         cost + gapCostOf(sorted[previous].time, time, step),

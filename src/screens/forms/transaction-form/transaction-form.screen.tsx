@@ -37,6 +37,7 @@ import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
 import { useDraftParam } from '@kiko/navigation/use-draft-param';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { SYNCED_HOLDING_REFUSAL } from '@kiko/holdings/deletable';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { ruleMoveMessage } from '@kiko/categories/rule-preview-text';
@@ -966,6 +967,28 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     alertOnCatch(t, 'forms.fields.saveErrorTitle', 'forms.fields.saveErrorMessage');
   };
 
+  // The failure alert of `performSave`. The gate in the repository refuses a write onto a holding
+  // that connected after the form opened, and a retry fails the same way, so "Please try again."
+  // would be false. A Convert names its holding in the picker, which has dropped it by now, so
+  // its text says to select another one: `converting` is what sends a save to
+  // `recordExchangeCounterpart`, the only writer that throws the refusal in that mode. The other
+  // catches of this form write no new row, so they keep the generic alert.
+  const showSaveFailureAlert = (error: unknown): void => {
+    if (!(error instanceof Error) || error.message !== SYNCED_HOLDING_REFUSAL) {
+      showSaveErrorAlert();
+
+      return;
+    }
+
+    alertOnCatch(
+      t,
+      'forms.fields.saveErrorTitle',
+      converting
+        ? 'forms.transaction.syncedCounterpartSaveError'
+        : 'forms.transaction.syncedHoldingSaveError',
+    );
+  };
+
   // The loan-payment link persists AT ONCE — no Save-button gating, unlike
   // the category field above (see `LoanPaymentField`'s own doc comment).
   // Both handlers are guarded on `existing` even though the field itself
@@ -1342,12 +1365,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       }
 
       navigation.goBack();
-    } catch {
+    } catch (error) {
       // Every write above — recordManual/recordManualWithReturns/recordExchange/
       // recordExchangeCounterpart/update/setCategory — can reject; unhandled,
       // the screen would silently fail to navigate, with Save re-enabled and
       // no explanation. Mirror the established Alert pattern instead.
-      showSaveErrorAlert();
+      showSaveFailureAlert(error);
     }
   };
 

@@ -12,6 +12,7 @@ jest.mock('@kiko/db/client', () => {
 
 jest.mock('@kiko/monobank/token', () => ({ clearToken: jest.fn() }));
 jest.mock('@kiko/crypto-sync/binance', () => ({ clearCredentials: jest.fn() }));
+jest.mock('@kiko/crypto-sync/bybit', () => ({ clearBybitCredentials: jest.fn() }));
 
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';

@@ -34,6 +34,7 @@ import EmptyState from '@kiko/design-system/components/empty-state';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { buildTypeBreakdown } from '@kiko/statistics/type-breakdown';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
+import { pastLimitsKeysOf } from '@kiko/crypto-sync/exchange/registry';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
@@ -577,6 +578,14 @@ const StatisticsScreen: FC = () => {
           loading={backfillStatus.state === 'loading'}
           spaceAbove={NET_WORTH_CARD_GAP}
         />
+
+        {pastLimitsKeysOf(filtered.filteredAccounts.map(({ institution }) => institution)).map(
+          (key) => (
+            <Text key={key} variant="caption" tone="textSecondary">
+              {t(key)}
+            </Text>
+          ),
+        )}
       </Box>
     </Card>
   );

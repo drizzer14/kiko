@@ -8,10 +8,13 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { addMonths } from '@kiko/holdings/interest';
 import { formatMoney } from '@kiko/currency/format';
-import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
 import {
   EDIT_ACTION_TEST_ID,
@@ -23,9 +26,12 @@ import {
   VIEW_HOLDING_ACTION_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { entityColorsDark } from '@kiko/design-system/palette';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 import { DAY_MS, formatDate, startOfLocalDay } from '@kiko/dates';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -1581,6 +1587,50 @@ describe('HoldingDetailScreen', () => {
     expect(icon.props.tintColor).toBe('#FF5733');
   });
 
+  describe('the ledger row category glyph', () => {
+    const rowGlyphTintOf = async () => {
+      seed(
+        cardHolding,
+        [
+          {
+            id: 'txn-cat',
+            amountMinorUnits: -5000,
+            time: 1,
+            description: 'Coffee',
+            category: 'Food',
+            source: 'manual',
+          },
+        ],
+        [{ key: 'food', title: 'Food', icon: 'fork.knife', color: entityColorsDark.yellow }],
+      );
+
+      const { getByLabelText } = await renderScreen();
+
+      return getByLabelText('Food').props.tintColor;
+    };
+
+    it('keeps the tile on the glyph in the dark world', async () => {
+      expect(await rowGlyphTintOf()).toBe(entityColorsDark.yellow);
+    });
+
+    describe('in the light world', () => {
+      beforeEach(() => {
+        registerLightThemeFirst();
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('paints the light mark of the tile, not the tile', async () => {
+        const tile = lightTheme.colors.entityColors.yellow;
+
+        expect(markColor(tile, 'light')).not.toBe(tile);
+        expect(await rowGlyphTintOf()).toBe(markColor(tile, 'light'));
+      });
+    });
+  });
+
   it('renders the neutral category icon for an empty or unknown category', async () => {
     seed(cardHolding, [
       {
@@ -1742,6 +1792,81 @@ describe('HoldingDetailScreen', () => {
     expect(transactionsRepo.remove).not.toHaveBeenCalled();
   });
 
+  describe('a manual row on a holding a sync owns', () => {
+    const manualRow = {
+      id: 'txn-9',
+      amountMinorUnits: -5000,
+      time: 1,
+      description: 'Coffee',
+      source: 'manual',
+    };
+    // Each pair is a synced key and the institution that owns it: a connect writes both.
+    const SYNCED_KINDS = [
+      ['bybitAsset', 'bybit'],
+      ['binanceAsset', 'binance'],
+      ['monobankId', 'monobank'],
+      ['walletAddress', 'btc_wallet'],
+    ] as const;
+    const seedKeyed = (key: string, institution: string | null) =>
+      seed(
+        { ...bankCardHolding, metadata: { [key]: 'synced-key' } },
+        [manualRow],
+        [],
+        [],
+        [],
+        undefined,
+        { ...bankAccount, institution },
+      );
+
+    it.each(SYNCED_KINDS)(
+      '%s: a manual row on a connected holding offers no Duplicate',
+      async (key, institution) => {
+        seedKeyed(key, institution);
+
+        const { getByTestId, queryByTestId } = await renderScreen();
+
+        await holdCard();
+
+        expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+        expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+        expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+      },
+    );
+
+    it.each(SYNCED_KINDS)('%s: the same row offers Duplicate after a disconnect', async (key) => {
+      seedKeyed(key, null);
+
+      const { getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+    });
+
+    it('a manual row on a holding with an earlier provider’s key offers Duplicate', async () => {
+      seedKeyed('binanceAsset', 'btc_wallet');
+
+      const { getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+    });
+
+    it('a manual row of a holding with no synced key, on a connected account, offers Duplicate', async () => {
+      seed({ ...bankCardHolding, metadata: { iban: 'UA00' } }, [manualRow], [], [], [], undefined, {
+        ...bankAccount,
+        institution: 'monobank',
+      });
+
+      const { getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+    });
+  });
+
   it('does not offer delete on a synced transaction row, only the View action', async () => {
     seed(
       bankCardHolding,
@@ -1884,6 +2009,45 @@ describe('HoldingDetailScreen', () => {
           [linkedRow],
           [bankAccount, debtsAccount],
         );
+
+      // The row is stored on its payer, so the menu reads the payer's holding and account, never
+      // the loan's.
+      const seedLoanWithPayer = (institution: string | null) =>
+        seed(
+          loanOnDebts,
+          [],
+          [],
+          [{ ...payer, metadata: { monobankId: 'mono-1' } }],
+          [],
+          [{ baseCurrency: 'UAH' }],
+          debtsAccount,
+          [],
+          {},
+          [linkedRow],
+          [{ ...bankAccount, institution }, debtsAccount],
+        );
+
+      it('a loan’s linked payment reads its payer: no Duplicate on a connected payer', async () => {
+        seedLoanWithPayer('monobank');
+
+        const { getByTestId, queryByTestId } = await renderScreen();
+
+        await holdCard();
+
+        expect(queryByTestId(DUPLICATE_ACTION_TEST_ID)).toBeNull();
+        expect(getByTestId(VIEW_ACCOUNT_ACTION_TEST_ID)).toBeTruthy();
+        expect(getByTestId(DELETE_ACTION_TEST_ID)).toBeTruthy();
+      });
+
+      it('Duplicate on a disconnected payer', async () => {
+        seedLoanWithPayer(null);
+
+        const { getByTestId } = await renderScreen();
+
+        await holdCard();
+
+        expect(getByTestId(DUPLICATE_ACTION_TEST_ID)).toBeTruthy();
+      });
 
       it('opens the PAYER holding from View holding', async () => {
         seedLoanWithLinkedPayment();
@@ -3467,6 +3631,29 @@ describe('HoldingDetailScreen', () => {
       [],
       [{ baseCurrency: 'UAH' }],
       { id: 'acc-1', institution: null },
+    );
+
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add transaction')).toBeTruthy();
+  });
+
+  it('keeps the footer add action for a holding with an earlier provider’s key', async () => {
+    // The account is connected, but to a wallet: the `binanceAsset` key is Binance's, which the
+    // wallet's sync never writes, so the holding is manual.
+    seed(
+      {
+        ...cardHolding,
+        accountId: 'acc-1',
+        metadata: { binanceAsset: 'BTC' },
+      },
+      [],
+      [],
+      [],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      { id: 'acc-1', institution: 'btc_wallet' },
     );
 
     const { getByTestId } = await renderScreen();

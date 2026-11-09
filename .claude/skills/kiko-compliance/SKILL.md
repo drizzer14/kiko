@@ -25,6 +25,9 @@ The rejection guideline. Apple moved it from 2.3.1(a) to 2.5.19 on 2026-10-16
 (https://developer.apple.com/news/?id=92th7e5i). Only the hidden-feature rule moved: the
 Notes-for-Review sentence stayed in 2.3.1(a) (checked 2026-10-18,
 https://developer.apple.com/app-store/review/guidelines/), so citing it below is correct.
+Kiko's reading, not Apple's text: text collapsed by default is not hidden when its toggle
+label names what it hides
+(`collapsedLabel` of `ExpandToggle`, kiko-design-system).
 2.5.19 also bans hiding an undocumented feature
 in the binary, such as through code obfuscation or other methods: grounds for removal from the
 App Store and termination of the developer account. Its intent is bait-and-switch, a feature
@@ -151,6 +154,10 @@ is no EODHD entry (removed with the shares cut, Guideline 2.5.19). The live
 gh-pages policy may still name EODHD until the edited policy is
 published: check the live policy before an upload.
 
+A value made from a user identifier and kept in `exchange_state` travels in the `.kiko` file
+(O93). The policy entry must name that value and say that a script can find the id (A147,
+`src/crypto-sync/bybit/bybit.privacy-policy.test.ts`).
+
 The Tables CSV export (`src/data-transfer/csv-export/`) leaves the device only through the
 user's own share sheet, behind a device-passcode gate, as an unencrypted plain-text file the
 screen warns about; the file is deleted after the share or at the next launch
@@ -187,7 +194,7 @@ no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`,
 is a disk leak path through NSURLCache (`Cache.db` stores the response under
 its URL, together with the request object and its headers). Always send the
 request header `Cache-Control: no-store` on every such request (every
-Monobank and Binance request does); `npm run check:plist` fails a
+Monobank, Binance and Bybit request does); `npm run check:plist` fails a
 credential client without it. `AppDelegate.purgeStoredURLCacheOnce` cleared
 the rows builds before that stored. Verified on macOS CFNetwork: a per-request
 `cachePolicy` does NOT prevent the store, and React Native fetch's
@@ -314,6 +321,13 @@ dependency first becomes visible — but it does not judge whether a dep
 loads remote code, so this stays a reviewer question backed by
 `check:deps` visibility, not a mechanized gate.
 
+## Licences of bundled data
+
+Bundled third-party data whose licence requires a notice (MIT) ships the full text of that notice
+as a bundled constant (`MCC_NAMES_NOTICE` in `src/categories/mcc-names/mcc-names.notice.ts`). User
+ruling Q-MCC2 D (2026-11-08): no screen shows it. A new bundled dataset records its licence the
+same way, with a hash pin in `src/categories/mcc-names/mcc-names.notice.test.ts`.
+
 ## Third-party trademarks
 
 Ask: does this diff add a bank/exchange logo asset, name, or wording
@@ -352,7 +366,8 @@ Standing items:
   synchronizable. `hardenedFor` (`src/crypto-sync/exchange/credentials/credentials.ts`) sets
   `accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY`, and both Binance writers
   use it (`saveExchangeCredentials` in that file,
-  `src/crypto-sync/binance/migrate-binance-credential.ts`). Re-check
+  `src/crypto-sync/binance/migrate-binance-credential.ts`); Bybit writes through
+  `saveExchangeCredentials` in `src/crypto-sync/bybit/bybit.credentials.ts`. Re-check
   that any new writer of the key goes through `hardenedFor`.
 - (c) The Connect help keeps asking for a read-only key with no trading or withdrawal
   permission (4(b)); a change to that help text re-opens this item. Pinned by
@@ -367,6 +382,62 @@ The app's Binance endpoints are a closed list, `BINANCE_SIGNED_PATHS` and `BINAN
 the doc test `binance.privacy-policy.test.ts` (plan row D1) requires every one to be named in
 policy section 3 of the four policy files. A new path goes to that list plus its policy phrase
 in the test and all four files; read the list there, never a copy.
+
+Bybit API terms (read 2026-11-03 and 2026-11-09; verdict PASS WITH CONDITIONS, global bybit.com
+accounts only, ruling O39). This is a reading of terms, not legal advice. The tracked
+record is section 9 of `docs/superpowers/specs/2026-11-03-bybit-sync-design.md`
+(heading "Terms verdict, 2026-11-03": the verdict table, the conditions C1 to C7, and the C7
+row with the 2026-11-09 URL, hash and sections read). The git-ignored work files
+`.superpowers/sdd/1.4-bybit/terms-verdict.md` and
+`.superpowers/sdd/1.4-bybit/research-c7-reread-2026-11-09.md` hold the quotes. A Bybit EU
+account is forbidden by EU 7.4 (no access through a non-official or unauthorised
+application): an EU key never goes
+to `api.bybit.eu`, and the copy says Kiko does not support those accounts.
+Documents. The API Terms PDF has no date; its URL and its 2026-11-09 SHA-256 are in the C7 row
+(compare the hash at the next re-read). Sections 1.1, 1.2, 2.1 and 6.9 were read on 2026-11-09,
+and 2.2 to 2.8 were spot-checked against the 2026-11-03 text. The Global terms page says
+"last updated 2026-10-16". The EU terms page says "2026-07-20". The Global and EU PDFs were
+checked by page date and file name only on 2026-11-09: their text is unread since 2026-11-03.
+The API Docs guide and intro have no date and no new rule. The EU 4.3.7 list is still unread.
+Clauses that matter: API 6.5 (no replicating a product's functions or clients, or replacing
+its user experience: not forbidden, but a real doubt, because the clause is broad); 6.7 (no
+repackaging or reselling); 6.9 (no commercial exploiting of the APIs; Kiko is free); 2.5 (giving
+a key to a third party is a warning, not a ban); 7.1 (the API Documentation adds terms); 8.3
+(the API Terms prevail over the Documentation); 1.2 (the API Terms prevail over the Terms of
+Use; this corrects the 2026-11-03 reading that no clause sets a precedence); Global 40.4(e) (no
+commercial use of the Site, the Platform, or Bybit's logo, trademark or brand name; on the
+verdict's reading, plain text in a free app is not commercial use, and the store listing is the
+closest point, C4) and 40.4(c); EU 7.4.
+Conditions and their pins (read each test there):
+- C1 (EU copy, no `api.bybit.eu`): `src/crypto-sync/bybit/bybit.shipped-copy.test.ts`,
+  `bybit-credentials-field.component.test.tsx` in
+  `src/design-system/components/bybit-credentials-field/`, and
+  `src/crypto-sync/bybit/bybit.endpoints.test.ts`.
+- C2 (a closed list of GET routes, no write path; a trading feature re-opens API 6.5):
+  `src/crypto-sync/bybit/bybit.endpoints.test.ts`.
+- C3 (free: no price, ad, purchase, tip, sponsor or affiliate code on the management URL): the
+  URL is pinned in
+  `src/design-system/components/bybit-credentials-field/bybit-credentials-field.component.test.tsx`;
+  the business state has no test and is a
+  reviewer's judgment.
+- C4 (name as plain text, no logo, no Bybit look, the not-affiliated caption, no Bybit in the
+  store title, subtitle or keywords): the caption is pinned in
+  `src/screens/forms/exchange-type-field/exchange-type-field.component.test.tsx`; the rest is a
+  reviewer's judgment.
+- C5 (the key stays on the device): `src/crypto-sync/bybit/bybit.credentials.test.ts`.
+- C7 (re-read): at each release that changes Bybit, re-read API Terms sections 1 and 2.1, the
+  API Docs (7.1) and the EU 4.3.7 list. The 2026-11-09 result is PARTIAL: API Terms by text,
+  Global and EU by page date and file name only, the EU 4.3.7 list unread. The stop rule (O23)
+  did not fire. Not mechanizable: a legal reading.
+Guideline 5.2.2 and API 6.5: both doubts are open and ACCEPTED by the user on 2026-11-03
+(O42): keep Bybit, global accounts only, no letter to Bybit. A change of scope (EU accounts, any
+write or trade route, any revenue) re-opens both.
+
+The app's Bybit endpoints are a closed list, `BYBIT_SIGNED_PATHS`
+(`src/crypto-sync/bybit/bybit.endpoints.ts`); there is no public list. The doc test
+`src/crypto-sync/bybit/bybit.privacy-policy.test.ts` requires every path phrase in the four
+policy files (`POLICY_FILES` there), pins the label separator, forbids Earn words and holds the
+O93 clause. A new path goes to that list plus its policy phrase in the test and all four files.
 
 ## No tracking/analytics SDKs
 
