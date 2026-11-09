@@ -70,9 +70,10 @@ export const entityColorsLight: Record<SwatchName, string> = {
   gray: '#9BA1AF',
 };
 
-// The approved light set is one set for accounts, holdings and categories, so an account tile and a
-// category tile of one color match. Kept as its own export so a consumer names the set it means.
-export const categoryColorsLight = entityColorsLight;
+// The producer tables are separate (palette.json keeps an entity and a category block); v3.1 sets
+// them equal, so an account tile and a category tile of one color match. A copy, not an alias, so
+// each export stays its own value and the two can diverge.
+export const categoryColorsLight: Record<SwatchName, string> = { ...entityColorsLight };
 
 // The same eight hues in the same order as chartSeriesDark, read from the category set. Both light
 // sets are one set, so a light chart hue is a subset of either (pinned by
