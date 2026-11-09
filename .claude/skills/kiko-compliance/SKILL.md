@@ -102,7 +102,9 @@ e2e/screenshot/fixtures/generate-demo-kiko.test.ts`), or any change to
 the snapshot shape: a new table, a new `settings` column, or a changed
 column default. Regenerate in the same commit as the migration
 (`KIKO_REGEN_DEMO=1 npx jest
-e2e/screenshot/fixtures/generate-demo-kiko.test.ts`). A new visible
+e2e/screenshot/fixtures/generate-demo-kiko.test.ts`). The category check file is a separate
+file with its own `KIKO_REGEN_CATEGORY_CHECK=1`; a snapshot-shape change must regenerate it
+too, or `generate-demo-kiko.test.ts` fails on its decrypt-and-compare case. A new visible
 feature that is not a new kind or type (a new metadata option, a new
 linked-row flow) is still a judgment question: does the dataset show it?
 Dates also derive from a regen-time anchor, so the files go sparse, then

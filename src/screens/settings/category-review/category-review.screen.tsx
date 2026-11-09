@@ -31,6 +31,7 @@ import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 
 import ReviewLine from './review-line';
@@ -63,6 +64,7 @@ const lineSuggestionOf = (
 // state in place of its lines, never the empty state.
 const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
   const { t } = useTranslation();
+  const scheme = useActiveColorScheme();
   const isVisible = useIsScreenVisible();
   // Paused by visibility, not focus: in a split window a screen can show without being the
   // focused route. Never cached: these reads lead to a write, so a cached row could be one
@@ -117,9 +119,9 @@ const CategoryReviewScreen: FC<CategoryReviewScreenProps> = () => {
           key: category.key,
           title: resolveDefaultCategoryTitle(category.key, category.title),
           icon: category.icon,
-          color: resolveCategoryColor(category.color, category.key),
+          color: resolveCategoryColor(category.color, category.key, scheme),
         })),
-    [categories],
+    [categories, scheme],
   );
   const actions = useReviewActions();
   const headingScrollProps = useLargeTitleScroll();

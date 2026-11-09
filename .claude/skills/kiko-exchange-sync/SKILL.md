@@ -979,7 +979,9 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
   marker, and the pair rule beside it (`sameCurrencyMoveTransactionIds`, same file, run over the
   unfiltered ledger) takes it out of spending only when it and a row of its own pair id are equal
   and opposite in one currency on two holdings (user ruling 2026-10-31 Q1 = A; it restores the
-  1.2.0 result). A synced debit a Convert sent into ANOTHER currency still counts as spending
+  1.2.0 result). A row that sets a balance (`setsBalance`) takes no part in either this pair
+  rule or the funding matcher below (skipped before grouping, as neither debit nor credit). A
+  synced debit a Convert sent into ANOTHER currency still counts as spending
   (user ruling M-1 = A, 2026-10-25), and so does a same-currency move whose amount differs; a
   rule may move either between slices with the total unchanged.
 - A P2P / card / fiat-deposit purchase row carries no `exchangeCounterpartHoldingId`; its
@@ -1017,7 +1019,8 @@ kiko-domain's "Deleting a movement takes its other parts"). Three consequences h
 - **The 2-minute same-amount matcher sees only unmarked rows.**
   `rowsForTransferMatch` (`src/statistics/internal-transfers/internal-transfers.ts`)
   drops every row that carries `exchangePairId`, `exchangeCounterpartHoldingId` or
-  `untrackedCounterpart` before `internalTransferTransactionIds` runs
+  `untrackedCounterpart`, or sets a balance (`setsBalance`), before
+  `internalTransferTransactionIds` runs
   (called in `src/statistics/spending-ledger/spending-ledger.ts`). A row with any of the three
   is an exchange leg that the marker
   rule or the pair rule excludes (a cross-currency or unequal pair-id-only debit, which neither

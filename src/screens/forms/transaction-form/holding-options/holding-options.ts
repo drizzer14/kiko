@@ -1,6 +1,7 @@
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 import { syncedHoldingIds } from '@kiko/holdings/deletable';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -22,6 +23,7 @@ export const buildReturnOptions = (
   accountById: ReadonlyMap<string, AccountRow>,
   payerCurrency: Currency,
   pickedElsewhere: ReadonlySet<string>,
+  scheme: ColorScheme,
 ): HoldingSelectOption[] => {
   const syncableIds = syncedHoldingIds(holdings, accountById);
 
@@ -31,6 +33,7 @@ export const buildReturnOptions = (
     accountOrderById,
     undefined,
     isTransactionEligibleType,
+    scheme,
   ).filter(
     (option) =>
       option.currency === payerCurrency &&
@@ -59,6 +62,7 @@ export const buildLoanOptions = (
   accountOrderById: ReadonlyMap<string, number>,
   paymentCurrency: Currency,
   selectedLoanHoldingId: string | null,
+  scheme: ColorScheme,
 ): HoldingSelectOption[] => {
   const openOptions = buildExchangeOptions(
     holdings,
@@ -66,6 +70,7 @@ export const buildLoanOptions = (
     accountOrderById,
     undefined,
     (type) => type === 'loan',
+    scheme,
   ).filter((option) => option.currency === paymentCurrency);
 
   if (
@@ -81,7 +86,7 @@ export const buildLoanOptions = (
     return openOptions;
   }
 
-  return [...openOptions, toHoldingOption(selectedHolding, accountNameById)];
+  return [...openOptions, toHoldingOption(selectedHolding, accountNameById, scheme)];
 };
 
 // Order two holdings the way the Accounts screen shows them: primary by
@@ -125,6 +130,7 @@ export const buildExchangeOptions = (
   accountOrderById: ReadonlyMap<string, number>,
   excludeHoldingId: string | undefined,
   isEligibleType: (type: HoldingRow['type']) => boolean,
+  scheme: ColorScheme,
 ): HoldingSelectOption[] => {
   return holdings
     .filter(
@@ -134,7 +140,7 @@ export const buildExchangeOptions = (
         isEligibleType(candidate.type),
     )
     .sort((first, second) => compareByAccountThenHolding(first, second, accountOrderById))
-    .map((candidate) => toHoldingOption(candidate, accountNameById));
+    .map((candidate) => toHoldingOption(candidate, accountNameById, scheme));
 };
 
 // Whether a holding TYPE takes a plain manual transaction — the same gate
@@ -158,6 +164,7 @@ export const buildPrimaryOptions = (
   accountNameById: ReadonlyMap<string, string>,
   accountOrderById: ReadonlyMap<string, number>,
   accountById: ReadonlyMap<string, AccountRow>,
+  scheme: ColorScheme,
 ): HoldingSelectOption[] => {
   const syncableIds = syncedHoldingIds(holdings, accountById);
 
@@ -167,6 +174,7 @@ export const buildPrimaryOptions = (
     accountOrderById,
     undefined,
     isTransactionEligibleType,
+    scheme,
   ).filter((option) => !syncableIds.has(option.id));
 };
 

@@ -79,7 +79,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   ///
   /// Both the base color and the blur material adapt to the ACTIVE color scheme.
   /// React Native 0.87's `Appearance.setColorScheme` (driven by
-  /// `applyAppearance` in `src/appearance/appearance.ts`) sets
+  /// `useSyncAppearanceWithSettings` and `applyLaunchAppearance` in `src/appearance/`) sets
   /// `window.overrideUserInterfaceStyle` on every window — verified in
   /// `RCTAppearance.mm`'s `setColorScheme:`, which walks every scene's windows —
   /// so `window.traitCollection.userInterfaceStyle` reflects the user's PINNED

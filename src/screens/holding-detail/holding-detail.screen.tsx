@@ -90,6 +90,7 @@ import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import EntryDateHeader from '@kiko/design-system/components/entry-date-header';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
@@ -513,6 +514,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const clock = useTimeClock();
+  const scheme = useActiveColorScheme();
   const {
     currency,
     showTime,
@@ -641,7 +643,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                   name={category.icon}
                   size={theme.iconSizes.body}
                   tone="textSecondary"
-                  color={resolveCategoryColor(category.color, categoryKey)}
+                  color={resolveCategoryColor(category.color, categoryKey, scheme)}
                   accessibilityLabel={category.title}
                 />
               }
@@ -1115,7 +1117,8 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // The holding's effective icon + color, rendered as the identity glyph beside
   // the Value amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon slot
   // below) rather than in the nav title.
-  const identity = holding ? holdingIdentity(holding) : undefined;
+  const scheme = useActiveColorScheme();
+  const identity = holding ? holdingIdentity(holding, scheme) : undefined;
   // The holding's owning account, needed to open its edit form (the form reads
   // the account's kind to constrain the type chips). Always present on a real
   // row (accountId is NOT NULL); the header Edit action is gated on it.

@@ -1,11 +1,23 @@
+import { sweep } from '@kiko/test-support/property-sweep';
+import { seededRandom } from '@kiko/test-support/seeded-random';
+
+import {
+  type SwatchName,
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '../palette';
 import { darkTheme } from '../theme';
 
 import {
   darkenHex,
+  categoryDisplayColor,
+  entityDisplayColor,
   entityIconTileGradient,
   isLightEntityColor,
   lightenHex,
   resolveEntityColor,
+  wcagContrastRatio,
 } from './entity-tint';
 
 describe('darkenHex', () => {
@@ -148,5 +160,155 @@ describe('resolveEntityColor', () => {
 
   it('passes an unknown/custom stored hex through unchanged, never breaking a legacy value', () => {
     expect(resolveEntityColor('#123456', undefined)).toBe('#123456');
+  });
+});
+
+describe('entityDisplayColor', () => {
+  const SWATCHES = Object.keys(entityColorsDark) as SwatchName[];
+  const WHITE = '#FFFFFF';
+  const MINIMUM_LIGHT_CONTRAST = 3.4;
+  const SEED_SPREAD = 1_000_003;
+  const SEEDS = sweep([1, 2, 3, 4, 5, 6, 7, 8]);
+  const DRAWS_PER_SEED = 40;
+
+  const hueAndSaturationOf = (hex: string): { hue: number; saturation: number } => {
+    const [red, green, blue] = [1, 3, 5].map(
+      (start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255,
+    );
+    const high = Math.max(red, green, blue);
+    const low = Math.min(red, green, blue);
+    const spread = high - low;
+    const saturation = spread / (1 - Math.abs(high + low - 1));
+
+    if (high === red) {
+      return { hue: (((green - blue) / spread) * 60 + 360) % 360, saturation };
+    }
+
+    if (high === green) {
+      return { hue: ((blue - red) / spread + 2) * 60, saturation };
+    }
+
+    return { hue: ((red - green) / spread + 4) * 60, saturation };
+  };
+
+  const drawHexes = (seed: number): string[] => {
+    const random = seededRandom(seed * SEED_SPREAD);
+    const channel = (): string =>
+      Math.floor(random() * 256)
+        .toString(16)
+        .padStart(2, '0');
+
+    return Array.from({ length: DRAWS_PER_SEED }, () => `#${channel()}${channel()}${channel()}`);
+  };
+
+  it('dark returns the input verbatim, any case, in or out of the set', () => {
+    expect(entityDisplayColor('#ff9f0a', 'dark')).toBe('#ff9f0a');
+    expect(entityDisplayColor('#FF9F0A', 'dark')).toBe('#FF9F0A');
+    expect(entityDisplayColor('#123456', 'dark')).toBe('#123456');
+  });
+
+  it('throws on an unset scheme instead of reading it as light', () => {
+    expect(() => entityDisplayColor('#FF9F0A', undefined as never)).toThrow();
+  });
+
+  it.each(SWATCHES)('light maps %s by key, in either letter case', (name) => {
+    expect(entityDisplayColor(entityColorsDark[name], 'light')).toBe(entityColorsLight[name]);
+    expect(entityDisplayColor(entityColorsDark[name].toLowerCase(), 'light')).toBe(
+      entityColorsLight[name],
+    );
+  });
+
+  it.each(['#FFFF00', '#00FF00'])(
+    'light out of set keeps hue and saturation and clears 3.4 to white: %s',
+    (stored) => {
+      const shown = entityDisplayColor(stored, 'light');
+      const before = hueAndSaturationOf(stored);
+      const after = hueAndSaturationOf(shown);
+
+      expect(wcagContrastRatio(stored, WHITE)).toBeLessThan(MINIMUM_LIGHT_CONTRAST);
+      expect(wcagContrastRatio(shown, WHITE)).toBeGreaterThanOrEqual(MINIMUM_LIGHT_CONTRAST);
+      expect(Math.abs(after.hue - before.hue)).toBeLessThan(2);
+      expect(Math.abs(after.saturation - before.saturation)).toBeLessThan(0.03);
+    },
+  );
+
+  it('light out of set lowers lightness in 1% steps and stops at the first value that passes', () => {
+    expect(entityDisplayColor('#FFFF00', 'light')).toBe('#8f8f00');
+    expect(entityDisplayColor('#00FF00', 'light')).toBe('#009e00');
+  });
+
+  it('light out of set passing 3.4 returns unchanged', () => {
+    expect(wcagContrastRatio('#112233', WHITE)).toBeGreaterThanOrEqual(MINIMUM_LIGHT_CONTRAST);
+    expect(entityDisplayColor('#112233', 'light')).toBe('#112233');
+  });
+
+  it.each(SEEDS)(
+    'any valid hex: dark returns it verbatim, light returns a set member or clears 3.4 (seed %i)',
+    (seed) => {
+      const drawn = drawHexes(seed);
+      const members = new Set(Object.values(entityColorsLight));
+      const passing = new Set(
+        drawn.filter((hex) => wcagContrastRatio(hex, WHITE) >= MINIMUM_LIGHT_CONTRAST),
+      );
+
+      expect(passing.size).toBeGreaterThan(0);
+      expect(passing.size).toBeLessThan(new Set(drawn).size);
+
+      for (const hex of drawn) {
+        const shown = entityDisplayColor(hex, 'light');
+
+        expect(entityDisplayColor(hex, 'dark')).toBe(hex);
+        expect(
+          members.has(shown) || wcagContrastRatio(shown, WHITE) >= MINIMUM_LIGHT_CONTRAST,
+        ).toBe(true);
+
+        if (passing.has(hex)) {
+          expect(shown).toBe(hex);
+        }
+      }
+    },
+  );
+});
+
+describe('categoryDisplayColor', () => {
+  const SWATCHES = Object.keys(entityColorsDark) as SwatchName[];
+  const OUT_OF_SET = ['#FFFF00', '#00FF00', '#112233', '#FF0000'];
+  const MINIMUM_LIGHT_CONTRAST = 3.4;
+
+  it('dark returns the input verbatim, any case, in or out of the set', () => {
+    expect(categoryDisplayColor('#ff9f0a', 'dark')).toBe('#ff9f0a');
+    expect(categoryDisplayColor('#123456', 'dark')).toBe('#123456');
+  });
+
+  it('throws on an unset scheme instead of reading it as light', () => {
+    expect(() => categoryDisplayColor('#FF9F0A', undefined as never)).toThrow();
+  });
+
+  it.each(SWATCHES)('light maps %s by key to the category set, in either letter case', (name) => {
+    expect(categoryDisplayColor(entityColorsDark[name], 'light')).toBe(categoryColorsLight[name]);
+    expect(categoryDisplayColor(entityColorsDark[name].toLowerCase(), 'light')).toBe(
+      categoryColorsLight[name],
+    );
+  });
+
+  it('the same dark hex differs by producer where the palette differs', () => {
+    const differing = SWATCHES.filter(
+      (name) => entityColorsLight[name] !== categoryColorsLight[name],
+    );
+
+    expect(differing.length).toBeGreaterThan(0);
+
+    for (const name of differing) {
+      expect(categoryDisplayColor(entityColorsDark[name], 'light')).not.toBe(
+        entityDisplayColor(entityColorsDark[name], 'light'),
+      );
+    }
+  });
+
+  it.each(OUT_OF_SET)('light out of set takes the entity lightness rule: %s', (stored) => {
+    const shown = categoryDisplayColor(stored, 'light');
+
+    expect(shown).toBe(entityDisplayColor(stored, 'light'));
+    expect(wcagContrastRatio(shown, '#FFFFFF')).toBeGreaterThanOrEqual(MINIMUM_LIGHT_CONTRAST);
   });
 });

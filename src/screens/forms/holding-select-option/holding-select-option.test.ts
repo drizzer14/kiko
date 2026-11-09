@@ -1,4 +1,5 @@
 import type { HoldingRow } from '@kiko/db';
+import { entityColorsLight } from '@kiko/design-system/palette';
 
 import { toHoldingOption } from '.';
 
@@ -18,7 +19,7 @@ const holdingOf = (overrides: Partial<HoldingRow> = {}): HoldingRow =>
 
 describe('toHoldingOption', () => {
   it('projects the holding to a picker option with its account name', () => {
-    expect(toHoldingOption(holdingOf(), new Map([['a1', 'Monobank']]))).toEqual({
+    expect(toHoldingOption(holdingOf(), new Map([['a1', 'Monobank']]), 'dark')).toEqual({
       id: 'h1',
       name: 'Black card',
       currency: 'USD',
@@ -33,12 +34,21 @@ describe('toHoldingOption', () => {
     const option = toHoldingOption(
       holdingOf({ icon: 'star', color: '#ABCDEF' }),
       new Map([['a1', 'Monobank']]),
+      'dark',
     );
 
     expect(option).toMatchObject({ icon: 'star', color: '#ABCDEF' });
   });
 
   it('leaves the account name empty when the parent account is not in the map', () => {
-    expect(toHoldingOption(holdingOf(), new Map([['other', 'Monobank']])).accountName).toBe('');
+    expect(toHoldingOption(holdingOf(), new Map([['other', 'Monobank']]), 'dark').accountName).toBe(
+      '',
+    );
+  });
+
+  it('carries the light twin of the holding color in the light scheme', () => {
+    const option = toHoldingOption(holdingOf(), new Map([['a1', 'Monobank']]), 'light');
+
+    expect(option.color).toBe(entityColorsLight.white);
   });
 });

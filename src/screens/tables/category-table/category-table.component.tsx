@@ -1,31 +1,39 @@
-import { minOf } from '@kiko/numbers';
-import { type FC, useMemo } from 'react';
-import type { TFunction } from 'i18next';
-import { Money } from '@kiko/currency/money';
+import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
 import DataTable, {
-  type DataTableCell,
   type DataTableColumn,
   type DataTableRow,
 } from '@kiko/design-system/components/data-table';
-import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
+import { type FC, useCallback, useMemo } from 'react';
 import { activeLocale } from '@kiko/i18n/active-locale';
-import type { Currency } from '@kiko/currency/currency';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { buildCategoryByMonth } from '@kiko/statistics/category-by-month';
+import { type CellRange, expenseRowsOf } from '@kiko/statistics/cell-rows';
 import { averageOverComplete, firstCompleteMonthIndex } from '@kiko/statistics/table-period';
 
-import { monthColumnLabel, monthTitle } from '../month-column-label';
+import {
+  columnsOf,
+  periodOf,
+  firstRowTimeOf,
+  averageCellOf,
+  openingCellOf,
+  openingColumnIndexOf,
+  type Spoken,
+} from '../table-cells';
+import { monthTitle } from '../month-column-label';
+import CellRowsSheet, { useCellRowsSheet } from '../cell-rows-sheet';
 
 import { styles } from './category-table.styles';
 import type { CategoryTableProps } from './category-table.props';
 
-const NO_VALUE = '–';
-const WHOLE_UNITS = { fractionDigits: 0, symbol: false } as const;
-// The table opens with this many month columns showing, the next column peeking in as the hint
-// that it scrolls.
-const OPENING_MONTHS_SHOWN = 3;
+// The table keeps a row's key, title and amounts, never a slice color, so the scheme the breakdown
+// resolves colors in cannot show here; the category menu's own slices take the active one.
+const TABLE_SCHEME: ColorScheme = 'dark';
+
+/** Which rows a cell opens: a category's, or the All row's, which a held pick narrows. */
+type CellSelector = { kind: 'category'; key: string } | { kind: 'all' };
 
 type Amounts = {
   key: string;
@@ -36,49 +44,36 @@ type Amounts = {
   total: number;
   /** Null when no month is complete yet. */
   average: number | null;
-};
-
-type Spoken = { baseCurrency: Currency; locale: string; t: TFunction };
-
-const cellOf = (amount: number, label: string, spoken: Spoken): DataTableCell => {
-  const money = Money.of(spoken.baseCurrency, amount);
-
-  return {
-    text: formatMoney(money, spoken.locale, WHOLE_UNITS),
-    accessibilityLabel: label,
-    // The cell shows whole units; the spoken value is the full amount.
-    accessibilityValue: formatMoney(money, spoken.locale),
-  };
-};
-
-const averageCellOf = (average: number | null, label: string, spoken: Spoken): DataTableCell => {
-  if (average === null) {
-    return {
-      text: NO_VALUE,
-      accessibilityLabel: label,
-      accessibilityValue: spoken.t('tables.noCompleteMonth'),
-    };
-  }
-
-  return cellOf(Math.round(average), label, spoken);
+  selector: CellSelector;
 };
 
 const rowOf = (
   amounts: Amounts,
   months: CategoryTableProps['months'],
   spoken: Spoken,
-): DataTableRow => ({
-  key: amounts.key,
-  label: amounts.label,
-  isSummary: amounts.isSummary,
-  cells: [
-    ...amounts.cells.map((amount, index) =>
-      cellOf(amount, `${amounts.label}, ${monthTitle(months[index], spoken.t)}`, spoken),
-    ),
-    cellOf(amounts.total, `${amounts.label}, ${spoken.t('tables.total')}`, spoken),
-    averageCellOf(amounts.average, `${amounts.label}, ${spoken.t('tables.average')}`, spoken),
-  ],
-});
+  open: (title: string, selector: CellSelector, range: CellRange) => void,
+): DataTableRow => {
+  const totalLabel = `${amounts.label}, ${spoken.t('tables.total')}`;
+
+  return {
+    key: amounts.key,
+    label: amounts.label,
+    isSummary: amounts.isSummary,
+    cells: [
+      ...amounts.cells.map((amount, index) => {
+        const label = `${amounts.label}, ${monthTitle(months[index], spoken.t)}`;
+
+        return openingCellOf(amount, label, spoken, () =>
+          open(label, amounts.selector, months[index]),
+        );
+      }),
+      openingCellOf(amounts.total, totalLabel, spoken, () =>
+        open(totalLabel, amounts.selector, periodOf(months)),
+      ),
+      averageCellOf(amounts.average, `${amounts.label}, ${spoken.t('tables.average')}`, spoken),
+    ],
+  };
+};
 
 const CategoryTable: FC<CategoryTableProps> = ({
   ledger,
@@ -89,10 +84,43 @@ const CategoryTable: FC<CategoryTableProps> = ({
   baseCurrency,
   defaultCategoryKey,
   excludedCategories,
+  describeRow,
+  sheetGeneration,
   topContent,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
+  // The sheet computes its rows from this, in render, so it reads the ledger and rates as they are
+  // now, not as they were at the tap. The All cell adds the rows of the categories the table was
+  // built with, so it takes the same held pick.
+  const rowsOf = useCallback(
+    (selector: CellSelector, range: CellRange) => {
+      const display = {
+        categoryDisplay,
+        rateTable,
+        baseCurrency,
+        defaultCategoryKey,
+        describe: describeRow,
+      };
+
+      return match(selector)
+        .with({ kind: 'all' }, () => expenseRowsOf(ledger, range, { excludedCategories }, display))
+        .with({ kind: 'category' }, ({ key }) =>
+          expenseRowsOf(ledger, range, { categoryKey: key }, display),
+        )
+        .exhaustive();
+    },
+    [
+      ledger,
+      categoryDisplay,
+      rateTable,
+      baseCurrency,
+      defaultCategoryKey,
+      excludedCategories,
+      describeRow,
+    ],
+  );
+  const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf);
   const currentIsPartial = (months.at(-1)?.end ?? 0) >= now;
   const table = useMemo(
     () =>
@@ -104,6 +132,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
         baseCurrency,
         defaultCategoryKey,
         excludedCategories,
+        scheme: TABLE_SCHEME,
       }),
     [
       ledger,
@@ -115,22 +144,9 @@ const CategoryTable: FC<CategoryTableProps> = ({
       excludedCategories,
     ],
   );
-  const firstRowTime = useMemo(
-    () => (ledger.shownRows.length === 0 ? null : minOf(ledger.shownRows.map((row) => row.time))),
-    [ledger.shownRows],
-  );
+  const firstRowTime = useMemo(() => firstRowTimeOf(ledger), [ledger]);
 
-  const columns = useMemo<DataTableColumn[]>(
-    () => [
-      ...months.map((month, index) => ({
-        key: `month-${month.start}`,
-        header: monthColumnLabel(month, index === 0, t),
-      })),
-      { key: 'total', header: t('tables.total'), isSum: true },
-      { key: 'average', header: t('tables.average'), isSum: true },
-    ],
-    [months, t],
-  );
+  const columns = useMemo<DataTableColumn[]>(() => columnsOf(months, t), [months, t]);
 
   const rows = useMemo<DataTableRow[]>(() => {
     const spoken = { baseCurrency, locale, t };
@@ -147,9 +163,11 @@ const CategoryTable: FC<CategoryTableProps> = ({
             cells: row.cells,
             total: row.total,
             average: averageOf(row.cells),
+            selector: { kind: 'category', key: row.key },
           },
           months,
           spoken,
+          open,
         ),
       ),
       rowOf(
@@ -160,12 +178,14 @@ const CategoryTable: FC<CategoryTableProps> = ({
           cells: table.allCells,
           total: table.allTotal,
           average: averageOf(table.allCells),
+          selector: { kind: 'all' },
         },
         months,
         spoken,
+        open,
       ),
     ];
-  }, [table, months, firstRowTime, now, currentIsPartial, baseCurrency, locale, t]);
+  }, [table, months, firstRowTime, now, currentIsPartial, baseCurrency, locale, t, open]);
 
   const caption = t('tables.category.caption', { currency: baseCurrency });
   // The empty state goes through the table, so the controls above it are one mounted tree whether
@@ -183,15 +203,25 @@ const CategoryTable: FC<CategoryTableProps> = ({
     ) : undefined;
 
   return (
-    <DataTable
-      columns={columns}
-      rows={rows}
-      caption={currentIsPartial ? `${caption} ${t('tables.category.partialMonth')}` : caption}
-      topContent={topContent}
-      emptyContent={emptyContent}
-      initialColumnIndex={Math.max(months.length - OPENING_MONTHS_SHOWN, 0)}
-      testID="category-table"
-    />
+    <>
+      <DataTable
+        columns={columns}
+        rows={rows}
+        caption={currentIsPartial ? `${caption} ${t('tables.category.partialMonth')}` : caption}
+        topContent={topContent}
+        emptyContent={emptyContent}
+        initialColumnIndex={openingColumnIndexOf(months)}
+        testID="category-table"
+      />
+
+      {sheet !== undefined && (
+        <CellRowsSheet
+          key={`cell-rows-${sheetGeneration}`}
+          {...sheet}
+          baseCurrency={baseCurrency}
+        />
+      )}
+    </>
   );
 };
 

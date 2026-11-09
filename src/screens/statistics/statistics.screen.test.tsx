@@ -63,15 +63,24 @@ jest.mock('@react-navigation/native', () => ({
 
 import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
-import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { categoryColor, resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import '@kiko/design-system/unistyles';
+import {
+  categoryColorsLight,
+  entityColorsDark,
+  entityColorsLight,
+} from '@kiko/design-system/palette';
 import { darkTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
@@ -198,7 +207,7 @@ type Transaction = {
   loanHoldingId?: string | null;
   source?: string;
 };
-type CategoryRow = { key: string; title: string; icon: string };
+type CategoryRow = { key: string; title: string; icon: string; color?: string };
 type HistoryRow = { base: string; quote: string; day: number; rate: string; source?: string };
 type LiveData = {
   accounts?: Account[];
@@ -2127,6 +2136,61 @@ describe('StatisticsScreen', () => {
     expect(
       optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart')?.props.tintColor,
     ).toBe(categoryColor('groceries'));
+  });
+
+  it('tints a category filter option through the light map in the light scheme', async () => {
+    registerLightThemeFirst();
+    seedSpending();
+
+    try {
+      const { getByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(CATEGORY_FILTER));
+      });
+
+      const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-groceries`), 'cart')?.props
+        .tintColor;
+
+      expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
+      expect(tint).not.toBe(categoryColor('groceries'));
+    } finally {
+      restoreThemeOrder();
+    }
+  });
+
+  // A manual trend key is held in the option list without being checked in the category filter, so
+  // its glyph shows the tint; a checked row shows the white on-accent glyph instead.
+  it('tints a trend-held category with no spending through the category set in the light scheme', async () => {
+    registerLightThemeFirst();
+    setLiveData({
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: THREE_EXPENSES,
+      history: HISTORY,
+      categories: [
+        ...CATEGORIES,
+        { key: 'utilities', title: 'Utilities', icon: 'bolt', color: entityColorsDark.violet },
+      ],
+      settings: [{ baseCurrency: 'UAH', trendFilter: { mode: 'manual', keys: ['utilities'] } }],
+    });
+
+    try {
+      const { getByTestId } = await renderScreen();
+
+      await act(async () => {
+        await fireEvent.press(getByTestId(CATEGORY_FILTER));
+      });
+
+      const tint = optionGlyph(getByTestId(`${CATEGORY_FILTER}-option-utilities`), 'bolt')?.props
+        .tintColor;
+
+      expect(tint).toBe(categoryColorsLight.violet);
+      expect(tint).not.toBe(entityColorsLight.violet);
+    } finally {
+      restoreThemeOrder();
+    }
   });
 
   it('orders the category filter options by the custom category order, not by spending magnitude', async () => {

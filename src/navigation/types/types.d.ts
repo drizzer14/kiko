@@ -6,6 +6,7 @@ import type { ReminderDraft } from '@kiko/reminders/rules';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import type { TablesView } from '@kiko/statistics/tables-view';
 import type { TablePeriod } from '@kiko/statistics/table-period';
 import type { RecurringPeriod } from '@kiko/recurring/detection';
 import type { EntryTab } from '@kiko/screens/forms/transaction-form';
@@ -177,10 +178,11 @@ type HoldingFormParams = (
 };
 
 /**
- * The Tables screen's period. It lives in the route params, so a fold or a resize that remounts
- * the screen keeps it, and a new push has none, which reads as the last 12 months.
+ * The Tables screen's period and view. They live in the route params, so a fold or a resize that
+ * remounts the screen keeps them, and a new push has none, which reads as this year of the
+ * category table.
  */
-export type TablesParams = { period?: TablePeriod };
+export type TablesParams = { period?: TablePeriod; view?: TablesView };
 
 // `Statistics` is the companion pane of the Home tab on a wide window, and Home with
 // `TransactionForm` are the same on the Statistics tab: each tab shows the other's root beside

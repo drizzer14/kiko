@@ -615,7 +615,7 @@ describe('HomeScreen', () => {
     const { getByLabelText, getByTestId } = await renderHome();
 
     const rowIconTint = getByLabelText('Other').props.tintColor;
-    expect(rowIconTint).toBe(resolveCategoryColor(null, 'other'));
+    expect(rowIconTint).toBe(resolveCategoryColor(null, 'other', 'dark'));
 
     await act(async () => {
       await fireEvent.press(getByTestId('category-filter-menu'));

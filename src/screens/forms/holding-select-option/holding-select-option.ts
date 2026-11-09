@@ -1,4 +1,5 @@
 import type { HoldingRow } from '@kiko/db';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
@@ -9,11 +10,12 @@ import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-fie
 export const toHoldingOption = (
   holding: HoldingRow,
   accountNameById: ReadonlyMap<string, string>,
+  scheme: ColorScheme,
 ): HoldingSelectOption => ({
   id: holding.id,
   name: holding.name,
   currency: holding.currency,
   accountName: accountNameById.get(holding.accountId) ?? '',
   createdAt: holding.createdAt,
-  ...holdingIdentity(holding),
+  ...holdingIdentity(holding, scheme),
 });

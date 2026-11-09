@@ -1,24 +1,21 @@
+import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
-
 import '@kiko/design-system/unistyles';
 import SelectField from '.';
 import type { SelectFieldProps } from './select-field.props';
 
 type Kind = 'a' | 'b' | 'c';
 
-// Text's tone -> color mapping is a react-native-unistyles variant that the Jest setup cannot
-// resolve from a rendered style, so the mock surfaces the `tone` prop on the host element.
-jest.mock('@kiko/design-system/components/text', () => {
-  const { Text: RNText } = require('react-native');
-
-  return {
-    __esModule: true,
-    default: ({ children, ...rest }: { children: unknown }) => (
-      <RNText {...rest}>{children}</RNText>
-    ),
-  };
-});
+// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  get default() {
+    return mockTextVariantTone;
+  },
+}));
 
 const toneOf = (element: { props: Record<string, unknown> }): unknown => element.props.tone;
 
@@ -56,6 +53,20 @@ const finishClosing = async (sheet: { props: Record<string, unknown> }): Promise
 
 describe('SelectField', () => {
   const modal = spyOnModalAnimationPerTest('kind-field-sheet-modal');
+
+  it('leaves the trigger uncapped unless it is told to cap', async () => {
+    const { getByTestId } = await setup();
+
+    expect(StyleSheet.flatten(getByTestId('kind-field').props.style)?.maxWidth).toBeUndefined();
+  });
+
+  it('caps the trigger at the select trigger width when told to', async () => {
+    const { getByTestId } = await setup({ capped: true });
+
+    expect(StyleSheet.flatten(getByTestId('kind-field').props.style).maxWidth).toBe(
+      darkTheme.layout.selectTriggerMaxWidth,
+    );
+  });
 
   it("shows the selected option's label in the trigger", async () => {
     const { getByTestId } = await setup();

@@ -297,7 +297,9 @@ On import, the credentials block is validated before the database is replaced
 (`secrets/is-export-secrets.ts`): a field present with the wrong shape refuses
 the file, while a missing or empty array means no secrets, and a secret for an
 account the file does not carry is dropped. A restore keeps this device's app
-lock setting (`settings.lockEnabled`) and its notifications start, whatever the file carries
+lock setting (`settings.lockEnabled`), its notifications start and its appearance mode
+(`settings.appearance`, with its UserDefaults mirror `kiko.appearanceMode`, which the sync
+hook rewrites from the row), whatever the file carries
 (`KEPT_FROM_LIVE_ON_RESTORE`, `src/db/kept-from-live-on-restore.ts`), also
 when the file has no settings row. A Keychain write that fails after the data
 committed does not fail the import: the screen shows the success and names the

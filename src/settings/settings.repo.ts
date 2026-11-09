@@ -3,6 +3,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
+import type { AppearanceMode } from '@kiko/appearance/appearance-mode';
 import type { RecurringMark, RecurringPeriod } from '@kiko/recurring/detection';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { type Repository, type SettingsRow, settings, database, write } from '@kiko/db';
@@ -157,6 +158,10 @@ export const settingsRepo = {
     write((databaseTransaction) =>
       databaseTransaction.update(settings).set({ language }).where(eq(settings.id, SETTINGS_ID)),
     ),
+  setAppearance: (appearance: AppearanceMode) =>
+    write((databaseTransaction) =>
+      databaseTransaction.update(settings).set({ appearance }).where(eq(settings.id, SETTINGS_ID)),
+    ),
   /**
    * Persist (or clear) the user's saved spending-trend filter (see
    * `TrendFilter`): the whole config as JSON, or `null` to fall back to
@@ -227,29 +232,15 @@ export const settingsRepo = {
   recurringMerchantChoicesOf,
   /**
    * Hides a merchant's detected series; hiding a key again keeps one entry, the last name. The
-   * marks of the key stay beside the hide.
+   * marks of `chain` go in the same write and the key's other marks stay beside the hide.
    */
-  hideRecurringMerchant: (key: string, name: string) =>
-    changeRecurringMerchantChoices((choices) =>
-      choices.set(key, { ...choices.get(key), name, hidden: true }),
-    ),
-  /**
-   * Clears the hide and keeps the marks, so an entry left with neither is dropped. Writes nothing
-   * for a key that holds no hide.
-   */
-  showRecurringMerchantAgain: (key: string) =>
+  hideRecurringMerchant: (key: string, name: string, chain: readonly RecurringMark[] = []) =>
     changeRecurringMerchantChoices((choices) => {
-      const entry = choices.get(key);
-
-      if (entry === undefined || entry.hidden !== true) {
-        return null;
-      }
-
-      return withChoice(
-        choices,
-        key,
-        recurringChoiceOf(entry.name, { isHidden: false, marks: entry.marks ?? [] }),
+      const kept = (choices.get(key)?.marks ?? []).filter(
+        (stored) => !chain.some((member) => isSameChain(member, stored)),
       );
+
+      return withChoice(choices, key, recurringChoiceOf(name, { isHidden: true, marks: kept }));
     }),
   /**
    * Marks a chain as recurring, beside the hide and the other marks of the key. A mark of the

@@ -64,7 +64,7 @@ const optionsOf = (name: string, params: unknown): ScreenOptions | undefined => 
 // tier, where the scrolled bar needs the blur react-native-screens omits.
 const sharedLargeTitleOptions = {
   headerLargeTitle: true,
-  headerBlurEffect: 'systemChromeMaterialDark',
+  headerBlurEffect: 'systemChromeMaterial',
   headerLargeStyle: { backgroundColor: 'transparent' },
 };
 

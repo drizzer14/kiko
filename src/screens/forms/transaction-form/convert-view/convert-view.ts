@@ -10,6 +10,7 @@ import {
 } from '@kiko/holdings/exchange-destination';
 import type { Currency } from '@kiko/currency/currency';
 import { syncedHoldingIds } from '@kiko/holdings/deletable';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -55,6 +56,7 @@ export const resolveConvertView = (
   accountById: ReadonlyMap<string, AccountRow>,
   holdingId: string | undefined,
   t: TFunction,
+  scheme: ColorScheme,
 ): ConvertView => {
   // Convert-mode eligibility uses the WIDER (cash/card) rule, unchanged from
   // the current create source rule — the create-only cash-source restriction
@@ -78,6 +80,7 @@ export const resolveConvertView = (
     accountOrderById,
     holdingId,
     convertCounterpartType(direction),
+    scheme,
   ).filter((option) => !syncableIds.has(option.id));
   // The fixed side's display value: the existing amount in the existing
   // holding's currency, formatted the same way the Amount input shows it.

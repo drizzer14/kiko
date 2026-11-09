@@ -7,8 +7,9 @@ import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
-import { chartSeriesDark } from '@kiko/design-system/palette';
 import { convert, type RateTable } from '@kiko/rates/conversion';
+import { categoryDisplayColor } from '@kiko/design-system/entity-tint';
+import { type ColorScheme, chartSeriesDark } from '@kiko/design-system/palette';
 
 /**
  * A transaction as the spending breakdown needs it: its stored `category` key,
@@ -37,7 +38,8 @@ export type BreakdownTransaction = Pick<
  * `Money`); `share` is that amount over the total of all returned slices, in
  * `[0, 1]`. `key` is the stable category slug; `title`/`icon` are its resolved
  * display; `color` is the category's stored color when set, else its stable
- * categorical-palette hue (see resolveCategoryColor).
+ * categorical-palette hue, painted for the scheme the slices were built for (see
+ * resolveCategoryColor).
  */
 export type CategorySlice = {
   key: string;
@@ -55,7 +57,7 @@ export type CategorySlice = {
  * palette by hashing its key. The same key always lands on the same hue,
  * regardless of which other categories are present, so an uncolored slice's
  * color stays put as the filter toggles other categories in and out. See
- * `resolveCategoryColor` below for how a stored color, when present, wins over
+ * `resolveCanonicalCategoryColor` below for how a stored color, when present, wins over
  * this fallback.
  */
 export const categoryColor = (key: string): string => {
@@ -70,20 +72,32 @@ export const categoryColor = (key: string): string => {
 };
 
 /**
- * A category's EFFECTIVE chart color — the category analog of resolveEntityColor
- * (design-system/entity-tint/entity-tint.ts). A stored `#RRGGBB` hex wins; otherwise fall
+ * A category's canonical (dark) chart color — the category analog of resolveEntityColor
+ * (design-system/entity-tint/entity-tint.ts). Display goes through `resolveCategoryColor`, which
+ * maps it to the active scheme. A stored `#RRGGBB` hex wins; otherwise fall
  * back to the stable per-key palette hash, so an uncolored category renders
  * exactly as it did before category colors existed. Guards a stored empty string
  * (which `??` would let through and a bad hex would leak downstream) the same way
  * resolveEntityColor does.
  */
-export const resolveCategoryColor = (
+export const resolveCanonicalCategoryColor = (
   storedColor: string | null | undefined,
   key: string,
 ): string =>
   typeof storedColor === 'string' && /^#[0-9a-f]{6}$/i.test(storedColor)
     ? storedColor
     : categoryColor(key);
+
+/**
+ * The hex a surface PAINTS for a category: the canonical (dark) color above, mapped through the
+ * category set of `scheme`. Dark is the identity. The category form's picker keeps the canonical
+ * value (`resolveCanonicalCategoryColor`), so a write never carries a display hex.
+ */
+export const resolveCategoryColor = (
+  storedColor: string | null | undefined,
+  key: string,
+  scheme: ColorScheme,
+): string => categoryDisplayColor(resolveCanonicalCategoryColor(storedColor, key), scheme);
 
 // The normalized grouping key for a transaction's category: lowercased, with a
 // null/empty category AND a slug the display map cannot resolve both folding
@@ -133,31 +147,35 @@ export const netMagnitudeOf = (
 };
 
 /**
- * Build one pie slice per spending category for the "Spending by Category"
- * chart. Only EXPENSES count: a transaction with a negative `amountMinorUnits`
- * is spending (its magnitude is added), while a non-negative amount (income or a
- * zero adjustment) is ignored entirely. Each expense is converted to the base
- * currency at the current `rateTable`; the guard silently drops any transaction
- * whose currency has no rate (so one unconvertible row never voids its
- * category). Categories listed in `excludedCategories` are dropped before the
- * shares are computed, so the visible slices always reshare to ~1. Individual
- * rows listed in `excludedTransactionIds` (e.g. the debit leg of an internal
- * transfer — the credit leg is already ignored as income) are dropped by id. A
- * null/empty category — or one whose slug `categoryDisplay` cannot resolve —
- * folds into `defaultCategoryKey` (a `categories.key` read from settings at the
- * call site, never hardcoded here), so uncategorized spending merges into the
- * default's slice. Empty categories are excluded and the rest are sorted by
- * amount descending.
+ * One row's share of the spending: the key it is filed under, its net magnitude in its own
+ * currency (after its change returns) and the same converted to the base currency. The breakdown
+ * sums these per key, and a table cell's list of rows reads them one by one, so the rows of a
+ * cell add up to the cell by the same conversions.
  */
-export const buildCategoryBreakdown = (input: {
-  transactions: BreakdownTransaction[];
+type SpendingContribution<Transaction extends BreakdownTransaction> = {
+  transaction: Transaction;
+  key: string;
+  netMagnitude: number;
+  baseMinorUnits: number;
+};
+
+/**
+ * The rows that count as spending, each with its share. Only EXPENSES count: a negative
+ * `amountMinorUnits` is spending, a non-negative one (income or a zero adjustment) is ignored. A
+ * row whose currency has no rate is dropped, so one unconvertible row never voids its category.
+ * Rows in `excludedTransactionIds` and categories in `excludedCategories` are dropped; a
+ * null/empty category, or one `categoryDisplay` cannot resolve, folds into `defaultCategoryKey`.
+ * A payment netted to nothing by its change returns has no share.
+ */
+export const spendingContributionsOf = <Transaction extends BreakdownTransaction>(input: {
+  transactions: readonly Transaction[];
   categoryDisplay: ReadonlyMap<string, CategoryDisplay>;
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
   excludedCategories?: ReadonlySet<string>;
   excludedTransactionIds?: ReadonlySet<string>;
-}): CategorySlice[] => {
+}): SpendingContribution<Transaction>[] => {
   const {
     transactions,
     categoryDisplay,
@@ -169,46 +187,74 @@ export const buildCategoryBreakdown = (input: {
   } = input;
   const excluded = excludedCategories ?? new Set<string>();
   const excludedIds = excludedTransactionIds ?? new Set<string>();
-
-  // Per category key: the running spend total (base minor units) plus a
-  // representative raw category value, so the display resolves off the same key
-  // the Home screen stored rather than a re-derived label.
-  const totals = new Map<string, { amount: number; representative: string | null }>();
   const returnsByGroup = sumReturnsByGroup(transactions);
 
-  for (const transaction of transactions) {
+  return transactions.flatMap((transaction) => {
     if (transaction.amountMinorUnits >= 0) {
-      continue;
+      return [];
     }
 
     if (excludedIds.has(transaction.id)) {
-      continue;
+      return [];
     }
 
     if (!canConvert(transaction.currency, baseCurrency, rateTable)) {
-      continue;
+      return [];
     }
 
     const key = groupKey(transaction.category, categoryDisplay, defaultCategoryKey);
 
     if (excluded.has(key)) {
-      continue;
+      return [];
     }
 
     const netMagnitude = netMagnitudeOf(transaction, returnsByGroup);
 
     if (netMagnitude <= 0) {
-      continue;
+      return [];
     }
 
-    const spend = convert(
+    const baseMinorUnits = convert(
       Money.of(transaction.currency, netMagnitude),
       baseCurrency,
       rateTable,
     ).minorUnits;
 
+    return [{ transaction, key, netMagnitude, baseMinorUnits }];
+  });
+};
+
+/**
+ * Build one pie slice per spending category for the "Spending by Category"
+ * chart: the rows `spendingContributionsOf` keeps, summed per category in the BASE currency's
+ * minor units. Categories listed in `excludedCategories` are dropped before the
+ * shares are computed, so the visible slices always reshare to ~1. Individual
+ * rows listed in `excludedTransactionIds` (e.g. the debit leg of an internal
+ * transfer — the credit leg is already ignored as income) are dropped by id. Uncategorized
+ * spending merges into the default's slice (`defaultCategoryKey` is a `categories.key` read
+ * from settings at the call site, never hardcoded here). Empty categories are excluded and the
+ * rest are sorted by amount descending.
+ */
+export const buildCategoryBreakdown = (input: {
+  transactions: BreakdownTransaction[];
+  categoryDisplay: ReadonlyMap<string, CategoryDisplay>;
+  rateTable: RateTable;
+  baseCurrency: Currency;
+  defaultCategoryKey: string;
+  excludedCategories?: ReadonlySet<string>;
+  excludedTransactionIds?: ReadonlySet<string>;
+  scheme: ColorScheme;
+}): CategorySlice[] => {
+  const { categoryDisplay, defaultCategoryKey, scheme } = input;
+
+  // Per category key: the running spend total (base minor units) plus a
+  // representative raw category value, so the display resolves off the same key
+  // the Home screen stored rather than a re-derived label.
+  const totals = new Map<string, { amount: number; representative: string | null }>();
+
+  for (const { transaction, key, baseMinorUnits } of spendingContributionsOf(input)) {
     const entry = totals.get(key) ?? { amount: 0, representative: transaction.category };
-    entry.amount += spend;
+    entry.amount += baseMinorUnits;
     totals.set(key, entry);
   }
 
@@ -221,7 +267,7 @@ export const buildCategoryBreakdown = (input: {
         title: display.title,
         icon: display.icon,
         amount,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
       };
     })
     .filter((slice) => slice.amount > 0)

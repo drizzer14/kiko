@@ -115,12 +115,13 @@ const secondCard = (iban: string): Pick<WorldChange, 'extraHoldings' | 'extraAcc
   extraAccounts: [{ id: 'bank-account-b', kind: 'bank', archivedAt: null }],
 });
 
-const creditOnSecondCard = (offsetMs: number): LedgerRow[] =>
+const creditOnSecondCard = (offsetMs: number, overrides: RowOverrides = {}): LedgerRow[] =>
   CHARGE_IDS.map((id, month) =>
     rowOf(`credit-${id}`, month, {
       holdingId: 'card-b',
       amountMinorUnits: -CHARGE_AMOUNT,
       time: chargeTime(month) + offsetMs,
+      ...overrides,
     }),
   );
 
@@ -141,39 +142,59 @@ const exchangePurchases = (offsetMs: number): WorldChange => ({
 const FUNDED_P2P_DELAY_MS = 10 * MINUTE_MS;
 const BEYOND_P2P_WINDOW_MS = 5 * HOUR_MS;
 
+type ExclusionCase = [label: string, outWorld: World, inWorld: World];
+
+const EXCLUDED_BY_BOTH: ExclusionCase[] = [
+  ['a balance set', worldOf({ row: { setsBalance: true } }), worldOf()],
+  ['a change group', worldOf({ row: { changeGroupId: 'change-1' } }), worldOf()],
+  ['an exchange pair id', worldOf({ row: { exchangePairId: 'pair-1' } }), worldOf()],
+  [
+    'an exchange counterpart holding',
+    worldOf({ row: { exchangeCounterpartHoldingId: 'usdt' } }),
+    worldOf(),
+  ],
+  ['an untracked counterpart', worldOf({ row: { untrackedCounterpart: 'wallet:abc' } }), worldOf()],
+  ['a linked loan payment', worldOf({ row: { loanHoldingId: 'loan-1' } }), worldOf()],
+  ['a cash-out MCC', worldOf({ row: { mcc: CASH_OUT_MCC } }), worldOf()],
+  [
+    'a 4829 transfer to an own IBAN',
+    worldOf({ row: { mcc: OWN_TRANSFER_MCC, counterIban: OWN_IBAN }, ...secondCard(OWN_IBAN) }),
+    worldOf({ row: { mcc: OWN_TRANSFER_MCC, counterIban: OTHER_IBAN }, ...secondCard(OWN_IBAN) }),
+  ],
+  [
+    'the deposit wording',
+    worldOf({ row: { description: 'Поповнення депозиту' } }),
+    worldOf({ row: { description: 'Netflix' } }),
+  ],
+  [
+    'an archived account',
+    worldOf({ account: { archivedAt: 1_700_000_000_000 } }),
+    worldOf({ account: { archivedAt: null } }),
+  ],
+  ['a missing holding', worldOf({ withoutHolding: true }), worldOf()],
+  ['a credit', worldOf({ row: { amountMinorUnits: -CHARGE_AMOUNT } }), worldOf()],
+  ['a blank description', worldOf({ row: { description: '' } }), worldOf()],
+];
+
+const KEPT_BY_BOTH: [label: string, world: World][] = [
+  [
+    'a 4829 transfer to a third party',
+    worldOf({ row: { mcc: OWN_TRANSFER_MCC, counterIban: OTHER_IBAN }, ...secondCard(OWN_IBAN) }),
+  ],
+  ['a closed holding', worldOf({ holding: { closedAt: 1_700_000_000_000 } })],
+  ['a pending hold row', worldOf({ row: { hold: true } })],
+  ['a manual row', worldOf({ row: { source: 'manual' } })],
+  ['an import row', worldOf({ row: { source: 'import' } })],
+  ['a cash account', worldOf({ account: { kind: 'cash' } })],
+];
+
 describe('which rows count as charges', () => {
   it('counts twelve monthly debits on a plain card', () => {
     expect(chargeIdsOf(worldOf())).toEqual(CHARGE_IDS);
   });
 
-  describe.each<[string, World, World]>([
-    ['a balance set', worldOf({ row: { setsBalance: true } }), worldOf()],
-    ['a change group', worldOf({ row: { changeGroupId: 'change-1' } }), worldOf()],
-    ['an exchange pair id', worldOf({ row: { exchangePairId: 'pair-1' } }), worldOf()],
-    [
-      'an exchange counterpart holding',
-      worldOf({ row: { exchangeCounterpartHoldingId: 'usdt' } }),
-      worldOf(),
-    ],
-    [
-      'an untracked counterpart',
-      worldOf({ row: { untrackedCounterpart: 'wallet:abc' } }),
-      worldOf(),
-    ],
-    ['a cash-out MCC', worldOf({ row: { mcc: CASH_OUT_MCC } }), worldOf()],
-    [
-      'a 4829 transfer to an own IBAN',
-      worldOf({ row: { mcc: OWN_TRANSFER_MCC, counterIban: OWN_IBAN }, ...secondCard(OWN_IBAN) }),
-      worldOf({
-        row: { mcc: OWN_TRANSFER_MCC, counterIban: OTHER_IBAN },
-        ...secondCard(OWN_IBAN),
-      }),
-    ],
-    [
-      'the deposit wording',
-      worldOf({ row: { description: 'Поповнення депозиту' } }),
-      worldOf({ row: { description: 'Netflix' } }),
-    ],
+  describe.each<ExclusionCase>([
+    ...EXCLUDED_BY_BOTH,
     [
       'a matched pair across two own cards',
       worldOf({ extraRows: creditOnSecondCard(MINUTE_MS), ...secondCard(OTHER_IBAN) }),
@@ -184,20 +205,11 @@ describe('which rows count as charges', () => {
       worldOf(exchangePurchases(FUNDED_P2P_DELAY_MS)),
       worldOf(exchangePurchases(BEYOND_P2P_WINDOW_MS)),
     ],
-    ['a linked loan payment', worldOf({ row: { loanHoldingId: 'loan-1' } }), worldOf()],
     [
       'a crypto account carrying a ticker as its description',
       worldOf({ row: { description: 'USDT' }, account: { kind: 'crypto' } }),
       worldOf({ row: { description: 'USDT' }, account: { kind: 'bank' } }),
     ],
-    [
-      'an archived account',
-      worldOf({ account: { archivedAt: 1_700_000_000_000 } }),
-      worldOf({ account: { archivedAt: null } }),
-    ],
-    ['a missing holding', worldOf({ withoutHolding: true }), worldOf()],
-    ['a credit', worldOf({ row: { amountMinorUnits: -CHARGE_AMOUNT } }), worldOf()],
-    ['a blank description', worldOf({ row: { description: '' } }), worldOf()],
   ])('%s', (_label, outWorld, inWorld) => {
     it('leaves every month out', () => {
       expect(chargeIdsOf(outWorld)).toEqual([]);
@@ -208,16 +220,28 @@ describe('which rows count as charges', () => {
     });
   });
 
+  describe('a real debit beside a balance-set credit of the same amount', () => {
+    it('counts every month, as the credit is not a partner', () => {
+      const world = worldOf({
+        extraRows: creditOnSecondCard(MINUTE_MS, { setsBalance: true }),
+        ...secondCard(OTHER_IBAN),
+      });
+
+      expect(chargeIdsOf(world)).toEqual(CHARGE_IDS);
+    });
+
+    it('leaves every month out when the credit is a real row', () => {
+      const world = worldOf({
+        extraRows: creditOnSecondCard(MINUTE_MS, { setsBalance: false }),
+        ...secondCard(OTHER_IBAN),
+      });
+
+      expect(chargeIdsOf(world)).toEqual([]);
+    });
+  });
+
   describe.each<[string, World]>([
-    [
-      'a 4829 transfer to a third party',
-      worldOf({ row: { mcc: OWN_TRANSFER_MCC, counterIban: OTHER_IBAN }, ...secondCard(OWN_IBAN) }),
-    ],
-    ['a closed holding', worldOf({ holding: { closedAt: 1_700_000_000_000 } })],
-    ['a pending hold row', worldOf({ row: { hold: true } })],
-    ['a manual row', worldOf({ row: { source: 'manual' } })],
-    ['an import row', worldOf({ row: { source: 'import' } })],
-    ['a cash account', worldOf({ account: { kind: 'cash' } })],
+    ...KEPT_BY_BOTH,
     [
       'a funded debit whose category was set by hand',
       worldOf({ ...exchangePurchases(FUNDED_P2P_DELAY_MS), row: { categorySetByHand: true } }),
@@ -248,49 +272,14 @@ const offeredIn = (world: World, rowId = 'charge-0'): boolean => {
 };
 
 describe('isOfferedForMark', () => {
-  describe.each<[string, World, World]>([
-    ['a credit', worldOf({ row: { amountMinorUnits: -CHARGE_AMOUNT } }), worldOf()],
-    ['a blank description', worldOf({ row: { description: '' } }), worldOf()],
+  describe.each<ExclusionCase>([
+    ...EXCLUDED_BY_BOTH,
     ['a whitespace description', worldOf({ row: { description: '   ' } }), worldOf()],
-    ['a balance set', worldOf({ row: { setsBalance: true } }), worldOf()],
-    ['a change group', worldOf({ row: { changeGroupId: 'change-1' } }), worldOf()],
-    ['an exchange pair id', worldOf({ row: { exchangePairId: 'pair-1' } }), worldOf()],
-    [
-      'an exchange counterpart holding',
-      worldOf({ row: { exchangeCounterpartHoldingId: 'usdt' } }),
-      worldOf(),
-    ],
-    [
-      'an untracked counterpart',
-      worldOf({ row: { untrackedCounterpart: 'wallet:abc' } }),
-      worldOf(),
-    ],
-    ['a linked loan payment', worldOf({ row: { loanHoldingId: 'loan-1' } }), worldOf()],
-    ['a cash-out MCC', worldOf({ row: { mcc: CASH_OUT_MCC } }), worldOf()],
-    [
-      'a 4829 transfer to an own IBAN',
-      worldOf({ row: { mcc: OWN_TRANSFER_MCC, counterIban: OWN_IBAN }, ...secondCard(OWN_IBAN) }),
-      worldOf({
-        row: { mcc: OWN_TRANSFER_MCC, counterIban: OTHER_IBAN },
-        ...secondCard(OWN_IBAN),
-      }),
-    ],
-    [
-      'the deposit wording',
-      worldOf({ row: { description: 'Поповнення депозиту' } }),
-      worldOf({ row: { description: 'Netflix' } }),
-    ],
     [
       'a crypto account',
       worldOf({ row: { description: 'USDT' }, account: { kind: 'crypto' } }),
       worldOf({ row: { description: 'USDT' }, account: { kind: 'bank' } }),
     ],
-    [
-      'an archived account',
-      worldOf({ account: { archivedAt: 1_700_000_000_000 } }),
-      worldOf({ account: { archivedAt: null } }),
-    ],
-    ['a missing holding', worldOf({ withoutHolding: true }), worldOf()],
     ['a missing account', { ...worldOf(), accounts: [] }, worldOf()],
     [
       'a row on a later local day',
@@ -307,17 +296,7 @@ describe('isOfferedForMark', () => {
     });
   });
 
-  describe.each<[string, World]>([
-    [
-      'a 4829 transfer to a third party',
-      worldOf({ row: { mcc: OWN_TRANSFER_MCC, counterIban: OTHER_IBAN }, ...secondCard(OWN_IBAN) }),
-    ],
-    ['a closed holding', worldOf({ holding: { closedAt: 1_700_000_000_000 } })],
-    ['a pending hold row', worldOf({ row: { hold: true } })],
-    ['a manual row', worldOf({ row: { source: 'manual' } })],
-    ['an import row', worldOf({ row: { source: 'import' } })],
-    ['a cash account', worldOf({ account: { kind: 'cash' } })],
-  ])('%s', (_label, world) => {
+  describe.each<[string, World]>(KEPT_BY_BOTH)('%s', (_label, world) => {
     it('is offered', () => {
       expect(offeredIn(world)).toBe(true);
     });

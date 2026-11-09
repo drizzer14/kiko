@@ -51,10 +51,9 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
   // TextField's own `hasError` (see text-field.component.tsx).
   const hasError = error !== undefined && error !== '';
   // The same native Done keyboard accessory every other Kiko input carries, so
-  // this name field dismisses the keyboard identically. `keyboardAppearance`
-  // keeps the system keyboard's own chrome matching the accessory bar's fill
-  // (see the hook's own doc comment).
-  const { inputAccessoryViewID, accessory, keyboardAppearance } = useKeyboardDoneAccessory();
+  // this name field dismisses the keyboard identically. The input sets no `keyboardAppearance`,
+  // so the system keyboard follows the window like the accessory's glass does.
+  const { inputAccessoryViewID, accessory } = useKeyboardDoneAccessory();
 
   return (
     <Box gap={1} testID={testID}>
@@ -95,7 +94,6 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
             placeholderTextColor={theme.colors.textSecondary}
             returnKeyType="done"
             inputAccessoryViewID={inputAccessoryViewID}
-            keyboardAppearance={keyboardAppearance}
             style={styles.nameField}
           />
         </Box>

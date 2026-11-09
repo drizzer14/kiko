@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, Appearance, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -25,9 +25,11 @@ const renderScreen = () =>
     />,
   );
 
+const mockSetAppearance = jest.fn();
 const mockSetLanguage = jest.fn();
 const mockSetLockEnabled = jest.fn();
 let mockLiveQueryData: Array<{
+  appearance?: string;
   baseCurrency: string;
   language?: 'en' | 'uk' | null;
   lockEnabled?: boolean;
@@ -37,6 +39,7 @@ let mockLiveQueryIsLoading = false;
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    setAppearance: (...args: unknown[]) => mockSetAppearance(...args),
     setLanguage: (...args: unknown[]) => mockSetLanguage(...args),
     setLockEnabled: (...args: unknown[]) => mockSetLockEnabled(...args),
   },
@@ -73,15 +76,53 @@ describe('SystemScreen', () => {
     expect(getByTestId('settings-card-app-lock')).toBeTruthy();
   });
 
-  it('renders Language, then Face ID in that order', async () => {
+  it('renders Language, Appearance, then Face ID in that order', async () => {
     const { getAllByTestId } = await renderScreen();
 
-    const cardOrder = getAllByTestId(/^settings-card-/).map((node) => node.props.testID);
+    expect(getAllByTestId(/^settings-card-/).map((node) => node.props.testID)).toEqual([
+      'settings-card-language',
+      'settings-card-appearance',
+      'settings-card-app-lock',
+    ]);
+  });
 
-    const languageIndex = cardOrder.indexOf('settings-card-language');
-    const appLockIndex = cardOrder.indexOf('settings-card-app-lock');
+  it('renders the Appearance row with its label and the three modes', async () => {
+    const { getByTestId, getByText } = await renderScreen();
 
-    expect(languageIndex).toBeLessThan(appLockIndex);
+    expect(getByTestId('settings-row-appearance')).toBeTruthy();
+    expect(getByText('Appearance')).toBeTruthy();
+    expect(getByText('System')).toBeTruthy();
+    expect(getByText('Light')).toBeTruthy();
+    expect(getByText('Dark')).toBeTruthy();
+  });
+
+  it('shows the stored mode as selected', async () => {
+    mockLiveQueryData = [{ baseCurrency: 'UAH', appearance: 'light', lockEnabled: false }];
+    const { getByText } = await renderScreen();
+
+    expect(getByText('Light').parent?.props.accessibilityState.selected).toBe(true);
+    expect(getByText('System').parent?.props.accessibilityState.selected).toBe(false);
+  });
+
+  it('shows a stored value outside the enum as System', async () => {
+    mockLiveQueryData = [{ baseCurrency: 'UAH', appearance: 'LIGHT', lockEnabled: false }];
+    const { getByText } = await renderScreen();
+
+    expect(getByText('System').parent?.props.accessibilityState.selected).toBe(true);
+    expect(getByText('Light').parent?.props.accessibilityState.selected).toBe(false);
+  });
+
+  it('selecting Light writes the row and nothing else', async () => {
+    const setColorScheme = jest.spyOn(Appearance, 'setColorScheme');
+    const { getByText } = await renderScreen();
+
+    await fireEvent.press(getByText('Light'));
+
+    expect(mockSetAppearance).toHaveBeenCalledTimes(1);
+    expect(mockSetAppearance).toHaveBeenCalledWith('light');
+    expect(mockSetLanguage).not.toHaveBeenCalled();
+    expect(mockSetLockEnabled).not.toHaveBeenCalled();
+    expect(setColorScheme).not.toHaveBeenCalled();
   });
 
   it('persists a language choice', async () => {

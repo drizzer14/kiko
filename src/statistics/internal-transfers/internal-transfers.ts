@@ -126,17 +126,19 @@ const findMatchingCredit = (
 
 /**
  * The rows the 2-minute matcher may see: those with none of the three
- * exchange markers. A marked row is an exchange leg (a Convert, a Transfer
- * pair, or a move to an untracked wallet): the marker rules and the pair rule
+ * exchange markers, and none that sets a balance. A marked row is an exchange leg (a Convert,
+ * a Transfer pair, or a move to an untracked wallet): the marker rules and the pair rule
  * (`sameCurrencyMoveTransactionIds`, which pairs by the pair id) exclude what
  * they can, and left in the ledger it could consume an unmarked same-amount
- * row (a Pay send) as its "partner" and drop real spending.
+ * row (a Pay send) as its "partner" and drop real spending. A balance-set row is the app's own
+ * correction, not a movement of money, so it never pairs with a real row either.
  */
 export const rowsForTransferMatch = <
   Row extends {
     exchangePairId: string | null;
     exchangeCounterpartHoldingId: string | null;
     untrackedCounterpart: string | null;
+    setsBalance?: boolean;
   },
 >(
   rows: Row[],
@@ -145,7 +147,8 @@ export const rowsForTransferMatch = <
     (row) =>
       row.exchangePairId === null &&
       row.exchangeCounterpartHoldingId === null &&
-      row.untrackedCounterpart === null,
+      row.untrackedCounterpart === null &&
+      row.setsBalance !== true,
   );
 
 /**

@@ -957,6 +957,10 @@ mechanizable (see harness-workflow's "Classify every finding").
    statement-sequence `pattern-inside` with a weak prefilter) must
    exclude files where it cannot apply; a Semgrep timeout becomes a
    "could not check" deny.
+9. **(h) After a merge of next.** A merge of next can bring hits of a landed rule in another
+   track's files (3 test-data values in a pane-slice test after
+   `kiko-no-hard-coded-native-scheme`). Run the new rule ids over `src` after each merge of next,
+   and rewrite the data (no override) when the hit is arbitrary test data.
 
 ## Pinned-value rules for locked user-approved visuals
 

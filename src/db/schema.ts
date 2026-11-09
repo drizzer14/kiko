@@ -278,7 +278,10 @@ export const transactions = sqliteTable(
     // (`postClosingRowsWhere`) and keeps the row out of spending in the Statistics
     // charts (`balanceSetIdsOf`): the row's edit and delete move the balance by its
     // amount like any row's, unless a read of a dated balance overwrote it
-    // (`isOverwrittenRow`).
+    // (`isOverwrittenRow`). It also takes no part in the matchers that pair rows
+    // (`rowsForTransferMatch`, `exchangeFundingMatches` and
+    // `sameCurrencyMoveTransactionIds`), so it never pairs with, or takes the partner
+    // or funding match of, a real row of the same amount.
     setsBalance: integer('sets_balance', { mode: 'boolean' }).notNull().default(false),
     comment: text('comment'),
     // 'btc_wallet' / 'binance' / 'bybit' double as `accounts.institution` values. The
@@ -451,11 +454,9 @@ export const settings = sqliteTable('settings', {
   // / 'uk' is an explicit user choice made from Settings. Read by
   // useSyncLanguageWithSettings; written by settingsRepo.setLanguage.
   language: text('language', { enum: ['en', 'uk'] }),
-  // DEAD (retained): the removed light/dark color-scheme feature. The app is now
-  // dark-only, so nothing reads or writes this column. Deliberately NOT dropped —
-  // migrations here are additive-only, so a removed feature's harmless retained
-  // column stays rather than adding a destructive drop migration (same class as
-  // `lockGraceSeconds` above). Enforced reader-less by settings-columns.test.ts.
+  // The chosen appearance: 'system' follows the OS, 'light' and 'dark' pin the window. The enum is
+  // TypeScript-only (the migration has no CHECK), so a reader goes through
+  // `parseAppearanceMode`, never this raw value. A restore keeps the live value.
   appearance: text('appearance', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),

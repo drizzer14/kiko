@@ -87,7 +87,12 @@ new component can land between reviews of this skill:
   bar) also starts its title at the content's margin; a single stack under a side bar (the
   Duo outer pose, `placement === 'side'`) gets it too. On the Duo side-bar poses that margin
   aligns the content to the native title (user ruling 2026-10-29; the reason is in
-  kiko-design-system SKILL.md "Locked decisions"). Only the top bar
+  kiko-design-system SKILL.md "Locked decisions"). The layer stack over both
+  panes gets `FixedContentMarginContext` 0 in every pose, while the panes keep
+  their margin. Reason (device check owed, cause not proven): with the side-bar
+  margin the device showed the Tables bar go see-through during a swipe back on
+  the unfolded Duo in landscape; 0 keeps our patch inert on the layer. The
+  source comment in `PaneStackView` has the detail. Only the top bar
   lifts the cap: a pane with a SIDE tab bar (a Duo side-bar pose, or a
   large window) stays capped at 600 pt, with no large-window exception
   (user ruling 2026-10-21), and a pane whose bar is at the bottom keeps
@@ -477,7 +482,9 @@ new component can land between reviews of this skill:
   `ScrollView` so overflow scrolls instead of clipping — a sheet that
   needs its own pinned header/footer or a scroll-to-selection ref
   (date-range-field, category-field, icon-picker-modal) passes
-  `scrollable={false}` and renders its own inner `ScrollView` instead.
+  `scrollable={false}` and renders its own inner `ScrollView`, or a `FlatList` when the rows
+  are unbounded (`currency-field`, `src/screens/tables/cell-rows-sheet/`; the total stays
+  outside the list).
   Its drag-to-close grabber's pure math (`clampSheetTranslate`,
   `shouldDismissSheet`) lives in `bottom-sheet.gesture.ts` — see
   `kiko-gestures`. Read `bottom-sheet.props.d.ts` for the exact current
@@ -565,7 +572,9 @@ new component can land between reviews of this skill:
   for exactly this reason (the same fix `Screen`'s own background
   `ScrollView` applies for its search field, per that file's comment); any
   new sheet content that combines a focusable input with a tappable list
-  below it needs the same prop.
+  below it needs the same prop. `cell-rows-sheet` has no input, so it sets none.
+  `initialNumToRender` trips `check:full-word-identifiers` outside the exempted files (see
+  its EXEMPTIONS); use `windowSize`, as `cell-rows-sheet` does.
 - **SelectableRow** (`src/design-system/components/selectable-row/`) —
   the shared single-select row for a `BottomSheet` list: a 44pt-minimum
   tap target that fills with the accent background when `selected` (the
@@ -591,7 +600,11 @@ new component can land between reviews of this skill:
   GENERIC version of this shape — `label`/`sheetTitle`/`options`/
   `selected` (nullable — see below)/`onSelect`/`labels`/optional
   `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
-  `error`/`testID` — and is now the ONE shared implementation: a
+  `error`/`testID`/optional `capped` (caps the trigger at
+  `theme.layout.selectTriggerMaxWidth` in `src/design-system/theme/theme.ts`:
+  trigger = min(column, cap); for a short one-phrase value such as the Tables
+  period; a larger Dynamic Type size wraps inside the cap) — and is now the ONE shared
+  implementation: a
   `property` account's Type-as-category field (`PropertyTypeField`,
   replacing the generic holding-type picker for that one account
   kind — see `kiko-domain`'s "`property_item` / `metal` create-form

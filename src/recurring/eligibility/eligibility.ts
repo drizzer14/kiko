@@ -92,7 +92,8 @@ export const isRecurringCandidate = (
     !row.setsBalance &&
     row.changeGroupId === null &&
     row.loanHoldingId === null &&
-    // The matcher keeps exactly the rows with none of the three exchange markers.
+    // The matcher keeps exactly the rows with none of the three exchange markers and no
+    // balance-set mark (`setsBalance` above says the second again, so the two stay in step).
     rowsForTransferMatch([row]).length === 1 &&
     CHARGE_ACCOUNT_KINDS.includes(account.kind) &&
     account.archivedAt === null

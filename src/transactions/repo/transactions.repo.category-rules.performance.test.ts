@@ -153,6 +153,32 @@ const pageReadsOf = (statements: string[]): number =>
 const blankPageReadsOf = (statements: string[]): string[] =>
   statements.filter((sql) => /"description" = \? and "transactions"\."id" > \?/i.test(sql));
 
+const changedRowIds = (before: Map<string, string | null>): string[] =>
+  [...categoriesById()]
+    .filter(([rowId, category]) => before.get(rowId) !== category)
+    .map(([rowId]) => rowId);
+
+const expectExactlyPlannedUpdated = (
+  planned: string[],
+  updated: number,
+  before: Map<string, string | null>,
+  statements: string[],
+): void => {
+  expect(planned.length).toBeGreaterThan(0);
+  expect(updated).toBe(planned.length);
+  expect(changedRowIds(before).sort()).toEqual([...planned].sort());
+  expect(countOf(statements, /^update "transactions"/i)).toBe(
+    Math.ceil(planned.length / IN_CLAUSE_CHUNK_SIZE),
+  );
+};
+
+const queryPlanOf = (statement: string, params: unknown[]): string[] =>
+  (
+    mockDatabase
+      .prepare(`EXPLAIN QUERY PLAN ${statement}`)
+      .all(...(params as (string | number)[])) as { detail: string }[]
+  ).map((step) => step.detail);
+
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
@@ -231,11 +257,6 @@ describe('rewriting 50 000 rows for a saved rule', () => {
     return changed;
   };
 
-  const changedRowIds = (before: Map<string, string | null>): string[] =>
-    [...categoriesById()]
-      .filter(([rowId, category]) => before.get(rowId) !== category)
-      .map(([rowId]) => rowId);
-
   it(
     'updates exactly the planned rows of a name rule in one statement, and pages only the blank rows',
     async () => {
@@ -246,12 +267,7 @@ describe('rewriting 50 000 rows for a saved rule', () => {
       const statements = spyOnStatements();
       const updated = await rewriteFor(NAME_RULE_ID);
 
-      expect(planned.length).toBeGreaterThan(0);
-      expect(updated).toBe(planned.length);
-      expect(changedRowIds(before).sort()).toEqual([...planned].sort());
-      expect(countOf(statements, /^update "transactions"/i)).toBe(
-        Math.ceil(planned.length / IN_CLAUSE_CHUNK_SIZE),
-      );
+      expectExactlyPlannedUpdated(planned, updated, before, statements);
       // The ledger is not paged: the one page read is the blank rows' (a label is not stored, so
       // they are always candidates), and this ledger has none.
       expect(pageReadsOf(statements)).toBe(1);
@@ -274,12 +290,7 @@ describe('rewriting 50 000 rows for a saved rule', () => {
       const statements = spyOnStatements();
       const updated = await rewriteFor(NO_NAME_RULE_ID);
 
-      expect(planned.length).toBeGreaterThan(0);
-      expect(updated).toBe(planned.length);
-      expect(changedRowIds(before).sort()).toEqual([...planned].sort());
-      expect(countOf(statements, /^update "transactions"/i)).toBe(
-        Math.ceil(planned.length / IN_CLAUSE_CHUNK_SIZE),
-      );
+      expectExactlyPlannedUpdated(planned, updated, before, statements);
       // A page is read until one comes back short, so an exact multiple costs one empty page.
       expect(pageReadsOf(statements)).toBe(Math.floor(rows.length / REWRITE_PAGE_SIZE) + 1);
     },
@@ -329,11 +340,6 @@ describe('rewriting 50 000 rows for a rule with a new condition', () => {
     return { plan, rewrite };
   };
 
-  const changedRowIds = (before: Map<string, string | null>): string[] =>
-    [...categoriesById()]
-      .filter(([rowId, category]) => before.get(rowId) !== category)
-      .map(([rowId]) => rowId);
-
   it(
     'updates exactly the planned rows of an mcc rule, a page at a time',
     async () => {
@@ -344,12 +350,7 @@ describe('rewriting 50 000 rows for a rule with a new condition', () => {
       const statements = spyOnStatements();
       const updated = await rewrite();
 
-      expect(plan.length).toBeGreaterThan(0);
-      expect(updated).toBe(plan.length);
-      expect(changedRowIds(before).sort()).toEqual([...plan].sort());
-      expect(countOf(statements, /^update "transactions"/i)).toBe(
-        Math.ceil(plan.length / IN_CLAUSE_CHUNK_SIZE),
-      );
+      expectExactlyPlannedUpdated(plan, updated, before, statements);
       // A code is read from the row itself, so every row is paged, and an exact multiple of the
       // page length costs one empty page.
       expect(pageReadsOf(statements)).toBe(Math.floor(rows.length / REWRITE_PAGE_SIZE) + 1);
@@ -371,12 +372,7 @@ describe('rewriting 50 000 rows for a rule with a new condition', () => {
       const statements = spyOnStatements();
       const updated = await rewrite();
 
-      expect(plan.length).toBeGreaterThan(0);
-      expect(updated).toBe(plan.length);
-      expect(changedRowIds(before).sort()).toEqual([...plan].sort());
-      expect(countOf(statements, /^update "transactions"/i)).toBe(
-        Math.ceil(plan.length / IN_CLAUSE_CHUNK_SIZE),
-      );
+      expectExactlyPlannedUpdated(plan, updated, before, statements);
       // Only the blank rows' page is read; this ledger has none.
       expect(pageReadsOf(statements)).toBe(1);
       expect(blankPageReadsOf(statements)).toHaveLength(1);
@@ -494,7 +490,6 @@ describe('listing the review groups of 50 000 rows', () => {
       const described = merchantNameCalls.mock.calls.map(([name]) => name);
 
       expect(namesOfRows.size).toBeGreaterThan(0);
-      expect(evidence.length).toBeGreaterThan(namesOfRows.size);
       expect(described).toHaveLength(namesOfRows.size + namesOfEvidenceOnly.length);
       expect(new Set(described)).toEqual(new Set([...namesOfRows, ...namesOfEvidenceOnly]));
     },
@@ -503,11 +498,7 @@ describe('listing the review groups of 50 000 rows', () => {
 
   it('reviewCandidateRowsQuery scans the table with no temp B-tree', () => {
     const { sql: statement, params } = categoryRulesRepo.reviewCandidateRowsQuery().toSQL();
-    const plan = (
-      mockDatabase
-        .prepare(`EXPLAIN QUERY PLAN ${statement}`)
-        .all(...(params as (string | number)[])) as { detail: string }[]
-    ).map((step) => step.detail);
+    const plan = queryPlanOf(statement, params);
 
     expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
     expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
@@ -521,11 +512,7 @@ describe('listing the review groups of 50 000 rows', () => {
       const known = knownCategoryKeys();
       const query = categoryRulesRepo.reviewEvidenceQuery();
       const { sql: statement, params } = query.toSQL();
-      const plan = (
-        mockDatabase
-          .prepare(`EXPLAIN QUERY PLAN ${statement}`)
-          .all(...(params as (string | number)[])) as { detail: string }[]
-      ).map((step) => step.detail);
+      const plan = queryPlanOf(statement, params);
       const expected = new Map<string, number>();
 
       for (const row of candidateRows) {

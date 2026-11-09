@@ -5,6 +5,8 @@ import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 import {
   type LoanHolding,
   type LoanPaymentTransaction,
+  loanPaymentIdOf,
+  loanEntryPartOf,
   loanInterestEntries,
   loanPaymentExcludedTransactionIds,
   LOAN_INTEREST_CATEGORY_KEY,
@@ -422,5 +424,53 @@ describe('loanInterestEntries', () => {
       ['loan-excess:tx-regular', -300],
       ['loan-interest:tx-prepayment', -9_000],
     ]);
+  });
+});
+
+describe('loanPaymentIdOf', () => {
+  it('names the payment behind each entry that loanInterestEntries writes', () => {
+    const feePayment: LoanPaymentTransaction = {
+      ...linkedPayment,
+      id: 'tx-fee',
+      amountMinorUnits: -(SCHEDULED_PAYMENT + 300),
+    };
+
+    const entries = loanInterestEntries({
+      transactions: [feePayment],
+      loanHoldings: [scheduledLoan],
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual([
+      'loan-interest:tx-fee',
+      'loan-excess:tx-fee',
+    ]);
+    expect(entries.map((entry) => loanPaymentIdOf(entry.id))).toEqual(['tx-fee', 'tx-fee']);
+  });
+
+  it('keeps a payment id that holds the separator whole', () => {
+    expect(loanPaymentIdOf('loan-interest:tx:with:colons')).toBe('tx:with:colons');
+  });
+
+  it('has no payment for a real transaction id', () => {
+    expect(loanPaymentIdOf('tx-linked')).toBeUndefined();
+  });
+
+  it('has no payment for an id that only starts like an entry', () => {
+    expect(loanPaymentIdOf('loan-interest-tx-linked')).toBeUndefined();
+  });
+});
+
+describe('loanEntryPartOf', () => {
+  it('tells the interest entry of a payment from its fee entry', () => {
+    expect(loanEntryPartOf('loan-interest:tx-fee')).toBe('interest');
+    expect(loanEntryPartOf('loan-excess:tx-fee')).toBe('fee');
+  });
+
+  it('has no part for a real transaction id', () => {
+    expect(loanEntryPartOf('tx-linked')).toBeUndefined();
+  });
+
+  it('has no part for an id that only starts like an entry', () => {
+    expect(loanEntryPartOf('loan-excess-tx-linked')).toBeUndefined();
   });
 });

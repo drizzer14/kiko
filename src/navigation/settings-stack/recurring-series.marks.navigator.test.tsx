@@ -12,7 +12,7 @@ import { renderStackInContainer, stackProbe } from '@kiko/test-support/navigator
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
-import type { RecurringPeriod } from '@kiko/recurring/detection';
+import type { DetectedPeriod, RecurringPeriod } from '@kiko/recurring/detection';
 
 import HomeStack from '../home-stack';
 import { SETTLE_DELAY_MS } from '../pane-stack';
@@ -105,6 +105,9 @@ const ROUTES_TO_SERIES = ['Settings', 'RecurringCharges', 'RecurringSeries'];
 const periodLabel = (period: RecurringPeriod): string =>
   i18next.t(`forms.transaction.recurringPeriod.${period}`);
 
+const detectedLabel = (period: DetectedPeriod): string =>
+  i18next.t(`forms.transaction.detectedRecurring.${period}`);
+
 const apple = { description: 'Apple' } as const;
 const cheap = (count: number) => monthly(count, 5, 99, { ...apple, prefix: 'cheap' });
 const dear = monthly(10, 20, 399, { ...apple, prefix: 'dear' });
@@ -154,10 +157,10 @@ const fieldReads = async (view: View, label: string): Promise<void> => {
   });
 };
 
-const pick = async (view: View, label: string): Promise<void> => {
+const pick = async (view: View, label: string, readsAfter = label): Promise<void> => {
   await fireEvent.press(view.getByLabelText(FIELD_LABEL));
   await fireEvent.press(view.getByLabelText(label));
-  await fieldReads(view, label);
+  await fieldReads(view, readsAfter);
 };
 
 // A change between one pane and two reaches the stack once the mode has held still.
@@ -176,12 +179,9 @@ const goBack = async (): Promise<void> => {
 const seriesParams = (): object | undefined =>
   navigationRef.getRootState()?.routes.find(({ name }) => name === 'RecurringSeries')?.params;
 
-const markedLine = (period: RecurringPeriod): string =>
-  i18next.t(`recurringCharges.marked.${period}`);
-
 // A marked series: Remove mark in place of "Not a recurring charge", its charge count and, where
-// charges do not fit their period, the "Marked:" line. A series whose charges all fit keeps the
-// detected wording, so `line` is stated only where the world makes it a "Marked:" one.
+// charges do not fit their period, the plain period line. A series whose charges all fit keeps the
+// detected wording, so `line` is stated only where the world replaces it with the period line.
 const expectMarkedSeries = async (
   view: View,
   { line, count }: { line?: string; count: number },
@@ -197,9 +197,10 @@ const expectMarkedSeries = async (
     expect(within(header).getByText(line)).toBeTruthy();
   }
 
-  expect(
-    within(header).getByText(i18next.t('recurringCharges.chargeCount', { count })),
-  ).toBeTruthy();
+  expect(within(header).getByTestId('recurring-series-summary-charge-count')).toHaveTextContent(
+    String(count),
+    { exact: true },
+  );
 };
 
 const expectDetectedSeries = async (view: View): Promise<void> => {
@@ -244,7 +245,7 @@ describe.each<[string, LayoutMode]>([
     await openSeries(view, 'charge-4');
     await expectDetectedSeries(view);
     await openCharge(view, 'charge-0');
-    await fieldReads(view, NOT_MARKED);
+    await fieldReads(view, detectedLabel('monthly'));
     await pick(view, periodLabel('monthly'));
     await goBack();
 
@@ -261,14 +262,22 @@ describe.each<[string, LayoutMode]>([
     await openSeries(view, 'charge-7');
     await expectDetectedSeries(view);
     await openCharge(view, 'charge-0');
-    await fieldReads(view, NOT_MARKED);
+    await fieldReads(view, detectedLabel('monthly'));
     await pick(view, periodLabel('monthly'));
     await goBack();
     await expectNeutralText(view);
   });
 
-  it.each<[string, Row[], Mark, string, string, number]>([
-    ['one detected series', NETFLIX_FIVE, NETFLIX_AT_100, 'charge-4', 'charge-0', 5],
+  it.each<[string, Row[], Mark, string, string, number, string]>([
+    [
+      'one detected series',
+      NETFLIX_FIVE,
+      NETFLIX_AT_100,
+      'charge-4',
+      'charge-0',
+      5,
+      detectedLabel('monthly'),
+    ],
     [
       'Apple 99 beside detected 399',
       [...cheap(10), ...dear],
@@ -276,6 +285,7 @@ describe.each<[string, LayoutMode]>([
       'cheap-9',
       'cheap-0',
       10,
+      detectedLabel('monthly'),
     ],
     [
       'marks-only 99 x2 beside detected 399 x10',
@@ -284,10 +294,11 @@ describe.each<[string, LayoutMode]>([
       'cheap-1',
       'cheap-0',
       2,
+      NOT_MARKED,
     ],
   ])(
     'shows the neutral text on Back after "Not marked" on a marked series: %s',
-    async (_world, rows, mark, rowId, chargeId, count) => {
+    async (_world, rows, mark, rowId, chargeId, count, readsAfter) => {
       await arrange(rows, [mark]);
 
       const view = await renderSettings(mode);
@@ -296,33 +307,31 @@ describe.each<[string, LayoutMode]>([
       await expectMarkedSeries(view, { count });
       await openCharge(view, chargeId);
       await fieldReads(view, periodLabel('monthly'));
-      await pick(view, NOT_MARKED);
+      await pick(view, NOT_MARKED, readsAfter);
       await goBack();
       await expectNeutralText(view);
     },
   );
 
-  it('shows the marked x11, yearly, and never the 399, after a yearly pick on the 119 row', async () => {
+  it('shows the marked x10, with neither the 119 row in the month of a 99 nor the 399', async () => {
     await arrange([...cheap(10), risen, ...dear], [APPLE_AT_99]);
 
     const view = await renderSettings(mode);
 
     await openSeries(view, 'cheap-9');
-    await expectMarkedSeries(view, { count: 11 });
-    await openCharge(view, 'rise');
-    await fieldReads(view, periodLabel('monthly'));
-    await pick(view, periodLabel('yearly'));
-    await goBack();
-    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 11 });
+    await expectMarkedSeries(view, { count: 10 });
 
-    expect(view.getByTestId('recurring-series-charge-rise')).toBeTruthy();
+    expect(view.queryByTestId('recurring-series-charge-rise')).toBeNull();
     expect(view.queryByTestId('recurring-series-charge-dear-0')).toBeNull();
   });
 });
 
 describe('Settings stack: a fold with a marked series and its form open', () => {
-  it('keeps the route and its stored amount, and Back shows the marked x11, yearly', async () => {
-    await arrange([...cheap(10), risen, ...dear], [APPLE_AT_99]);
+  it('keeps the route and its stored amount, and Back shows the marked x2, yearly', async () => {
+    // The 119 stands alone in August, a month with no 99, so the monthly series holds its row.
+    const withoutAugust = cheap(10).filter(({ id }) => id !== 'cheap-2');
+
+    await arrange([...withoutAugust, risen, ...dear], [APPLE_AT_99]);
 
     const view = await renderSettings('columns');
 
@@ -338,14 +347,25 @@ describe('Settings stack: a fold with a marked series and its form open', () => 
     expect(seriesParams()).toEqual(routeBefore);
 
     await fieldReads(view, periodLabel('monthly'));
-    await pick(view, periodLabel('yearly'));
+    await fireEvent.press(view.getByLabelText(FIELD_LABEL));
+    await fireEvent.press(view.getByLabelText(periodLabel('yearly')));
+    // Under yearly the one kept charge is another, so the picked row is dropped and reads so.
+    await waitFor(() => {
+      const field = view.getByLabelText(FIELD_LABEL);
+
+      expect(within(field).queryByText(NOT_MARKED)).not.toBeNull();
+      expect(field.props.accessibilityState.disabled).toBe(true);
+    });
     await changeLayout('columns');
 
     expect(seriesParams()).toEqual(routeBefore);
 
     await goBack();
-    await expectMarkedSeries(view, { line: markedLine('yearly'), count: 11 });
+    await expectMarkedSeries(view, { line: 'Yearly', count: 2 });
 
+    expect(view.getByTestId('recurring-series-charge-cheap-0')).toBeTruthy();
+    expect(view.getByTestId('recurring-series-charge-cheap-9')).toBeTruthy();
+    expect(view.queryByTestId('recurring-series-charge-rise')).toBeNull();
     expect(view.queryByTestId('recurring-series-charge-dear-0')).toBeNull();
   });
 });
@@ -353,7 +373,7 @@ describe('Settings stack: a fold with a marked series and its form open', () => 
 describe('The mark field reads the same state from Home and from a series link', () => {
   const FIELD_BY_ROW: [string, string, string, string][] = [
     ['a row of the marked chain', 'cheap-0', 'cheap-9', periodLabel('monthly')],
-    ['a row of the other chain', 'dear-0', 'dear-9', NOT_MARKED],
+    ['a row of the other chain', 'dear-0', 'dear-9', detectedLabel('monthly')],
   ];
 
   it.each(FIELD_BY_ROW)('opened from Home: %s', async (_chain, chargeId, _seriesRow, label) => {
@@ -363,6 +383,20 @@ describe('The mark field reads the same state from Home and from a series link',
 
     await act(async () => navigationRef.navigate('TransactionForm', { transactionId: chargeId }));
     await fieldReads(view, label);
+  });
+
+  it('opened from Home: the 119 row in the month of a 99 reads "Not marked", disabled', async () => {
+    await arrange([...cheap(10), risen, ...dear], [APPLE_AT_99]);
+
+    const view = await renderStackInContainer(navigationRef, HomeStack, GestureRootWrapper);
+
+    await act(async () => navigationRef.navigate('TransactionForm', { transactionId: 'rise' }));
+    await waitFor(() => {
+      const field = view.getByLabelText(FIELD_LABEL);
+
+      expect(within(field).queryByText(NOT_MARKED)).not.toBeNull();
+      expect(field.props.accessibilityState.disabled).toBe(true);
+    });
   });
 
   it.each(FIELD_BY_ROW)(

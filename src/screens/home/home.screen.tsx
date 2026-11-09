@@ -55,6 +55,7 @@ import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
@@ -367,14 +368,15 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // selection, and a name may equal the "All" option's value. The id is also
   // language-independent, so a selection survives a language switch; only the
   // option's `label` is the display name.
+  const scheme = useActiveColorScheme();
   const accountOptions = useMemo(
     () =>
       accountsForFilter(accounts, holdings).map((account) => ({
         value: account.id,
         label: accountDisplayName(account, t),
-        ...accountIdentity(account),
+        ...accountIdentity(account, scheme),
       })),
-    [accounts, holdings, t],
+    [accounts, holdings, t, scheme],
   );
   // The stored selection can name an account that was archived or deleted since,
   // with no checked row left to clear it, so only the ids still among the options
@@ -429,7 +431,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
         value: key,
         label: display.title,
         icon: display.icon,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
       });
     }
     // Order the filter options by each category's `sortOrder` (the user-defined
@@ -456,6 +458,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     defaultCategoryKey,
     categoryKeyForRow,
     i18n.language,
+    scheme,
   ]);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((row) => {

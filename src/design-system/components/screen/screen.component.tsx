@@ -3,6 +3,7 @@ import {
   FloatingFooterContext,
   FloatingFooterEndContext,
 } from '@kiko/design-system/floating-footer';
+import { useUnistyles } from 'react-native-unistyles';
 import { useDisplayRegions } from '@kiko/display-regions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
@@ -95,6 +96,10 @@ const Screen: FC<ScreenProps> = ({
   automaticallyAdjustKeyboardInsets = true,
   onFieldBlur,
 }) => {
+  const { theme } = useUnistyles();
+  // The safe-area view is a third-party native view: a stylesheet color on it does not repaint on
+  // a scheme change, a prop of this re-rendered component does.
+  const pageBackground = { backgroundColor: theme.colors.background };
   // The native glass tab bar floats over the screen's bottom edge, so any
   // content that reaches the screen's true bottom edge must clear it —
   // universally, from this one place — rather than each screen re-solving it.
@@ -187,7 +192,7 @@ const Screen: FC<ScreenProps> = ({
 
   if (scroll) {
     return (
-      <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
+      <SafeAreaView edges={largeTitleEdges} style={[styles.safeArea, pageBackground]}>
         <ScrollView
           ref={scrollableRef}
           testID="screen-scroll-view"
@@ -285,7 +290,7 @@ const Screen: FC<ScreenProps> = ({
   // sibling, with its own clearance, exactly as in the other two branches.
   if (bleedTop) {
     return (
-      <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
+      <SafeAreaView edges={largeTitleEdges} style={[styles.safeArea, pageBackground]}>
         {fields}
 
         <FooterSlot
@@ -316,7 +321,7 @@ const Screen: FC<ScreenProps> = ({
   return (
     <SafeAreaView
       edges={plainEdges}
-      style={[styles.safeArea, bleedBottom ? undefined : contentCap]}
+      style={[styles.safeArea, pageBackground, bleedBottom ? undefined : contentCap]}
     >
       <View
         testID="screen-content"

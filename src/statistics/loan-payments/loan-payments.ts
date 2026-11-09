@@ -158,13 +158,47 @@ export const loanInterestEntries = (input: {
 
 const NO_SPLIT: LoanPaymentSplit = { interestMinorUnits: 0, excessMinorUnits: 0 };
 
+const LOAN_ENTRY_PREFIXES = ['loan-interest', 'loan-excess'] as const;
+
+type LoanEntryPrefix = (typeof LOAN_ENTRY_PREFIXES)[number];
+
+const loanEntryIdOf = (prefix: LoanEntryPrefix, paymentId: string): string =>
+  `${prefix}:${paymentId}`;
+
+/** Which part of its payment a derived entry is: its interest, or the fee above the installment. */
+export type LoanEntryPart = 'interest' | 'fee';
+
+const LOAN_ENTRY_PART: Record<LoanEntryPrefix, LoanEntryPart> = {
+  'loan-interest': 'interest',
+  'loan-excess': 'fee',
+};
+
+const loanEntryPrefixOf = (entryId: string): LoanEntryPrefix | undefined =>
+  LOAN_ENTRY_PREFIXES.find((prefix) => entryId.startsWith(loanEntryIdOf(prefix, '')));
+
+/**
+ * The id of the payment a derived entry (`loan-interest:<id>`, `loan-excess:<id>`) is made from;
+ * undefined for any other id, a real transaction's included.
+ */
+export const loanPaymentIdOf = (entryId: string): string | undefined =>
+  foldMap(maybe(loanEntryPrefixOf(entryId)), (prefix) =>
+    entryId.slice(loanEntryIdOf(prefix, '').length),
+  );
+
+/**
+ * Which part of its payment a derived entry is: the interest, or the fee above the scheduled
+ * installment; undefined for any other id.
+ */
+export const loanEntryPartOf = (entryId: string): LoanEntryPart | undefined =>
+  foldMap(maybe(loanEntryPrefixOf(entryId)), (prefix) => LOAN_ENTRY_PART[prefix]);
+
 const syntheticEntry = (
   transaction: LoanPaymentTransaction,
-  idPrefix: 'loan-interest' | 'loan-excess',
+  idPrefix: LoanEntryPrefix,
   category: LoanPaymentTransaction['category'],
   expenseMinorUnits: number,
 ): TrendTransaction => ({
-  id: `${idPrefix}:${transaction.id}`,
+  id: loanEntryIdOf(idPrefix, transaction.id),
   category,
   amountMinorUnits: -expenseMinorUnits,
   mcc: null,

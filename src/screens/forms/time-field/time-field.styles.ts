@@ -3,7 +3,7 @@ import { disabledFieldStyle } from '@kiko/design-system/disabled-field-style';
 
 export const styles = StyleSheet.create((theme) => ({
   // The tappable field: a bordered chip matching an ACTIVE TextField's chrome
-  // (same border color, radius, padding, and — crucially — no surface fill),
+  // (same border color, radius, fill via `fieldBackground`, padding),
   // identical to DateField's field so the paired Date/Time row reads as one
   // control. A leading clock icon precedes the formatted time / placeholder.
   field: {
@@ -11,6 +11,7 @@ export const styles = StyleSheet.create((theme) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.fieldBackground,
     paddingVertical: theme.spacing(3),
     paddingHorizontal: theme.spacing(3),
   },

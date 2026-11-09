@@ -1,6 +1,8 @@
+import { sumOf } from '@kiko/numbers';
 import type { CalendarMonth } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import type { RateTable } from '@kiko/rates/conversion';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
 
 import { type SpendingLedger, spendingRowsIn } from '../spending-ledger';
@@ -23,8 +25,6 @@ type CategoryByMonth = {
   allTotal: number;
 };
 
-const sumOf = (values: readonly number[]): number => values.reduce((sum, value) => sum + value, 0);
-
 /** Largest total first; equal totals by key, so the order never moves between renders. */
 const byTotalThenKey = (left: CategoryByMonthRow, right: CategoryByMonthRow): number => {
   if (left.total !== right.total) {
@@ -42,6 +42,7 @@ type CategoryTableSources = {
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
+  scheme: ColorScheme;
 };
 
 const breakdownIn = (
@@ -58,6 +59,7 @@ const breakdownIn = (
     defaultCategoryKey: sources.defaultCategoryKey,
     excludedCategories,
     excludedTransactionIds: sources.ledger.excludedTransactionIds,
+    scheme: sources.scheme,
   });
 
 /**

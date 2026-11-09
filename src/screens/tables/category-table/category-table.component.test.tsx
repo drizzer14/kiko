@@ -1,9 +1,10 @@
 import { View } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
+import { rowDescriberOf } from '@kiko/statistics/cell-rows';
 import { buildSpendingLedger } from '@kiko/statistics/spending-ledger';
 import type DataTable from '@kiko/design-system/components/data-table';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
@@ -72,6 +73,8 @@ const propsOf = (
   baseCurrency: 'UAH',
   defaultCategoryKey: 'other',
   excludedCategories: new Set<string>(),
+  describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
+  sheetGeneration: 0,
   topContent: <View testID="table-controls" />,
   ...overrides,
 });
@@ -322,6 +325,143 @@ describe('CategoryTable', () => {
 
       expect(table.emptyContent).toBeDefined();
       expect(rendered.getByTestId('category-table-empty')).toBeTruthy();
+    });
+  });
+
+  describe('a cell that opens the rows behind it', () => {
+    const HINT = i18n.t('tables.cellRows.hint');
+    // 0 January, 1 February, 2 March, 3 April, 4 May, 5 June, 6 Total, 7 Average.
+    const MONTH_AND_TOTAL = [0, 1, 4, 5, 6];
+
+    const pressed = async (props: CategoryTableProps, key: string, column: number) => {
+      const { rendered, table } = await shown(props);
+
+      await act(async () => {
+        cellsOf(table, key)[column].onPress?.();
+      });
+
+      return { rendered, table };
+    };
+
+    const rowIdsOf = (rendered: Awaited<ReturnType<typeof shown>>['rendered']) =>
+      rendered.getAllByTestId(/^cell-row-/).map((row) => row.props.testID);
+
+    it.each(MONTH_AND_TOTAL)(
+      'opens from column %i of a category row, with its hint',
+      async (column) => {
+        const { table } = await shown(propsOf(WORLD));
+        const cell = cellsOf(table, 'category-groceries')[column];
+
+        expect(cell.onPress).toBeInstanceOf(Function);
+        expect(cell.accessibilityHint).toBe(HINT);
+      },
+    );
+
+    it.each(MONTH_AND_TOTAL)(
+      'opens from column %i of the All row, with its hint',
+      async (column) => {
+        const { table } = await shown(propsOf(WORLD));
+        const cell = cellsOf(table, 'all')[column];
+
+        expect(cell.onPress).toBeInstanceOf(Function);
+        expect(cell.accessibilityHint).toBe(HINT);
+      },
+    );
+
+    it.each(['category-groceries', 'category-transport', 'all'])(
+      'does not open from the Average of %s',
+      async (key) => {
+        const { table } = await shown(propsOf(WORLD));
+        const average = cellsOf(table, key)[7];
+
+        expect(average.onPress).toBeUndefined();
+        expect(average.accessibilityHint).toBeUndefined();
+      },
+    );
+
+    it('does not open from a cell of zero, which has no rows behind it', async () => {
+      const { table } = await shown(propsOf(WORLD));
+
+      expect(cellsOf(table, 'category-groceries')[2].text).toBe('0');
+      expect(cellsOf(table, 'category-groceries')[2].onPress).toBeUndefined();
+    });
+
+    it('shows no sheet until a cell is pressed', async () => {
+      const { rendered } = await shown(propsOf(WORLD));
+
+      expect(rendered.queryByTestId('cell-rows-sheet')).toBeNull();
+    });
+
+    it('titles the sheet with the row and the month, and lists the rows of that cell only', async () => {
+      const { rendered } = await pressed(propsOf(WORLD), 'category-groceries', 1);
+
+      expect(rendered.getByText('Groceries, February 2025')).toBeTruthy();
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-g-feb']);
+    });
+
+    it('adds the rows into the amount its cell speaks, in the Total of a category too', async () => {
+      const { rendered, table } = await pressed(propsOf(WORLD), 'category-groceries', 6);
+      const cell = cellsOf(table, 'category-groceries')[6];
+
+      expect(rendered.getByText('Groceries, Total')).toBeTruthy();
+      expect(rowIdsOf(rendered)).toHaveLength(4);
+      expect(
+        within(rendered.getByTestId('cell-rows-total')).getByText(cell.accessibilityValue),
+      ).toBeTruthy();
+    });
+
+    it('lists every category under the All cell of a month, newest first', async () => {
+      const { rendered } = await pressed(propsOf(WORLD), 'all', 1);
+
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-t-feb', 'cell-row-g-feb']);
+    });
+
+    it('lists only the categories a held pick keeps under the All cell', async () => {
+      const { rendered } = await pressed(
+        propsOf(WORLD, { excludedCategories: new Set(['transport']) }),
+        'all',
+        1,
+      );
+
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-g-feb']);
+    });
+
+    it('labels a row with no description as Home labels it, by its holding', async () => {
+      const { rendered } = await pressed(propsOf(WORLD), 'category-groceries', 1);
+
+      expect(
+        within(rendered.getByTestId('cell-row-g-feb')).getByText(
+          i18n.t('transactions.defaultDescriptionExpense', { name: CARD.name }),
+        ),
+      ).toBeTruthy();
+    });
+
+    it('keeps the total of the sheet equal to its cell when the ledger changes under it', async () => {
+      const props = propsOf(WORLD);
+      const { rendered } = await pressed(props, 'category-groceries', 1);
+      const refreshed = propsOf(
+        [...WORLD, spend('g-feb-synced', 'groceries', 25_00, FEBRUARY.start + 3_000)],
+        { sheetGeneration: props.sheetGeneration },
+      );
+
+      await rendered.rerender(<CategoryTable {...refreshed} />);
+      const table = mockDataTable.mock.calls.at(-1)?.[0] as TableProps;
+
+      expect(rowIdsOf(rendered)).toEqual(['cell-row-g-feb-synced', 'cell-row-g-feb']);
+      expect(
+        within(rendered.getByTestId('cell-rows-total')).getByText(
+          cellsOf(table, 'category-groceries')[1].accessibilityValue,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('closes the sheet when the screen stops showing, which moves the generation on', async () => {
+      const props = propsOf(WORLD);
+      const { rendered } = await pressed(props, 'category-groceries', 1);
+
+      await rendered.rerender(<CategoryTable {...props} sheetGeneration={1} />);
+
+      expect(rendered.queryByText('Groceries, February 2025')).toBeNull();
     });
   });
 

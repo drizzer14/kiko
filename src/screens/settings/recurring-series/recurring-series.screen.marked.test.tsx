@@ -51,8 +51,10 @@ const EMPTY = 'recurring-series-empty';
 
 const removeMarkText = (): string => i18n.t('recurringCharges.removeMark');
 const notRecurringText = (): string => i18n.t('recurringCharges.notRecurring');
-const lastChargeText = (series: RecurringSeries): string =>
-  i18n.t('recurringCharges.lastCharge', { date: formatDate(series.lastChargeTime) });
+const REPEATS = 'recurring-series-summary-repeats';
+const LAST_CHARGE = 'recurring-series-summary-last-charge';
+const CHARGE_COUNT = 'recurring-series-summary-charge-count';
+const lastChargeDate = (series: RecurringSeries): string => formatDate(series.lastChargeTime);
 
 const lowestMarkOf = (series: RecurringSeries): { markedAmountMinorUnits: number } | undefined =>
   foldMap(maybe(series.marks), (marks) => ({
@@ -145,11 +147,9 @@ describe('RecurringSeriesScreen — a marked series', () => {
     const series = markedOf(state, 'Netflix');
     const { getByTestId } = await renderScreen(state, routeOf(series));
 
-    expect(getByTestId(HEADER)).toHaveTextContent(i18n.t('recurringCharges.marked.monthly'), {
-      exact: false,
-    });
-    expect(getByTestId(HEADER)).toHaveTextContent(lastChargeText(series), { exact: false });
-    expect(getByTestId(HEADER)).toHaveTextContent('3 charges', { exact: false });
+    expect(getByTestId(REPEATS)).toHaveTextContent('Monthly', { exact: true });
+    expect(getByTestId(LAST_CHARGE)).toHaveTextContent(lastChargeDate(series), { exact: true });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('3', { exact: true });
   });
 
   it('offers only "Remove mark" on a marked series', async () => {
@@ -295,8 +295,10 @@ describe('RecurringSeriesScreen — removing a mark', () => {
     // The settings read has landed the removal: both Apple chains are detected again.
     await update(hookStateOf(appleLedger(), []));
 
-    expect(getByTestId(HEADER)).toHaveTextContent('10 charges', { exact: false });
-    expect(getByTestId(HEADER)).toHaveTextContent(lastChargeText(MARKED_APPLE), { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('10', { exact: true });
+    expect(getByTestId(LAST_CHARGE)).toHaveTextContent(lastChargeDate(MARKED_APPLE), {
+      exact: true,
+    });
     expect(queryByTestId(EMPTY)).toBeNull();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -396,9 +398,9 @@ describe('RecurringSeriesScreen — a route that holds the stored amount', () =>
   });
 
   it.each([
-    { title: 'between its stored amounts', amount: 10500, count: '6 charges', wrong: HIGH },
-    { title: 'at the top of the dear chain', amount: 45000, count: '4 charges', wrong: LOW },
-    { title: 'on a stored amount', amount: 39900, count: '4 charges', wrong: LOW },
+    { title: 'between its stored amounts', amount: 10500, count: '6', wrong: HIGH },
+    { title: 'at the top of the dear chain', amount: 45000, count: '4', wrong: LOW },
+    { title: 'on a stored amount', amount: 39900, count: '4', wrong: LOW },
   ])(
     'finds the series whose span holds an amount $title, whatever its seriesId says',
     async ({ amount, count, wrong }) => {
@@ -407,7 +409,7 @@ describe('RecurringSeriesScreen — a route that holds the stored amount', () =>
         routeOf(wrong, { markedAmountMinorUnits: amount }),
       );
 
-      expect(getByTestId(HEADER)).toHaveTextContent(count, { exact: false });
+      expect(getByTestId(CHARGE_COUNT)).toHaveTextContent(count, { exact: true });
       expect(queryByTestId(EMPTY)).toBeNull();
     },
   );
@@ -451,7 +453,7 @@ describe('RecurringSeriesScreen — a route without the stored amount', () => {
     const { getByTestId, getByText, queryByText } = await renderScreen(after, routeOf(cheap));
 
     expect(detectedOf(after, 'Apple').id).not.toBe(marked.id);
-    expect(getByTestId(HEADER)).toHaveTextContent(lastChargeText(marked), { exact: false });
+    expect(getByTestId(LAST_CHARGE)).toHaveTextContent(lastChargeDate(marked), { exact: true });
     expect(getByText(removeMarkText())).toBeTruthy();
     expect(queryByText(notRecurringText())).toBeNull();
   });
@@ -466,7 +468,7 @@ describe('RecurringSeriesScreen — a route without the stored amount', () => {
     );
 
     expect(after.series).toEqual([]);
-    expect(getByTestId(HEADER)).toHaveTextContent('6 charges', { exact: false });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('6', { exact: true });
     expect(queryByTestId(EMPTY)).toBeNull();
   });
 
@@ -513,7 +515,7 @@ describe('RecurringSeriesScreen — a route without the stored amount', () => {
         routeOf(DEAR),
       );
 
-      expect(getByTestId(HEADER)).toHaveTextContent(lastChargeText(DEAR), { exact: false });
+      expect(getByTestId(LAST_CHARGE)).toHaveTextContent(lastChargeDate(DEAR), { exact: true });
       expect(getByText(notRecurringText())).toBeTruthy();
       expect(queryByText(removeMarkText())).toBeNull();
     });
@@ -525,7 +527,7 @@ describe('RecurringSeriesScreen — a route without the stored amount', () => {
         routeOf(DEAR, { seriesId: 'apple-usd' }),
       );
 
-      expect(getByTestId(HEADER)).toHaveTextContent(lastChargeText(DEAR), { exact: false });
+      expect(getByTestId(LAST_CHARGE)).toHaveTextContent(lastChargeDate(DEAR), { exact: true });
     });
 
     it('shows the neutral text when several detected series share its key, currency and period', async () => {
@@ -613,7 +615,7 @@ describe('RecurringSeriesScreen — a marked route after its mark was removed', 
 });
 
 describe('RecurringSeriesScreen — a marked route after a pick on a row of its chain', () => {
-  it('finds the marked x11 by its span, though its period and the detected 399 differ', async () => {
+  it('finds the marked x2 by its span, though its period and the detected 399 differ', async () => {
     const ledger = ledgerOf([
       ...monthly(10, 5, 99, { prefix: 'cheap', description: 'Apple' }),
       ...monthly(1, 12, 119, { prefix: 'odd', description: 'Apple', newest: [2026, 7] }),
@@ -626,12 +628,10 @@ describe('RecurringSeriesScreen — a marked route after a pick on a row of its 
 
     expect(route.period).toBe('monthly');
     expect(markedOf(after, 'Apple').period).toBe('yearly');
-    expect(markedOf(after, 'Apple').chargeIds).toHaveLength(11);
+    expect([...markedOf(after, 'Apple').chargeIds].sort()).toEqual(['cheap-0', 'cheap-9']);
     expect(detectedOf(after, 'Apple').chargeIds).toHaveLength(10);
-    expect(getByTestId(HEADER)).toHaveTextContent('11 charges', { exact: false });
-    expect(getByTestId(HEADER)).toHaveTextContent(i18n.t('recurringCharges.marked.yearly'), {
-      exact: false,
-    });
+    expect(getByTestId(CHARGE_COUNT)).toHaveTextContent('2', { exact: true });
+    expect(getByTestId(REPEATS)).toHaveTextContent('Yearly', { exact: true });
     expect(getByText(removeMarkText())).toBeTruthy();
     expect(queryByTestId(EMPTY)).toBeNull();
   });

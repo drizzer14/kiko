@@ -99,6 +99,9 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-component-explicit-return',
   'kiko-no-set-or-map-in-subset-match',
   'kiko-no-test-fixture-import-in-app',
+  'kiko-no-unistyles-set-theme',
+  'kiko-no-hard-coded-native-scheme',
+  'kiko-no-nested-text',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (

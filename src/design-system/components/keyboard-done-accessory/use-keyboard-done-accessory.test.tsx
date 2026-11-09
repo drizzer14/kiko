@@ -49,18 +49,14 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
 };
 
 // A minimal host that wires the hook exactly as a real field does: the input
-// links to the accessory by id and takes its keyboardAppearance, and the
-// accessory renders alongside it.
+// links to the accessory by id, and the accessory renders alongside it. Every other field the hook
+// returns lands on the input too, so a field added to the hook shows on the input.
 const Host: FC = () => {
-  const { inputAccessoryViewID, accessory, keyboardAppearance } = useKeyboardDoneAccessory();
+  const { accessory, ...inputProps } = useKeyboardDoneAccessory();
 
   return (
     <>
-      <TextInput
-        accessibilityLabel="Field"
-        inputAccessoryViewID={inputAccessoryViewID}
-        keyboardAppearance={keyboardAppearance}
-      />
+      <TextInput accessibilityLabel="Field" {...inputProps} />
       {accessory}
     </>
   );
@@ -93,12 +89,12 @@ describe('useKeyboardDoneAccessory', () => {
     dismissSpy.mockRestore();
   });
 
-  // Kiko is dark-only, so the hook gives the linked input the pill's own
-  // 'dark' keyboardAppearance; the system default would not match it.
-  it("gives the linked input the accessory's own dark keyboardAppearance", async () => {
+  // An input with no `keyboardAppearance` takes the window's interface style, which is what the
+  // glass pill samples as well, so the two never drift apart.
+  it('sets no keyboardAppearance on the linked input, so the keyboard follows the window', async () => {
     const { getByLabelText } = await render(<Host />);
 
-    expect(getByLabelText('Field').props.keyboardAppearance).toBe('dark');
+    expect(getByLabelText('Field').props.keyboardAppearance).toBeUndefined();
   });
 
   // The accessory host is fully TRANSPARENT (no fill, no border, no corner

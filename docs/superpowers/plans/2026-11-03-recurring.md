@@ -230,6 +230,9 @@ removeRecurringMarks: (key: string, marks: readonly RecurringMark[]) => Promise<
 
 ## The marked matrix (the contract of task 4/4 step 3)
 
+Rows that `1.4-recurring-visual-2 task 6/6` (one charge per period, spec 8.3) changes are listed with their `was` in that
+task's table; that table wins over a cell below.
+
 The same conventions; each row adds a stored entry for the world's name. A Mark names its period and, where the world holds more than one amount or none at that value, its stored amount; with none named, it stores the amount of the world's rows in their holding's currency (UAH unless the row says). Each table's No entry column is the result with no entry; every row also runs with no entry, and that result must hold. Hide, link and user-text-key flows are in "Marked flows" below. Line is the recurrence line. "marked" means `marks` is set; a detected series beside it has none. A world's rows outside the Expected series are in no series unless it says so. Stopped uses the monthly cutoff of 26 Sep 2026 unless the period differs.
 
 Amount chain worlds. Each cell is hand-walked by spec 5.2, 5.3, 6, 7 and 8.2; the developer re-reads any cell a pin disagrees with and reports it, never edits to green.
@@ -734,6 +737,603 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
 
 ---
 
+## 1.4-recurring visual round 2
+
+**Spec:** section 18 (18.1 the reversals with their "was:", 18.2 totals, 18.3 the table, 18.4 hidden rows, 18.5 the footer,
+18.7 texts, 18.8 answers with Q5). **Branch:** `1.4-recurring-visual-2`, base 85215396e (visual-1 task 3/3's tip, not
+yet in `next`). **Answers (USER 2026-11-06):** Q1 A, Q2 (a stopped series counts, a hidden one does not, plus a way to remove a
+stopped series: Q5), Q4 B, and the FINAL Q5 RULING (USER 2026-11-06, spec 18.8): one action "Not a recurring charge", by long
+press on any series row and the series footer, removes the series entirely; no "Hidden" section, no "Show again"; only a
+mark brings it back. Q3 and the earlier Q5 A are SUPERSEDED (spec 18.8 keeps them as the record). **Texts:** rows of tasks
+1/5 and 3/5 APPROVED 2026-11-06; task 2/5's rows PENDING USER REVIEW (texts-visual-2.md, "Final Q5 ruling texts
+(pending)"). **Order and gates:** 1/5, then 3/5 (the table does not depend on the ruling, so it starts while the texts wait),
+then 2/5 (gated on the pending texts), then 5/5. Task 4/5 is VOID, merged into 2/5. Four change sets, stacked: each on the
+previous one's tip in that order. Task 5/5 is the track's design consistency review (user rule 2026-11-06). Every count is a
+floor; the developer measures. Every code fact names a symbol: re-grep each on the actual base. Scope is the three items, the
+final Q5 ruling and the review only.
+
+**M is 6 since 2026-11-06** (was 5): task 6/6 is the user bug of DEPLOY 4 (spec 8.3). Tasks 1/5, 2/5, 3/5 and 5/5 merged
+under those names and keep them; read them as N/6.
+
+**Run-log gaps:** these sets close none and leave all open; none names the recurring screens. Nearest, left open:
+`20261103T2049-kiko-1-4-light-scheme-2/1` and `20261104T1734-kiko-1-4-light-scheme/1` (dark look owed on a device; this
+round's device call can cover the recurring screens in dark).
+
+**Existing suites.** No owed state, column, migration or seed: no 1.2-upgrade world is touched. Not "unchanged": the named
+edits of each step are the only edited expectations, each with a `was:` line in its commit body; any other is reported, not
+made. Each qa pin is shown red on the base before its commit; a pin green on the base is a guard, shown failing by a temporary
+mutant.
+
+**Checks for every step:** the fast tier on write; `npx jest <named files> --maxWorkers=2` with output in a file; `make
+jest-affected BASE=<set base>` where it does not exit 3 (`en.ts`/`uk.ts` make it 3: run the named set and say so). The named
+set of every code step includes `src/navigation/settings-stack`. No agent runs `make verify`, `check:all` or full jest. At the
+end of each set the coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-recurring-visual-2-task-N` and reruns
+until green. Mutation gates are paused by the user; if lifted, one gate per set, `KIKO_MUTATION_BASE` = that set's own base,
+never one run over the round. A catalogue key removal greps the help topics, the pin suites and uk first, every dependent edit
+in the same step (harness-workflow "Removing or renaming a catalogue key").
+
+### 1.4-recurring-visual-2 task 1/5: group totals of last charges (item 1)
+
+**Files (floor 8; mutable floor 2: `recurring-groups.ts`, `recurring-charges.screen.tsx`).**
+- Modify: `src/recurring/recurring-groups/{recurring-groups.ts,recurring-groups.test.ts}`;
+  `src/recurring/use-recurring-groups/use-recurring-groups.test.tsx` (the totals assertion of `group the by-ids rows by the
+  categories read, convert at the rates read, total in the base`); `recurring-charges.screen.tsx` (the total row's label);
+  `recurring-charges.screen.groups.test.tsx`; `src/i18n/locales/{en,uk}.ts`.
+- By measure: `src/test-support/mock-recurring-groups.ts`, `src/screens/settings/recurring-charges/*.test.tsx` that read a
+  total.
+
+- [ ] **step 1/4 (kiko:qa): pins, red on the base.** `recurring-groups.test.ts`: a series of three charges (newest 300, then
+  200, 100, all in `rows`) adds 300 to its group, not 600 (red); the counted amount is `lastChargeAmountMinorUnits` even when
+  the newest row is missing from `rows` (red: today it sums the rows); a USD series converts its last charge once at
+  `buildRateTable(rates)` and the group total is the `Money` sum of its series in the base; a currency `canConvert` rejects is
+  left out and its series still listed (guard); a stopped series' last charge counts (Q2, USER 2026-11-06; a guard: red on a
+  mutant that filters `isStopped`); the total of all equals the sum of the group totals (guard). Named edits, each with `was:`: `the
+  totals` describe's sums of every row (was: the sum of all charges, spec 17.4), and `makes the total of all the sum of the
+  group totals`, whose per-row rounding world has no meaning with one amount per series (was: a rounding world where per-row
+  conversion differs by one minor unit). `recurring-charges.screen.groups.test.tsx`: the total row reads "Sum of last
+  charges" / «Сума останніх списань» (red; was: "All paid so far"). `use-recurring-groups.test.tsx`: its totals now of last
+  charges (a named edit, `was:`). Commit `test(recurring): group totals of last charges`.
+- [ ] **step 2/4 (kiko:developer): code.** Spec 18.2: the group total adds `Money.of(series.currency,
+  series.lastChargeAmountMinorUnits)` per counted series, one `convert` each, `canConvert` as the guard; `paidSoFarOf` and its
+  helper stay for the series screen (knip: no export left unused). `recurringCharges.lastChargesTotal` into `en.ts` and `uk.ts`
+  together, as approved; the list's total row reads it; `paidSoFar` stays (the series screen). Run `npx jest src/recurring
+  src/screens/settings/recurring-charges src/screens/settings/recurring-series src/navigation/settings-stack src/i18n/locales
+  --maxWorkers=2`. Commit `feat(recurring): group totals of last charges`.
+- [ ] **step 3/4 Review, Drift and Scribe (kiko:reviewer, kiko:retrospect, kiko:scribe).** Top question: can a total add two
+  currencies' minor units, count a series twice, or count a charge other than the last? Drift: kiko-domain's recurring section
+  (the totals rule), kiko-pricing's past-row conversion line if it names the recurring sum. Report the sha or "no drift
+  found"; `make doc-suites` after the last doc commit.
+- [ ] **step 4/4 Device and Ready.** Both languages: group totals and the total of all against a hand sum of the rows'
+  amounts, a UAH and a USD series, a stopped series. READY FOR VERIFY, label `1.4-recurring-visual-2-task-1`.
+
+### 1.4-recurring-visual-2 task 2/5: "Not a recurring charge" removes a series entirely (item 3, final Q5 ruling)
+
+**Was:** "hidden series in their group, "Show again" on the series screen" (round 2 Q3 A, VOID) and task 4/5 "remove a stopped
+series from the list" (Q5 A, VOID, merged here). **Spec:** 18.4, 18.5, 18.7, 18.8 "Final Q5 ruling". **Gate:** the texts
+PENDING USER REVIEW (texts-visual-2.md, "Final Q5 ruling texts (pending)"); no step starts before the coordinator relays the
+user's approval; an edited row is copied as approved. **Base:** task 3/5's tip (runs after 3/5). No migration, no column, no
+store shape change. **Files (floor 21; mutable floor 4: `recurring-charges.screen.tsx`, `recurring-series.screen.tsx`,
+`settings.repo.ts`, `card-context-menu.component.tsx`).**
+- Modify, code:
+  - `src/screens/settings/recurring-charges/recurring-charges.screen.tsx`: remove `HIDDEN_HEADING_ITEM`, `hiddenEntriesOf`,
+    `hiddenItemsOf`, the `'hidden'` list-item kind and the `'hidden'` heading section, their `keyOf` and render arms (testIDs
+    `recurring-charges-heading-hidden`, `recurring-charges-hidden-<key>`, `recurring-charges-show-again-<key>`), `showAgain`,
+    `itemsOf`'s `choices` parameter, every import left unused (`compareText` and others: tsc and knip decide), and the
+    comments that name the hidden section. The `series` arm wraps `RecurringSeriesRow` in `CardContextMenu` for every series
+    (detected, stopped, quiet, marked): `name={series.name}`, `deletable`, `liftOnHold`, `deleteLabel={t('recurringCharges.notRecurring')}`,
+    `deleteTitle={t('recurringCharges.notRecurringConfirmTitle')}`, `deleteMessage` resolving
+    `t('recurringCharges.notRecurringConfirmMessage', { name })`, `onDelete` calling
+    `settingsRepo.hideRecurringMerchant(series.merchantKey, series.name, series.marks ?? [])` with the list's `alertOnCatch`
+    save-error keys. `markedEmpty` rows stay as they are (no hold).
+  - `src/design-system/components/card-context-menu/card-context-menu.component.tsx`: optional `deleteLabel?: string`, the
+    text of the delete item and of the confirm button; omitted, `t('common.delete')` (every current caller unchanged).
+  - `src/settings/settings.repo.ts`: `hideRecurringMerchant(key, name, chain: readonly RecurringMark[] = [])` sets `hidden:
+    true` and drops the stored marks of `chain` (`isSameChain`) in the same `changeRecurringMerchantChoices` write; remove
+    `showRecurringMerchantAgain` (no caller left). `recurringChoiceOf` and `withChoice` stay only if `removeRecurringMarks`
+    still calls them (knip decides).
+  - `src/screens/settings/recurring-series/recurring-series.screen.tsx`: the footer's "Not a recurring charge" opens the shared
+    `ConfirmSheet` (same title, message with the name, `confirmLabel` `notRecurring`, `destructive`); its confirm runs the
+    existing `hide` through `useSubmitOnce`; Cancel writes nothing; the go-back rules unchanged (Q4 B). The marked footer
+    "Remove mark" unchanged.
+  - `src/i18n/locales/{en,uk,title-keys}.ts`: add `recurringCharges.notRecurringConfirmTitle` (also in `TITLE_KEYS`) and
+    `recurringCharges.notRecurringConfirmMessage`; change `help.topics.viewRecurringCharges.steps.4`; remove
+    `recurringCharges.hiddenHeading` (en, uk, `title-keys.ts`) and `recurringCharges.showAgain` (en, uk).
+- Modify, pins (grep on the base `recurring-charges-hidden-`, `recurring-charges-show-again-`, `heading-hidden`,
+  `hiddenHeading`, `showAgain`, `showRecurringMerchantAgain`, `HIDDEN_LINE`, `hideRecurringMerchant`; at 4e61124c7):
+  `recurring-charges.screen.test.tsx` (describe `RecurringChargesScreen — hidden merchants`; the `hiddenHeading`/`showAgain`
+  text pins), `recurring-charges.screen.marked.test.tsx` (`HIDDEN_APPLE`, the `ghost` key, the headings list reading
+  `hiddenHeading`; the qa agent's in-flight edits land first), `recurring-charges.screen.marked-flows.test.tsx` (`HIDDEN_LINE`,
+  the show-again flow), `recurring-charges.screen.groups.test.tsx` (the item-order world with `heading-hidden`, `shows no total
+  in "Marked, No Charges" or "Hidden"`), `recurring-series.screen.test.tsx` (the hide pins), `recurring-series.screen.footer.test.tsx`,
+  `src/settings/settings.repo.test.ts` (the `showAgain` helper, its three cases, describe `showRecurringMerchantAgain`, `touches
+  no transactions row on a hide or a show again`), `card-context-menu.component.test.tsx`,
+  `src/navigation/settings-stack/recurring-series.navigator.test.tsx` (`a hide write that lands after the user moved on`: through
+  the confirm). By measure: `src/i18n/locales/title-keys.call-sites.test.ts` (the footer's `ConfirmSheet title` is a literal
+  `t('key')`, so `TITLE_KEYS` covers it; `deleteTitle` is already a forwarded site: verify), the suite that pins the help
+  steps (grep `viewRecurringCharges.steps` under `src`), `recurring-series.marks.navigator.test.tsx` (no hidden case at
+  4e61124c7). `help-topics.ts` and its test do not change (no step 6).
+
+- [ ] **step 1/5 (kiko:qa): pins, red on the base.** Every named edit carries a `was:` line (spec 18.4's matrix). List suites:
+  - a hidden key with no mark: none of its series render, no `recurring-charges-heading-hidden`, no `recurring-charges-hidden-*`,
+    no `recurring-charges-show-again-*`, no "Hidden" / «Приховані» text (red; was: the "Hidden" section with "Show again");
+    its amounts are in no group total and not in the total of all (guard; red on a mutant that passes `every` as `shown`);
+  - a new charge of a hidden key (its newest charge today, after the hide) stays out (guard; red on a mutant that lists a
+    hidden detected series that is active);
+  - a mark on one of its charges brings it back: hidden key plus a mark in that currency lists the marked series and counts
+    it (guard; red on a mutant that filters `markedSeries` by the hide); written through `markRecurringCharge` in the
+    marked-flows suite, the series appears after the write (guard);
+  - only a hidden key: the empty state and nothing after it (red; was: `shows the empty state and the section together`);
+  - the long press, on each of an active, a stopped, a quiet and a marked row (`HOLD_GESTURE_TEST_ID` within the row): the
+    confirm opens titled with the pending title, the message with the row's name, the confirm button
+    (`DELETE_CONFIRM_TEST_ID`) "Not a recurring charge" / «Це не регулярний платіж», `destructive`, and no "Delete" /
+    «Видалити» text (red); a "Marked, No Charges" row has no hold (guard);
+  - one write path: confirm on a detected row calls `settingsRepo.hideRecurringMerchant(key, name, [])` once; on a marked row
+    `(key, name, series.marks)` once; the same spy as the footer pin, and no other `settingsRepo` write runs (red); Cancel
+    calls nothing (red);
+  - after the confirm (the live-query mock of `recurring-mark-live-queries.ts`, by measure): the row and every detected
+    series of that key in another currency leave the list, their amounts leave the group totals and the total of all (red);
+    on a marked row the marked series leaves and the key's detected series does not appear (red);
+  - a rejected write alerts with the save-error keys and the row stays (red); a tap on a row still opens the series (guard).
+  Footer (`recurring-series.screen.footer.test.tsx`, `recurring-series.screen.test.tsx`): a tap on `recurring-series-hide`
+  opens the confirm and writes nothing (red; was: the tap writes); the confirm writes `hideRecurringMerchant(key, name)` once
+  (a double tap once), goes back only after the write and only while focused (Q4 B stands; named edits of `hides the merchant
+  key with its name on a tap, and goes back only after the write` and `does not go back when another screen was opened over it
+  before the write landed`); Cancel stays and writes nothing (red); the marked series still shows "Remove mark" (guard).
+  Navigator: the late-write pin through the confirm (named edit). Repo (`settings.repo.test.ts`): a hide with a chain sets
+  `hidden: true`, drops only that chain's marks and keeps the key's other marks, in one write (red); without a chain as today
+  (guard); the `showRecurringMerchantAgain` cases go with the function (was: show again clears the hide). `CardContextMenu`:
+  `deleteLabel` labels the action-list delete item and the confirm button (red); omitted, both read "Delete" (guard). Help:
+  step 4 in both languages, the approved row byte for byte (red). Commit `test(settings): not a recurring charge removes a
+  series entirely`.
+- [ ] **step 2/5 (kiko:developer): code.** Spec 18.4, 18.5. The Files above; the shared `CardContextMenu` and `ConfirmSheet`,
+  no local sheet, theme tokens only. Before removing `hiddenHeading` and `showAgain`, grep both keys and the literals
+  `Приховані`, "Show again", «Показати знову», `from "Hidden"` in `src`, `__tests__`, the help topics, `docs/superpowers`,
+  `.claude/skills` and `harness/kiko/skills` on the base, and edit every hit in this commit (harness-workflow "Removing or
+  renaming a catalogue key"; at 4e61124c7 kiko-domain names the 'Hidden' section and "Show again"). Run `npx jest
+  src/recurring src/settings src/screens/settings/recurring-charges src/screens/settings/recurring-series
+  src/navigation/settings-stack src/design-system/components/card-context-menu src/help src/screens/settings/help-topic
+  src/i18n/locales --maxWorkers=2`; `npm run check:knip` (no unused export). Commit `feat(settings): not a recurring charge
+  removes a series entirely`.
+- [ ] **step 3/5 Review (kiko:reviewer).** Diff from the set's base. Top question: can a series of a hidden key with no mark
+  reach the list or a total, and does a mark still bring it back? Second: do the hold and the footer share the one write, and
+  does a marked row's write clear only that chain's marks? Third: does `deleteLabel` change any existing `CardContextMenu`
+  caller, and does the hold on every row keep the list's scroll and tap? Fourth: is any removed pin deleted rather than
+  re-pointed, and is every removed key gone from both catalogues, `title-keys.ts`, the help text and the skills? Fifth: does a
+  hide still add no by-ids key and run no detection (9.5)? No migration.
+- [ ] **step 4/5 Drift and Scribe (kiko:retrospect, kiko:scribe).** kiko-domain's recurring section (no "Hidden" section, the
+  per-key hide with no date, the marked-row write, the only way back), kiko-design-system (`CardContextMenu` `deleteLabel`, a
+  recurring caller; the series footer's confirm), spec 8.1 and 9.2's text if retrospect asks. Report the sha or "no drift
+  found"; `make doc-suites` after.
+- [ ] **step 5/5 Device and Ready.** Both languages: hold an active row, the confirm, the row and its other-currency series
+  gone, totals down; hold a marked row, gone, its detected twin absent; open a detected series, the footer, the confirm, Back;
+  mark one of a removed series' transactions in the form, the series back; Cancel leaves everything; the list scrolls from a
+  held row. READY FOR VERIFY, label `1.4-recurring-visual-2-task-2`.
+
+### 1.4-recurring-visual-2 task 3/5: the series screen's table (item 2)
+
+**Base:** task 1/5's tip (was: task 2/5's tip). The next code task after 1/5: the table does not depend on the final Q5
+ruling and its texts are approved, so it starts while task 2/5's texts wait. **Files (floor 9; mutable floor 1:
+`recurring-series.screen.tsx`).**
+- Create: `src/screens/settings/recurring-series/recurring-series.screen.summary.test.tsx`.
+- Modify: `recurring-series.screen.tsx` (the header becomes one `SummaryTable`); `recurring-series.styles.ts` (`paidRow`,
+  `paidLabel`, `paidAmount` go if unused); `src/i18n/locales/{en,uk}.ts`.
+- Modify, the header pins: `recurring-series.screen.test.tsx` (the `chargeCount` cases and the stopped line on `HEADER`),
+  `recurring-series.screen.marked.test.tsx` (`lastChargeText` read with `exact: false` on `HEADER`),
+  `recurring-series.screen.footer.test.tsx` (the "All paid so far" pins inside the header),
+  `src/navigation/settings-stack/recurring-series.marks.navigator.test.tsx` (the `chargeCount` read inside the header).
+
+- [ ] **step 1/4 (kiko:qa): pins, red on the base.** `recurring-series.screen.summary.test.tsx`: inside
+  `recurring-series-header` one `SummaryTable` (its rows in spec 18.3's order); each label in both languages and each value
+  under its testID: the recurrence line, the date, the count as a number, the paid sum; a stopped series shows "Status" with
+  "No recent charge", a quiet one with the `holdingQuietSince` text, an active one no status row; a marked series' "Repeats"
+  reads its "Marked:" line; the paid row is absent until the rows read lands (all red today). Named edits with `was:` (the old
+  text lines): the four suites above re-read their values from the table's testIDs. Commit `test(settings): the series
+  screen's table`.
+- [ ] **step 2/4 (kiko:developer): code.** Spec 18.3. `SummaryTable` with caller-rendered `Text` and `MoneyText` values,
+  `wraps` on the two free-text rows. Catalogue in the same commit: add `recurringCharges.summary.*`; remove
+  `recurringCharges.chargeCount_{one,few,many,other}` from both catalogues after grepping `chargeCount` in `src`, `__tests__`,
+  the help topics and the skills on the base. Run `npx jest src/screens/settings/recurring-series src/navigation/settings-stack
+  src/design-system/components/summary-table src/i18n/locales --maxWorkers=2`. Commit `feat(settings): the series screen's
+  table`.
+- [ ] **step 3/4 Review, Drift and Scribe (kiko:reviewer, kiko:retrospect, kiko:scribe).** Top question: does any header fact
+  of 9.3 drop (the stopped and quiet lines, the count, the paid sum and its wait)? Drift: kiko-design-system's `SummaryTable`
+  callers list (a fourth caller), spec 9.3's header line.
+- [ ] **step 4/4 Device and Ready.** Both languages, iPhone, iPad two panes and the Duo fold: an active, a stopped and a quiet
+  series, a marked one; the largest non-accessibility size and AX1 (a wrapped value keeps its label). READY FOR VERIFY, label
+  `1.4-recurring-visual-2-task-3`.
+
+### 1.4-recurring-visual-2 task 4/5: VOID (merged into task 2/5)
+
+VOID by the user's final Q5 ruling, 2026-11-06 (spec 18.8). Was: "remove a stopped series from the list" (Q5 A): a "Remove
+from list" footer button and a no-confirm long-press item on a stopped detected row only, `closeAction` with a `destructive`
+flag, help step 6. Now: task 2/5 (one action "Not a recurring charge" on every series row and the footer, behind a confirm;
+`CardContextMenu` `deleteLabel`, no `closeAction` change; no step 6). No code was written for it; no label
+`1.4-recurring-visual-2-task-4` is queued.
+
+### 1.4-recurring-visual-2 task 5/5: Design consistency review (user rule 2026-11-06)
+
+**Base:** task 2/5's tip (was: task 4/5's tip). Runs after task 2/5's review
+and before the track's final READY FOR VERIFY. **Scope, the track's touched screens and components (a floor; measure with
+`git diff --name-only next..<tip> -- src/screens src/design-system` plus the files of
+`.superpowers/sdd/1.4-recurring/READY-visual-1-task-{1,2,3}.md`):** `src/screens/settings/recurring-charges/`
+(`recurring-charges.screen.tsx`, `recurring-group-heading`, `recurring-series-row`),
+`src/screens/settings/recurring-series/recurring-series.screen.tsx`, `src/screens/forms/transaction-form/transaction-form.screen.tsx`
+and its `recurring-mark-field`, `src/screens/forms/exchange-fields/exchange-fields.component.tsx`,
+`src/screens/forms/paired-fields-row/paired-fields-row.component.tsx`, `src/screens/settings/help-topic` (the recurring
+topic), `SummaryTable` as used by the series screen, and `CardContextMenu` (its `deleteLabel`) with the series footer's `ConfirmSheet`.
+
+- [ ] **step 1/3 Review (kiko:designer, READ-ONLY).** Over every file of the scope, five points: shared design-system
+  components only, no local copies; theme tokens only; the same patterns as the sibling screens (dividers, headers, buttons,
+  tones, empty states); en and uk; the dark scheme, and light once it ships. Findings, each with file, symbol and the sibling it
+  diverges from, into `.superpowers/sdd/1.4-recurring/design-review-1.4-recurring.md`; "no finding" is a valid result.
+- [ ] **step 2/3 Fix set (kiko:qa, kiko:developer as needed; kiko:reviewer).** The findings become one small change set, pins
+  first (red on the base), then code, then its own review; a finding that needs new text goes to the user before any copy. No
+  finding, no set.
+- [ ] **step 3/3 Ready.** The track's final READY FOR VERIFY, label `1.4-recurring-visual-2-task-5`, names
+  `.superpowers/sdd/1.4-recurring/design-review-1.4-recurring.md` and the fix set's sha (or "no finding").
+
+### 1.4-recurring-visual-2 task 6/6: one charge per period in a marked chain (user bug, DEPLOY 4)
+
+**Spec:** 8.3 (the rule, the anchor, the dropped charge, the form, the `was` table). **Base:** 5ef73606a, or the branch tip
+when the set starts (re-grep every symbol below on it; no line numbers here). **Run-log gaps:** closes none, leaves all open;
+none names the marked chain. **Files (floor 12; mutable floor 4: `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
+`recurring-mark-field.component.tsx`):** those four, `marked-series.test.ts`, `src/test-support/marked-series-chain-worlds.ts`,
+`src/test-support/marked-series-worlds.ts`, `use-row-mark.test.tsx`, `recurring-mark-field.component.test.tsx`,
+`row-recurrence.test.ts`, the suite that pins the Marked flows' "99 x10, one 119 ... yearly pick on the 119 row" (grep
+`recurring-series.screen.marked.test.tsx` first), and kiko-domain's mark rules (drift step). No migration, no column, no text
+key, no seed: no 1.2-upgrade world is touched. **Not "existing suites green unchanged":** each edit below is named with its
+`was`; any other edited expectation is reported, not made. `detection.test.ts` and its matrix stay unedited (detection's
+output does not change).
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection: one definition of the slot rule (spec 8.3)
+export const onePerSlotOf: (
+  charges: readonly Charge[], // folded, oldest first
+  period: RecurringPeriod,
+  storedAmounts: readonly number[],
+) => { kept: Charge[]; dropped: Charge[] }; // kept oldest first
+
+// @kiko/recurring/marked-series: was (charges: { amountMinorUnits }[], marks, amountMinorUnits, currency)
+export const markedChainOfAmount: (
+  charges: readonly Charge[], // one group's charges, unfolded; the function folds
+  marks: readonly RecurringMark[],
+  row: { id: string; amountMinorUnits: number }, // absolute
+  currency: Currency,
+) => { period: RecurringPeriod; marks: readonly RecurringMark[]; holdsRow: boolean } | null;
+```
+
+`onePerSlotOf` lives in `detection.ts` beside `slotPairOf`, with a step table `Record<RecurringPeriod, { slotDays;
+stepForward }>` whose weekly, monthly and yearly entries are `WEEKLY`'s, `MONTHLY`'s and `YEARLY`'s own fields, and every 3 / 6
+months `addMonths(time, 3 * n)` / `6 * n` with 3 / 6 times `AVERAGE_MONTH_DAYS`. A signed nearest-step helper (the
+`slotPairOf` candidates n - 1, n, n + 1 around the rounded signed day count, least `dayGapOf`, tie to the lower n) serves both
+the anchor's cost and each charge's slot; `slotPairOf` itself is not edited. Anchor, slot and tie exactly as spec 8.3's table
+(the newest 12 nearest-amount charges at most, so the anchor costs at most 144 steps). **Superseded 2026-11-07 by step 5/9:**
+no anchor; the floor, the near amount and the five keys of spec 8.3's redesigned table; the signature stays. In `marked-series.ts` one inner function
+builds a currency's chains: fold, `piecesOf`, the piece's charges, then `onePerSlotOf(pieceCharges, piece.period,
+piece.marks' amounts)`, returning the kept charges and the dropped ids. `chainsOfEntry` maps it (kept charges become the
+chain's `charges`, before `seriesOfChain`, so the count, list, totals, stopped read, date line and last charge all follow);
+`markedChainOfAmount` finds the chain whose span holds `row.amountMinorUnits` and sets `holdsRow` to "the row's id is not in
+the dropped ids" (a folded twin and a row outside the read stay held, as now). It now needs the charges' times and ids:
+`useRowMark` passes the group's `Charge[]` from `detection.chargeGroups` as they are (no `amountMinorUnits` map) and `{ id:
+row.id, amountMinorUnits: Math.abs(row.amountMinorUnits) }`; `row.id` joins that memo's deps. `RecurringMarkField`: when
+`chain?.holdsRow === false`, `selected` is `'none'` and the field is disabled; `writeMark` is unchanged. Update the doc comments
+of `markedSeriesOf` ("no day test") and `markedChainOfAmount` ("the fold is not needed") to the new rule.
+
+**Named edits, each with its `was` line in the qa commit body** (the qa re-walks every cell by spec 8.3 and reports any
+disagreement, never edits to green):
+
+| Pin | was | now |
+|---|---|---|
+| Marked matrix rows of spec 8.3's table (two detected series one chain; the same at one price; purchases in reach; period conflict; a month apart marked yearly; daily shop) in `marked-series-chain-worlds.ts` / `marked-series-worlds.ts` | spec 8.3 `was` column | spec 8.3 `now` column, walked exactly |
+| Property "never lets two consecutive amounts of a marked series differ by more than 1.25" | over the series' charges and marks | over the piece's charges and marks (kept and dropped): a dropped bridge may leave two kept amounts over 1.25 apart, the piece still holds them |
+| Property "equals the piece of amountPiecesOf for one mark on a charge" | the series' amount set equals the piece | the series' amounts are a subset of the piece, and a piece charge is out only when another charge of its slot is in |
+| Property "never leaves fewer charges on a day and amount than the largest count of one source" | kept >= the largest same-source count | no two kept charges of a marked series share a slot (the fold's own guard stays in `detection.test.ts`'s `foldTwins` pins; the qa names them, or reports none) |
+| "gives a deep-equal result for any row order and any mark order", "shares no charge between two shown series", "shows a detected series only when it shares no row with a marked one", spec 8.2's bridging rows | unchanged | unchanged: guards, each shown failing once by a scratch mutant of the tie's last key (drop the id) or of `detectedBesideMarked` |
+| `markedChainOfAmount` describe, its six cases | amount-only charges, an amount argument | `Charge` fixtures and a `row`; each result also states `holdsRow` |
+| Marked flow "99 x10, one 119, a detected 399 x10, marked at 99, a yearly pick on the 119 row" | the marked x11, yearly | as walked: if the 119 shares a slot with a 99, the field on it is disabled and no pick is possible (the flow pins that); else the pick and one per yearly slot |
+
+**M is 9 since 2026-11-07** (was 6): the reviewer measured three faults of the anchor rule (spec 8.3 `was: anchor`), so steps
+4/9 to 6/9 redo the rule without an anchor; the old steps 4/6 to 6/6 are now 7/9 to 9/9. The brief called the new pins "6b".
+
+- [x] **step 1/9 (kiko:qa): red pins.** Done: 0cc0c7adf. New rows, in the existing world tables and describes (no new file, no new helper
+  copy): worlds A, B, C, D from the debugger's scratch (`marked-same-month.scratch.test.ts`, path in the coordinator's brief)
+  as matrix rows with `markedSeriesOf`, `paidSoFarOf` (the "All paid so far" figure) and `rowRecurrenceOf` on the extra row;
+  the month-end drift world as a guard (green on the base; shown failing by a calendar-month mutant of `onePerSlotOf` once it
+  exists, or recorded in the step-3 review); one `markedChainOfAmount` case per world A and D with `holdsRow: false` on the
+  extra; one `recurring-mark-field` case: a dropped row reads "Not marked", is disabled, and a press writes nothing; one
+  property: no marked series holds two charges of one slot (random ledgers). Then the named edits above. Each red shown failing
+  on the base for the stated reason (counts in the report); `was` values copied from a base run, never typed. Commit
+  `test(recurring): one charge per period in a marked chain`. **Check:** `npx jest src/recurring/marked-series
+  src/recurring/row-recurrence src/recurring/use-row-mark src/screens/forms/transaction-form/recurring-mark-field
+  --maxWorkers=2`, output in a file; reds only where named.
+- [x] **step 2/9 (kiko:developer): the rule.** Done: a430a2b41, 4bd873420 (the anchor rule, superseded by step 5/9). The interfaces above, in `detection.ts`, `marked-series.ts`, `use-row-mark.ts`,
+  `recurring-mark-field.component.tsx`. No pin edited. Commit `fix(recurring): one charge per period in a marked chain`.
+  **Checks:** fast tier on write; `npx jest src/recurring src/screens/forms/transaction-form/recurring-mark-field
+  src/screens/settings/recurring-charges src/screens/settings/recurring-series src/navigation/settings-stack --maxWorkers=2`
+  (includes `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<set base>` (exit 3: say so, the
+  named set stands). **`check:dup`:** keep test growth small (rows in existing tables, one property); read the
+  `dup-ceilings.tsv` rows of the touched tests; a ceiling never rises; the Stop hook's medium tier runs it.
+- [x] **step 3/9 Review (kiko:reviewer).** Done: three HIGH and MEDIUM faults (spec 8.3 `was: anchor`), a missing direct
+  test of `onePerSlotOf` and a missing jittered-rhythm property; the form question (#4) is ruled in spec 8.3 "The tapped row".
+  Its brief was: diff from the set base. Top questions: is there one slot definition, used by both
+  `chainsOfEntry` and `markedChainOfAmount` (fix-divergent-twins)? Can the anchor sit on an extra (world C) or flip on row
+  order? Does any reader of the marked series still see a dropped charge (totals, stopped, last charge, date line, route)? Are
+  the test edits only the named ones, each with its `was`?
+- [x] **step 4/9 (kiko:qa): pins for the redesigned rule (the brief's "6b").** Done: 5b71f3943, re-pins bcffe67b7 (10 anchor-era pins in row-recurrence, recurring-series.screen.marked and the marks navigator). Base: the branch tip holding the spec commit
+  `docs(recurring): one charge per period without an anchor`. Spec 8.3's redesigned table and its `now` column are the
+  contract; re-grep every symbol. (a) A direct table test of `onePerSlotOf`: new file
+  `src/recurring/detection/detection.one-per-slot.test.ts` (the `detection.performance.test.ts` naming; `detection.test.ts`
+  stays unedited), one `it.each` table over plain `Charge` fixtures with `kept` ids and `dropped` ids per row: worlds A (at 100,
+  98, 102), B, C, D, month-end drift, reviewer 1 and its reverse, reviewer 2 bills (three taps) and FX, the 31st run, weekend
+  shifts, the paused month, weekly, yearly and every 6 months over m(12, 3, 199), 20 Dec and 15 Jan yearly, 7 Aug/7 Sep/7 Oct
+  every 3 months, Apple with purchases, and a near-amount boundary pair (`abs * 20 == stored` near, one minor unit more not).
+  (b) Reviewer worlds 1 to 3 also as `marked-series` matrix rows (count, last charge, `onDay`) in the existing world tables, and
+  world A at 102 with `markedChainOfAmount`'s `holdsRow: false` on the tapped 12 Oct row. (c) Properties in
+  `marked-series.test.ts` with `sweep` and `seededRandom` (no new helper): a jittered rhythm keeps every charge (monthly on a
+  day 1 to 28, each charge moved -6 to +6 days, 24 months, random skipped months, one amount; weekly with -1 to +1 days); the
+  result is deep-equal for any input order; no two kept charges sit half a step or less apart (this replaces step 1/9's "no
+  two kept charges share a slot"). Was values from a base run, never typed. Reds on the anchor rule shown failing for the
+  stated reason; guards green (the drift, bills at 1150). Commit `test(recurring): one charge per period without an anchor`.
+  **Check:** `npx jest src/recurring/detection/detection.one-per-slot src/recurring/marked-series src/recurring/use-row-mark
+  --maxWorkers=2`, output in a file; reds only where named. **`check:dup`:** a new test file over 1000 lines is a dup risk
+  (memory: new-test-file-over-1000-lines-dup-regression): keep it one table.
+- [x] **step 5/9 (kiko:developer): the rule without an anchor.** Done: ee963791b. `onePerSlotOf` in `detection.ts` per spec 8.3's table: sort by
+  time then id; the floor `daysBetween > slotDays / 2`; the near test in minor units; the five keys as one tuple compared key
+  by key; the DP scanning the past-floor predecessors within half a step of the latest one (`predecessorIndexesOf`;
+  spec 8.3 "The computation"); gap cost by `stepForward` and `dayGapOf` with k >= 1. Remove `anchorOf`, `signedSlotPairOf`,
+  `ANCHOR_CANDIDATES` if nothing else reads them (knip). Update the doc comments of `onePerSlotOf` and `markedSeriesOf` (no
+  "slot around one anchor"). Signature, `marked-series.ts`, `use-row-mark.ts` and the form unchanged. No pin edited. Commit
+  `fix(recurring): one charge per period without an anchor`. **Checks:** fast tier on write; `npx jest src/recurring
+  src/screens/forms/transaction-form/recurring-mark-field src/screens/settings/recurring-charges
+  src/screens/settings/recurring-series src/navigation/settings-stack --maxWorkers=2` (includes
+  `detection.performance.test.ts`), output in a file; add one case to the performance suite only if it has none with a dense
+  marked key (the daily shop's 500 rows marked monthly), its bound measured, not typed; `make jest-affected BASE=<step 4/9
+  commit>` (exit 3: say so).
+- [x] **step 6/9 Re-review (kiko:reviewer).** Done: APPROVE at bcffe67b7. Diff from step 3/9's tip. Top questions: does every world of spec 8.3's table
+  hold (the reviewer reruns its probe `p1.test.ts` against the new rule); is the DP's predecessor window exact (the
+  "within half a step of the latest past-floor one" argument; a 15,000-case brute force found 0 mismatches), or can it
+  miss a tie; does any reader still see a dropped charge; is the
+  tapped row dropped only where spec 8.3 "The tapped row" says?
+- [x] **step 7/9 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the no-anchor rule in the skill, spec and plan` commit. kiko-domain's mark rules ("A mark's chain ... The chain's
+  charges are the series"): the bullet a6a7a55aa added says "at most one charge per period slot"; reword it to the
+  redesigned rule (kept charges more than half a step apart, near amounts first, no anchor). Report the sha or "no drift
+  found".
+- [ ] **step 8/9 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree> 1.4-recurring-visual-2-task-6`
+  once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest. Mutation gates are paused by the
+  user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own base.
+- [ ] **step 9/9 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-6`. Device (next build):
+  the user's own marked series shows one charge a month; its count, "All paid so far", last charge and date line agree; the
+  extra rows read "Not marked" (disabled) in the form; a second same-vendor subscription, if the ledger holds one, shows as
+  its own row.
+
+---
+
+### 1.4-recurring-visual-2 task 7/7: plain period lines without "Marked:"
+
+A marked series, or one with no day, shows the plain period line ("Weekly", "Monthly", "Yearly",
+"Every 3 months", "Every 6 months"); `recurringCharges.marked.*` is removed and
+`recurringCharges.markedEmptyHeading` stays. Texts: `.superpowers/sdd/1.4-recurring/texts-no-marked-prefix.md`.
+
+- Done: pins 9a5c67d38.
+- Done: code 3dcc36ccf.
+- Done: review APPROVE.
+- Done: minors 7125ce3b4.
+- Done: docs (the `docs(recurring): plain period lines without "Marked:" in the spec` commit).
+
+---
+
+### 1.4-recurring-visual-2 task 8/8: one row for a card switch between currencies
+
+**M is 8 since 2026-11-07** (was 7). **Spec:** section 19 (USER 2026-11-07, option B; 19.1 the `was` table, 19.2 the date
+test, 19.3 the joined row, 19.4 route, Back and hide, 19.5 totals, 19.6 the page, 19.7 the matrix, 19.8 the overnight
+defaults), and the pointers in 4, 5.4, 8.1, 9.3, 18.2, 18.3. **Base:** the branch tip holding the commit `docs(recurring): one
+row for a card switch between currencies`; re-grep every symbol below on it (no line numbers here). **Run-log gaps:** closes
+none, leaves all open; none names the recurring list. **Texts:** none. The "All paid so far" lines are stacked `MoneyText`s
+under the existing `recurringCharges.paidSoFar`, with no separator and no new key (spec 19.6); the developer adds no text.
+**Files (floor 12; mutable floor 4: `card-switch.ts`, `use-recurring-series.ts`, `recurring-groups.ts`,
+`recurring-series.screen.tsx`):** new `src/recurring/card-switch/{card-switch.ts,index.ts,card-switch.test.ts}`,
+`src/recurring/detection/detection.types.d.ts`, `use-recurring-series.ts` and `use-recurring-series.test.tsx`,
+`recurring-groups.ts` and `recurring-groups.test.ts`, `recurring-series.screen.tsx`, `recurring-series.styles.ts`,
+`recurring-series.screen.summary.test.tsx`, `recurring-series.screen.test.tsx`, `recurring-charges.screen.groups.test.tsx`, and
+kiko-domain's recurring rules (drift step). No migration, column, seed or text key: no 1.2-upgrade world is touched.
+**Not "existing suites green unchanged":** no expectation is known to change at 688d0349d (the two-currency worlds found, the
+marks navigator's "Apple" UAH and USD in `recurring-charges.screen.marked-flows.test.tsx` and the series screen's
+`netflix-9` USD fixture, run at the same time or through a mocked hook); the qa greps every `USD`/`EUR` world of the hook,
+list and series screen suites and of `src/test-support/marked-series*`, and any that now joins is a named edit with its `was`
+line; any other edited expectation is reported, not made. `detection.test.ts`, `detection.one-per-slot.test.ts` and
+`marked-series.test.ts` stay unedited (detection and marks do not change).
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection (detection.types.d.ts)
+export type SeriesPart = { id: string; currency: Currency; chargeIds: readonly string[] };
+// RecurringSeries gains, optional:
+//   parts?: readonly SeriesPart[]; // set only on a joined row, newest part first
+
+// @kiko/recurring/card-switch: spec 19.2 and 19.3
+export const cardSwitchesJoinedOf: (
+  detected: readonly RecurringSeries[], // the shown detected series; none is marked
+  chargeGroups: ChargeGroups, // reads each series' first charge time (the charge with id series.id)
+) => RecurringSeries[]; // sorted byNewestCharge
+
+// @kiko/recurring/recurring-groups: spec 19.6; paidSoFarOf is unchanged
+export const paidSoFarByCurrencyOf: (
+  series: RecurringSeries,
+  rows: readonly ChargeRow[],
+) => Money[]; // one per part, newest first; one for a series with no parts
+```
+
+`cardSwitchesJoinedOf` groups by `[merchantKey, period]`, and joins a group only when it has two or more series, no two share a
+currency, and, sorted by first charge time then id, each `startOfLocalDay(lastChargeTime)` is below the next one's
+`startOfLocalDay(first charge time)`; else the group's series pass through as they are. The joined row's fields exactly as spec
+19.3's table. `paidFromRowsById` takes `{ currency, chargeIds }` so `paidSoFarOf` and `paidSoFarByCurrencyOf` share it (one sum
+rule). In `useRecurringSeries` the detection memo also computes `cardSwitchesJoinedOf(detected, groups)`, and with nothing marked
+`series` is that array itself (a hide still hands the screens the array it handed them before); with marks, `series` is
+`cardSwitchesJoinedOf(detectedBesideMarked(detected, marked.series), groups)`. Update the hook's doc comment. In
+`seriesOfRoute`, `isOfRoute` also matches when any of `candidate.parts` holds the route's currency (spec 19.4); update its
+comment. The "All paid so far" value renders one `MoneyText` per `paidSoFarByCurrencyOf` entry in a right-aligned column (a new
+`recurring-series.styles.ts` key). `recurringGroupsOf`, `openSeries`, the list row and the hide writes are not edited.
+
+**Named edits:** none known at 688d0349d; the qa's grep above decides, each with `was` / `now` in its commit body.
+
+| Pin (new unless named) | was | now |
+|---|---|---|
+| `card-switch.test.ts`, one `it.each` table over spec 19.2's worlds (a card switch; a one-day gap; the same local day; an overlap; three currencies; an overlap in a chain of three; two series in one currency; two periods), each row's shown ids and parts | n/a (no join) | spec 19.2's result column |
+| Property in `card-switch.test.ts`: deep-equal output for any input order (`sweep`, `seededRandom`; no new helper) | n/a | holds |
+| Property: no charge id is in two shown series, and the shown ids are exactly the input's (nothing dropped) | n/a | holds |
+| Hook: a card-switch ledger gives one `series`; a marked UAH chain beside a later USD series gives the marked one and the USD one apart | two `series` | one; two |
+| Hook: a hide hands the same `series` array (the existing referential pin, if any, re-read on a joined world) | same array | same array |
+| `recurring-groups.test.ts`: a joined row counts once in its group and "Sum of last charges" (spec 19.5's 415 UAH, not 815) | 815 UAH over two rows | 415 UAH, one row |
+| `recurring-groups.test.ts`: `paidSoFarByCurrencyOf` gives `[50.00 USD, 2 000.00 UAH]` for the example, one `Money` for a plain series | n/a | as stated |
+| `recurring-charges.screen.groups.test.tsx`: the card-switch ledger shows one row (10.00 USD, the newest part's category group) and the total once | two rows, total of both | one row, total once |
+| `recurring-series.screen.summary.test.tsx`: the joined page lists both currencies' charges newest first, count = all, `recurring-series-summary-paid` holds "50.00 USD" and "2 000.00 UAH", in that order | n/a | as stated |
+| `recurring-series.screen.test.tsx`: the joined route opens by its id; a route on the old part's currency finds the joined row; after an overlap splits it, the route's fallback finds the one USD series; two candidates still give the neutral text | n/a | spec 19.4 |
+| A hide on a joined row (footer, with confirm) leaves no row of the key | two rows leave | one row leaves |
+
+Merge of next 851db0d18 at 2545ea4eb carried `scheme: 'dark'` into marked-series.test.ts:227.
+
+- [x] **step 1/6 (kiko:qa): red pins.** Done: 09a5e5332. The new rows above, in existing suites and world builders
+  (`src/test-support/recurring-ledger.ts`'s `monthly`), one new file only (`card-switch.test.ts`); it imports
+  `@kiko/recurring/card-switch`, so the qa commits a stub module exporting `cardSwitchesJoinedOf` as the identity
+  (memory: qa-no-red-commit-importing-missing-modules) and `paidSoFarByCurrencyOf` as `[paidSoFarOf(...)]`, both marked for
+  the developer. Each red shown failing on the base for the stated reason (counts in the report); guards (the overlap, the same
+  local day, the marked world, two in one currency) green on the base and each shown failing once by a scratch mutant (join
+  without the day test; join marked series). `was` values from a base run, never typed. Commit `test(recurring): one row for a
+  card switch between currencies`. **Check:** `npx jest src/recurring/card-switch src/recurring/use-recurring-series
+  src/recurring/recurring-groups src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2`,
+  output in a file; reds only where named. **`check:dup`:** rows in existing tables; read the touched tests' rows in
+  `scripts/checks/dup-ceilings.tsv`; a ceiling never rises.
+- [x] **step 2/6 (kiko:developer): the join.** Done: 076a5132a, registry 5043ae350. The interfaces above, in `detection.types.d.ts`, `card-switch.ts`,
+  `use-recurring-series.ts`, `recurring-groups.ts`, `recurring-series.screen.tsx`, `recurring-series.styles.ts`. No pin
+  edited; no text added. Commit `feat(recurring): one row for a card switch between currencies`. **Checks:** fast tier on write;
+  `npx jest src/recurring src/screens/settings/recurring-charges src/screens/settings/recurring-series
+  src/screens/forms/transaction-form/recurring-mark-field src/navigation/settings-stack --maxWorkers=2` (includes
+  `detection.performance.test.ts`), output in a file; `make jest-affected BASE=<step 1/6 commit>` (exit 3: say so, the named
+  set stands); `npm run check:knip` reads the stub gone and `paidSoFarOf` still used.
+- [x] **step 3/6 Review (kiko:reviewer).** Done: APPROVE at 5043ae350; pin gaps 152e55b3c, nits ac8c3f4ec. Diff from the set base. Top questions: does any reader still count or sum an older
+  part (totals, group, category, stopped line, row amount)? Is the join order independent and all or nothing exactly as
+  spec 19.2 (the local-day test, distinct currencies, the first charge read from `ChargeGroups`)? Can a marked series or a
+  series a marked chain took ever join? Does the hook still hand the same `series` array after a hide? Is `seriesOfRoute`'s
+  parts match unable to pick another merchant's series? Are the test edits only the named ones?
+- [x] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the card switch join in the skill and plan` commit. kiko-domain's recurring rules: a series is one key and
+  currency in detection; the screens join a card switch (spec 19). Report the sha or "no drift found".
+- [ ] **step 5/6 Verify.** The coordinator queues `bash scripts/job-queue.sh verify <worktree>
+  1.4-recurring-visual-2-task-8` once at the end, rerun until green. No agent runs `make verify`, `check:all` or full jest.
+  Mutation gates are paused by the user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own base.
+- [ ] **step 6/6 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-8`. Device (next build): a
+  name paid from a UAH card then a USD card shows one row with the USD amount; its page lists both, "All paid so far" shows one
+  line per currency; a name paid in two currencies at the same time stays two rows. The overnight defaults of spec 19.8 go to
+  the user with the device call.
+
+### 1.4-recurring-visual-2 task 9/9: keep the tapped row
+
+**Spec:** 8.2 "Store" (the optional `transactionId`), 8.3 key 0, "The tapped row", the key 0 table, section 11's two new rows.
+**User ruling 2026-11-07:** "Keep tapped row" (was: the overnight default "a marked series can drop the tapped row"); the
+16-day monthly floor, the disabled "Not marked" on a dropped row and the four currency-merge defaults KEEP. **Base:** the
+branch tip holding `docs(recurring): keep the tapped row in a marked chain` (re-grep every symbol below on it; no line numbers
+here). **Run-log gaps:** closes none, leaves all open; none names the marked chain. **Files (floor 13; mutable floor 4:
+`detection.ts`, `marked-series.ts`, `recurring-merchant-choices.ts`, `recurring-mark-field.ts`):** those four,
+`detection.types.d.ts`, `detection.one-per-slot.test.ts`, `marked-series.test.ts` (or its world tables in
+`src/test-support/marked-series-chain-worlds.ts` / `marked-series-worlds.ts`), `settings.repo.test.ts`,
+`restore-recurring-merchant-choices.test.ts`, `recurring-mark-field.component.test.tsx`,
+`transaction-form.recurring-mark.test.tsx`, `use-row-mark.test.tsx`, kiko-domain's mark rules (drift step), and any other
+suite whose `markRecurringCharge` call expectation names the mark (grep `markRecurringCharge).toHaveBeenCalledWith` first; the
+count is a floor). `settings.repo.ts`, `use-row-mark.ts` and `recurring-mark-field.component.tsx` need no code edit
+(`setRecurringChainPeriod` spreads the stored mark, so it keeps the id; `markRecurringCharge` stores the mark it is given;
+`removeRecurringMarks` matches by `isSameChain`; the component passes `existing`, which holds `id`): the developer confirms
+each by reading, and a doc comment may change. No migration, no column, no text key, no seed, no `EXPORT_VERSION` change: no
+1.2-upgrade world is touched (the column is JSON, and a mark without the id reads as today). **Not "existing suites green
+unchanged":** each edit below is named with its `was`; any other edited expectation is reported, not made.
+
+**Interfaces.**
+
+```ts
+// @kiko/recurring/detection, detection.types.d.ts
+export type RecurringMark = {
+  currency: Currency;
+  amountMinorUnits: number;
+  period: RecurringPeriod;
+  // The row the mark was tapped on (spec 8.3 key 0); absent on every mark written before. Never part of the
+  // mark's identity: `isSameChain`, the dedupe, `compareMarks` and the removal ignore it.
+  transactionId?: string;
+};
+
+// @kiko/recurring/detection: was (charges, period, storedAmounts)
+export const onePerSlotOf: (
+  charges: readonly Charge[],
+  period: RecurringPeriod,
+  storedAmounts: readonly number[],
+  tappedIds?: ReadonlySet<string>, // default: an empty set, so every id-less caller and pin reads as today
+) => { kept: Charge[]; dropped: Charge[] };
+
+// recurring-mark-field.ts: was row: { amountMinorUnits: number; description: string }
+type MarkWrite = { row: { id: string; amountMinorUnits: number; description: string }; /* rest unchanged */ };
+```
+
+- `onePerSlotOf`: `RunScore` gains a first key, the negated count of kept charges whose id is in `tappedIds` (5 keys, was 4);
+  the seed run and the predecessor step add `-Number(tappedIds.has(id))` the same way `near` is added. `compareScores`,
+  `predecessorIndexesOf` and the `<=` ties are unchanged (spec 8.3 "The computation": the window stays exact under key 0).
+  Update its doc comment ("Of all such runs the kept one holds the most tapped rows, then ...").
+- `marked-series.ts` `chainsOfCharges`: pass `new Set(piece.marks.flatMap(({ transactionId }) => transactionId === undefined ?
+  [] : [transactionId]))` as the fourth argument. One builder still serves `chainsOfEntry` and `markedChainOfAmount`
+  (fix-divergent-twins), so the series and the form's `holdsRow` agree.
+- `recurring-merchant-choices.ts` `markOf`: keep `transactionId` when it is a non-empty string, else build the mark without it
+  (the mark is never dropped for it). `marksOf` dedupes by `currency:amount` as now and keeps the kept mark's id; `isSameChain`
+  is unchanged (its doc comment says the id is ignored). `recurringChoiceOf` unchanged.
+- `writeMark`: the new mark adds `transactionId: row.id`; the period rewrite and the removal paths unchanged.
+
+**Named edits, each with its `was` line in the qa commit body** (the qa walks every cell by spec 8.3's key 0 table and
+reports any disagreement, never edits to green):
+
+| Pin | was | now |
+|---|---|---|
+| `markRecurringCharge` call expectations in `recurring-mark-field.component.test.tsx` and `transaction-form.recurring-mark.test.tsx` (floor 6 sites) | `{ currency, amountMinorUnits, period }` | the same plus `transactionId: <the tapped row's id>` |
+| `detection.one-per-slot.test.ts` table rows, `marked-series` matrix rows and `markedChainOfAmount` cases | marks without an id | unchanged: they are the id-less case of spec 8.3 (world A at 102 keeps `holdsRow: false` on 12 Oct) |
+| New `onePerSlotOf` rows (a `tappedIds` column, empty on the old rows) | none | spec 8.3's key 0 table, each row with its kept and dropped ids |
+| New `marked-series` rows with a `transactionId` on the mark | none | world A at 102 tapped 12 Oct: x6, last charge 12 Oct at 102, `markedChainOfAmount` `holdsRow: true` on 12 Oct and `false` on 5 Oct; the FX world tapped 21 Jun; the key-2 world |
+| `settings.repo.test.ts` parser and writes | no id field | a mark with an id round-trips; a bad id (number, `''`, object) reads the mark without it; two stored marks of one chain with two ids read as one mark (the earlier period's, with its id); `setRecurringChainPeriod` keeps the id; `removeRecurringMarks` with an id-less chain removes an id-holding mark; `markRecurringCharge` on a stored chain with another id leaves one mark |
+| `restore-recurring-merchant-choices.test.ts` | marks without an id | a mark with an id restores with it; a file mark with a bad id restores without it |
+
+- [x] **step 1/6 (kiko:qa): red pins.** Done: ce59e4583. The named edits and new rows above, in the existing tables and describes (no new
+  file, no new helper copy). Properties in `marked-series.test.ts` with `sweep` and `seededRandom` (no new helper): on random
+  ledgers, one mark tapped on a random charge of its piece keeps that charge; deep-equal for any input order with ids; a mark
+  without an id gives the same result as the same mark with an id that matches no charge. Each red shown failing on the base
+  for the stated reason (counts in the report); `was` values copied from a base run, never typed. Commit
+  `test(recurring): keep the tapped row in a marked chain`. **Check:** `bash scripts/wait-load.sh 15`, then `npx jest
+  src/recurring/detection/detection.one-per-slot src/recurring/marked-series src/recurring/use-row-mark src/settings
+  src/data-transfer/snapshot/restore-recurring-merchant-choices src/screens/forms/transaction-form/recurring-mark-field
+  src/screens/forms/transaction-form/transaction-form.recurring-mark --maxWorkers=2`, output in a file; reds only where
+  named. **`check:dup` (at AC):** rows in existing tables; read the touched tests' rows in `scripts/checks/dup-ceilings.tsv`;
+  a ceiling never rises.
+- [x] **step 2/6 (kiko:developer): key 0 and the id.** Done: 74361f27b. The interfaces above, in `detection.types.d.ts`, `detection.ts`,
+  `marked-series.ts`, `recurring-merchant-choices.ts`, `recurring-mark-field.ts`. No pin edited; no text added. Commit
+  `feat(recurring): keep the tapped row in a marked chain`. **Checks:** fast tier on write; `bash scripts/wait-load.sh 15`,
+  then `npx jest src/recurring src/settings src/data-transfer/snapshot/restore-recurring-merchant-choices
+  src/screens/forms/transaction-form/recurring-mark-field src/screens/forms/transaction-form/transaction-form.recurring-mark
+  src/screens/settings/recurring-charges src/screens/settings/recurring-series --maxWorkers=2` (includes
+  `detection.performance.test.ts`; its bound is not raised), output in a file; `make jest-affected BASE=<step 1/6 commit>`
+  (at AC; exit 3: say so, the named set stands); `npm run check:knip` (at AC).
+- [x] **step 3/6 Review (kiko:reviewer).** Done: APPROVE at 74361f27b; comment 127e6890f. Diff from the set base. Top questions: does key 0 reach both `chainsOfEntry` and
+  `markedChainOfAmount` through the one builder? Is the predecessor window still exact with key 0 (spec 8.3 "The
+  computation"; a brute force over small random worlds with tapped ids, as the step 6/9 review of task 6/6 did)? Can an id
+  ever split or duplicate a mark (parser dedupe, `isSameChain`, the three writes)? Does a bad or stale id ever drop a mark or
+  throw? Are the test edits only the named ones?
+- [x] **step 4/6 Drift and Scribe (kiko:retrospect, kiko:scribe).** Done: the `docs(recurring): the tapped row in the skill, spec and plan` commit. kiko-domain's mark rules: "A mark stores the absolute
+  stored amount and the currency ..." gains the optional tapped-row id (never part of the mark's identity); "A marked chain
+  keeps charges more than half a step apart ..." gains "the mark's tapped row first". `make doc-suites` (at AC). Report the
+  sha or "no drift found".
+- [ ] **step 5/6 Verify (coordinator, at AC).** The coordinator queues `bash scripts/job-queue.sh verify <worktree>
+  1.4-recurring-visual-2-task-9` once at the end, on the charger, rerun until green. No agent runs `make verify`, `check:all`
+  or full jest. Mutation gates are paused by the user; if lifted, one gate for this set, `KIKO_MUTATION_BASE` = this set's own
+  base.
+- [ ] **step 6/6 Ready, device items held.** READY FOR VERIFY, label `1.4-recurring-visual-2-task-9`. Device (next build):
+  mark a row that has a near-amount charge less than half a month from it: that row stays in the series and the other reads
+  "Not marked", disabled. The user's existing marks hold no id and read as before; to apply key 0 to one, "Remove mark" and
+  mark the row again (say so in the device call).
+
 ## Mutable file counts (floors; `make mutable` measures; the cap is 30)
 
 | Task | Floor |
@@ -745,6 +1345,14 @@ on top of them, so it starts only after task 2/3's tip exists, and it merges int
 | visual-1 task 1/3 | 6 (listed in its Files) |
 | visual-1 task 2/3 | 5 (was 4; `exchange-fields.component.tsx` joins, P3 B; listed in its Files) |
 | visual-1 task 3/3 | 4 (listed in its Files) |
+| visual-2 task 1/5 | 2 (listed in its Files) |
+| visual-2 task 2/5 | 4 (was 6; listed in its Files) |
+| visual-2 task 3/5 | 1 (listed in its Files) |
+| visual-2 task 4/5 | VOID (merged into 2/5) |
+| visual-2 task 5/5 | the fix set's own files, measured |
+| visual-2 task 6/6 | 4 (listed in its Files) |
+| visual-2 task 8/8 | 4 (listed in its Files; `recurring-series.styles.ts` may make it 5: `make mutable` decides) |
+| visual-2 task 9/9 | 4 (listed in its Files) |
 
 Mutation gates are paused by the user; this table is for a lift.
 

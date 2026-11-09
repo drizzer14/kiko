@@ -40,7 +40,6 @@ import { refreshMarketData } from '@kiko/sync/refresh-market-data';
 import { defaultAccountColor } from '@kiko/holdings/entity-colors';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
-import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
 import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
@@ -53,11 +52,13 @@ import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
+import { entityDisplayColor, resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { type BinanceWriteToken, clearCredentialsIfWrittenBy } from '@kiko/crypto-sync/binance';
 import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
@@ -420,6 +421,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // TS-only, no CHECK constraint) both reach here as unusable values the bare
   // pattern would let through as ''/undefined.
   const effectiveColor = resolveEntityColor(color, defaultAccountColor[kind]);
+  const scheme = useActiveColorScheme();
 
   // The same Connect actions the account-detail screen uses. On a create the
   // account row is created FIRST, then the credential is saved and the connect
@@ -880,7 +882,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             icons={accountIconPool}
             icon={icon}
             fallbackIcon={fallbackIconFor(kind)}
-            iconColor={effectiveColor}
+            iconColor={entityDisplayColor(effectiveColor, scheme)}
             name={name}
             onChangeName={setName}
             onSelectIcon={pickIcon}
@@ -893,7 +895,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
           />
         </View>
 
-        <ColorPicker label={t('forms.fields.color')} value={effectiveColor} onSelect={setColor} />
+        <ColorPicker
+          label={t('forms.fields.color')}
+          value={effectiveColor}
+          swatchSet="entity"
+          onSelect={setColor}
+        />
 
         <Divider testID="form-divider" />
 

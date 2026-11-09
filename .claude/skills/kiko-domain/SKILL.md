@@ -197,7 +197,10 @@ sync and Exchange/Convert legs see `kiko-exchange-sync`.
   `isImplicitAccount` (kind + live), `accountDisplayName(account, t)`, and
   `accountsForFilter(accounts, holdings)` (the Home and Statistics account
   filter options: live accounts, minus an implicit one with no holding at all
-  — a transaction always hangs off a holding, so none is left either).
+  — a transaction always hangs off a holding, so none is left either), plus
+  `accountSectionOf` and `accountSectionOrder` (the one Accounts-section partition and order;
+  the Accounts screen renders and net worth by account ranks by them; pinned by the
+  `accounts.screen.test.tsx` order test and `implicit-account.test.ts`).
   **A screen shows an implicit account's name through `accountDisplayName`,
   never through the raw stored `name`**: the stored `name` is the fixed English
   sentinel `IMPLICIT_ACCOUNT_STORED_NAME` (`Properties` / `Loans`) while the
@@ -786,7 +789,8 @@ second kind/type -> glyph map in a screen module.
 An account row's displayed icon + color come from one helper,
 `accountIdentity` (`src/holdings/account-identity/`): the stored icon
 or `accountKindSymbol[kind]`, and the color through
-`resolveEntityColor` with `defaultAccountColor[kind]`. Every screen
+`resolveEntityColor` with `defaultAccountColor[kind]`, mapped for display by
+`entityDisplayColor`; it takes a required `scheme`. Every screen
 that shows a stored account row's icon or color calls it; never rebuild the
 `icon ?? accountKindSymbol[kind]` pair in a screen. There are two
 exceptions: the account form edits a draft, not a stored row; and the
@@ -803,9 +807,10 @@ garbled metadata still gets the Other glyph), else `holdingTypeSymbol`
 — is the glyph a holding shows. A holding's icon + color come from one
 helper, `holdingIdentity` (`src/holdings/holding-identity/`), the twin of
 `accountIdentity`: `icon ?? defaultHoldingSymbol(holding)` and the color
-through `resolveEntityColor` with `defaultHoldingColor[type]`. A holding
-picker option comes from `toHoldingOption(holding, accountNameById)`
-(`src/screens/forms/holding-select-option/`). A screen never rebuilds the
+through `resolveEntityColor` with `defaultHoldingColor[type]`, mapped by
+`entityDisplayColor`; it takes a required `scheme`. A holding picker option
+comes from `toHoldingOption` (`src/screens/forms/holding-select-option/`; read
+it for the arguments, `scheme` is required). A screen never rebuilds the
 pair, because copies of the rule drift apart (a colour divergence came
 from such copies). Users: the holding card, the holding-detail header, the
 holding form, the transaction form, the statement-import target options.
@@ -854,6 +859,10 @@ why this is the deliberate exception to functional-first). It holds
   `splitMinorUnits`, never `/ 10 ** scale` or `toFixed`.
   `splitMinorUnits` rounds a non-integer stored value first (a test pins
   it).
+- A fiat amount shown with fewer fraction digits than its scale (the tables' whole-unit
+  cells) rounds half away from zero in integers (`roundedToDigits`,
+  `src/currency/format/format.ts`); never leave the last digit to `toLocaleString`'s engine
+  rounding mode.
 - The value object itself — construction, arithmetic, and the
   currency-mismatch guard — lives in `src/currency/`. Read it
   directly for the current method set rather than trusting a list
@@ -965,9 +974,14 @@ and use Convert on that transaction instead.
 A category's display color is never read as a raw
 `category.color ?? undefined` at the call site — every renderer
 (chart legend, chart slice, filter chip, transaction-row icon)
-resolves it through `resolveCategoryColor(storedColor, key)`
+resolves it through `resolveCategoryColor(storedColor, key, scheme)`
 (`src/statistics/`), which falls back to a stable
-per-key palette hash when no color is stored. The raw-fallback pattern
+per-key palette hash when no color is stored, then maps the canonical
+dark hex through the category set of the active scheme (`scheme` is
+required: read it with `useActiveColorScheme()`). The category form's
+`ColorPicker value` is the canonical hex from
+`resolveCanonicalCategoryColor(storedColor, key)`, never the display
+hex, so a write keeps the dark hex. The raw-fallback pattern
 renders gray for an uncolored category while a chip for that same
 category shows a palette hue — a past transaction-row icon regressed
 this way.
@@ -1067,6 +1081,15 @@ purchase row with its funding bank debit)
 directly rather than trusting a restated MCC list here; see
 `kiko-architecture` for the same pointer.
 
+Income (`isIncomeRow`, `src/statistics/cash-flow/cash-flow.ts`) is the ledger's `shownRows`
+credits (amount > 0) that are not in `excludedTransactionIds`, have `changeGroupId === null` (a
+change return is already netted from expenses) and are not `setsBalance`. The exclusion rules
+were written for spending and some ignore sign. A refund counts as income. A coupon payout
+described as a deposit does not. A new exclusion rule therefore changes income too; read
+`cash-flow.ts`, do not restate its rules. `incomeAmountOf` (same file) is the one per-row income
+helper: `incomeCellsOf` folds it and `incomeRowsOf` (`src/statistics/cell-rows/`) maps it. A
+cell's rows follow the same union as the cell, so a new exclusion rule changes the cell rows too.
+
 A NEW exclusion rule also goes in `recurringExcludedIds`
 (`src/recurring/eligibility/eligibility.ts`), so a recurring series never counts the row.
 
@@ -1078,14 +1101,22 @@ there for the rules and thresholds; none is restated here. Eligibility reuses `l
 
 A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
 `src/recurring/marked-series/marked-series.ts` (the chain and series rules),
-`src/recurring/recurring-periods/recurring-periods.ts` (the periods and their order) and
+`src/recurring/recurring-periods/recurring-periods.ts` (the periods and their order),
+`src/recurring/row-recurrence/` (the row's detected or marked period) and
 `src/settings/recurring-merchant-choices.ts` (the one map). The rules, in words:
 - A mark stores the absolute stored amount and the currency of the marked row's holding, under the
-  merchant key. It covers one currency: the same amount in another currency never compares.
+  merchant key. It covers one currency: the same amount in another currency never compares. It
+  also stores the optional `transactionId` of the row it was tapped on (absent on older marks);
+  `onePerSlotOf` key 0 keeps that row (spec 8.2, 8.3).
 - A mark's chain is the amount chain that holds its stored amount, cut by the same 1.25 step as
   detection. The chain's charges are the series, with the mark's period; the stored amount joins
   the cut like a charge, so it can bridge two charges. Pieces share no row, and a detected series
   that shares a row with a marked one leaves whole.
+- A marked chain keeps charges more than half a step apart, a tapped row
+  first (key 0), near amounts next, no anchor: `onePerSlotOf` in
+  `src/recurring/detection/detection.ts` (spec 8.3; read it for the keys). A row it
+  drops reads 'Not marked' (or its detected text) and its mark field is disabled;
+  `markedChainOfAmount` in `src/recurring/marked-series/marked-series.ts` returns `holdsRow`.
 - The amount chain reads only amounts, so a twin fold cannot change which chain a row is in.
 - The accepted false stop: a subscription that goes on at a price outside the chain shows "No
   charge since" until the user re-marks. This is the user's ruling, not a defect.
@@ -1093,12 +1124,33 @@ A mark is the user's "mark as recurring" on a transaction (spec 8.2). Read
   `src/recurring/recurring-groups/recurring-groups.ts` (read it for the rules). In words: a
   series' category is its newest charge's, folded to the default category when it has none or it
   is unknown; groups follow the Categories screen order; within a group the active series come
-  before the stopped ones; 'Marked, No Charges' and 'Hidden' are their own sections with no total.
-  A total is the all-time sum of the shown series' charges, one conversion per series sum into the
-  base currency, as the category breakdown converts; a currency with no rate is left out of the
-  total. The detail's 'All paid so far' is `paidSoFarOf` in the series' own currency.
+  before the stopped ones; 'Marked, No Charges' is its own section with no total, and there is no
+  Hidden section.
+  A total is the sum of the shown series' LAST charges (`lastChargeAmountMinorUnits`), one
+  `convert` per series into the base currency; `canConvert` is the guard, so a currency with no
+  rate is left out of the totals and its series stays listed. A stopped series counts. The row
+  reads 'Sum of last charges' (`recurringCharges.lastChargesTotal`). The series screen's 'All
+  paid so far' is `paidSoFarByCurrencyOf` in `src/recurring/recurring-groups/recurring-groups.ts`:
+  one `Money` line per part, newest part first, no converted sum. A plain or marked series gives
+  one line, the `paidSoFarOf` figure. It covers only the series screen, never a list total.
+- A card switch (spec 19, `docs/superpowers/specs/2026-11-03-recurring-design.md`): a detected
+  series of one name and period joins into one row when the currencies differ and each part
+  stopped on an earlier LOCAL day than the next began (`src/recurring/card-switch/card-switch.ts`,
+  spec 19.2). All or nothing per name and period. The row carries `parts?: SeriesPart[]`
+  (`src/recurring/detection/detection.types.d.ts`), takes its fields from the newest part and
+  counts once in the totals. A marked series never joins.
 - One choice map holds every key's hide flag and its list of marks, one entry per key; removing
-  a mark clears only that mark, and "Show again" clears only the hide.
+  a mark clears only that mark. 'Not a recurring charge' (the series-row hold or the series
+  footer, one `ConfirmSheet`) calls `settingsRepo.hideRecurringMerchant(key, name, chain = [])`,
+  which sets the hide and drops that chain's marks in one write. There is no way to show the key
+  again: a new charge of the key stays out, and only a mark brings it back.
+- The transaction form's mark field shows 'Detected: <period>' (keys
+  `forms.transaction.detectedRecurring.*`) for a row of a shown detected series. The one shared
+  pure module is `src/recurring/row-recurrence/` (`rowDetectionOf`, memoized on the ledger fire;
+  `rowRecurrenceFromDetection`, per settings fire; `rowRecurrenceOf`, their composition;
+  `markedEntriesOf` is defined there and imported by `use-recurring-series.ts`); read it for the
+  rules. A hidden key with no mark in this currency reads 'Not marked' with no ledger read
+  (`useRowMark`).
 
 Which rows each step reads (`src/statistics/spending-ledger/`, one hook and one pure builder
 that the Statistics screen calls; `useStatisticsSources` in
@@ -1116,7 +1168,10 @@ exchange row, so the matcher adds an augmenting-path pass (`addAugmentingPairs` 
 (`maximumMatchingSize`): a change to the matcher keeps both. The transaction form reads its
 `excludedIds` through `useExchangeFundingCaption`
 (`src/statistics/exchange-funding-match/use-exchange-funding-caption/`). The loan-payment
-exclusion runs over the account-filtered rows.
+exclusion runs over the account-filtered rows. `spendingContributionsOf`
+(`src/statistics/category-breakdown/category-breakdown.ts`) is the shared per-row spending
+calculation of the donut and the cell rows (`expenseRowsOf`); keep the exclusion pipeline there,
+never fork it.
 
 A linked loan payment ("interest-only
 spending") is excluded the same way, but REPLACED rather than simply
@@ -1164,12 +1219,20 @@ holding's rows whatever the account filter. `loanInterestEntries`
 marked row linked to a loan emits no entry and the loan's other payments split as if it did not
 exist. A positive marked row is in the set but was never in the donut.
 
+Decision 10: a balance-set row (`setsBalance`, either sign) is also skipped by the three
+row-pairing matchers: `rowsForTransferMatch`, `exchangeFundingMatches` and
+`sameCurrencyMoveTransactionIds`. It is neither a debit nor a credit there, so it never pairs
+with, or takes the funding or partner match of, a real row of the same amount. The funding
+caption (`useExchangeFundingCaption`) and `recurringExcludedIds` follow. Source: the
+`src/db/schema.ts` comment on `setsBalance`.
+
 Where the Statistics code lives (read each folder, not a name list here):
 `src/statistics/spending-ledger/` (the ledger hook and pure builder),
 `src/statistics/statistics-sources/` (the screen's reads),
 `src/statistics/statistics-filter-scope/` (the account and category filter scope, including the
 kept selection unioned back in), and `src/statistics/use-rate-history-backfill/` (the rate-history
-backfill the screen only calls).
+backfill; Statistics and Tables both call it, one run for all readers, held in
+`rate-history-backfill.store.ts`).
 
 ## Deleting a movement takes its other parts
 
@@ -1267,11 +1330,10 @@ re-locks, so a resident backgrounded process resumes without a prompt. That is
 an accepted, recorded risk — see `docs/security/README.md`. `lockGraceSeconds`
 is one of the documented reader-less `settings` columns pinned by
 `src/db/settings-columns.test.ts`'s `DOCUMENTED_READERLESS_COLUMNS` list —
-the other is `appearance` (the removed light/dark color-scheme feature; the
-app is now dark-only, see `kiko-design-system`'s "Dark-only theme"); wiring
-either back up means removing it from that test's list, which is the
-deliberate decision gate. Read the list itself for the exact current set
-rather than assuming only these two.
+`appearance` left that list when the appearance setting shipped (it stores the System,
+Light or Dark mode; see `kiko-design-system`'s "Light and dark themes"). Wiring a
+listed column up means removing it from that test's list, which is the
+deliberate decision gate. Read the list itself for the exact current set.
 
 ## Dates
 
@@ -1526,7 +1588,8 @@ netted into it, so it can never reduce a positive holding of the same
 type. Debt has its own total (see below).
 
 **The account pie (`buildAccountContribution`,
-`src/statistics/account-contribution/`) is ASSETS ONLY:** an account's slice sums only its POSITIVE
+`src/statistics/account-contribution/`, takes a required `scheme`; slice colors are display
+colors) is ASSETS ONLY:** an account's slice sums only its POSITIVE
 holding values; a negative holding (a `loan`'s own value, or a
 non-loan holding in debit, e.g. a credit card) never reduces it and
 never nets against a positive one in the same account. An account
@@ -1612,6 +1675,12 @@ Every call site — including a single-instant read like
 `createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
 this pays the same per-holding setup cost that single-call function used to pay
 per call, which is negligible for a single call.
+
+Net worth by account (`src/statistics/net-worth-by-account/`) reads `buildHoldingValues` per
+holding at `monthEndInstants` (month end, or now for the running month), so its All and last
+column equal the line's. Rows rank by `accountSectionOrder`; an account with no holding has no
+row. A property or debt account with only closed holdings gets a row, deliberately unlike the
+Accounts screen.
 
 `buildNetWorthSeries` also decides whether a holding's value counts at
 bucket `t` at all: the net-worth LINE is built from `filtered.netWorthHoldings`

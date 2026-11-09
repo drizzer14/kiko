@@ -21,17 +21,15 @@ export const styles = StyleSheet.create((theme) => ({
   header: {
     paddingBottom: theme.spacing(4),
   },
-  // What the series paid so far: the label on the left, the money opposite it.
-  paidRow: {
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  // A wrapped line starts at the left edge of its own box, so the value in the right-hand column
+  // is aligned to the right, as the last charge of a series row is.
+  wrappedValue: {
+    textAlign: 'right',
   },
-  paidLabel: {
-    flex: 1,
-    marginRight: theme.spacing(3),
-  },
-  paidAmount: {
-    flexShrink: 0,
+  // `flex-end` matches the right-aligned values of the summary table.
+  paidLines: {
+    alignItems: 'flex-end',
+    gap: theme.spacing(1),
   },
   // The gap below each card, so the charges read as a stack of cards, as Home's rows do.
   chargeCard: {

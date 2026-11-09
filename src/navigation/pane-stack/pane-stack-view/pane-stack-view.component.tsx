@@ -22,14 +22,13 @@ type LayerStackProps = Pick<PaneStackViewProps, 'navigation' | 'describe'> & {
   slice: LayerSlice;
 };
 
-// The layer's screens are the window's, so its stack is told the margin of a stack outside any
-// pane, whatever margin the panes beside it are told.
+// The pages of the layer over both panes need no fixed content margin, so its stack is told 0 in
+// every pose, which keeps the react-native-screens patch's margin write inert on it. With the
+// margin the side-bar pose gave it, the device showed the layer's bar go see-through during a
+// swipe back on the unfolded Duo in landscape; the panes keep the margin they are told.
 const LayerStack: FC<LayerStackProps> = ({ slice, navigation, describe }) => {
-  const tabBarPlacement = useTabBarPlacement();
-  const contentMargin = useContentMarginFor(false);
-
   return (
-    <FixedContentMarginContext.Provider value={tabBarPlacement === 'side' ? contentMargin : 0}>
+    <FixedContentMarginContext.Provider value={0}>
       <NativeStackView
         state={slice.state}
         navigation={navigation}

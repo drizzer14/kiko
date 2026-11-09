@@ -19,7 +19,7 @@ import { editBarItem, REMINDERS_BELL_SYMBOL } from '@kiko/design-system/edit-bar
 import '@kiko/design-system/unistyles';
 
 import RootNavigator from '@kiko/navigation/root-navigator';
-import { navigationDarkTheme } from '@kiko/navigation/dark-theme';
+import { navigationDarkTheme } from '@kiko/navigation/navigation-theme';
 
 import {
   type SymbolCatalogue,

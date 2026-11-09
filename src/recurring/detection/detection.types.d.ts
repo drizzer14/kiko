@@ -16,6 +16,9 @@ export type RecurringMark = {
   currency: Currency;
   amountMinorUnits: number;
   period: RecurringPeriod;
+  // The row the mark was tapped on, kept in its chain; absent on every mark written before. Never
+  // part of the mark's identity: `isSameChain`, the dedupe, `compareMarks` and the removal skip it.
+  transactionId?: string;
 };
 
 export type Recurrence =
@@ -26,6 +29,8 @@ export type Recurrence =
   | { kind: 'onDate'; time: number }
   | { kind: 'marked' }
   | { kind: 'none' };
+
+export type SeriesPart = { id: string; currency: Currency; chargeIds: readonly string[] };
 
 export type RecurringSeries = {
   id: string;
@@ -47,6 +52,8 @@ export type RecurringSeries = {
   // Set only on a marked series: the lowest and highest amount of its charges and stored amounts,
   // a lookup key that no line shows.
   markedSpan?: { lowest: number; highest: number };
+  // Set only on a joined row (a card switch between currencies): its series, newest part first.
+  parts?: readonly SeriesPart[];
 };
 
 export type Charge = {

@@ -131,10 +131,15 @@ must fit: `labelVariant: 'caption'` is the first step. Measure at large sizes; i
 the text silently.
 
 Period, ruled (Decision 2): the screen has its own date filter, separate from the shared date filter, which it neither reads nor
-changes. Whole calendar months. Default "Last 12 months", plus each calendar year that has data. Reason: the shared filter defaults
+changes. Whole calendar months. Reason: the shared filter defaults
 to the last 30 days (`default-range.ts:13`), which gives 2 columns, and a day-grain range cuts months in two. A month column equals
-the donut when the shared date filter is set to the same whole month. Ruled: whole months, the last 12 months or a calendar year,
-with no free range picker.
+the donut when the shared date filter is set to the same whole month. Ruled: whole months, with no free range picker.
+
+User ruling 2026-11-07 (replaces the first ruling, default "Last 12 months" plus each calendar year with data):
+the options are This quarter, Last quarter, the other started quarters of this year, First half, Second half
+(from 1 July), This year and Last year. The default and the fallback is This year. "Last 12 months" and
+older years are removed. The option list and its builder are in the period code under `src/screens/tables/`;
+read them there.
 
 Filters on Tables: accounts for all three tables, and categories for C1 only, both from the shared store
 (`use-statistics-filter-selection.ts`), so a pick in Statistics holds on Tables. C2 and C3 hide the category filter. A category
@@ -358,7 +363,7 @@ The compliance skill has no rule on plain-text export: the scribe adds one.
 | # | Decision | Ruling |
 |---|---|---|
 | 1 | Where the tables live | Own screen |
-| 2 | Which months | Own date filter, default last 12 months; whole months, the last 12 months or a calendar year, with no free range picker |
+| 2 | Which months | Own date filter; whole months, with no free range picker; options and default replaced by the ruling of 2026-11-07 (section 5) |
 | 3 | Column order | Oldest to newest |
 | 4 | Amounts in cells | Whole units, currency in the caption |
 | 5 | Tap on a cell | Opens the rows behind the number, in Categories and Cash flow |
@@ -372,7 +377,7 @@ Rulings of 2026-11-04 (user, relayed by the coordinator):
 
 | # | Decision | Ruling |
 |---|---|---|
-| 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`) shown in a layer over both panes; the tab bar stays, Back returns to the two panes. User ruling (relayed by the coordinator, 2026-11-04): "A: It stays (Recommended)": with a form or Home open beside Statistics, the Monthly tables press keeps it open (`openFrom` keeps all routes), and Back returns to it as it was. Implementation note, not a user ruling: the layer root has a shown, transparent, empty header only while a page is in the layer, and no header at rest, because a hidden root header hides the shared bar when a swipe starts (fault A); its native effect is a device point, not yet seen. Back after fold and unfold is open, with no found cause |
+| 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`) shown in a layer over both panes; the tab bar stays, Back returns to the two panes. User ruling (relayed by the coordinator, 2026-11-04): "A: It stays (Recommended)": with a form or Home open beside Statistics, the Monthly tables press keeps it open (`openFrom` keeps all routes), and Back returns to it as it was. Implementation note, not a user ruling: the layer root has a shown header with an empty title that takes the page's bar appearance options (not the large title) only while a page is in the layer, and no header at rest, because a hidden root header hides the shared bar when a swipe starts (fault A); its native effect is a device point, not yet seen. Back after fold and unfold is open, with no found cause |
 | 12 | Tables title | "A: Small title (Recommended)": a normal small title in an opaque bar, content below it, Tables only |
 | 13 | Button size | "As it is now": 44 pt, full width (`size="compact"`) |
 | 14 | Button chevron | "Remove it (Recommended)" |

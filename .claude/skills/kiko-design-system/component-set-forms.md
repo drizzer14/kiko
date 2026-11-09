@@ -85,7 +85,9 @@
   — wraps a grid/list card in a touch-and-hold delete (and, when an
   `onEdit`, `onDuplicate`, `onViewAccount`, `onViewHolding` and/or `closeAction`
   is passed, an Edit/Duplicate/View account/View holding/Close/Delete choice,
-  in that order; read the JSX in `card-context-menu.component.tsx`) menu. `onEdit` is
+  in that order; read the JSX in `card-context-menu.component.tsx`) menu. The optional
+  `deleteLabel` names the destructive item and its confirm button (default `common.delete`);
+  the recurring list's series rows pass 'Not a recurring charge'. `onEdit` is
   for a row with no tap target of its own: the holding detail's
   share-change rows and lot rows (`LotRowMenu`, Edit + Delete; Delete
   is offered only while every later sale stays covered without the lot,
@@ -234,7 +236,12 @@
   elsewhere in the row, and it must then get `accessibilityLabel` so
   VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
-  theme tokens. It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
+  theme tokens; its fill is the `fieldBackground` token, as for `FieldTrigger`, `DateField`,
+  `TimeField`, the `HoldingIdentityField` name input and the `IconEditor` icon chip (white
+  in light, none in dark). In light a disabled field and an active one share a white fill;
+  the faded `surfaceHigh` border, the 0.5 opacity and the `textSecondary` text tell them
+  apart. `DateRangeField`, `FilterMenu` and `TrendFilterField` keep `surface`.
+  It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
   Screen's `onFieldBlur`. `HoldingIdentityField` calls `useFieldBlur(undefined)`; a text field
   outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity)
   comes from the shared `disabledFieldStyle(theme)` helper
@@ -297,8 +304,10 @@
   top, when `useWindowDimensions().fontScale >= STACK_FONT_SCALE`. The
   constant sits between React Native's xxxLarge (1.353) and AX1 (1.786)
   values (`node_modules/react-native/React/Base/RCTUtils.mm:367-378`), so
-  the row stacks from AX1. Used by `FieldGroup` (Type + Amount) and
-  `ExchangeFields` (`leadingField` + Value out).
+  the row stacks from AX1. `STACK_FONT_SCALE` lives in `src/design-system/stack-font-scale/`
+  (import `@kiko/design-system/stack-font-scale`; read it for the value). Any row that stacks at
+  large text sizes imports it from there and never redefines it. Used by
+  `FieldGroup` (Type + Amount) and `ExchangeFields` (`leadingField` + Value out).
 - **Scroll to the first invalid field.** A form that scrolls to its
   first invalid field on a blocked Save uses `useScrollToField()` from
   `@kiko/design-system/use-scroll-to-field` (`{ scrollableRef,
@@ -310,10 +319,13 @@
   handler asks it after an await and drops its result when it is unmounted
   (the Connect fields do, so no credential is stored after a fold).
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
-  the shared "labeled field that opens a picker sheet" trigger: a
+  the shared "labeled field that opens a picker sheet" trigger (its fill is `fieldBackground`): a
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
-  `BottomSheet`. `CategoryField`, `HoldingSelectField`,
+  `BottomSheet`. Optional `capped` caps the trigger at
+  `theme.layout.selectTriggerMaxWidth` (`src/design-system/theme/theme.ts`), trigger =
+  min(column, cap), for a short one-phrase value; larger Dynamic Type wraps inside the cap.
+  `CategoryField`, `HoldingSelectField`,
   `ModeSelectField`, `BankTypeField`, `ExchangeTypeField` (`src/screens/forms/`),
   `SelectField` (component-set.md) and `CurrencyField` below all compose this rather than
   re-implementing the same bordered-row JSX. Lives in
@@ -363,7 +375,7 @@
   width and the value wraps inside the row; rows without it lay out exactly as before. The rule
   card on the category form (the rule card under `src/screens/forms/category-form/`) is the caller. At
   very large Dynamic Type a wrapping value can be squeezed narrow; check it on the device.
-  Extracted from the
+  Callers: grep `SummaryTable` under `src/`. Extracted from the
   holding-detail deposit/bond value-breakdown block —
   `HoldingDetailScreen` renders its own
   principal/gross/interest/tax/expected-profit rows through this (and,
@@ -375,13 +387,10 @@
   `textSecondary` value like its ISIN summary, testID
   `bond-form-yield-to-maturity`), passing
   `<MoneyText money={...} tone={...} />` as each row's `value`, with NO
-  visual change from before the extraction. The statement-import preview
-  (`StatementPreviewBlock`, `statement-import/statement-preview-block/`) and the
-  column-mapping result section (`MappingResult`) reuse the SAME row
-  layout/alignment/styling for their own summary rows (transaction count,
-  currency, date span) — never the deposit table's value/percent/tax
-  COLUMNS, only its layout. The loan detail's ledger breakdown is a
-  `SummaryTable` too; its linked and scheduled payments are NOT (they are
+  visual change from before the extraction. Every other caller reuses the SAME row
+  layout/alignment/styling for its own summary rows — never the deposit table's
+  value/percent/tax COLUMNS, only its layout. A loan's linked and scheduled
+  payments are NOT `SummaryTable` rows (they are
   `EntryCard` rows in the day-grouped ledger, see **EntryCard**). A property
   owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /
@@ -495,9 +504,16 @@
   design-system component may never import from `src/screens/**`
   (`kiko-no-import-screens-outside-ui`), `ChipRow` lives in
   `design-system/components/` since a design-system component
-  (`LanguageSwitch`) renders one — the SAME reason `FieldTrigger` lives
+  (`LanguageSwitch`, `AppearanceSwitch`) renders one — the SAME reason `FieldTrigger` lives
   there too; a screen-level consumer imports it from there like any
   other design-system component.
+- **AppearanceSwitch** (`src/design-system/components/appearance-switch/`)
+  — the Light / System / Dark control of the Settings system screen (chip order is user
+  ruling 2026-11-08; the parse fallback stays `system`): a
+  `ChipRow` over `appearanceModes` with a label per mode from
+  `appearance.*` (the active UI language, as a mode name is a word, not an
+  endonym). It only reports the chosen mode; the screen writes the row
+  (see "Light and dark themes" in SKILL.md).
 - **DayOfMonthGrid** (`src/design-system/components/day-of-month-grid/`)
   — single-select day of month, 1 to 31, as a 7-column calendar-shaped
   grid (days 29-31 on a short last row), replacing a 31-row select sheet
@@ -558,7 +574,8 @@
   holding N equal-width segments, with the SELECTED segment a lighter
   raised thumb (`theme.colors.segmentSelected`) under a `textPrimary`
   semibold label. The track is translucent, so the thumb's WCAG 1.4.11
-  3:1 non-text contrast is checked against the track composited over
+  3:1 non-text contrast (a dark-theme rule; the light thumb is the
+  user's accepted exception, P2) is checked against the track composited over
   BOTH backdrops the control sits on (true-black `background` and
   `surface`, which a card or the glass sheet composites to); that is
   why the thumb is lighter than iOS's own `#636366`, which only reaches

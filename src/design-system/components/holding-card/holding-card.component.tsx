@@ -18,6 +18,7 @@ import { holdingIdentity } from '@kiko/holdings/holding-identity';
 import { holdingTypeLabel } from '@kiko/holdings/holding-type-label';
 import { propertyOwnershipView } from '@kiko/holdings/holding-descriptor';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import ConvertedCaption from '@kiko/design-system/components/converted-caption';
 
 import { styles } from './holding-card.styles';
@@ -44,7 +45,8 @@ const HoldingCard: FC<{
   selected?: boolean;
 }> = ({ holding, now, baseCurrency, rateTable, priceBook, onOpen, selected = false }) => {
   const { t } = useTranslation();
-  const { icon, color } = holdingIdentity(holding);
+  const scheme = useActiveColorScheme();
+  const { icon, color } = holdingIdentity(holding, scheme);
   const value = holdingValue(holding, now, priceBook);
   const typeLabel = holdingTypeLabel(holding, t);
   // A property owned in part reads its owned value as the main line, and the

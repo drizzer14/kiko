@@ -53,6 +53,7 @@ import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
 import ConvertedCaption from '@kiko/design-system/components/converted-caption';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
@@ -248,7 +249,8 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
   // The account's effective icon + color, rendered as the identity glyph beside
   // the Balance amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon
   // slot below) rather than in the nav title.
-  const identity = foldMap(maybe(account), accountIdentity);
+  const scheme = useActiveColorScheme();
+  const identity = foldMap(maybe(account), (found) => accountIdentity(found, scheme));
   // Adjacent bar items share one glass capsule on iOS 26+, which would read the
   // bell and the Edit pencil as one control with two glyphs, so neither shares
   // its background; header items run left to right, keeping the bell left of

@@ -6,9 +6,10 @@ import {
 import { Money } from '@kiko/currency/money';
 import { canConvert } from '@kiko/rates/net-worth-view';
 import type { Currency } from '@kiko/currency/currency';
+import type { ColorScheme } from '@kiko/design-system/palette';
 import { type RateTable, convert } from '@kiko/rates/conversion';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { compareText, type RecurringSeries } from '@kiko/recurring/detection';
+import { compareText, type RecurringSeries, type SeriesPart } from '@kiko/recurring/detection';
 
 type ChargeRow = {
   id: string;
@@ -24,6 +25,7 @@ type RecurringGroupsInput = {
   defaultCategoryKey: string;
   baseCurrency: Currency;
   rateTable: RateTable;
+  scheme: ColorScheme;
 };
 
 export type RecurringGroup = {
@@ -44,18 +46,32 @@ const newestChargeFirst = (left: RecurringSeries, right: RecurringSeries): numbe
 
 // The charges are debits, so a series has paid the negation of their sum. A row of another
 // currency is skipped: the group key of a series holds its currency, so none should be there.
-const paidFromRowsById = (series: RecurringSeries, rowById: ReadonlyMap<string, ChargeRow>) => {
-  const minorUnits = series.chargeIds.reduce((sum, chargeId) => {
+const paidFromRowsById = (
+  { currency, chargeIds }: Omit<SeriesPart, 'id'>,
+  rowById: ReadonlyMap<string, ChargeRow>,
+) => {
+  const minorUnits = chargeIds.reduce((sum, chargeId) => {
     const row = rowById.get(chargeId);
 
-    return row?.currency === series.currency ? sum - row.amountMinorUnits : sum;
+    return row?.currency === currency ? sum - row.amountMinorUnits : sum;
   }, 0);
 
-  return Money.of(series.currency, minorUnits);
+  return Money.of(currency, minorUnits);
 };
 
 export const paidSoFarOf = (series: RecurringSeries, rows: readonly ChargeRow[]): Money =>
   paidFromRowsById(series, new Map(rows.map((row) => [row.id, row])));
+
+// One figure per part of a joined row, newest part first, never summed across currencies; a series
+// with no parts gives the one figure `paidSoFarOf` gives.
+export const paidSoFarByCurrencyOf = (
+  series: RecurringSeries,
+  rows: readonly ChargeRow[],
+): Money[] => {
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+
+  return (series.parts ?? [series]).map((part) => paidFromRowsById(part, rowById));
+};
 
 export const recurringGroupsOf = ({
   shown,
@@ -64,6 +80,7 @@ export const recurringGroupsOf = ({
   defaultCategoryKey,
   baseCurrency,
   rateTable,
+  scheme,
 }: RecurringGroupsInput) => {
   const rowById = new Map(rows.map((row) => [row.id, row]));
   const displayByKey = buildCategoryDisplayMap(categories);
@@ -92,7 +109,13 @@ export const recurringGroupsOf = ({
   for (const entry of inGroupOrder) {
     const key = categoryKeyOf(entry);
 
-    seriesByKey.set(key, [...(seriesByKey.get(key) ?? []), entry]);
+    const inKey = seriesByKey.get(key);
+
+    if (inKey === undefined) {
+      seriesByKey.set(key, [entry]);
+    } else {
+      inKey.push(entry);
+    }
   }
 
   const groups = keys.flatMap((key): RecurringGroup[] => {
@@ -103,14 +126,14 @@ export const recurringGroupsOf = ({
     }
 
     const display = resolveCategoryDisplay(key, displayByKey, defaultCategoryKey);
-    // One conversion per series sum, never per row, so a group total equals the sum of what it
-    // holds. A currency with no rate is left out of the totals and its series stays listed.
+    // One conversion per series, so a group total equals the sum of what it holds. A currency
+    // with no rate is left out of the totals and its series stays listed.
     const total = series.reduce(
       (sum, entry) => {
-        const paid = paidFromRowsById(entry, rowById);
+        const last = Money.of(entry.currency, entry.lastChargeAmountMinorUnits);
 
-        return canConvert(paid.currency, baseCurrency, rateTable)
-          ? sum.add(convert(paid, baseCurrency, rateTable))
+        return canConvert(last.currency, baseCurrency, rateTable)
+          ? sum.add(convert(last, baseCurrency, rateTable))
           : sum;
       },
       Money.of(baseCurrency, 0),
@@ -121,7 +144,7 @@ export const recurringGroupsOf = ({
         key,
         title: display.title,
         icon: display.icon,
-        color: resolveCategoryColor(display.color, key),
+        color: resolveCategoryColor(display.color, key, scheme),
         series,
         total,
       },

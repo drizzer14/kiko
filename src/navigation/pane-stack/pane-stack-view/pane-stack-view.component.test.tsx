@@ -810,7 +810,7 @@ describe('PaneStackView', () => {
     describe('the fixed content margin', () => {
       const MARGINS = (seen: Seen[]) => seen.map(({ kind, margin }) => [kind, margin]);
 
-      it('is the layer’s own, 16 pt, under a side bar, while each pane keeps the split 20 pt', async () => {
+      it('is 0 in the layer under a side bar too, while each pane keeps the split 20 pt', async () => {
         mockUseTabBarEdge.mockReturnValue('leading');
         mockWindow.width = 1376;
         mockWindow.height = 1032;
@@ -820,7 +820,7 @@ describe('PaneStackView', () => {
         expect(MARGINS(lastSeen())).toEqual([
           ['pane', darkTheme.spacing(5)],
           ['pane', darkTheme.spacing(5)],
-          ['layer', darkTheme.spacing(4)],
+          ['layer', 0],
         ]);
       });
 

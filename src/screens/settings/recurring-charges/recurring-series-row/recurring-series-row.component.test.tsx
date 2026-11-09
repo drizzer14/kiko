@@ -73,7 +73,7 @@ describe('RecurringSeriesRow', () => {
       {
         kind: 'quiet',
         overrides: QUIET_SERIES,
-        line: `Wallet: no newer transactions since ${formatDate(TENTH_OF_JUNE)}`,
+        line: `"Wallet": no newer transactions since ${formatDate(TENTH_OF_JUNE)}`,
       },
     ])(
       'sits in the amount column of an $kind series, beside the name column',
@@ -153,7 +153,7 @@ describe('RecurringSeriesRow', () => {
     );
 
     expect(
-      getByText(`Wallet: no newer transactions since ${formatDate(TENTH_OF_JUNE)}`),
+      getByText(`"Wallet": no newer transactions since ${formatDate(TENTH_OF_JUNE)}`),
     ).toBeTruthy();
     expect(queryByText(`No charge since ${formatDate(FIRST_OF_MAY)}`)).toBeNull();
   });
@@ -171,7 +171,8 @@ describe('RecurringSeriesRow', () => {
         <RecurringSeriesRow series={MARKED} onPress={jest.fn()} />,
       );
 
-      expect(getByText('Marked: monthly')).toBeTruthy();
+      expect(getByText('Monthly')).toBeTruthy();
+      expect(queryByText(/^Marked:/)).toBeNull();
       expect(getByText(`Last charge ${formatDate(FIFTEENTH_OF_OCTOBER)}`)).toBeTruthy();
       expect(getByText(formatMoney(Money.of('UAH', 26000)))).toBeTruthy();
       expect(queryByText(formatMoney(Money.of('UAH', 25000)))).toBeNull();

@@ -6,8 +6,11 @@ import { Money } from '@kiko/currency/money';
 import { formatMoney } from '@kiko/currency/format';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { MarkedChain } from '@kiko/recurring/marked-series';
-import type { RecurringSeries } from '@kiko/recurring/detection';
+import { cardSwitchesJoinedOf } from '@kiko/recurring/card-switch';
 import { testIdsInOrder } from '@kiko/test-support/test-ids-in-order';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { cardSwitchLedger, nowOf } from '@kiko/test-support/recurring-ledger';
+import { type RecurringSeries, chargeGroupsOf, seriesOfGroups } from '@kiko/recurring/detection';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import RecurringChargesScreen from './recurring-charges.screen';
@@ -27,7 +30,7 @@ type SeriesState = {
 type ChargeRow = {
   id: string;
   amountMinorUnits: number;
-  currency: 'UAH';
+  currency: RecurringSeries['currency'];
   category: string | null;
 };
 
@@ -77,7 +80,8 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
         categories: mockCategories,
         defaultCategoryKey: 'other',
         baseCurrency: 'UAH',
-        rateTable: buildRateTable([]),
+        rateTable: buildRateTable([{ base: 'USD', quote: 'UAH', rate: '41.5' }]),
+        scheme: 'dark',
       }),
       isLoading: false,
     };
@@ -86,11 +90,9 @@ jest.mock('@kiko/recurring/use-recurring-groups', () => ({
 
 const mockOpenInPane = jest.fn();
 
-jest.mock('@kiko/navigation/pane-stack', () => ({
-  ...jest.requireActual('@kiko/navigation/pane-stack'),
-  useOpenInPane: () => mockOpenInPane,
-  useDetailPaneRoute: () => null,
-}));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane),
+);
 
 const OCTOBER = new Date(2026, 9, 15, 9, 30).getTime();
 const SEPTEMBER = new Date(2026, 8, 15, 9, 30).getTime();
@@ -143,6 +145,7 @@ const renderScreen = async () =>
       navigation={asNavigationProp<ScreenProps['navigation']>(navigationSpy())}
       route={asRouteProp<ScreenProps['route']>('RecurringCharges')}
     />,
+    { wrapper: GestureRootWrapper },
   );
 
 const moneyText = (minorUnits: number): string =>
@@ -202,14 +205,15 @@ describe('RecurringChargesScreen — category groups', () => {
     ]);
   });
 
-  it('shows the paid-so-far label and the sum of the group totals in the total of all', async () => {
+  it('shows the last-charges label and the sum of the group totals in the total of all', async () => {
     worldOf(TWO_GROUPS);
 
     const { getByTestId } = await renderScreen();
     const total = within(getByTestId('recurring-charges-total'));
 
-    expect(total.getByText('All paid so far')).toBeTruthy();
-    expect(total.getByText(moneyText(60000 + 89700 + 19800))).toBeTruthy();
+    expect(total.getByText('Sum of last charges')).toBeTruthy();
+    expect(total.queryByText('All paid so far')).toBeNull();
+    expect(total.getByText(moneyText(30000 + 29900 + 9900))).toBeTruthy();
   });
 
   it('shows each heading with its category title, icon tile and own total', async () => {
@@ -222,13 +226,13 @@ describe('RecurringChargesScreen — category groups', () => {
     expect(utilities.getByText('Utilities')).toBeTruthy();
     expect(utilities.getByTestId('entity-icon-tile')).toBeTruthy();
     expect(
-      within(getByTestId('recurring-charges-group-total-utilities')).getByText(moneyText(60000)),
+      within(getByTestId('recurring-charges-group-total-utilities')).getByText(moneyText(30000)),
     ).toBeTruthy();
     expect(subscriptions.getByText('Subscriptions')).toBeTruthy();
     expect(subscriptions.getByTestId('entity-icon-tile')).toBeTruthy();
     expect(
       within(getByTestId('recurring-charges-group-total-subscriptions')).getByText(
-        moneyText(89700 + 19800),
+        moneyText(29900 + 9900),
       ),
     ).toBeTruthy();
   });
@@ -258,6 +262,93 @@ describe('RecurringChargesScreen — category groups', () => {
     expect(shown.map(({ id }) => id).sort()).toEqual(['netflix', 'power']);
     expect(all.map(({ id }) => id).sort()).toEqual(['netflix', 'power', 'spotify']);
     expect(queryByTestId(rowId('Spotify'))).toBeNull();
+  });
+});
+
+describe('RecurringChargesScreen — a card switch between currencies', () => {
+  const NETFLIX_HIDDEN: Choices = new Map([['netflix', { name: 'Netflix', hidden: true }]]);
+
+  // What the hook hands over: the series of the ledger, joined as it joins them.
+  const switchWorld = (choices: Choices = new Map()) => {
+    const ledger = cardSwitchLedger();
+    const groups = chargeGroupsOf(ledger, nowOf());
+    const currencyOfHolding = new Map(ledger.holdings.map(({ id, currency }) => [id, currency]));
+
+    mockSeriesState = {
+      ...EMPTY_STATE,
+      series: cardSwitchesJoinedOf(seriesOfGroups(groups, nowOf()), groups),
+      choices,
+    };
+    mockRows = ledger.rows.map(({ id, holdingId, amountMinorUnits }) => ({
+      id,
+      amountMinorUnits,
+      currency: currencyOfHolding.get(holdingId) ?? 'UAH',
+      category: 'subscriptions',
+    }));
+  };
+
+  const rowsOf = (tree: Awaited<ReturnType<typeof renderScreen>>): string[] =>
+    layoutOf(tree).filter((testId) => testId.startsWith('recurring-series-row-'));
+
+  it('shows one row, its amount the newest part`s, in the newest part`s category group', async () => {
+    switchWorld();
+
+    const tree = await renderScreen();
+
+    expect(rowsOf(tree)).toEqual(['recurring-series-row-uah-4']);
+    expect(
+      within(tree.getByTestId('recurring-series-row-uah-4')).getByText(
+        formatMoney(Money.of('USD', 1_000), activeLocale()),
+      ),
+    ).toBeTruthy();
+    expect(layoutOf(tree)).toContain('recurring-charges-group-subscriptions');
+  });
+
+  it('counts the newest part`s last charge once, in the group total and in the total of all', async () => {
+    switchWorld();
+
+    const { getByTestId } = await renderScreen();
+
+    expect(
+      within(getByTestId('recurring-charges-total')).getByText(moneyText(41_500)),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId('recurring-charges-group-total-subscriptions')).getByText(
+        moneyText(41_500),
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows no row of the name once it is hidden', async () => {
+    switchWorld(NETFLIX_HIDDEN);
+
+    const tree = await renderScreen();
+
+    expect(rowsOf(tree)).toEqual([]);
+  });
+});
+
+describe('RecurringChargesScreen — the total row label, in uk', () => {
+  beforeEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('reads the total of all as the sum of last charges', async () => {
+    worldOf(TWO_GROUPS);
+
+    const { getByTestId } = await renderScreen();
+    const total = within(getByTestId('recurring-charges-total'));
+
+    expect(total.getByText('Сума останніх списань')).toBeTruthy();
+    expect(total.queryByText('Усього сплачено')).toBeNull();
   });
 });
 
@@ -305,7 +396,7 @@ describe.each(['en', 'uk'])('RecurringChargesScreen — no category, in %s', (la
     expect(tree.queryByTestId(/uncategorized/i)).toBeNull();
     expect(
       within(tree.getByTestId('recurring-charges-group-total-other')).getByText(
-        moneyText(30000 + 10000),
+        moneyText(15000 + 10000 + 5000),
       ),
     ).toBeTruthy();
   });
@@ -328,7 +419,7 @@ describe('RecurringChargesScreen — sections after the groups', () => {
       choices: new Map([['dropbox', { name: 'Dropbox', hidden: true }]]),
     });
 
-  it('puts "Marked, No Charges" and then "Hidden" after the groups, each behind a divider', async () => {
+  it('puts "Marked, No Charges" after the groups behind a divider, with nothing for a hidden key after it', async () => {
     withSections();
 
     const tree = await renderScreen();
@@ -337,19 +428,15 @@ describe('RecurringChargesScreen — sections after the groups', () => {
     expect(order.filter((testId) => testId.startsWith('recurring-charges-divider-'))).toEqual([
       'recurring-charges-divider-group-subscriptions',
       'recurring-charges-divider-heading-markedEmpty',
-      'recurring-charges-divider-heading-hidden',
     ]);
     expect(order.slice(order.indexOf(rowId('Netflix')) + 1)).toEqual([
       'recurring-charges-divider-heading-markedEmpty',
       'recurring-charges-heading-marked-empty',
       expect.stringMatching(/^recurring-charges-marked-empty-/),
-      'recurring-charges-divider-heading-hidden',
-      'recurring-charges-heading-hidden',
-      'recurring-charges-hidden-dropbox',
     ]);
   });
 
-  it('shows no total in "Marked, No Charges" or "Hidden"', async () => {
+  it('shows no total in "Marked, No Charges"', async () => {
     withSections();
 
     const { getByTestId, getAllByTestId } = await renderScreen();
@@ -358,10 +445,104 @@ describe('RecurringChargesScreen — sections after the groups', () => {
     expect(
       within(getByTestId('recurring-charges-heading-marked-empty')).queryByText(/\d/),
     ).toBeNull();
-    expect(within(getByTestId('recurring-charges-heading-hidden')).queryByText(/\d/)).toBeNull();
-    expect(within(getByTestId('recurring-charges-hidden-dropbox')).queryByText(/\d/)).toBeNull();
   });
 });
+
+describe.each(['en', 'uk'])(
+  'RecurringChargesScreen — a hidden key and the totals, in %s',
+  (language) => {
+    const SPOTIFY_AND_NETFLIX: Spec[] = [
+      { name: 'Netflix', charges: [299, 299], category: 'subscriptions' },
+      { name: 'Spotify', charges: [99, 99], category: 'subscriptions' },
+      { name: 'Power', charges: [300], category: 'utilities' },
+    ];
+
+    const HIDDEN_SPOTIFY = new Map([['spotify', { name: 'Spotify', hidden: true as const }]]);
+
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('counts the amounts of a hidden key in no group total and not in the total of all', async () => {
+      worldOf(SPOTIFY_AND_NETFLIX, { choices: HIDDEN_SPOTIFY });
+
+      const { getByTestId, queryByText, queryByTestId } = await renderScreen();
+
+      expect(
+        within(getByTestId('recurring-charges-total')).getByText(moneyText(30000 + 29900)),
+      ).toBeTruthy();
+      expect(
+        within(getByTestId('recurring-charges-group-total-subscriptions')).getByText(
+          moneyText(29900),
+        ),
+      ).toBeTruthy();
+      expect(queryByText(moneyText(9900))).toBeNull();
+      expect(queryByText(moneyText(30000 + 29900 + 9900))).toBeNull();
+      expect(queryByText(moneyText(29900 + 9900))).toBeNull();
+      expect(queryByTestId(rowId('Spotify'))).toBeNull();
+    });
+
+    it('counts them again when the key is not hidden, which the hidden totals are the twin of', async () => {
+      worldOf(SPOTIFY_AND_NETFLIX);
+
+      const { getByTestId } = await renderScreen();
+
+      expect(
+        within(getByTestId('recurring-charges-total')).getByText(moneyText(30000 + 29900 + 9900)),
+      ).toBeTruthy();
+      expect(
+        within(getByTestId('recurring-charges-group-total-subscriptions')).getByText(
+          moneyText(29900 + 9900),
+        ),
+      ).toBeTruthy();
+    });
+
+    it('lists and counts the marked series of a hidden key, and not its detected one', async () => {
+      const detected = seriesOf({ name: 'Dropbox', charges: [999], category: 'subscriptions' });
+      const marked: RecurringSeries = {
+        ...seriesOf({ name: 'Dropbox', charges: [150], category: 'subscriptions' }),
+        id: 'dropbox-marked',
+        chargeIds: ['dropbox-marked-0'],
+        recurrence: { kind: 'marked' },
+        marks: [{ currency: 'UAH', amountMinorUnits: 15000, period: 'monthly' }],
+      };
+
+      mockSeriesState = {
+        ...EMPTY_STATE,
+        series: [detected],
+        markedSeries: [marked],
+        choices: new Map([['dropbox', { name: 'Dropbox', hidden: true }]]),
+      };
+      mockRows = [
+        {
+          id: 'dropbox-marked-0',
+          amountMinorUnits: -15000,
+          currency: 'UAH',
+          category: 'subscriptions',
+        },
+      ];
+
+      const { getByTestId, queryByTestId, queryByText } = await renderScreen();
+
+      expect(getByTestId('recurring-series-row-dropbox-marked')).toBeTruthy();
+      expect(queryByTestId(rowId('Dropbox'))).toBeNull();
+      expect(
+        within(getByTestId('recurring-charges-group-total-subscriptions')).getByText(
+          moneyText(15000),
+        ),
+      ).toBeTruthy();
+      expect(queryByText(moneyText(99900))).toBeNull();
+    });
+  },
+);
 
 describe('RecurringChargesScreen — loading and empty', () => {
   it('shows the loading state, no groups and no total, while the groups are read', async () => {

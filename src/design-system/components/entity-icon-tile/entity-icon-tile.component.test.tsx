@@ -1,7 +1,11 @@
 import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
-import { darkTheme } from '@kiko/design-system/theme';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { entityIconTileGradient } from '@kiko/design-system/entity-tint';
 
 import EntityIconTile from '.';
@@ -84,6 +88,34 @@ describe('EntityIconTile', () => {
     );
 
     expect(getByLabelText('Cash icon').props.tintColor).toBe(darkTheme.colors.background);
+  });
+
+  describe('in the light world', () => {
+    beforeEach(() => {
+      registerLightThemeFirst();
+    });
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('tints the glyph on a light tile with the tile glyph token, not the page color', async () => {
+      const { getByLabelText } = await render(
+        <EntityIconTile name="banknote" color="#FFFF00" accessibilityLabel="Cash icon" />,
+      );
+      const tint = getByLabelText('Cash icon').props.tintColor;
+
+      expect(tint).toBe(lightTheme.colors.glyphOnLightTile);
+      expect(tint).not.toBe(lightTheme.colors.background);
+    });
+
+    it('keeps the onAccent token on a dark tile', async () => {
+      const { getByLabelText } = await render(
+        <EntityIconTile name="banknote" color="#0066E6" accessibilityLabel="Checking icon" />,
+      );
+
+      expect(getByLabelText('Checking icon').props.tintColor).toBe(lightTheme.colors.onAccent);
+    });
   });
 
   // Cheap safety: the accounts grid mounts many tiles at

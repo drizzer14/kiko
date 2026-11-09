@@ -70,6 +70,11 @@
       "light": "#E5E5EA",
       "use": "Raised pill: secondary Button fill, Switch off track, sync progress track, read-only notice, disabled field border, glassTint of the secondary footer button. Light: systemGray5."
     },
+    "fieldBackground": {
+      "dark": "transparent",
+      "light": "#FFFFFF",
+      "use": "Fill of an editable input: TextField and FieldTrigger (and so every select, currency, wallet and credential field built on them). Dark is unfilled, as approved. Light is white, lighter than the gray page and sheet (#F2F2F7); the hairline border keeps a field readable on a white card. A disabled field still uses surface with the surfaceHigh border and 0.5 opacity."
+    },
     "sheetBackground": {
       "dark": "#1C1C1E",
       "light": "#F2F2F7",

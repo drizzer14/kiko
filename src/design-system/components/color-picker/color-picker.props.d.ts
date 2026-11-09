@@ -1,13 +1,16 @@
 export type ColorPickerProps = {
-  // The effective color hex currently in force: either the user's manual pick or,
-  // while they have not picked, the entity's type/kind default (the caller
-  // resolves that fallback). The one swatch whose hex equals this renders in the
-  // selected state.
+  // The effective CANONICAL (dark) color hex currently in force: either the user's manual
+  // pick or, while they have not picked, the entity's type/kind default (the caller
+  // resolves that fallback). The one swatch whose dark hex equals this renders in the
+  // selected state. Never a display hex.
   value: string;
-  // Report the tapped swatch's hex. The caller stores it as the entity's color
-  // and, on the create forms, marks its color state dirty so it stops following
-  // the type/kind default.
+  // Report the tapped swatch's canonical (dark) hex, whichever scheme paints the disc. The
+  // caller stores it as the entity's color and, on the create forms, marks its color state
+  // dirty so it stops following the type/kind default.
   onSelect: (color: string) => void;
+  // Which of the two light sets paints the discs: accounts and holdings use `entity`,
+  // categories use `category`. Both report the same dark hex.
+  swatchSet: 'entity' | 'category';
   // Optional caption rendered above the swatch row (a `Text variant="caption"
   // tone="textSecondary"`), matching the ChipRow/field-label treatment so the
   // picker reads as a labeled field alongside the other form controls.

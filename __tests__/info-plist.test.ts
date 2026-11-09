@@ -4,11 +4,10 @@ import { readFileSync } from 'node:fs';
 describe('ios/Kiko/Info.plist', () => {
   const plist = (): string => readFileSync(join(__dirname, '../ios/Kiko/Info.plist'), 'utf8');
 
-  it('pins the native interface style to Dark, so all native chrome is dark', () => {
-    // The app is dark-only, so the process trait collection is pinned to Dark:
-    // Alert, the datetimepicker, the keyboard, the status bar and the UITabBar
-    // glass all render dark regardless of the device's OS appearance.
-    expect(plist()).toMatch(/<key>UIUserInterfaceStyle<\/key>\s*<string>Dark<\/string>/);
+  it('has no UIUserInterfaceStyle key, so the app can follow a scheme', () => {
+    // A pinned style would outrank the window override the appearance setting sets, so native
+    // chrome (Alert, the date picker, the keyboard, the tab bar glass) could not turn light.
+    expect(plist()).not.toContain('UIUserInterfaceStyle');
   });
 
   it('leaves the status bar style at Default', () => {

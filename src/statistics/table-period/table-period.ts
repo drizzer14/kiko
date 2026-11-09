@@ -1,52 +1,68 @@
 import { match } from 'ts-pattern';
+import { sumOf } from '@kiko/numbers';
 import { type CalendarMonth, calendarMonthOf, calendarMonthsBetween } from '@kiko/dates';
 
-/** The months a table covers: the last 12 up to now, or one whole calendar year. */
-export type TablePeriod = { kind: 'last12' } | { kind: 'year'; year: number };
+const QUARTERS = [1, 2, 3, 4] as const;
 
-const LAST_TWELVE: TablePeriod = { kind: 'last12' };
-const MONTHS_IN_LAST_TWELVE = 12;
+const HALVES = [1, 2] as const;
+
+type Quarter = (typeof QUARTERS)[number];
+type Half = (typeof HALVES)[number];
+
+const MONTHS_IN_QUARTER = 3;
+const MONTHS_IN_HALF = 6;
+const MONTHS_IN_YEAR = 12;
+// The second half is the one that starts in the third quarter.
+const FIRST_QUARTER_OF_SECOND_HALF = 3;
+
+/** The months a table covers: a calendar quarter, half or year, from its first month to now. */
+export type TablePeriod =
+  | { kind: 'quarter'; year: number; quarter: Quarter }
+  | { kind: 'half'; year: number; half: Half }
+  | { kind: 'year'; year: number };
+
+type QuarterPeriod = Extract<TablePeriod, { kind: 'quarter' }>;
 
 /** A string that names the period, for a control that matches its options by value. */
 export const tablePeriodKey = (period: TablePeriod): string =>
   match(period)
-    .with({ kind: 'last12' }, () => 'last12')
+    .with({ kind: 'quarter' }, ({ year, quarter }) => `quarter-${year}-${quarter}`)
+    .with({ kind: 'half' }, ({ year, half }) => `half-${year}-${half}`)
     .with({ kind: 'year' }, ({ year }) => `year-${year}`)
     .exhaustive();
 
 /**
- * The last 12 months, then each calendar year from the one the data starts in to the current
- * one, newest first.
+ * The periods that a label names by their place in time: the quarter `now` is in, the quarter
+ * before it (the last one of the year before, in the first quarter), this year and the one
+ * before.
  */
-export const tablePeriodOptions = (spanStart: number, now: number): TablePeriod[] => {
-  const firstYear = new Date(spanStart).getFullYear();
-  const lastYear = new Date(now).getFullYear();
-  const years = Array.from(
-    { length: lastYear - firstYear + 1 },
-    (_unused, offset): TablePeriod => ({ kind: 'year', year: lastYear - offset }),
-  );
+export const relativeTablePeriodsOf = (now: number) => {
+  const today = new Date(now);
+  const year = today.getFullYear();
+  const quarterIndex = Math.floor(today.getMonth() / MONTHS_IN_QUARTER);
+  const thisQuarter: QuarterPeriod = { kind: 'quarter', year, quarter: QUARTERS[quarterIndex] };
+  const lastQuarter: TablePeriod =
+    quarterIndex === 0
+      ? { kind: 'quarter', year: year - 1, quarter: 4 }
+      : { kind: 'quarter', year, quarter: QUARTERS[quarterIndex - 1] };
 
-  return [LAST_TWELVE, ...years];
+  return {
+    thisQuarter,
+    lastQuarter,
+    thisYear: { kind: 'year', year } satisfies TablePeriod,
+    lastYear: { kind: 'year', year: year - 1 } satisfies TablePeriod,
+  };
 };
 
-/** A held year that the options do not offer reads as the last 12 months. */
-export const resolveTablePeriod = (
-  period: TablePeriod | undefined,
-  options: readonly TablePeriod[],
-): TablePeriod => {
-  if (period === undefined) {
-    return LAST_TWELVE;
-  }
-
-  return options.some((option) => tablePeriodKey(option) === tablePeriodKey(period))
-    ? period
-    : LAST_TWELVE;
-};
+const spanOfMonths = (year: number, firstMonth: number, monthCount: number) => ({
+  from: new Date(year, firstMonth, 1),
+  to: new Date(year, firstMonth + monthCount, 0),
+});
 
 /**
  * The whole local months of the period, oldest first. The columns start at the month the data
- * starts in when the period reaches back further, and the current year stops at the current
- * month, so there is no empty leading column and no future one.
+ * starts in when the period reaches back further, and a period that has not ended stops at the
+ * current month, so there is no empty leading column and no future one.
  */
 export const monthsOfPeriod = (
   period: TablePeriod,
@@ -54,21 +70,60 @@ export const monthsOfPeriod = (
   now: number,
 ): CalendarMonth[] => {
   const { from, to } = match(period)
-    .with({ kind: 'last12' }, () => {
-      const today = new Date(now);
-
-      return {
-        from: new Date(today.getFullYear(), today.getMonth() - (MONTHS_IN_LAST_TWELVE - 1), 1),
-        to: now,
-      };
-    })
-    .with({ kind: 'year' }, ({ year }) => ({
-      from: new Date(year, 0, 1),
-      to: Math.min(new Date(year, 11, 31).getTime(), now),
-    }))
+    .with({ kind: 'quarter' }, ({ year, quarter }) =>
+      spanOfMonths(year, (quarter - 1) * MONTHS_IN_QUARTER, MONTHS_IN_QUARTER),
+    )
+    .with({ kind: 'half' }, ({ year, half }) =>
+      spanOfMonths(year, (half - 1) * MONTHS_IN_HALF, MONTHS_IN_HALF),
+    )
+    .with({ kind: 'year' }, ({ year }) => spanOfMonths(year, 0, MONTHS_IN_YEAR))
     .exhaustive();
 
-  return calendarMonthsBetween(Math.max(from.getTime(), calendarMonthOf(spanStart).start), to);
+  return calendarMonthsBetween(
+    Math.max(from.getTime(), calendarMonthOf(spanStart).start),
+    Math.min(to.getTime(), now),
+  );
+};
+
+/**
+ * This quarter, last quarter, the other quarters of this year that have started, newest first,
+ * the first half, the second half from the day it starts, then this year and last year. A period
+ * with no month in the data (it ends before the data starts) is left out, except this year,
+ * which a ledger dated wholly ahead of now still reads as.
+ */
+export const tablePeriodOptions = (spanStart: number, now: number): TablePeriod[] => {
+  const { thisQuarter, lastQuarter, thisYear, lastYear } = relativeTablePeriodsOf(now);
+  const { year } = thisYear;
+  const earlierQuarters = QUARTERS.filter((quarter) => quarter < thisQuarter.quarter - 1)
+    .map((quarter): TablePeriod => ({ kind: 'quarter', year, quarter }))
+    .reverse();
+  const halves = HALVES.filter(
+    (half) => half === 1 || thisQuarter.quarter >= FIRST_QUARTER_OF_SECOND_HALF,
+  ).map((half): TablePeriod => ({ kind: 'half', year, half }));
+  const hasMonths = (period: TablePeriod): boolean =>
+    monthsOfPeriod(period, spanStart, now).length > 0;
+
+  return [
+    ...[thisQuarter, lastQuarter, ...earlierQuarters, ...halves].filter(hasMonths),
+    thisYear,
+    ...[lastYear].filter(hasMonths),
+  ];
+};
+
+/** A held period that the options do not offer, or none held, reads as this year. */
+export const resolveTablePeriod = (
+  period: TablePeriod | undefined,
+  options: readonly TablePeriod[],
+  now: number,
+): TablePeriod => {
+  if (
+    period !== undefined &&
+    options.some((option) => tablePeriodKey(option) === tablePeriodKey(period))
+  ) {
+    return period;
+  }
+
+  return relativeTablePeriodsOf(now).thisYear;
 };
 
 /**
@@ -115,5 +170,5 @@ export const averageOverComplete = (
     return null;
   }
 
-  return complete.reduce((sum, value) => sum + value, 0) / complete.length;
+  return sumOf(complete) / complete.length;
 };

@@ -2492,3 +2492,117 @@ rules:
     pattern-either:
       - pattern-regex: '(?m)^[ \t]*(?:import|export)\b(?:[^;''"]*?\bfrom)?\s*[''"](?:[^''"\n]*(?:-test-fixtures|-test-helper)|[^''"\n]*/(?:test-support|__fixtures__)/[^''"\n]*)[''"]'
       - pattern-regex: '(?m)^(?![ \t]*(?://|/\*|\*))[^\n]*?\brequire\s*\(\s*[''"](?:[^''"\n]*(?:-test-fixtures|-test-helper)|[^''"\n]*/(?:test-support|__fixtures__)/[^''"\n]*)[''"]\s*\)'
+  # kiko-design-system's "Native chrome follows the window": the window's interface style is the
+  # one source of the scheme, and the only allowed way to change it is `Appearance.setColorScheme`.
+  # A call of `UnistylesRuntime.setTheme` or `UnistylesRuntime.setAdaptiveThemes` is a second
+  # switch that can disagree with the native chrome (on 3.3.0 these were the #1179 path). The
+  # pattern is the call with any arguments; reading `UnistylesRuntime.themeName` or
+  # `hasAdaptiveThemes` stays allowed, and so does a `setTheme` method of another object. ERROR:
+  # the tree holds 0 findings for this id.
+  - id: kiko-no-unistyles-set-theme
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `UnistylesRuntime.setTheme` and `UnistylesRuntime.setAdaptiveThemes` are banned. The
+      window's interface style is the one source of the scheme, and `Appearance.setColorScheme`
+      is the only allowed switch — see kiko-design-system's "Native chrome follows the window".
+    metadata:
+      fix: "Drop the call and leave the scheme to the window. The only allowed switch is `Appearance.setColorScheme`, called only by the appearance setting's code."
+      skill: "kiko-design-system › Native chrome follows the window"
+    pattern-either:
+      - pattern: UnistylesRuntime.setTheme(...)
+      - pattern: UnistylesRuntime.setAdaptiveThemes(...)
+  # kiko-design-system's "Native chrome follows the window": a native view takes its scheme from
+  # the window's trait, so no site pins one. Three shapes, each with its own arm: a JSX
+  # `colorScheme` of `dark` or `light` (`system` is the follow-the-window value), a
+  # `keyboardAppearance` of `dark` or `light` as a JSX prop or an object field (`default` follows
+  # the window), and a `headerBlurEffect` whose string ends in `dark` or `light`, any case
+  # (`systemChromeMaterialDark`, `systemMaterialLight`, `extraLight`), as an object field (no
+  # component takes it as a prop). Each arm captures the value as `$V`, filters it with
+  # `metavariable-regex` and focuses on it, so the finding lands on the value's line (an object
+  # field in a multi-line literal pins there). Known limits, not matched: a value held in a
+  # variable or built by a ternary, and a `colorScheme` object field (the prop is the only shape
+  # the native views here take it in). ERROR: the tree holds 0 findings for this id.
+  - id: kiko-no-hard-coded-native-scheme
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A native `colorScheme`, `keyboardAppearance` or `headerBlurEffect` is pinned to a scheme.
+      The window's trait decides the native scheme: use `colorScheme="system"`, no
+      `keyboardAppearance`, and a `headerBlurEffect` with no scheme in its name — see
+      kiko-design-system's "Native chrome follows the window".
+    metadata:
+      fix: 'Use `colorScheme="system"`, drop `keyboardAppearance`, and use a material with no scheme in its name (`systemChromeMaterial`).'
+      skill: "kiko-design-system › Native chrome follows the window"
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: <$C ... colorScheme=$V ... />
+              - pattern: <$C ... colorScheme={$V} ... />
+          - metavariable-regex:
+              metavariable: $V
+              regex: "(?i)^[\"'`](dark|light)[\"'`]$"
+          - focus-metavariable: $V
+      - patterns:
+          - pattern-either:
+              - pattern: <$C ... keyboardAppearance=$V ... />
+              - pattern: <$C ... keyboardAppearance={$V} ... />
+              - pattern: "{ ..., keyboardAppearance: $V, ... }"
+          - metavariable-regex:
+              metavariable: $V
+              regex: "(?i)^[\"'`](dark|light)[\"'`]$"
+          - focus-metavariable: $V
+      - patterns:
+          - pattern: "{ ..., headerBlurEffect: $V, ... }"
+          - metavariable-regex:
+              metavariable: $V
+              regex: "(?i)^[\"'`][A-Za-z]*(dark|light)[\"'`]$"
+          - focus-metavariable: $V
+  # kiko-design-system's "Native chrome follows the window": a `Text` or `MoneyText` inside a
+  # `Text` is banned, because Unistyles 3.6.0 (issue #1329) leaves a nested `Text` on its old
+  # color under a Reanimated view when the theme changes (the fix, PR #1353, ships in 3.8.0). Two
+  # arms per inner element: the inner element as a direct child of the outer `Text`, and inside a
+  # child expression `{...}` (a conditional, a logical and, a `.map` callback), found by a deep
+  # `metavariable-pattern` on the expression, since the deep operator `<... ...>` is not allowed
+  # between JSX children. The finding starts where the OUTER `Text` starts, an opening
+  # parenthesis before it included. A `Text` always matches both its whole and its self-closing
+  # form; a `MoneyText` is matched in the same two places. Known limits, not matched: a
+  # text-family element two or more elements deep inside the outer `Text`
+  # (`<Text><Link><Text/></Link></Text>`), a `Text` passed through a prop or a variable, and the
+  # aliases `RNText` and `NativeText`. ERROR: the tree holds 0 findings for this id.
+  - id: kiko-no-nested-text
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A `Text` or `MoneyText` sits inside a `Text`. Unistyles 3.6.0 leaves a nested `Text` on its
+      old color under a Reanimated view when the theme changes (issue #1329). Put the pieces side
+      by side in a `View`, or give the one `Text` the whole string — see kiko-design-system's
+      "Native chrome follows the window".
+    metadata:
+      fix: "Render the parts in a `View` as siblings, or build the one string and render a single `Text`."
+      skill: "kiko-design-system › Native chrome follows the window"
+    pattern-either:
+      - pattern: |
+          <Text ...>
+            ...
+            <Text ... />
+            ...
+          </Text>
+      - pattern: |
+          <Text ...>
+            ...
+            <MoneyText ... />
+            ...
+          </Text>
+      - patterns:
+          - pattern: |
+              <Text ...>
+                ...
+                {$E}
+                ...
+              </Text>
+          - metavariable-pattern:
+              metavariable: $E
+              pattern-either:
+                - pattern: <... <Text ... /> ...>
+                - pattern: <... <MoneyText ... /> ...>

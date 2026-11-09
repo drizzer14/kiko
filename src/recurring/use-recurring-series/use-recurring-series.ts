@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
   type MarkedChain,
-  type MarkedEntry,
   markedSeriesOf,
   detectedBesideMarked,
 } from '@kiko/recurring/marked-series';
@@ -11,7 +10,9 @@ import { startOfLocalDay } from '@kiko/dates';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { markedEntriesOf } from '@kiko/recurring/row-recurrence';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
+import { cardSwitchesJoinedOf } from '@kiko/recurring/card-switch';
 import { type RecurringMerchantChoice, settingsRepo } from '@kiko/settings';
 import { useVisibleRefreshedNow } from '@kiko/design-system/use-visible-refreshed-now';
 import { type RecurringSeries, chargeGroupsOf, seriesOfGroups } from '@kiko/recurring/detection';
@@ -28,11 +29,6 @@ type UseRecurringSeriesResult = {
 
 const NOTHING_FOUND = { series: [], markedSeries: [], withoutCharges: [] };
 
-const markedEntriesOf = (choices: Choices): MarkedEntry[] =>
-  [...choices].flatMap(([key, { name, marks = [] }]) =>
-    marks.length > 0 ? [{ key, name, marks }] : [],
-  );
-
 /**
  * The recurring series of the whole ledger, shared by the list and the series screen, and the
  * merchant choices beside them. Each read is `paused` while the screen is hidden (a write
@@ -47,7 +43,9 @@ const markedEntriesOf = (choices: Choices): MarkedEntry[] =>
  * settings write then runs no detection and no ledger read, only the marked memo beside it. A hide
  * does not filter `series`, so the series screen keeps its series between a hide and its way back;
  * the list filters. A mark does: `series` leaves out a detected series that shares a row with a
- * marked one, so no row is in two shown series.
+ * marked one, so no row is in two shown series. `series` also joins a card switch: the series of
+ * one name and period in different currencies that ran one after the other are one row, its
+ * `parts` the series it joins; a marked series is never joined.
  */
 export const useRecurringSeries = (): UseRecurringSeriesResult => {
   const isVisible = useIsScreenVisible();
@@ -85,7 +83,9 @@ export const useRecurringSeries = (): UseRecurringSeriesResult => {
 
     const groups = chargeGroupsOf({ rows, holdings, accounts }, today);
 
-    return { groups, detected: seriesOfGroups(groups, today) };
+    const detected = seriesOfGroups(groups, today);
+
+    return { groups, detected, joined: cardSwitchesJoinedOf(detected, groups) };
   }, [isReady, rows, holdings, accounts, today]);
   const choices = useMemo(
     () => settingsRepo.recurringMerchantChoicesOf(settingsRows.at(0)?.recurringMerchantChoices),
@@ -93,14 +93,16 @@ export const useRecurringSeries = (): UseRecurringSeriesResult => {
   );
   const { series, markedSeries, withoutCharges } = useMemo(
     () =>
-      foldMap(maybe(detection), ({ groups, detected }) => {
+      foldMap(maybe(detection), ({ groups, detected, joined }) => {
         const marked = markedSeriesOf(groups, markedEntriesOf(choices), today);
 
         return {
-          // With nothing marked the detected array itself stands, so a hide, which marks nothing,
-          // hands the screens the series it handed them before.
+          // With nothing marked the joined array of the detection memo stands, so a hide, which
+          // marks nothing, hands the screens the series it handed them before.
           series:
-            marked.series.length > 0 ? detectedBesideMarked(detected, marked.series) : detected,
+            marked.series.length > 0
+              ? cardSwitchesJoinedOf(detectedBesideMarked(detected, marked.series), groups)
+              : joined,
           markedSeries: marked.series,
           withoutCharges: marked.withoutCharges,
         };

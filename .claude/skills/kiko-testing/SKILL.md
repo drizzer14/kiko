@@ -71,7 +71,13 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   '@kiko/test-support/mock-recurring-groups'` and
   `jest.mock('@kiko/recurring/use-recurring-groups', () => ({ useRecurringGroups: (shown:
   RecurringSeries[]) => mockUseRecurringGroups(shown) }))`; `jest.mock` hoists, so only a
-  `mock`-prefixed name works.
+  `mock`-prefixed name works. It also exports `REMOVED_PARTS`, the testID pattern of the removed
+  hidden-merchants UI that the screen suites count none of.
+- `mock-pane-stack.ts`: `paneStackModule`, the real pane-stack module with the open call handed to
+  the suite's spy and no detail pane; wire it with `jest.mock('@kiko/navigation/pane-stack', () =>
+  require('@kiko/test-support/mock-pane-stack').paneStackModule(() => mockOpenInPane))` (the
+  `require` inside the factory is order-proof; the spy comes through a getter because the factory
+  runs before the suite's `const`).
 - `sqlite-live-query.ts`, `recurring-sqlite-world.ts`: a navigator test's whole data layer on a
   real migrated `node:sqlite` database (`clientModule`, `openSqliteWorld`; a
   `rawDatabase.reactiveExecute` double fires the real `useLiveQuery` on a committed write), and
@@ -110,12 +116,31 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   keeps it mounted, as the native bottom tabs do.
 - `pane-stack-presentation.ts`: `nonPushPresentations`, the pane-stack screens whose options set a
   presentation other than a push; `test-ids-in-order.ts`: `testIdsInOrder`, every testID of a
-  rendered tree in paint order.
+  rendered tree in paint order; `header-configs.ts`: `headerConfigsIn`, the props of every native
+  header config (`RNSScreenStackHeaderConfig`) of a rendered tree in paint order, what
+  native-stack derives from the merged options; assert on it instead of a hand-rolled tree walk.
 - `mock-statistics-data-layer.ts`, `statistics-filter-data.ts`: the mocked data layer a real
   Statistics screen (or Home) mounts on, and its filter fixtures (`answerFilterData`,
-  `pressFilterOption`, the filter testIDs).
+  `pressFilterOption`, `transactionRowOf` (a transaction row with defaults), the filter testIDs).
+  `FILTER_DATA_CLOCK` is the fixed clock: set it before the first answer, since a wall-clock
+  fixture breaks when a default period changes. Worlds on it:
+  `src/navigation/root-navigator/__fixtures__/{mock-layout.ts,tables-navigator-world.tsx}` and
+  `src/screens/tables/__fixtures__/tables-screen-world.tsx`.
 - `reset-statistics-filter-selection.ts`: `resetStatisticsFilterSelection`, an `afterEach` that
   puts the session-long Statistics account and category picks back on "all".
+- `light-theme-registered.ts`: `registerLightThemeFirst` and `restoreThemeOrder`, which put the
+  light theme first and dark first again in the Unistyles jest mock, for a light-world test. The
+  mock's `StyleSheet.create` resolves once at module evaluation, so a test of a stylesheet color
+  calls `registerLightThemeFirst` before it imports the module, inside `jest.isolateModules`; after
+  the imports it changes only `useUnistyles().theme`. The mock's `StyleSheet.configure`
+  replaces the theme registry (`node_modules/react-native-unistyles/src/mocks.ts`), so
+  importing a test-support module that imports `@kiko/design-system/unistyles` (for example
+  `src/test-support/reset-statistics-filter-selection.ts`) puts dark first again; call
+  `registerLightThemeFirst` after such an import. A suite that never imports
+  `@kiko/design-system/unistyles` gets theme `{}` and an undefined colorScheme, which the
+  display map throws on; a scheme-dependent test imports it.
+- `light-twin-of-dark.ts`: `lightTwinOfDark`, the light entity hex of each dark swatch hex, for a
+  test that expects a default color mapped through the light set.
 - `node-handles.ts`: `mockFindNodeHandle`, a stand-in that gives each distinct host its own handle
   where Jest's `findNodeHandle` returns null, for a share-anchor pin.
 
@@ -170,6 +195,11 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - Before adding a prop to a hand-written `__mocks__` module, check the real library's own type in
   `node_modules` first. A mock that accepts a prop the real component discards lets a test pass
   while the real UI is silently broken: forward only the props the real library consumes.
+- A raw SQL seed in a test names every column that has a clock default (`created_at`,
+  `updated_at`; `unixepoch() * 1000` has 1 s resolution) with a fixed literal. Rows compared
+  across two seeds or two databases otherwise differ by a whole second when a second boundary
+  falls between the seeds (`src/data-transfer/snapshot/restore-new-matchers.two-path.test.ts`,
+  fixed in 2acce8200).
 
 ## Acceptance pins, fix rounds and red proofs
 
@@ -323,6 +353,24 @@ test from being decorative.
   language: use ids or a bilingual regex, never a single-language label. Its automatic failure
   screenshot cannot be turned off: run with `--debug-output` into the scratchpad, never open a
   `.png`, and remove that folder after quoting the log; ask before deleting `~/.maestro/tests/`.
+- Maestro: an assertion one iOS version cannot pass (the on-screen keyboard on an iOS 26.5
+  simulator) aborts the flow and skips every later step. Mark it `optional: true`; Maestro then
+  prints `(Optional)` in the line and a warned status (not a failed one) on failure, so a script
+  that greps the result must match that form. Set the simulator hardware keyboard with
+  `defaults write com.apple.iphonesimulator ...` while the device is shut down (a PlistBuddy
+  edit is lost to cfprefsd). Even then the iOS 26.5 simulator showed no software keyboard
+  (2026-11-07), so keyboard proof there needs a device.
+- Maestro: `text:` is a full-match regex against the element's accessibility text. An element
+  whose accessibilityLabel has a prefix needs `.*` on both sides (a label starting with
+  "scratch-flip" never matched a bare "rn:light.*").
+- Maestro: on iOS the hide-keyboard command taps the screen and can open the field under the tap (it
+  opened the Account Kind sheet). Tap the input-accessory "Done" pill instead.
+- Maestro: a screenshot on a fixed wait after a delayed action can land before the action fires.
+  Wait on an on-screen readout where one is visible, else take frames from the recording
+  (the video file; ffmpeg is not installed here, a Swift script with the AVFoundation image
+  generator works).
+- Maestro: a `tapOn` by `id` taps the element centre. A full-screen backdrop behind a raised sheet
+  put the tap on a list row and changed data for later steps; close a sheet by a named control.
 
 ## Testing a native/ESM dependency
 
@@ -384,6 +432,12 @@ flagged too. A test that must read source text keeps one documented
 per-line override (`// nosemgrep: kiko-no-source-text-read-in-test
 OVERRIDE(<reason>)` on the line above that read), never a whole-file
 exclude. The current inventory is in `docs/harness/documented-exceptions.md`.
+A test that reads a tracked `docs/` file fails a Stryker dry run, because the `ignorePatterns` in
+`stryker.conf.json` exclude `docs/*` from the sandbox
+(`src/crypto-sync/binance/binance.privacy-policy.test.ts` and
+`src/i18n/locales/uk.catalog-rules.test.ts` do this); list any new one in that inventory.
+Such a test needs a `!docs/...` re-include chain in `ignorePatterns`; read
+`stryker.conf.json` for the pattern.
 Harness tests under `__tests__/` are out of scope: they read
 rules, scripts, docs, and temp projects.
 
@@ -403,12 +457,13 @@ Known limits:
 A test that asserts a text is ABSENT (`queryByText`, `not.toContain`)
 passes for ever once a reword changes the text it hunts. Derive that text
 from the i18n key (`i18n.t(...)`) or an exported constant, never a typed
-fragment. Add a positive twin that finds the same text in the case where
-it must be there, so the matcher is proven to match. After any reword,
-grep the old fragment across `src/` and the tests. An absence assert also
-never pins a fixed date or value it does not need: match the key text
-before the `{{date}}` slot with a partial match, so a line with another
-date is still caught (the dense-line key in
+fragment. Exception: a test that pins REMOVED wording has no key to derive from (the key is
+gone). A typed fragment is the only form there. Keep it, and add the positive twin on the
+replacement text (`src/help/help-topics.test.ts`). Add a positive twin that finds the same text
+in the case where it must be there, so the matcher is proven to match. After any reword,
+grep the old fragment across `src/` and the tests. An absence assert also never pins a fixed
+date or value it does not need: match the key text before the `{{date}}` slot with a partial
+match, so a line with another date is still caught (the dense-line key in
 `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.bybit.test.tsx`).
 
 ## A subset matcher never holds a Set or a Map

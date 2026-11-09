@@ -17,6 +17,8 @@ import { StyleSheet } from 'react-native';
 import {
   type ColorScheme,
   categoryColorsLight,
+  chartFillDark,
+  chartFillLight,
   chartSeriesDark,
   chartSeriesLight,
   entityColorsDark,
@@ -75,9 +77,13 @@ const iconSizes = {
 // stretches a form line across the screen; `hairline` is the flat-window divider.
 // `sheetMaxWidth` is the width a BottomSheet card narrows to on a two-pane display: 540 pt is
 // UIKit's default form-sheet width, the width an iPad presents a sheet at.
+// `selectTriggerMaxWidth` is the widest a capped select trigger grows (a field whose label is one
+// short phrase, such as a period): 240 pt holds the longest such label at the default text size on
+// one line, and a larger Dynamic Type size wraps it inside the cap instead of widening the field.
 const layout = {
   paneMaxWidth: 600,
   sheetMaxWidth: 540,
+  selectTriggerMaxWidth: 240,
   hairline: StyleSheet.hairlineWidth,
 } as const;
 
@@ -144,6 +150,10 @@ export const darkTheme = {
     // the exact layer this feeds.
     surfaceWashStrong: 'rgba(0,0,0,0.38)',
     surfaceHigh: '#2C2C2E', // tertiarySystemBackground
+    // The fill of an editable input (TextField, FieldTrigger). Transparent in dark: the approved
+    // dark field is unfilled over the page and sheet. Its own token because `surface` also fills
+    // a DISABLED field, which an active field must not match in dark.
+    fieldBackground: 'transparent',
     // The base fill for a presented bottom sheet — the iOS
     // `systemGroupedBackground` (dark, elevated) equivalent. A sheet is a
     // grouped surface: its base sits one level BELOW the cards/controls on it,
@@ -237,6 +247,7 @@ export const darkTheme = {
     chartSeries: chartSeriesDark,
     glyphOnLightTile,
   },
+  chartFill: chartFillDark,
   spacing,
   radii,
   typography,
@@ -254,6 +265,7 @@ const lightColors = {
   surfaceTranslucentStrong: 'rgba(255,255,255,0.80)',
   surfaceWashStrong: 'rgba(255,255,255,0.38)',
   surfaceHigh: '#E5E5EA',
+  fieldBackground: '#FFFFFF',
   sheetBackground: '#F2F2F7',
   segmentSelected: '#FFFFFF',
   textPrimary: '#000000',
@@ -276,6 +288,7 @@ const lightColors = {
 export const lightTheme = {
   colorScheme: 'light' as ColorScheme,
   colors: lightColors,
+  chartFill: chartFillLight,
   spacing,
   radii,
   typography,

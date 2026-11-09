@@ -26,7 +26,6 @@ const FLOATING_FOOTER_MAX_WIDTH = 340;
 export const styles = StyleSheet.create((theme) => ({
   safeArea: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   // A screen in one of two panes, except a pane under a top tab bar: centred in the pane, never
   // wider than the pane max width.

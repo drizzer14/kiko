@@ -1,17 +1,14 @@
 import type { FC } from 'react';
 import Box from '@kiko/design-system/components/box';
 import { useWindowDimensions, View } from 'react-native';
+import { STACK_FONT_SCALE } from '@kiko/design-system/stack-font-scale';
 
 import { styles } from './paired-fields-row.styles';
 import type { PairedFieldsRowProps } from './paired-fields-row.props';
 
-// The font scale from which two paired fields stack: iOS's first accessibility text size, AX1.
-// Apple's type-size table gives the body style 17 pt at the default size and 28 pt at AX1, so
-// 28 / 17; the largest regular size, xxxLarge, is 23 / 17 (about 1.35) and stays a row.
-export const STACK_FONT_SCALE = 28 / 17;
-
-// Two fields side by side in one row, as `DateTimeRow` lays Date and Time, and one above the other
-// in the same order at an accessibility text size, where half the width holds too little.
+// Two fields side by side in one row, and one above the other in the same order at an
+// accessibility text size, where half the width holds too little. `DateTimeRow` stays a row at
+// every size, so it does not lay Date and Time this way.
 const PairedFieldsRow: FC<PairedFieldsRowProps> = ({ first, second }) => {
   const { fontScale } = useWindowDimensions();
 

@@ -10,6 +10,8 @@ import {
   STORED_AT_99,
   STORED_AT_100,
   TWO_CHAINS,
+  MONTHLY_AT_100,
+  WITH_EXTRA_IN_MONTH,
   chargeRowOf,
   createMarkLiveQueries,
   markOf,
@@ -21,7 +23,9 @@ import {
 } from '@kiko/test-support/recurring-mark-live-queries';
 import type { RecurringLedgerRow } from '@kiko/recurring/detection';
 import { RECURRING_PERIODS } from '@kiko/recurring/recurring-periods';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { at, chargeOf, nowOf, weekly } from '@kiko/test-support/recurring-ledger';
 import '@kiko/design-system/unistyles';
 
 import RecurringMarkField from '.';
@@ -38,18 +42,13 @@ jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: { recurringLedgerQuery: () => mockTaggedQuery('recurringLedger') },
 }));
 jest.mock('@kiko/settings', () => mockSettingsModuleWith(mockWrites.repo));
-// Text's tone -> color mapping is a react-native-unistyles variant that the Jest setup cannot
-// resolve from a rendered style, so the mock surfaces the `tone` prop on the host element.
-jest.mock('@kiko/design-system/components/text', () => {
-  const { Text: RNText } = require('react-native');
-
-  return {
-    __esModule: true,
-    default: ({ children, ...rest }: { children: unknown }) => (
-      <RNText {...rest}>{children}</RNText>
-    ),
-  };
-});
+// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  get default() {
+    return mockTextVariantTone;
+  },
+}));
 
 type World = {
   settingsRows: SettingsRows;
@@ -57,6 +56,7 @@ type World = {
   amount: number;
   description?: string;
   holdingId?: string;
+  rowId?: string;
 };
 type WriteCase = {
   name: string;
@@ -93,13 +93,71 @@ const HIDDEN: World = { ...UNMARKED, settingsRows: HIDDEN_KEY };
 const asConstructor = (ledger: RecurringLedgerRow[]): RecurringLedgerRow[] =>
   ledger.map((row) => ({ ...row, description: 'constructor' }));
 
+// A row in a detected series: the third of the 100, 120, 144 chain, and the rows of a weekly and a
+// yearly world.
+const DETECTED: World = { ...UNMARKED, rowId: 'third' };
+const DETECTED_WORLDS: [string, string, World][] = [
+  ['monthly', 'Detected: monthly', DETECTED],
+  [
+    'weekly',
+    'Detected: weekly',
+    {
+      settingsRows: NOTHING_STORED,
+      ledger: weekly(8, [2026, 10, 30], 150, { description: 'Gym' }),
+      amount: -15_000,
+      description: 'Gym',
+      rowId: 'charge-3',
+    },
+  ],
+  [
+    'yearly',
+    'Detected: yearly',
+    {
+      settingsRows: NOTHING_STORED,
+      ledger: [
+        chargeOf('visit-0', at(2026, 4, 14), 2100, { description: 'Clinic' }),
+        chargeOf('visit-1', at(2025, 4, 10), 2000, { description: 'Clinic' }),
+      ],
+      amount: -200_000,
+      description: 'Clinic',
+      rowId: 'visit-1',
+    },
+  ],
+];
+const DETECTED_BUT_HIDDEN: World = { ...DETECTED, settingsRows: HIDDEN_KEY };
+// The chain keeps one charge per slot, the 100: the stored amount is the nearest. The 144 row is
+// dropped, so the marked row is the first.
+const DETECTED_BUT_MARKED: World = {
+  ...DETECTED,
+  settingsRows: STORED_AT_100,
+  rowId: 'first',
+  amount: -10_000,
+};
+// A 900 beside the chain is a row of the group outside the found series.
+const OUTSIDE_THE_SERIES: World = {
+  ...UNMARKED,
+  ledger: [...RISING_CHAIN, chargeRowOf('stray', 0, -90_000)],
+  amount: -90_000,
+  rowId: 'stray',
+};
+
+// The 98 sits in the month of a 100 that the chain keeps; that 100 is the kept row.
+const DROPPED_ROW: World = {
+  settingsRows: MONTHLY_AT_100,
+  ledger: WITH_EXTRA_IN_MONTH,
+  amount: -9800,
+  rowId: 'extra',
+};
+const KEPT_ROW: World = { ...DROPPED_ROW, amount: -10_000, rowId: 'monthly-1' };
+
 const fieldOf = ({
   amount,
   description = 'Netflix 4412',
   holdingId = 'card',
-}: Pick<World, 'amount' | 'description' | 'holdingId'>): ReactElement => (
+  rowId = 'stored',
+}: Pick<World, 'amount' | 'description' | 'holdingId' | 'rowId'>): ReactElement => (
   <RecurringMarkField
-    existing={chargeRowOf('stored', 0, amount, { description, holdingId, source: 'manual' })}
+    existing={chargeRowOf(rowId, 0, amount, { description, holdingId, source: 'manual' })}
     holdings={HOLDINGS}
     accounts={ACCOUNTS}
   />
@@ -123,6 +181,7 @@ const pick = async (rendered: Rendered, label: string): Promise<void> => {
 };
 
 beforeEach(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(nowOf());
   mockLive.reset();
   mockWrites.reset();
 });
@@ -182,6 +241,12 @@ describe('RecurringMarkField', () => {
       const rendered = await showField(RISING_ROW);
 
       expect(rendered.getByText('Щороку')).toBeTruthy();
+    });
+
+    it('reads a detected period in Ukrainian, in the primary tone', async () => {
+      const rendered = await showField(DETECTED);
+
+      expect(rendered.getByText('Виявлено: щомісяця').props.tone).toBe('textPrimary');
     });
   });
 
@@ -247,6 +312,122 @@ describe('RecurringMarkField', () => {
     });
   });
 
+  describe('a row in a detected series', () => {
+    it.each(DETECTED_WORLDS)(
+      'shows the %s period as the value, in the primary tone, enabled',
+      async (_period, label, world) => {
+        const rendered = await showField(world);
+
+        expect(rendered.getByText(label).props.tone).toBe('textPrimary');
+        expect(rendered.queryByText(NOT_MARKED)).toBeNull();
+        expect(isDisabled(rendered)).toBe(false);
+      },
+    );
+
+    it('reads the same on the first row of the sheet, before the five periods', async () => {
+      const rendered = await showField(DETECTED);
+      const periodLabels = RECURRING_PERIODS.map((period) => PERIOD_LABELS[period]);
+      const labels = ['Detected: monthly', ...periodLabels];
+
+      await fireEvent.press(rendered.getByLabelText(FIELD_LABEL));
+
+      expect(
+        rendered
+          .getAllByLabelText(new RegExp(`^(${labels.join('|')})$`))
+          .map((row) => row.props.accessibilityLabel),
+      ).toEqual(labels);
+      expect(rendered.queryByLabelText(NOT_MARKED)).toBeNull();
+    });
+
+    it('writes nothing when the first row is picked', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      const rendered = await showField(DETECTED);
+
+      await pick(rendered, 'Detected: monthly');
+
+      expect(mockWrites.every.flatMap((write) => write.mock.calls)).toEqual([]);
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    it('marks the row with its key, amount and currency when "Monthly" is picked', async () => {
+      const rendered = await showField(DETECTED);
+
+      await pick(rendered, PERIOD_LABELS.monthly);
+
+      expect(markRecurringCharge).toHaveBeenCalledTimes(1);
+      expect(markRecurringCharge).toHaveBeenCalledWith('netflix', 'Netflix', {
+        currency: 'UAH',
+        amountMinorUnits: 14_400,
+        period: 'monthly',
+        transactionId: 'third',
+      });
+      expect(setRecurringChainPeriod).not.toHaveBeenCalled();
+      expect(removeRecurringMarks).not.toHaveBeenCalled();
+    });
+
+    it('is disabled with no value while the ledger read loads, and released when it lands', async () => {
+      landSettings(NOTHING_STORED);
+      mockLive.reads.recurringLedger = { rows: [], isLoading: true, error: undefined };
+
+      const rendered = await render(fieldOf(DETECTED));
+
+      expect(isDisabled(rendered)).toBe(true);
+      expect(rendered.queryByText(NOT_MARKED)).toBeNull();
+      expect(rendered.queryByText('Detected: monthly')).toBeNull();
+
+      landLedger(RISING_CHAIN);
+      await act(async () => {
+        await rendered.rerender(fieldOf(DETECTED));
+      });
+
+      expect(isDisabled(rendered)).toBe(false);
+      expect(rendered.getByText('Detected: monthly')).toBeTruthy();
+    });
+
+    it('reads "Not marked" in the secondary tone for a hidden key, and no detected period', async () => {
+      const rendered = await showField(DETECTED_BUT_HIDDEN);
+
+      expect(rendered.getByText(NOT_MARKED).props.tone).toBe('textSecondary');
+      expect(rendered.queryByText(/^Detected/)).toBeNull();
+      expect(isDisabled(rendered)).toBe(false);
+    });
+
+    it('reads "Not marked" in the secondary tone for a row outside the found series', async () => {
+      const rendered = await showField(OUTSIDE_THE_SERIES);
+
+      expect(rendered.getByText(NOT_MARKED).props.tone).toBe('textSecondary');
+      expect(rendered.queryByText(/^Detected/)).toBeNull();
+    });
+
+    it('reads the marked period of a row in a marked chain, not the detected one', async () => {
+      const rendered = await showField(DETECTED_BUT_MARKED);
+
+      expect(rendered.getByText(PERIOD_LABELS.yearly).props.tone).toBe('textPrimary');
+      expect(rendered.queryByText(/^Detected/)).toBeNull();
+    });
+  });
+
+  describe('a row its marked series leaves out of a month that holds a nearer charge', () => {
+    it('reads "Not marked", disabled, and a press opens nothing and writes nothing', async () => {
+      const rendered = await showField(DROPPED_ROW);
+
+      expect(rendered.getByText(NOT_MARKED)).toBeTruthy();
+      expect(isDisabled(rendered)).toBe(true);
+
+      await fireEvent.press(rendered.getByLabelText(FIELD_LABEL));
+
+      expect(rendered.queryByText('Mark as Recurring')).toBeNull();
+      expect(mockWrites.every.flatMap((write) => write.mock.calls)).toEqual([]);
+    });
+
+    it('reads the period, enabled, on the kept row of that month', async () => {
+      const rendered = await showField(KEPT_ROW);
+
+      expect(rendered.getByText(PERIOD_LABELS.monthly)).toBeTruthy();
+      expect(isDisabled(rendered)).toBe(false);
+    });
+  });
+
   describe('a pick', () => {
     it('marks a row in no marked chain with its key, spelling, absolute amount and currency', async () => {
       const rendered = await showField(UNMARKED);
@@ -258,6 +439,7 @@ describe('RecurringMarkField', () => {
         currency: 'UAH',
         amountMinorUnits: 14_400,
         period: 'monthly',
+        transactionId: 'stored',
       });
       expect(setRecurringChainPeriod).not.toHaveBeenCalled();
       expect(removeRecurringMarks).not.toHaveBeenCalled();
@@ -272,6 +454,7 @@ describe('RecurringMarkField', () => {
         currency: 'UAH',
         amountMinorUnits: 39_900,
         period: 'weekly',
+        transactionId: 'stored',
       });
       expect(setRecurringChainPeriod).not.toHaveBeenCalled();
     });
@@ -324,6 +507,7 @@ describe('RecurringMarkField', () => {
         currency,
         amountMinorUnits: 14_400,
         period: 'yearly',
+        transactionId: 'stored',
       });
     });
   });
