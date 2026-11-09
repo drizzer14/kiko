@@ -16,9 +16,7 @@ import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 import { styles } from './mcc-field.styles';
 import type { MccFieldProps } from './mcc-field.props';
-import { type MccPickerRow, mccPickerRows } from './mcc-picker-rows';
-
-const DIGITS_ONLY = /^\d+$/;
+import { DIGITS_ONLY, type MccPickerRow, mccPickerRows } from './mcc-picker-rows';
 
 const digitsOf = (text: string): string => text.replace(/\D/g, '').slice(0, MCC_DIGITS);
 

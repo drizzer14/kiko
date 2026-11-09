@@ -1,3 +1,4 @@
+import { MCC_DIGITS } from '@kiko/categories/category-rules';
 import { MCC_NAMES, mccNameOf } from '@kiko/categories/mcc-names';
 
 type MccEntry = { code: string; name: string | undefined };
@@ -26,9 +27,7 @@ type MccPickerInput = {
   language: string;
 };
 
-const DIGITS_ONLY = /^\d+$/;
-
-const CODE_LENGTH = 4;
+export const DIGITS_ONLY = /^\d+$/;
 
 // The sources write an apostrophe as ASCII, U+2019 or U+02BC; one fold on the query and the name
 // lets any of them find any other.
@@ -63,7 +62,7 @@ export const mccPickerRows = ({
 
   const ownRows = own
     .map(({ mcc, rowCount }): MccCodeRow => {
-      const code = String(mcc).padStart(CODE_LENGTH, '0');
+      const code = String(mcc).padStart(MCC_DIGITS, '0');
 
       return { type: 'code', section: 'own', code, name: mccNameOf(code, language), rowCount };
     })
