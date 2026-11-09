@@ -173,6 +173,7 @@ describe('BybitCredentialsField', () => {
     expect(queryByText(limits)).toBeNull();
     expect(queryByText(kinds)).toBeNull();
     expect(getByTestId('bybit-intro-toggle')).toBeTruthy();
+    expect(getByText('Connection details')).toBeTruthy();
     expect(getByText(i18n.t('accountDetail.bybitKeychainDisclosure'))).toBeTruthy();
 
     await fireEvent.press(getByTestId('bybit-intro-toggle'));

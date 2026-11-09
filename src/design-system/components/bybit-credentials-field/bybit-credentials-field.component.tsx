@@ -94,6 +94,7 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
             <ExpandToggle
               expanded={introExpanded}
               onPress={() => setIntroExpanded((isExpanded) => !isExpanded)}
+              collapsedLabel={t('components.bybitCredentialsField.connectionDetails')}
               testID="bybit-intro-toggle"
             />
 

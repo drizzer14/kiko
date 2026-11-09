@@ -456,7 +456,8 @@ describe('the kinds line of a Bybit account', () => {
     const kinds = i18n.t('accountDetail.bybitKinds');
 
     expect(queryByText(kinds)).toBeNull();
-    expect(getByText(i18n.t('components.expandToggle.showAll'))).toBeTruthy();
+    expect(getByText('Sync details')).toBeTruthy();
+    expect(queryByText(i18n.t('components.expandToggle.showAll'))).toBeNull();
 
     await fireEvent.press(getByTestId('bybit-kinds-toggle'));
 
@@ -466,6 +467,16 @@ describe('the kinds line of a Bybit account', () => {
     await fireEvent.press(getByTestId('bybit-kinds-toggle'));
 
     expect(queryByText(kinds)).toBeNull();
+  });
+
+  describe('in Ukrainian', () => {
+    inUkrainian();
+
+    it('names what the collapsed toggle hides', async () => {
+      const { getByText } = await renderState('bybit', { walks: {} });
+
+      expect(getByText('Деталі синхронізації')).toBeTruthy();
+    });
   });
 
   it('gives a Binance account no toggle, since it has no such text', async () => {

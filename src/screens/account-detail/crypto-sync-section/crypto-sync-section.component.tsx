@@ -319,6 +319,7 @@ const KindsLine: FC<Pick<KeyLinesProps, 'provider'>> = ({ provider }) => {
       <ExpandToggle
         expanded={expanded}
         onPress={() => setExpanded((isExpanded) => !isExpanded)}
+        collapsedLabel={t('accountDetail.bybitSyncDetails')}
         testID="bybit-kinds-toggle"
       />
 

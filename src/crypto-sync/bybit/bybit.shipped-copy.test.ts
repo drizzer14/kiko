@@ -150,6 +150,13 @@ describe('the Bybit copy', () => {
       /Баланс, показаний тут, узято з попередньої/,
     );
   });
+
+  it('the two toggle labels say what they hide, in en and uk', () => {
+    expect(en.accountDetail.bybitSyncDetails).toBe('Sync details');
+    expect(uk.accountDetail.bybitSyncDetails).toBe('Деталі синхронізації');
+    expect(en.components.bybitCredentialsField.connectionDetails).toBe('Connection details');
+    expect(uk.components.bybitCredentialsField.connectionDetails).toBe('Деталі підключення');
+  });
 });
 
 const catalogues = { en, uk } as const;

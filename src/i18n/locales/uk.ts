@@ -903,6 +903,7 @@ export const uk: typeof en = {
     bybitMissingBalances: 'Відповідь рахунку Bybit не містила списку балансів',
     bybitRequestFailed: 'Запит до Bybit не вдався: {{code}}',
     bybitRequestFailedNoCode: 'Запит до Bybit не вдався.',
+    bybitSyncDetails: 'Деталі синхронізації',
     bybitSyncStillRunning: 'Кіко ще завершує останню синхронізацію Bybit. Спробуйте пізніше.',
     bybitWalletNotRead:
       'Кіко не зміг прочитати {{wallet}} під час останньої синхронізації, тож не оновив цей баланс. Баланс, показаний тут, узято з попередньої синхронізації. Якщо попередньої синхронізації не було, кошти там не входять до вашого балансу.',
@@ -1520,6 +1521,9 @@ export const uk: typeof en = {
     matchedExchangeDeposit: 'Зіставлено з поповненням біржі.',
   },
   components: {
+    bybitCredentialsField: {
+      connectionDetails: 'Деталі підключення',
+    },
     currencyField: {
       groups: {
         target: 'Валюта активу',

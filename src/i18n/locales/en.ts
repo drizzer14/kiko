@@ -1006,6 +1006,7 @@ export const en = {
     bybitMissingBalances: 'Bybit account response did not contain a balances list',
     bybitRequestFailed: 'Bybit request failed: {{code}}',
     bybitRequestFailedNoCode: 'Bybit request failed.',
+    bybitSyncDetails: 'Sync details',
     bybitSyncStillRunning: 'Kiko is still finishing the last Bybit sync. Try again later.',
     bybitWalletNotRead:
       'Kiko could not read {{wallet}} in the last sync, so it did not update that balance. A balance shown here is from an earlier sync. With no earlier sync, money there is not in your balance.',
@@ -1736,6 +1737,9 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    bybitCredentialsField: {
+      connectionDetails: 'Connection details',
+    },
     currencyField: {
       groups: {
         target: 'Holding currency',
