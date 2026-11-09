@@ -225,7 +225,6 @@ describe('generate MCC names', () => {
       expect(entries).toEqual([
         { code: '3000', en: 'UNITED AIRLINES', uk: 'Авіалінії — UNITED AIRLINES' },
       ]);
-      expect(entries[0].uk).toBe('Авіалінії — UNITED AIRLINES');
       expect(entries[0]).not.toHaveProperty('listed');
     });
 
@@ -315,7 +314,7 @@ describe('generate MCC names', () => {
       uk: 'Авіалінії',
       listed: false,
     };
-    const unlistedFlagTrue: MccName = {
+    const listedFlagTrue: MccName = {
       code: '3004',
       en: 'Airlines',
       uk: 'Авіалінії',
@@ -323,7 +322,7 @@ describe('generate MCC names', () => {
     };
 
     it('renders the entries as a JSON array with code, en, uk and listed only when false, ending in a newline', () => {
-      const extended = [...entries, hiddenEntry, unlistedFlagTrue].map((entry) => ({
+      const extended = [...entries, hiddenEntry, listedFlagTrue].map((entry) => ({
         ...entry,
         extra: 'x',
       }));

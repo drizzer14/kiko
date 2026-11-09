@@ -1,5 +1,7 @@
 import { categoryForMcc } from '@kiko/monobank/mcc-category';
 
+import { EM_DASH_SEPARATOR } from '../../../scripts/mcc-names/generate-mcc-names';
+
 import { MCC_NAMES_NOTICE } from './mcc-names.notice';
 import { MCC_NAMES_NOTICE as BARREL_NOTICE } from '.';
 import { type MccName, MCC_NAMES, MCC_NAME_SEPARATOR, mccNameOf, mccLabelOf } from './mcc-names';
@@ -27,8 +29,6 @@ const codesTheSourcesLeaveOut = [
 
 const nameOfCode = (code: string) => MCC_NAMES.find((entry) => entry.code === code);
 
-const entries = MCC_NAMES;
-const JOIN_SEPARATOR = ' — ';
 const FIRST_GROUP_CODE = 3000;
 const LAST_GROUP_CODE = 3999;
 const JOINED_COUNT = 422;
@@ -38,9 +38,8 @@ const GROUP_NAMES_UK = ['Авіалінії', 'Оренда авто', 'Готе
 
 const inGroupRange = ({ code }: MccName) =>
   Number(code) >= FIRST_GROUP_CODE && Number(code) <= LAST_GROUP_CODE;
-const isJoined = ({ en, uk }: MccName) => uk.endsWith(`${JOIN_SEPARATOR}${en}`);
+const isJoined = ({ en, uk }: MccName) => uk.endsWith(`${EM_DASH_SEPARATOR}${en}`);
 const isHidden = ({ listed }: MccName) => listed === false;
-const ukOfEntry = (code: string) => entries.find((entry) => entry.code === code)?.uk;
 
 describe('MCC_NAMES', () => {
   it('holds each code once', () => {
@@ -99,19 +98,20 @@ describe('MCC_NAMES', () => {
 
 describe('MCC_NAMES merchant names and hidden group codes', () => {
   it(`joins the group and the merchant name in Ukrainian for exactly ${JOINED_COUNT} codes`, () => {
-    const joined = entries.filter(isJoined);
+    const joined = MCC_NAMES.filter(isJoined);
 
     expect(joined).toHaveLength(JOINED_COUNT);
     expect(joined.filter((entry) => !inGroupRange(entry))).toEqual([]);
-    expect(ukOfEntry('3000')).toBe('Авіалінії — UNITED AIRLINES');
-    expect(ukOfEntry('3005')).toBe('Авіалінії — BRITISH AIRWAYS');
-    expect(isJoined(entries.find((entry) => entry.code === '3501') as MccName)).toBe(true);
-    expect(ukOfEntry('3816')).toBe('Готелі — Home2Suites');
+    expect(nameOfCode('3000')?.uk).toBe('Авіалінії — UNITED AIRLINES');
+    expect(nameOfCode('3005')?.uk).toBe('Авіалінії — BRITISH AIRWAYS');
+    expect(nameOfCode('3501')).toBeDefined();
+    expect(joined).toContain(nameOfCode('3501'));
+    expect(nameOfCode('3816')?.uk).toBe('Готелі — Home2Suites');
     expect(nameOfCode('3000')?.en).toBe('UNITED AIRLINES');
   });
 
   it(`hides exactly ${HIDDEN_COUNT} group-only codes, all in 3000-3999, each named only by a group`, () => {
-    const hidden = entries.filter(isHidden);
+    const hidden = MCC_NAMES.filter(isHidden);
 
     expect(hidden).toHaveLength(HIDDEN_COUNT);
     expect(hidden.filter((entry) => !inGroupRange(entry))).toEqual([]);
@@ -121,14 +121,16 @@ describe('MCC_NAMES merchant names and hidden group codes', () => {
   });
 
   it('holds listed only as false', () => {
-    expect(entries.filter(({ listed }) => listed !== undefined && listed !== false)).toEqual([]);
+    expect(MCC_NAMES.filter(({ listed }) => listed !== undefined && listed !== false)).toEqual([]);
   });
 
   it('keeps the general codes listed and unjoined', () => {
-    const general = entries.filter(({ code }) => ['4511', '7011', '7512'].includes(code));
+    const general = MCC_NAMES.filter(({ code }) => ['4511', '7011', '7512'].includes(code));
 
     expect(general).toHaveLength(3);
-    expect(general.filter((entry) => 'listed' in entry || entry.uk.includes(' — '))).toEqual([]);
+    expect(
+      general.filter((entry) => 'listed' in entry || entry.uk.includes(EM_DASH_SEPARATOR)),
+    ).toEqual([]);
   });
 
   it('names a hidden code in every lookup', () => {

@@ -176,6 +176,7 @@ const renderReviewTable = (entries) =>
     .join('');
 
 module.exports = {
+  EM_DASH_SEPARATOR,
   MCC_SOURCES,
   verifySource,
   buildMccNames,
