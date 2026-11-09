@@ -17,6 +17,8 @@ type RuleSummaryOptions = {
   formatAmount: (minorUnits: number, currency: Currency) => string;
   // The shown name of a live account, null for an id that is in no row.
   accountNameOf: (accountId: string) => string | null;
+  // The shown text of a merchant code, given as the four digits the rule stores it with.
+  mccLabelOf: (mccText: string) => string;
 };
 
 // One condition of a rule: the subject it tests and what it tests it against.
@@ -26,7 +28,7 @@ const SEPARATOR = ' · ';
 
 const describeMatcher = (
   matcher: CategoryRuleMatcher,
-  { t, clock, formatAmount, accountNameOf }: RuleSummaryOptions,
+  { t, clock, formatAmount, accountNameOf, mccLabelOf }: RuleSummaryOptions,
 ): Omit<RuleRow, 'key'> =>
   match(matcher)
     .with({ type: 'nameIs' }, ({ text }) => ({
@@ -55,7 +57,7 @@ const describeMatcher = (
     }))
     .with({ type: 'mcc' }, ({ code }) => ({
       label: t('ruleForm.mcc'),
-      value: String(code).padStart(MCC_DIGITS, '0'),
+      value: mccLabelOf(String(code).padStart(MCC_DIGITS, '0')),
     }))
     .with({ type: 'account' }, ({ accountId }) => ({
       label: t('ruleForm.account'),

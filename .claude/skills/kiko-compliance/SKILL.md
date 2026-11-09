@@ -314,6 +314,13 @@ dependency first becomes visible — but it does not judge whether a dep
 loads remote code, so this stays a reviewer question backed by
 `check:deps` visibility, not a mechanized gate.
 
+## Licences of bundled data
+
+Bundled third-party data whose licence requires a notice (MIT) ships the full text of that notice
+as a bundled constant (`MCC_NAMES_NOTICE` in `src/categories/mcc-names/mcc-names.notice.ts`). User
+ruling Q-MCC2 D (2026-11-08): no screen shows it. A new bundled dataset records its licence the
+same way, with a hash pin in `src/categories/mcc-names/mcc-names.notice.test.ts`.
+
 ## Third-party trademarks
 
 Ask: does this diff add a bank/exchange logo asset, name, or wording

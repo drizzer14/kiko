@@ -78,6 +78,12 @@ objects to dotted leaf paths and asserts the two sets are equal — read
 that file to see the current mechanism, do not restate the key list
 here; it drifts the moment either catalogue gains a key.
 
+Merchant-code (MCC) names are not catalogue keys: they live in
+`src/categories/mcc-names/mcc-names.data.json` (en from greggles, Unlicense; uk from Sominemo,
+MIT). The label separator is the code constant `MCC_NAME_SEPARATOR` in
+`src/categories/mcc-names/mcc-names.ts`, the same in en and uk. Never hand-edit the data;
+regenerate it (kiko-architecture, bundled generated data).
+
 **i18next plurals keep parity by carrying every form in BOTH catalogues.**
 The parity test compares EXACT leaf-key sets, and `uk.ts` is typed
 `typeof en` (excess keys are a `tsc` error), so a plural key defines the

@@ -721,6 +721,18 @@ describe('CategoryFormScreen', () => {
       expectRow(getAllByTestId('rule-card')[0] as RenderedElement, 'Amount is at least', '₿0.001');
     });
 
+    it('shows a merchant-code rule with its name on the card', async () => {
+      mockRules = [ruleOf('grocer', 'groceries', [{ type: 'mcc', code: 5411 }])];
+
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expectRow(
+        getAllByTestId('rule-card')[0] as RenderedElement,
+        'Merchant code (MCC)',
+        '5411 – Grocery Stores, Supermarkets',
+      );
+    });
+
     it('reads a time on the 12-hour clock when the device uses it', async () => {
       mockClock = { uses24Hour: false, beforeNoon: 'AM', afterNoon: 'PM' };
       mockRules = [
