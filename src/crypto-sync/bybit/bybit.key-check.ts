@@ -20,6 +20,7 @@ import {
   fetchWithdrawalPage,
 } from './bybit.history-client';
 import { bybitConnectFailureText } from './bybit.failure-text';
+import { keyOwnerValueOf, readStoredKeyOwner } from './bybit.key-owner';
 
 type RouteRead = (apiKey: string, secret: string, options: BybitReadOptions) => Promise<unknown>;
 
@@ -75,15 +76,52 @@ const routeRefusalOf = async (
 };
 
 /**
+ * The text of a key that is not the owner stored for the account, or `undefined`. No stored value
+ * passes, since nothing shows another owner. With a stored value, an answer with no readable user
+ * id cannot show the same owner, so it is a failed request and not a rejected key: Bybit accepted
+ * the key. A state that cannot be read is no "no value" either, so it fails the same way.
+ */
+const ownerRefusalOf = async (
+  accountId: string,
+  userId: string | undefined,
+): Promise<string | undefined> => {
+  const stored = await either<unknown, string | undefined>(() => readStoredKeyOwner(accountId));
+
+  if (isLeft(stored)) {
+    return i18n.t('accountDetail.bybitRequestFailedNoCode');
+  }
+
+  const owner = bifoldr(stored);
+
+  if (owner === undefined) {
+    return undefined;
+  }
+
+  if (userId === undefined) {
+    return i18n.t('accountDetail.bybitRequestFailedNoCode');
+  }
+
+  return keyOwnerValueOf(accountId, userId) === owner
+    ? undefined
+    : i18n.t('accountDetail.bybitKeyOtherAccount');
+};
+
+type BybitKeyCheckOptions = BybitReadOptions & {
+  /** Set when the account keeps Bybit holdings: the key must then be of the owner stored for it. */
+  ownerCheck?: { accountId: string };
+};
+
+/**
  * The text that refuses a key at connect, or `undefined` when the key may be stored. The order
  * is fixed: the key read, then a key that can do more than read, then a key that is no main key,
- * then one read of each shipped route. Each refusal stops the connect at the call that found it,
- * so a refused key costs a few calls and no write.
+ * then a key of another owner (only for an account that keeps Bybit holdings), then one read of
+ * each shipped route. Each refusal stops the connect at the call that found it, so a refused key
+ * costs a few calls and no write.
  */
 export const bybitKeyRefusalOf = async (
   apiKey: string,
   secret: string,
-  options: BybitReadOptions = {},
+  { ownerCheck, ...options }: BybitKeyCheckOptions = {},
 ): Promise<string | undefined> => {
   const keyRead = await either<unknown, BybitKeyInfo>(() => fetchKeyInfo(apiKey, secret, options));
 
@@ -91,7 +129,7 @@ export const bybitKeyRefusalOf = async (
     return bybitConnectFailureText(bifold(keyRead));
   }
 
-  const { readOnly, isMaster } = bifoldr(keyRead);
+  const { readOnly, isMaster, userId } = bifoldr(keyRead);
 
   if (readOnly !== 1) {
     return i18n.t('accountDetail.bybitKeyNotReadOnly');
@@ -99,6 +137,14 @@ export const bybitKeyRefusalOf = async (
 
   if (isMaster !== true) {
     return i18n.t('accountDetail.bybitKeyNotMain');
+  }
+
+  if (ownerCheck !== undefined) {
+    const otherOwner = await ownerRefusalOf(ownerCheck.accountId, userId);
+
+    if (otherOwner !== undefined) {
+      return otherOwner;
+    }
   }
 
   return routeRefusalOf(routeReadsAt((options.now ?? Date.now)()), apiKey, secret, options);

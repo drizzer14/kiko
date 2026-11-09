@@ -306,15 +306,16 @@ describe('the balance notes patch', () => {
     });
   });
 
-  it('is dropped by a disconnect, which keeps the walks only', () => {
+  it('is dropped by a disconnect, which keeps the walks and the owner value only, O93', () => {
     const text = stateWith(
       { fund: { refused: true }, unified: { notRead: true } },
-      { walks: { capital: { cursor: 9 } } },
+      { walks: { capital: { cursor: 9 } }, keyOwner: '9f2c' },
     );
 
     expect(storedOf(exchangeStateReset(text, 1_000))).toEqual({
       version: 1,
       walks: { capital: { cursor: 1_000 } },
+      keyOwner: '9f2c',
     });
   });
 });

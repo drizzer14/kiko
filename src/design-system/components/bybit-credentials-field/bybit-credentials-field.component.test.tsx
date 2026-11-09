@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { signQuery } from '@kiko/crypto-sync/exchange/signing';
 import { setBybitCooldownUntil } from '@kiko/crypto-sync/bybit';
 
 import BybitCredentialsField from '.';
@@ -10,6 +11,12 @@ const mockSaveBybitCredentials = jest.fn();
 const mockOpenURL = jest.fn();
 const mockGetString = jest.fn<Promise<string>, []>();
 const mockIsBybitSyncRunning = jest.fn<boolean, [string]>();
+const mockGetQuery = jest.fn();
+
+// The stored state of the account, which the check of a key of another owner reads.
+jest.mock('@kiko/sync-state/sync-state.repo', () => ({
+  syncStateRepo: { getQuery: (...args: unknown[]) => mockGetQuery(...args) },
+}));
 
 jest.mock('@kiko/crypto-sync/run-crypto-sync', () => ({
   isBybitSyncRunning: (accountId: string) => mockIsBybitSyncRunning(accountId),
@@ -96,8 +103,18 @@ const pressConnect = async (view: View): Promise<void> => {
   });
 };
 
-const renderAndConnect = async (onConnect: OnConnect, accountId = 'acc-1'): Promise<View> => {
-  const view = await render(<BybitCredentialsField accountId={accountId} onConnect={onConnect} />);
+const renderAndConnect = async (
+  onConnect: OnConnect,
+  accountId = 'acc-1',
+  keepsBybitHoldings = false,
+): Promise<View> => {
+  const view = await render(
+    <BybitCredentialsField
+      accountId={accountId}
+      onConnect={onConnect}
+      keepsBybitHoldings={keepsBybitHoldings}
+    />,
+  );
 
   await fillBoth(view.getByPlaceholderText);
   await pressConnect(view);
@@ -316,6 +333,99 @@ describe('BybitCredentialsField', () => {
       const view = await renderAndConnect(onConnect, 'bybit-run-free');
 
       expect(await view.findByText('Bybit connected')).toBeTruthy();
+    });
+  });
+
+  // O93: an account that keeps holdings of one Bybit account refuses the key of another.
+  describe('a key of another Bybit account, O93', () => {
+    const OLD_USER_ID = '424242424242';
+    const NEW_USER_ID = '737373737373';
+
+    const keyOfUser = (userID: unknown, info: Record<string, unknown> = {}): void => {
+      bybitAnswers({
+        '/v5/user/query-api': envelopeOf(0, { ...KEY_INFO_RESULT, ...info, userID }),
+      });
+    };
+
+    const storedOwnerOf = (accountId: string, userId: string): void => {
+      mockGetQuery.mockResolvedValue([
+        {
+          exchangeState: JSON.stringify({
+            version: 1,
+            walks: {},
+            keyOwner: signQuery(accountId, userId),
+          }),
+        },
+      ]);
+    };
+
+    beforeEach(() => {
+      mockGetQuery.mockReset();
+      mockGetQuery.mockResolvedValue([]);
+    });
+
+    it('a key of another owner is refused before any Keychain write, after one call, with the text of that refusal', async () => {
+      storedOwnerOf('acc-1', OLD_USER_ID);
+      keyOfUser(Number(NEW_USER_ID));
+
+      const { findByText } = await renderAndConnect(onConnect, 'acc-1', true);
+
+      expect(await findByText(i18n.t('accountDetail.bybitKeyOtherAccount'))).toBeTruthy();
+      expect(asked).toHaveLength(1);
+      expect(mockSaveBybitCredentials).not.toHaveBeenCalled();
+      expect(onConnect).not.toHaveBeenCalled();
+    });
+
+    it('a key of the same owner passes, and connect makes 10 calls', async () => {
+      storedOwnerOf('acc-1', OLD_USER_ID);
+      keyOfUser(Number(OLD_USER_ID));
+
+      const { findByText } = await renderAndConnect(onConnect, 'acc-1', true);
+
+      expect(await findByText('Bybit connected')).toBeTruthy();
+      expect(asked).toEqual(KEY_PATHS);
+      expect(mockSaveBybitCredentials).toHaveBeenCalledTimes(1);
+    });
+
+    it('no stored value passes', async () => {
+      keyOfUser(Number(NEW_USER_ID));
+
+      const { findByText } = await renderAndConnect(onConnect, 'acc-1', true);
+
+      expect(await findByText('Bybit connected')).toBeTruthy();
+      expect(asked).toHaveLength(10);
+    });
+
+    it('with no Bybit holding left, any key passes', async () => {
+      storedOwnerOf('acc-1', OLD_USER_ID);
+      keyOfUser(Number(NEW_USER_ID));
+
+      const { findByText } = await renderAndConnect(onConnect, 'acc-1', false);
+
+      expect(await findByText('Bybit connected')).toBeTruthy();
+      expect(asked).toHaveLength(10);
+      expect(mockGetQuery).not.toHaveBeenCalled();
+    });
+
+    it('a stored value and no user id in the answer is refused with the failed-request text', async () => {
+      storedOwnerOf('acc-1', OLD_USER_ID);
+      keyOfUser(undefined);
+
+      const { findByText } = await renderAndConnect(onConnect, 'acc-1', true);
+
+      expect(await findByText(i18n.t('accountDetail.bybitRequestFailedNoCode'))).toBeTruthy();
+      expect(asked).toHaveLength(1);
+      expect(mockSaveBybitCredentials).not.toHaveBeenCalled();
+    });
+
+    it('a key that is not a main key gets `bybitKeyNotMain` first', async () => {
+      storedOwnerOf('acc-1', OLD_USER_ID);
+      keyOfUser(Number(NEW_USER_ID), { isMaster: false });
+
+      const { findByText } = await renderAndConnect(onConnect, 'acc-1', true);
+
+      expect(await findByText(i18n.t('accountDetail.bybitKeyNotMain'))).toBeTruthy();
+      expect(asked).toHaveLength(1);
     });
   });
 });

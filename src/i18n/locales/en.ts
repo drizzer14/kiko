@@ -927,6 +927,8 @@ export const en = {
       'Bybit does not show this key as a main account key. Create a read-only key on your main Bybit account and connect with that one.',
     bybitKeyNotReadOnly:
       'This key can do more than read. Create a read-only key on Bybit and connect with that one.',
+    bybitKeyOtherAccount:
+      'This key is from a different Bybit account. Holdings from the Bybit account connected here before are still on this account. Add a new crypto account for this key, or delete those holdings first.',
     bybitKeyRefused:
       'Bybit refused this key. If you deleted it, create a new key, then disconnect and connect again.',
     bybitKeyRefusedExpired:

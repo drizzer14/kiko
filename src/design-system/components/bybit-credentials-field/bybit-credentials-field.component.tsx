@@ -32,6 +32,11 @@ type BybitCredentialsFieldProps = {
    * Without it the pair stays where it was stored.
    */
   onStoredWhileUnmounted?: (stored: WriteToken) => Promise<void>;
+  /**
+   * Whether the account keeps a holding of a Bybit account: Connect then refuses a key of another
+   * Bybit account. A create form has no holding, so it leaves this off.
+   */
+  keepsBybitHoldings?: boolean;
 };
 
 // The Bybit counterpart of the Binance field, over the shared `ExchangeKeyForm`. Connect refuses a
@@ -44,6 +49,7 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
   onConnect,
   reminder,
   onStoredWhileUnmounted,
+  keepsBybitHoldings = false,
 }) => {
   const { t } = useTranslation();
 
@@ -68,7 +74,9 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
       }}
       isCoolingDown={isBybitCoolingDown}
       isSyncRunning={isBybitSyncRunning}
-      verify={(apiKey, secret) => bybitKeyRefusalOf(apiKey, secret)}
+      verify={(apiKey, secret) =>
+        bybitKeyRefusalOf(apiKey, secret, keepsBybitHoldings ? { ownerCheck: { accountId } } : {})
+      }
       save={saveBybitCredentials}
       intro={
         <>

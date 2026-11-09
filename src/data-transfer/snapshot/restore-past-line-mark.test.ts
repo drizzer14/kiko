@@ -507,3 +507,43 @@ describe('restoring a Bybit holding whose metadata names its rows by id', () => 
 // - `withWalkStateMoved` reads a Spot BTC holding's `binanceAsset` and writes the sync state only.
 // - `withLoanInterestReseeded`, `withTravelReseeded` and `withRatesNormalizedToUah` write the
 //   categories and the rate tables, which hold no row and no holding.
+
+// O93: the value made from the user id rides in `exchange_state`, so a file's account keeps the
+// refusal of a key of another account. Its own seed line puts the state next to the ledger above.
+describe('restoring the owner value of a Bybit account, O93', () => {
+  const STATE = JSON.stringify({
+    version: 1,
+    walks: { capital: { cursor: READ_AT } },
+    keyOwner: 'owner-value-fixture',
+  });
+
+  const storedState = (): unknown => {
+    const row = mockDatabase
+      .prepare("SELECT exchange_state AS state FROM sync_state WHERE account_id = 'account-bybit'")
+      .get() as { state: string };
+
+    return JSON.parse(row.state);
+  };
+
+  beforeEach(() => {
+    mockDatabase = openDatabase();
+    seedBybitLedger();
+    run("INSERT INTO sync_state (account_id, exchange_state) VALUES ('account-bybit', ?)", STATE);
+  });
+
+  it('a restore keeps the owner value in the state', async () => {
+    expect(storedState()).toEqual(JSON.parse(STATE));
+
+    await restoredIntoNewDatabase(throughJson(await readDataSnapshot()), EXPORT_VERSION);
+
+    expect(storedState()).toEqual(JSON.parse(STATE));
+  });
+
+  it('a file of an old version keeps it through every mirror', async () => {
+    const oldFile = asFileOfOldVersion(throughJson(await readDataSnapshot()));
+
+    await restoredIntoNewDatabase(oldFile, LAST_SCALE_2_USDT_VERSION);
+
+    expect(storedState()).toEqual(JSON.parse(STATE));
+  });
+});

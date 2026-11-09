@@ -65,6 +65,17 @@ export const keyExpiryOf = (state: ParsedExchangeState): ParsedKeyExpiry | undef
     .exhaustive();
 
 /**
+ * The value the last good key read stored for the key's owner, or `undefined`: none stored, or
+ * state lost. No stored value means a connect passes, since nothing shows another owner.
+ */
+export const keyOwnerOf = (state: ParsedExchangeState): string | undefined =>
+  match(state)
+    .returnType<string | undefined>()
+    .with({ kind: 'parsed' }, ({ keyOwner }) => keyOwner)
+    .with({ kind: 'malformed' }, () => undefined)
+    .exhaustive();
+
+/**
  * A coin a wallet's read set aside. It keeps its wallet because the same coin can be set aside in
  * one wallet and held in another, and a line that named only the coin would speak for both.
  */

@@ -5,6 +5,7 @@ export {
   fundingHeldOf,
   fundingLeftOutOf,
   keyExpiryOf,
+  keyOwnerOf,
   logKindsOf,
   type NotImportedCount,
   notImportedCountsOf,

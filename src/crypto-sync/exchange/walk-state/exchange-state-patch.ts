@@ -36,7 +36,8 @@ type WalletNotes = { borrowed: string[]; openOrder?: string[]; refusedCoins?: st
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one
  * trade symbol, the trades' rotation, balance snapshot or unread symbols, one coin list, the notes
- * of the wallets a balance read reached, or the balance sync stamp, or entries to add to the
+ * of the wallets a balance read reached, or the balance sync stamp, or the owner value of a key
+ * read, or entries to add to the
  * not-imported list, or kinds to add to the log kinds, or one series' dense span, or the Funding
  * ledger's held count or left-out flag. A patch names fields, never whole entries, so a field it
  * does not name is never written from a parse.
@@ -81,6 +82,11 @@ export type ExchangeStatePatch =
       /** The days left the key read reported, absent when it gave none. */
       deadlineDay?: number;
       readAtMs: number;
+    }
+  | {
+      kind: 'keyOwner';
+      /** The value made from the user id of a good key read, never the id itself. */
+      value: string;
     }
   | { kind: 'notImported'; entries: string[] }
   | { kind: 'logKinds'; kinds: string[] }
@@ -259,6 +265,16 @@ const withKeyExpiry = (
   },
 });
 
+/**
+ * A good read of the key replaces the stored value, so the owner of the last good read stands. A
+ * failed read, and a read that gave no user id, write no patch, so they keep the stored value. The
+ * value sits under its own top-level key, which a build that does not read it leaves untouched.
+ */
+const withKeyOwner = (
+  stored: StoredExchangeState,
+  { value }: Extract<ExchangeStatePatch, { kind: 'keyOwner' }>,
+): StoredExchangeState => ({ ...stored, keyOwner: value });
+
 const isText = (value: unknown): value is string => typeof value === 'string';
 
 /**
@@ -331,6 +347,7 @@ const patchedState = (
     .with({ kind: 'balanceNotes' }, (notesPatch) => withBalanceNotes(stored, notesPatch))
     .with({ kind: 'balanceSyncedAt' }, ({ value }) => ({ ...stored, balanceSyncedAt: value }))
     .with({ kind: 'keyExpiry' }, (keyExpiryPatch) => withKeyExpiry(stored, keyExpiryPatch))
+    .with({ kind: 'keyOwner' }, (keyOwnerPatch) => withKeyOwner(stored, keyOwnerPatch))
     .with({ kind: 'notImported' }, (notImportedPatch) => withNotImported(stored, notImportedPatch))
     .with({ kind: 'logKinds' }, (logKindsPatch) => withLogKinds(stored, logKindsPatch))
     .with({ kind: 'denseSpans' }, (denseSpansPatch) => withDenseSpan(stored, denseSpansPatch))
@@ -397,14 +414,26 @@ const walksAfterDisconnect = (walks: Metadata, floorMs: number): Metadata =>
   );
 
 /**
- * The whole column text after a disconnect: walks only, so the trades, both coin lists of each
- * kind, `notImported` and anything an unknown build wrote are gone. A malformed top level is
- * replaced by a state that holds the capital floor cursor alone.
+ * The one field besides the walks that a disconnect keeps: the value made from the user id of the
+ * last good key read. The holdings a disconnect keeps stay Bybit's, so a key of another account
+ * must still be refused after it. A value that is no text is dropped.
  */
-export const exchangeStateReset = (text: string, floorMs: number): string =>
-  JSON.stringify({
+const ownerAfterDisconnect = ({ keyOwner }: StoredExchangeState): Metadata =>
+  typeof keyOwner === 'string' && keyOwner !== '' ? { keyOwner } : {};
+
+/**
+ * The whole column text after a disconnect: the walks and the owner value, so the trades, both
+ * coin lists of each kind, `notImported` and anything an unknown build wrote are gone. A malformed
+ * top level is replaced by a state that holds the capital floor cursor alone, with no value.
+ */
+export const exchangeStateReset = (text: string, floorMs: number): string => {
+  const stored = storedExchangeStateOf(text);
+
+  return JSON.stringify({
     version: 1,
-    walks: foldMap(maybe(storedExchangeStateOf(text)), ({ walks }) =>
-      walksAfterDisconnect(walks, floorMs),
-    ) ?? { capital: capitalFloorMarks(floorMs) },
+    walks: foldMap(maybe(stored), ({ walks }) => walksAfterDisconnect(walks, floorMs)) ?? {
+      capital: capitalFloorMarks(floorMs),
+    },
+    ...foldMap(maybe(stored), ownerAfterDisconnect),
   });
+};

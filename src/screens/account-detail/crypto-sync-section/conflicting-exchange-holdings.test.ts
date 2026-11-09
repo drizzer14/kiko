@@ -3,7 +3,7 @@ import { balanceProviderIds } from '@kiko/crypto-sync/provider';
 import { exchangeCatalog } from '@kiko/crypto-sync/exchange-catalog';
 import { type ExchangeMetadataField, syncedMetadataFields } from '@kiko/holdings/holding-metadata';
 
-import { conflictingExchangeHoldings } from './conflicting-exchange-holdings';
+import { conflictingExchangeHoldings, keepsBybitHoldings } from './conflicting-exchange-holdings';
 
 type PickedId = (typeof balanceProviderIds)[number] | 'other';
 
@@ -100,5 +100,33 @@ describe('conflictingExchangeHoldings', () => {
     expect(conflictingExchangeHoldings('some-other-id', [holdingKeyedBy('bybitAsset')])).toEqual(
       [],
     );
+  });
+});
+
+describe('keepsBybitHoldings, O93', () => {
+  it.each(syncedMetadataFields.map((field) => ({ field, kept: field === 'bybitAsset' })))(
+    'is $kept for a holding keyed by $field',
+    ({ field, kept }) => {
+      expect(keepsBybitHoldings([holdingKeyedBy(field)])).toBe(kept);
+    },
+  );
+
+  it('is true when one holding of the account carries a Bybit key, synced or not', () => {
+    expect(
+      keepsBybitHoldings([holdingWith(null), holdingWith({ bybitAsset: 'BTC:unified' })]),
+    ).toBe(true);
+  });
+
+  it('is false for an account with no holding, and for holdings of no key', () => {
+    expect(keepsBybitHoldings([])).toBe(false);
+    expect(
+      keepsBybitHoldings([holdingWith(null), holdingWith({}), holdingWith('bybitAsset')]),
+    ).toBe(false);
+  });
+
+  it('reads a key that is no text as no key', () => {
+    expect(
+      keepsBybitHoldings([holdingWith({ bybitAsset: 1 }), holdingWith({ bybitAsset: null })]),
+    ).toBe(false);
   });
 });

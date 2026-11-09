@@ -11,10 +11,20 @@ const CONFLICTING_FIELDS: Record<BalanceProviderId, readonly ExchangeMetadataFie
   btc_wallet: ['bybitAsset'],
 };
 
+const BYBIT_FIELDS: readonly ExchangeMetadataField[] = ['bybitAsset'];
+
 const isKeyedBy = (
   { metadata }: Pick<HoldingRow, 'metadata'>,
   fields: readonly ExchangeMetadataField[],
 ): boolean => isRecord(metadata) && fields.some((field) => typeof metadata[field] === 'string');
+
+/**
+ * Whether the account keeps a holding that carries a Bybit key, synced now or not: a disconnect
+ * keeps the keys, and the holdings with them stay one Bybit account's. It decides whether a
+ * connect compares the new key's owner against the stored one.
+ */
+export const keepsBybitHoldings = (holdings: readonly Pick<HoldingRow, 'metadata'>[]): boolean =>
+  holdings.some((holding) => isKeyedBy(holding, BYBIT_FIELDS));
 
 /**
  * The holdings that carry a sync key that `pick` conflicts with. The test reads the keys only,

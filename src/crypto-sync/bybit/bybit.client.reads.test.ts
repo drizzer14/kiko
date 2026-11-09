@@ -50,26 +50,61 @@ describe('fetchKeyInfo', () => {
     expect(sent[0].url).toBe('https://api.bybit.com/v5/user/query-api');
   });
 
-  it('returns the expiry date, the days left, and the two facts the connect needs', async () => {
+  // O93: the user id is the one personal field read, for the value made from it at connect and at
+  // a sync. It is transient: only the provider and the connect read it, and the raw id reaches no
+  // state.
+  it('returns the expiry date, the days left, and the three facts the connect needs, O93', async () => {
     await expect(keyInfoFrom(KEY_INFO_BODY).info).resolves.toStrictEqual({
       expiredAtMs: Date.UTC(2099, 0, 2, 3, 4, 5),
       deadlineDay: 30,
       readOnly: 1,
       isMaster: true,
+      userId: '987654321',
     });
   });
 
-  it('parses no personal field and not the permissions', async () => {
+  it('parses no personal field but the user id, and not the permissions, O93', async () => {
     const info = await keyInfoFrom(KEY_INFO_BODY).info;
 
-    expect(JSON.stringify(info)).not.toMatch(/SENTINEL|987654321|123456789/);
+    expect(JSON.stringify(info)).not.toMatch(/SENTINEL|123456789/);
     expect(Object.keys(info).sort()).toEqual([
       'deadlineDay',
       'expiredAtMs',
       'isMaster',
       'readOnly',
+      'userId',
     ]);
   });
+
+  it.each<[string, unknown, string]>([
+    ['an integer', 987654321, '987654321'],
+    ['a digit string', '987654321', '987654321'],
+    ['zero', 0, '0'],
+  ])('reads the user id as %s, O93', async (_title, userID, expected) => {
+    const info = await keyInfoFrom({ ...KEY_INFO_BODY, userID }).info;
+
+    expect(info.userId).toBe(expected);
+  });
+
+  it.each<[string, unknown]>([
+    ['absent', undefined],
+    ['null', null],
+    ['an empty text', ''],
+    ['a text with a letter', '12a'],
+    ['a signed text', '-12'],
+    ['a fraction', 1.5],
+    ['a negative integer', -5],
+    ['an integer past 2^53', 2 ** 60],
+    ['a boolean', true],
+    ['a list', [1]],
+  ])(
+    'reads a user id that is %s as absent, so no compare matches a mangled value, O93',
+    async (_title, userID) => {
+      const info = await keyInfoFrom({ ...KEY_INFO_BODY, userID }).info;
+
+      expect(info.userId).toBeUndefined();
+    },
+  );
 
   it('reads a read-write key as it is, so the connect can refuse it', async () => {
     await expect(keyInfoFrom({ ...KEY_INFO_BODY, readOnly: 0 }).info).resolves.toMatchObject({

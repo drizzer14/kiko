@@ -71,6 +71,7 @@ export const makeDeps = (
     deadlineDay: undefined,
     readOnly: 1,
     isMaster: true,
+    userId: undefined,
   })),
   fetchUnifiedBalance: jest.fn(async () => unified),
   fetchFundBalance: jest.fn(async () => fund),

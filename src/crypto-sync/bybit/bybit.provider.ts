@@ -31,6 +31,7 @@ import {
   holdingKeyOf,
   partsOfHoldingKey,
 } from './bybit.holding-keys';
+import { keyOwnerValueOf } from './bybit.key-owner';
 import { isBybitCoolingDown } from './bybit.cooldown';
 import { readBybitCredentials } from './bybit.credentials';
 import { bybitCoolingFailure, bybitFailureOf } from './bybit.failure-text';
@@ -214,7 +215,20 @@ const keyExpiryPatchesOf = (
     { kind: 'keyExpiry', expiredAtMs, deadlineDay, readAtMs },
   ]) ?? [];
 
+/**
+ * The patch of a good key read that gave a user id, which replaces the stored owner value; a failed
+ * read, a tolerated one and an answer with no readable id give none, so the stored value stays.
+ */
+const keyOwnerPatchesOf = (
+  info: BybitKeyInfo | undefined,
+  accountId: string,
+): ExchangeStatePatch[] =>
+  foldMap(maybe(info?.userId), (userId): ExchangeStatePatch[] => [
+    { kind: 'keyOwner', value: keyOwnerValueOf(accountId, userId) },
+  ]) ?? [];
+
 type ReadWallets = {
+  accountId: string;
   unified: WalletRead;
   /** Absent when the FUND read failed. */
   fund: WalletRead | undefined;
@@ -236,6 +250,7 @@ type ReadWallets = {
  * coins.
  */
 const statePatchesOf = ({
+  accountId,
   unified,
   fund,
   refused,
@@ -271,6 +286,7 @@ const statePatchesOf = ({
       notRead,
     },
     ...keyExpiryPatchesOf(keyInfo, syncedAt),
+    ...keyOwnerPatchesOf(keyInfo, accountId),
     { kind: 'balanceSyncedAt', value: syncedAt },
   ];
 };
@@ -340,6 +356,7 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     return {
       balances,
       exchangeState: statePatchesOf({
+        accountId: target.accountId,
         unified,
         fund,
         refused: fundOutcome.refused ? ['fund'] : [],

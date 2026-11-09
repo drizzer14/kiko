@@ -7,6 +7,7 @@ import {
   fundingHeldOf,
   fundingLeftOutOf,
   keyExpiryOf,
+  keyOwnerOf,
   logKindsOf,
   notImportedCountsOf,
   oversizedCoinsOf,
@@ -139,6 +140,18 @@ describe('keyExpiryOf', () => {
     expect(keyExpiryOf(stateWith({}))).toBeUndefined();
     expect(keyExpiryOf(stateWith({ keyExpiry: 'x' }))).toBeUndefined();
     expect(keyExpiryOf(parseExchangeState('not json'))).toBeUndefined();
+  });
+});
+
+describe('keyOwnerOf', () => {
+  it('reads the value the last good key read stored, O93', () => {
+    expect(keyOwnerOf(stateWith({ keyOwner: '9f2c' }))).toBe('9f2c');
+  });
+
+  it('reads nothing for a state with no value, an unreadable value or a state that is lost', () => {
+    expect(keyOwnerOf(stateWith({}))).toBeUndefined();
+    expect(keyOwnerOf(stateWith({ keyOwner: 7 }))).toBeUndefined();
+    expect(keyOwnerOf(parseExchangeState('not json'))).toBeUndefined();
   });
 });
 

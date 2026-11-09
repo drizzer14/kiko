@@ -1,4 +1,5 @@
 import { i18n } from '@kiko/i18n/init';
+import { signQuery } from '@kiko/crypto-sync/exchange/signing';
 
 import {
   FUND_PATH,
@@ -90,6 +91,81 @@ describe('the state a Bybit balance read returns', () => {
       expect(JSON.stringify(read)).not.toContain(SENTINEL);
       expect(JSON.stringify(stateAfter(read))).not.toContain(SENTINEL);
       expect(JSON.stringify(warn.mock.calls)).not.toContain(SENTINEL);
+    });
+  });
+
+  // O93: a good key read stores a value made from the user id, to refuse a key of another
+  // account later. The id itself reaches no state, row, log or description (the test above).
+  describe('the owner value of a key read, O93', () => {
+    const USER_ID = '424242424242';
+
+    const readWith = (userID: unknown, target = freshTarget()) => {
+      const { deps } = routedDeps({
+        [KEY_INFO_PATH]: okAnswer({ readOnly: 1, isMaster: true, userID }),
+        [UNIFIED_PATH]: okAnswer(unifiedResult([])),
+        [FUND_PATH]: okAnswer(fundResult([])),
+      });
+
+      return bybitProvider.fetchBalances(deps, target);
+    };
+
+    it('a good key read writes the value made from the user id, and never the id', async () => {
+      const target = freshTarget();
+      const read = await readWith(Number(USER_ID), target);
+
+      expect(stateAfter(read).keyOwner).toBe(signQuery(target.accountId, USER_ID));
+      expect(JSON.stringify(read)).not.toContain(USER_ID);
+      expect(JSON.stringify(stateAfter(read))).not.toContain(USER_ID);
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(USER_ID);
+    });
+
+    it('reads a user id sent as a digit string the same way', async () => {
+      const target = freshTarget();
+
+      expect(stateAfter(await readWith(USER_ID, target)).keyOwner).toBe(
+        signQuery(target.accountId, USER_ID),
+      );
+    });
+
+    it('writes a value that depends on the account, so one user id gives two values', async () => {
+      const first = stateAfter(await readWith(USER_ID)).keyOwner;
+      const second = stateAfter(await readWith(USER_ID)).keyOwner;
+
+      expect(first).not.toBe(second);
+    });
+
+    it('replaces the stored value when the key read is of another user', async () => {
+      const target = freshTarget();
+      const read = await readWith(USER_ID, target);
+
+      expect(stateAfter(read, { keyOwner: 'stored-of-another' }).keyOwner).toBe(
+        signQuery(target.accountId, USER_ID),
+      );
+    });
+
+    it.each([
+      ['no user id', undefined],
+      ['a user id that is text', 'SENTINEL-PERSONAL-FIELD'],
+      ['a fraction', 1.5],
+    ])('a key read with %s writes none and keeps the stored one', async (_title, userID) => {
+      const read = await readWith(userID);
+
+      expect(read.exchangeState?.map(({ kind }) => kind)).not.toContain('keyOwner');
+      expect(stateAfter(read, { keyOwner: 'stored' }).keyOwner).toBe('stored');
+    });
+
+    it.each([
+      ['a malformed answer', new BybitRefusalError('malformed')],
+      ['an unknown refusal', new BybitRefusalError('unknown', 99999)],
+      ['a lost network', new TypeError('Network request failed')],
+    ])('a failed key read (%s) keeps the stored one', async (_title, failure) => {
+      const deps = makeDeps();
+      deps.fetchKeyInfo.mockRejectedValue(failure);
+
+      const read = await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(read.exchangeState?.map(({ kind }) => kind)).not.toContain('keyOwner');
+      expect(stateAfter(read, { keyOwner: 'stored' }).keyOwner).toBe('stored');
     });
   });
 

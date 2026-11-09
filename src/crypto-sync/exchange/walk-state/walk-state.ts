@@ -189,6 +189,11 @@ export type ExchangeState = {
   balanceSyncedAt?: number;
   /** The end of the connected key, replaced by each good read of the key; Bybit only. */
   keyExpiry?: ParsedKeyExpiry;
+  /**
+   * The value made from the user id of the last good key read, which a disconnect keeps and a
+   * connect compares a new key against; Bybit only. The user id itself is never stored.
+   */
+  keyOwner?: string;
   /** The notes of each wallet a balance read reached, by wallet; Bybit only. */
   balanceNotes?: Record<string, Partial<ParsedWalletNotes>>;
   /** Each record a rule refused for good, once; only a disconnect clears it. */
@@ -254,6 +259,7 @@ export type ParsedExchangeState =
       oversizedCoins: Required<CoinLists>;
       balanceSyncedAt: number | undefined;
       keyExpiry: ParsedKeyExpiry | undefined;
+      keyOwner: string | undefined;
       balanceNotes: Record<string, ParsedWalletNotes>;
       notImported: string[];
       logKinds: string[];
@@ -573,6 +579,10 @@ const keyExpiryEntryOf = (stored: unknown): ReadEntry<ParsedKeyExpiry | undefine
     nothing,
   );
 
+/** A value made from a user id is text with something in it, so an empty text reads as none. */
+const nonEmptyTextOrUndefined = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined;
+
 /**
  * A field that is unreadable reads as its empty value, since a note shown by mistake would be worse
  * than none. The entry names the keys it reads only, so any other key stored in it is ignored.
@@ -615,6 +625,12 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     nothing,
   );
   const keyExpiry = keyExpiryEntryOf(stored.keyExpiry);
+  const keyOwner = entryOf<string | undefined>(
+    'keyOwner',
+    stored.keyOwner,
+    nonEmptyTextOrUndefined,
+    nothing,
+  );
   const balanceNotes = recordOf('balanceNotes', stored.balanceNotes, walletNotesOf);
   const notImported = notImportedOf(stored.notImported);
   const logKinds = logKindsEntryOf(stored.logKinds);
@@ -638,6 +654,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
     oversizedCoins: oversizedCoins.value,
     balanceSyncedAt: balanceSyncedAt.value,
     keyExpiry: keyExpiry.value,
+    keyOwner: keyOwner.value,
     balanceNotes: balanceNotes.value,
     notImported: notImported.value,
     logKinds: logKinds.value,
@@ -652,6 +669,7 @@ const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
       ...oversizedByWallet.unreadable,
       ...balanceSyncedAt.unreadable,
       ...keyExpiry.unreadable,
+      ...keyOwner.unreadable,
       ...balanceNotes.unreadable,
       ...notImported.unreadable,
       ...logKinds.unreadable,

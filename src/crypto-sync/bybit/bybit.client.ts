@@ -283,14 +283,30 @@ const expiredAtMsOf = (value: unknown): number | undefined => {
 /**
  * What the key-info read gives. `expiredAtMs` and `deadlineDay` are the key's end, read on a sync.
  * `readOnly` (1 for a read-only key) and `isMaster` are read at connect only and never stored.
- * Every other field of the answer (the permissions, the user and inviter ids, the region, the
- * note) is dropped here, so none of it reaches state. A field of another shape reads as absent.
+ * `userId` is the one personal field kept: it is transient, read to make the value that tells one
+ * Bybit account's key from another's (at a sync and at connect), and the id itself reaches no
+ * state, log or row. Every other field of the answer (the permissions, the inviter id, the
+ * region, the note) is dropped here, so none of it reaches state. A field of another shape reads
+ * as absent.
  */
 export type BybitKeyInfo = {
   expiredAtMs: number | undefined;
   deadlineDay: number | undefined;
   readOnly: number | undefined;
   isMaster: boolean | undefined;
+  userId: string | undefined;
+};
+
+/**
+ * A user id arrives as a JSON integer or as a digit string. Anything else (absent, fractional,
+ * negative, past 2^53, empty, non-digit) is no id, so a compare never matches a mangled value.
+ */
+const userIdOf = (value: unknown): string | undefined => {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? String(value) : undefined;
+  }
+
+  return typeof value === 'string' && /^\d+$/.test(value) ? value : undefined;
 };
 
 /** `GET /v5/user/query-api`: the key's own facts. Any key reads it, whatever its boxes. */
@@ -306,6 +322,7 @@ export const fetchKeyInfo = async (
     deadlineDay: finiteNumberOf(info.deadlineDay),
     readOnly: finiteNumberOf(info.readOnly),
     isMaster: typeof info.isMaster === 'boolean' ? info.isMaster : undefined,
+    userId: userIdOf(info.userID),
   };
 };
 

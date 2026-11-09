@@ -65,16 +65,18 @@ describe('the balance sync stamp patch', () => {
 });
 
 describe('a disconnect and the balance sync stamp', () => {
-  it('removes the stamp with everything else but the walks', () => {
+  it('removes the stamp with everything else but the walks and the owner value, O93', () => {
     const stored = JSON.stringify({
       version: 1,
       walks: { pay: { cursor: 700 } },
       balanceSyncedAt: 5_000,
+      keyOwner: '9f2c',
     });
 
     expect(storedOf(exchangeStateReset(stored, FLOOR_MS))).toEqual({
       version: 1,
       walks: { pay: { cursor: FLOOR_MS } },
+      keyOwner: '9f2c',
     });
   });
 
