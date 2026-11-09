@@ -158,8 +158,11 @@ describe('the react-native-screens fixed content margin patch', () => {
         const source = load();
         const layoutPass = methodCode(source, '- (void)viewDidLayoutSubviews');
 
+        const syncCall = layoutPass.indexOf('[self syncParentSafeAreaTopInset];');
+
+        expect(syncCall).toBeGreaterThan(-1);
         expect(layoutPass.indexOf('RNSInlineStackedPaneLargeTitle(self);')).toBeGreaterThan(
-          layoutPass.indexOf('[self syncParentSafeAreaTopInset];'),
+          syncCall,
         );
         expect(source.match(/RNSInlineStackedPaneLargeTitle\(self\)/g)).toHaveLength(1);
       },
