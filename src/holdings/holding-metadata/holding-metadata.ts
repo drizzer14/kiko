@@ -260,15 +260,31 @@ export const overwrittenRowIdsOf = (metadata: unknown): string[] => {
 };
 
 /**
- * The sync-owned keys whose holdings carry a dated balance, each with the `source` of the ledger
- * rows that such a balance holds. The one place that decides which holding the net-worth valuer
- * dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is listed here and nowhere else,
- * because the sync reads its write from `datesBalanceOf`, and the valuer reads its rows from
- * `datedBalanceSourceOf`. The upsert of a holding on this list writes the list of overwritten row
- * ids as well, and no other holding gets that read or that key.
+ * One provider of the dated list: the `source` of the ledger rows that its balance holds, and
+ * what its rows count for while the holding has no read time. A holding that shipped before the
+ * read was dated has rows and no time: Bybit never shipped one, so a Bybit holding with no read
+ * counts no row of its source and opens at its stored balance, and the others counted every row
+ * before the read was dated, so they keep counting them until their first dated read, and no
+ * holding ever shows a line worse than it did.
  */
-const datedBalances: readonly { field: SyncedMetadataField; source: TransactionRow['source'] }[] = [
-  { field: 'bybitAsset', source: 'bybit' },
+type DatedBalance = {
+  field: SyncedMetadataField;
+  source: TransactionRow['source'];
+  countsSourceRowsBeforeFirstRead: boolean;
+};
+
+/**
+ * The sync-owned keys whose holdings carry a dated balance. The one place that decides which
+ * holding the net-worth valuer dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is
+ * listed here and nowhere else, because the sync reads its write from `datesBalanceOf`, and the
+ * valuer reads its entry from `datedBalanceOf`. The upsert of a holding on this list writes the
+ * list of overwritten row ids as well, and no other holding gets that read or that key. Monobank
+ * is not on it: its sync writes no read time.
+ */
+const datedBalances: readonly DatedBalance[] = [
+  { field: 'bybitAsset', source: 'bybit', countsSourceRowsBeforeFirstRead: false },
+  { field: 'binanceAsset', source: 'binance', countsSourceRowsBeforeFirstRead: true },
+  { field: 'walletAddress', source: 'btc_wallet', countsSourceRowsBeforeFirstRead: true },
 ];
 
 /** Whether a sync of the provider that owns `field` writes `BALANCE_READ_AT_FIELD`. */
@@ -276,17 +292,24 @@ export const datesBalanceOf = (field: SyncedMetadataField): boolean =>
   datedBalances.some((entry) => entry.field === field);
 
 /**
- * The row `source` that a holding's stored balance holds up to `balanceReadAtOf`, or `undefined`
- * for a holding whose balance is not dated, which counts every row. A key that is not a string
- * marks no holding, as in the provider's own reader of the key.
+ * The entry of the dated list that a holding's key names, or `undefined` for a holding whose
+ * balance is not dated, which counts every row. A key that is not a string marks no holding, as
+ * in the provider's own reader of the key.
  */
-export const datedBalanceSourceOf = (metadata: unknown): TransactionRow['source'] | undefined => {
+export const datedBalanceOf = (metadata: unknown): DatedBalance | undefined => {
   if (!isRecord(metadata)) {
     return undefined;
   }
 
-  return datedBalances.find(({ field }) => typeof metadata[field] === 'string')?.source;
+  return datedBalances.find(({ field }) => typeof metadata[field] === 'string');
 };
+
+/**
+ * The row `source` that a holding's stored balance holds up to `balanceReadAtOf`, or `undefined`
+ * for a holding whose balance is not dated, which counts every row.
+ */
+export const datedBalanceSourceOf = (metadata: unknown): TransactionRow['source'] | undefined =>
+  datedBalanceOf(metadata)?.source;
 
 /**
  * Whether a read overwrote the row `rowId`: the read's figure replaced the holding's balance, so

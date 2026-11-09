@@ -396,11 +396,30 @@ describe('runBalanceSync', () => {
 
   it('a provider that does not writes the stamp alone', async () => {
     const { provider } = makeProvider();
+    // Every balance provider is on the dated list now, so the stub names the one synced key that is
+    // not: Monobank's, whose sync writes no read time.
+    const stubProvider = {
+      ...provider,
+      metadataField: 'monobankId' as unknown as BalanceProvider<FakeDeps>['metadataField'],
+    };
+    const { deps, holdingsStore } = makeAccountDeps('btc_wallet');
+
+    await runBalanceSync(stubProvider, { balances: [walletBalance(10)] }, deps);
+
+    expect(holdingsStore[0].metadata).toEqual({ monobankId: ADDRESS, syncedAt: NOW });
+  });
+
+  it('a wallet provider writes the read time beside the stamp', async () => {
+    const { provider } = makeProvider();
     const { deps, holdingsStore } = makeAccountDeps('btc_wallet');
 
     await runBalanceSync(provider, { balances: [walletBalance(10)] }, deps);
 
-    expect(holdingsStore[0].metadata).toEqual({ walletAddress: ADDRESS, syncedAt: NOW });
+    expect(holdingsStore[0].metadata).toEqual({
+      walletAddress: ADDRESS,
+      syncedAt: NOW,
+      balanceReadAt: NOW,
+    });
   });
 
   it('a coin the read leaves out of a dated provider keeps its read time while the coin it writes takes the new one', async () => {

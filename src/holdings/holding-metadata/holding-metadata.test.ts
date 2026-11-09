@@ -14,6 +14,7 @@ import {
   hasStoredBondPurchasePrice,
   syncedAtOf,
   balanceReadAtOf,
+  datedBalanceOf,
   datedBalanceSourceOf,
   datesBalanceOf,
   statementFromOf,
@@ -350,6 +351,34 @@ describe('datedBalanceSourceOf', () => {
     ['text', 'bybitAsset'],
   ])('names no source for %s', (_, metadata) => {
     expect(datedBalanceSourceOf(metadata)).toBeUndefined();
+  });
+});
+
+describe('datedBalanceOf', () => {
+  it.each([
+    ['Binance', { binanceAsset: 'BTC' }, 'binance'],
+    ['wallet', { walletAddress: 'bc1q' }, 'btc_wallet'],
+  ])('an undated %s counts every source row', (_, metadata, source) => {
+    expect(datedBalanceOf(metadata)).toMatchObject({
+      source,
+      countsSourceRowsBeforeFirstRead: true,
+    });
+  });
+
+  it('an undated Bybit holding counts none', () => {
+    expect(datedBalanceOf({ bybitAsset: 'BTC:unified' })).toMatchObject({
+      source: 'bybit',
+      countsSourceRowsBeforeFirstRead: false,
+    });
+  });
+
+  it.each([
+    ['a Monobank key', { monobankId: 'card-1' }],
+    ['a key that is not a string', { binanceAsset: 5 }],
+    ['null', null],
+    ['text', 'binanceAsset'],
+  ])('names no entry for %s', (_, metadata) => {
+    expect(datedBalanceOf(metadata)).toBeUndefined();
   });
 });
 

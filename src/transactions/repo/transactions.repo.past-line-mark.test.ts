@@ -290,25 +290,130 @@ describe('the confirm says what the delete does', () => {
   });
 });
 
-describe('a holding that is not Bybit', () => {
+describe('a Binance or wallet holding, which a read dates', () => {
+  // The mark names `marked`; `unmarked` is a row typed after the read. The statements are those of
+  // one `remove` and one `update`, counted on the code before the mark existed: a row off the mark
+  // sends them all, and a row on the mark sends every statement but the balance's own.
+  const DATED_KINDS = [
+    { label: 'Binance', metadata: { binanceAsset: 'BTC', syncedAt: MOVED, balanceReadAt: MOVED } },
+    {
+      label: 'a wallet',
+      metadata: { walletAddress: 'bc1q', syncedAt: MOVED, balanceReadAt: MOVED },
+    },
+  ];
+
+  const seedDatedKind = ({ metadata }: (typeof DATED_KINDS)[number]): void => {
+    seedFixture();
+    insertHolding('kind', 'card', 'UAH', 100_000, {
+      metadata: { ...metadata, [OVERWRITTEN_ROW_IDS_FIELD]: ['marked'] },
+    });
+    insertRow({ id: 'marked', holdingId: 'kind', amountMinorUnits: 5_000 });
+    insertRow({ id: 'unmarked', holdingId: 'kind', amountMinorUnits: 3_000 });
+  };
+
+  const statementsDuring = async (work: () => Promise<unknown>): Promise<number> => {
+    const prepare = jest.spyOn(mockDatabase, 'prepare');
+
+    await work();
+
+    return prepare.mock.calls.length;
+  };
+
+  it.each(DATED_KINDS)(
+    '$label moves no balance on a delete of a row on the mark, and the confirm names none',
+    async (kind) => {
+      seedDatedKind(kind);
+
+      expect((await transactionsRepo.removePlan('marked')).balanceChanges).toBeUndefined();
+
+      await transactionsRepo.remove('marked');
+
+      expect(rowIds()).toEqual(['unmarked']);
+      expect(balancesOf()).toMatchObject({ kind: 100_000 });
+    },
+  );
+
+  it.each(DATED_KINDS)('$label moves no balance on an edit of a row on the mark', async (kind) => {
+    seedDatedKind(kind);
+
+    await edit('marked', 8_000);
+
+    expect(balancesOf()).toMatchObject({ kind: 100_000 });
+  });
+
+  it.each(DATED_KINDS)('$label moves by a delete of a row off the mark as today', async (kind) => {
+    seedDatedKind(kind);
+
+    expect((await transactionsRepo.removePlan('unmarked')).balanceChanges).toEqual([
+      { name: 'kind', currency: 'UAH', minorUnits: -3_000 },
+    ]);
+
+    await transactionsRepo.remove('unmarked');
+
+    expect(balancesOf()).toMatchObject({ kind: 97_000 });
+  });
+
+  it.each(DATED_KINDS)('$label moves by an edit of a row off the mark as today', async (kind) => {
+    seedDatedKind(kind);
+
+    await edit('unmarked', 8_000);
+
+    expect(balancesOf()).toMatchObject({ kind: 105_000 });
+  });
+
+  it.each(DATED_KINDS)(
+    '$label makes the same statements on a delete off the mark',
+    async (kind) => {
+      seedDatedKind(kind);
+
+      expect(await statementsDuring(() => transactionsRepo.remove('unmarked'))).toBe(5);
+    },
+  );
+
+  it.each(DATED_KINDS)('$label makes the same statements on an edit off the mark', async (kind) => {
+    seedDatedKind(kind);
+
+    expect(await statementsDuring(() => edit('unmarked', 8_000))).toBe(4);
+  });
+
+  it.each(DATED_KINDS)('$label makes one statement fewer on a delete on the mark', async (kind) => {
+    seedDatedKind(kind);
+
+    expect(await statementsDuring(() => transactionsRepo.remove('marked'))).toBe(4);
+  });
+
+  it.each(DATED_KINDS)('$label makes one statement fewer on an edit on the mark', async (kind) => {
+    seedDatedKind(kind);
+
+    expect(await statementsDuring(() => edit('marked', 8_000))).toBe(3);
+  });
+
+  it.each(DATED_KINDS)(
+    '$label makes the same statements on the confirm of a delete off the mark',
+    async (kind) => {
+      seedDatedKind(kind);
+
+      expect(await statementsDuring(() => transactionsRepo.removePlan('unmarked'))).toBe(2);
+    },
+  );
+
+  it.each(DATED_KINDS)(
+    '$label makes the same statements on the confirm of a delete on the mark',
+    async (kind) => {
+      seedDatedKind(kind);
+
+      expect(await statementsDuring(() => transactionsRepo.removePlan('marked'))).toBe(2);
+    },
+  );
+});
+
+describe('a holding that is not on the dated list', () => {
   // The mark is a hand-made file's: no sync of these kinds writes one. The statements are those of
   // one `remove` and one `update`, counted on the code before the mark existed.
   const KINDS = [
     {
-      label: 'Binance',
-      metadata: { binanceAsset: 'BTC', syncedAt: MOVED },
-      source: 'manual',
-      deleteStatements: 5,
-    },
-    {
       label: 'Monobank',
       metadata: { monobankId: 'card-1', syncedAt: MOVED },
-      source: 'manual',
-      deleteStatements: 5,
-    },
-    {
-      label: 'a wallet',
-      metadata: { walletAddress: 'bc1q', syncedAt: MOVED },
       source: 'manual',
       deleteStatements: 5,
     },

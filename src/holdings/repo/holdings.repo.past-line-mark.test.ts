@@ -22,7 +22,7 @@ const LEDGER_SIZE = 100_000;
 
 type Parameter = string | number;
 
-type Source = 'manual' | 'import' | 'monobank' | 'bybit';
+type Source = 'manual' | 'import' | 'monobank' | 'bybit' | 'binance' | 'btc_wallet';
 
 const run = (statement: string, ...parameters: Parameter[]): void => {
   mockDatabase.prepare(statement).run(...parameters);
@@ -94,7 +94,7 @@ const upsertOf = (field: SyncedMetadataField, key: string) =>
           type: 'crypto_asset',
           currency: 'BTC',
           balanceMinorUnits: BALANCE_MINOR_UNITS,
-          metadata: { syncedAt: READ_AT },
+          metadata: { syncedAt: READ_AT, balanceReadAt: READ_AT },
           metadataField: field,
           metadataKey: key,
         },
@@ -223,17 +223,77 @@ describe('holdingsRepo.upsertExchangeMany on a Bybit holding', () => {
   });
 });
 
-describe('a holding that is not Bybit', () => {
-  it.each([
-    ['Binance', 'binanceAsset', 'BTC'],
-    ['a wallet', 'walletAddress', 'bc1q'],
-    ['Monobank', 'monobankId', 'card-1'],
-  ] as const)('%s makes no read of the rows and gets no new key', async (_, field, key) => {
-    seedHolding('h-kind', { [field]: key, syncedAt: 1_000 });
+describe('holdingsRepo.upsertExchangeMany on a Binance or a wallet holding', () => {
+  const DATED = [
+    ['Binance', 'binanceAsset', 'BTC', 'binance'],
+    ['wallet', 'walletAddress', 'bc1q', 'btc_wallet'],
+  ] as const;
+
+  const seedDated = (field: SyncedMetadataField, key: string): void => {
+    seedHolding(HOLDING_ID, { [field]: key, syncedAt: 1_000, balanceReadAt: 1_000 });
+  };
+
+  it.each(DATED)('a read marks every row that is not a %s row', async (_, field, key, source) => {
+    seedDated(field, key);
+    seedHolding('h-other', { [field]: `${key}-other` });
+    seedRow('row-c', 'manual');
+    seedRow('row-a', 'import');
+    seedRow('row-b', 'monobank');
+    seedRow('row-d', source);
+    seedRow('row-other', 'manual', 'h-other');
+
+    await upsertOf(field, key);
+
+    expect(metadataBy(field, key)).toEqual({
+      [field]: key,
+      syncedAt: READ_AT,
+      balanceReadAt: READ_AT,
+      overwrittenRowIds: ['row-a', 'row-b', 'row-c'],
+    });
+    expect(holdingBy(field, key).balance).toBe(BALANCE_MINOR_UNITS);
+  });
+
+  it.each(DATED)(
+    'a read of an existing %s holding sends one statement on the ledger table',
+    async (_, field, key) => {
+      seedDated(field, key);
+      seedRow('row-typed', 'manual');
+
+      expect(await statementsOnLedgerDuring(() => upsertOf(field, key))).toHaveLength(1);
+    },
+  );
+
+  it.each(DATED)(
+    'a %s holding of 100,000 typed rows takes all of them in one list',
+    async (_, field, key) => {
+      seedDated(field, key);
+      run(
+        `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source)
+         WITH RECURSIVE counter(value) AS (
+           SELECT 1 UNION ALL SELECT value + 1 FROM counter WHERE value < ${LEDGER_SIZE}
+         )
+         SELECT printf('row-%06d', value), ?, 10, 1000, 'manual' FROM counter`,
+        HOLDING_ID,
+      );
+
+      await upsertOf(field, key);
+
+      const { overwrittenRowIds } = metadataBy(field, key) as { overwrittenRowIds: string[] };
+
+      expect(overwrittenRowIds).toHaveLength(LEDGER_SIZE);
+      expect(overwrittenRowIds.at(0)).toBe('row-000001');
+      expect(overwrittenRowIds.at(-1)).toBe('row-100000');
+    },
+  );
+});
+
+describe('a holding that is not Bybit, Binance or a wallet', () => {
+  it('Monobank makes no read of the rows and gets no new key', async () => {
+    seedHolding('h-kind', { monobankId: 'card-1', syncedAt: 1_000 });
     seedRow('row-typed', 'manual', 'h-kind');
 
-    expect(await statementsOnLedgerDuring(() => upsertOf(field, key))).toEqual([]);
-    expect(metadataBy(field, key)).toEqual({ [field]: key, syncedAt: READ_AT });
-    expect(holdingBy(field, key).balance).toBe(BALANCE_MINOR_UNITS);
+    expect(await statementsOnLedgerDuring(() => upsertOf('monobankId', 'card-1'))).toEqual([]);
+    expect(metadataBy('monobankId', 'card-1')).toEqual({ monobankId: 'card-1', syncedAt: READ_AT });
+    expect(holdingBy('monobankId', 'card-1').balance).toBe(BALANCE_MINOR_UNITS);
   });
 });
