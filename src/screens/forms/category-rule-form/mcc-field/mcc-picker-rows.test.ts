@@ -1,4 +1,4 @@
-import { mccNameOf } from '@kiko/categories/mcc-names';
+import { MCC_NAMES, mccNameOf } from '@kiko/categories/mcc-names';
 
 type MccEntry = { code: string; name: string | undefined };
 
@@ -42,6 +42,9 @@ const allRow = (code: string, name: string | undefined): MccPickerRow => ({
 });
 
 const nameOf = (code: string, language: string): string | undefined => mccNameOf(code, language);
+
+const everyCodeRows = (language: string): MccPickerRow[] =>
+  MCC_NAMES.map(({ code }) => allRow(code, nameOf(code, language)));
 
 describe('matchesMccQuery', () => {
   it('a digits-only query matches codes that start with it', () => {
@@ -96,23 +99,20 @@ describe('mccPickerRows', () => {
         { mcc: 5411, rowCount: 3 },
       ],
       ownLoading: false,
-      query: '5',
+      query: '',
       language: 'en',
     });
+    const codes = MCC_NAMES.map(({ code }) => code);
 
-    expect(rows.slice(0, 5)).toEqual([
+    expect(codes).toEqual([...codes].sort());
+    expect(rows).toEqual([
       { type: 'other' },
       { type: 'heading', section: 'own' },
       { type: 'code', section: 'own', code: '5812', name: nameOf('5812', 'en'), rowCount: 9 },
       { type: 'code', section: 'own', code: '5411', name: nameOf('5411', 'en'), rowCount: 3 },
       { type: 'heading', section: 'all' },
+      ...everyCodeRows('en'),
     ]);
-
-    const allCodes = rows.slice(5).map((row) => (row.type === 'code' ? row.code : row.type));
-
-    expect(allCodes.length).toBeGreaterThan(100);
-    expect(allCodes).toEqual([...allCodes].sort());
-    expect(rows.slice(5).every((row) => row.type === 'code' && row.section === 'all')).toBe(true);
   });
 
   it('gives an own code its count and an unlisted own code no name', () => {
@@ -146,26 +146,22 @@ describe('mccPickerRows', () => {
   });
 
   it('shows the own heading and the empty row when the read landed with no codes', () => {
-    const rows = mccPickerRows({ own: [], ownLoading: false, query: '', language: 'en' });
-
-    expect(rows.slice(0, 4)).toEqual([
+    expect(mccPickerRows({ own: [], ownLoading: false, query: '', language: 'en' })).toEqual([
       { type: 'other' },
       { type: 'heading', section: 'own' },
       { type: 'ownEmpty' },
       { type: 'heading', section: 'all' },
+      ...everyCodeRows('en'),
     ]);
-    expect(rows[4]).toEqual(expect.objectContaining({ type: 'code', section: 'all' }));
   });
 
   it('shows the own heading alone while the read is loading', () => {
-    const rows = mccPickerRows({ own: [], ownLoading: true, query: '', language: 'en' });
-
-    expect(rows.slice(0, 3)).toEqual([
+    expect(mccPickerRows({ own: [], ownLoading: true, query: '', language: 'en' })).toEqual([
       { type: 'other' },
       { type: 'heading', section: 'own' },
       { type: 'heading', section: 'all' },
+      ...everyCodeRows('en'),
     ]);
-    expect(rows.some((row) => row.type === 'ownEmpty')).toBe(false);
   });
 
   it('drops a section and its heading when the query empties it, and keeps Other', () => {
