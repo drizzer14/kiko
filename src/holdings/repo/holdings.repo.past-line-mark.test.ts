@@ -288,16 +288,17 @@ describe('holdingsRepo.upsertExchangeMany on a Binance or a wallet holding', () 
   });
 
   it.each(DATED)(
-    'Q3, the first dated read of a shipped %s holding writes the date, no key and reads no row',
+    'Q3, the first dated read of a shipped %s holding writes the date and keeps the ids of its typed rows, with no mark',
     async (_, field, key) => {
       seedHolding(HOLDING_ID, { [field]: key, syncedAt: 1_000 });
       seedRow('row-typed', 'manual');
 
-      expect(await statementsOnLedgerDuring(() => upsertOf(field, key))).toEqual([]);
+      expect(await statementsOnLedgerDuring(() => upsertOf(field, key))).toHaveLength(1);
       expect(metadataBy(field, key)).toEqual({
         [field]: key,
         syncedAt: READ_AT,
         balanceReadAt: READ_AT,
+        keptRowIds: ['row-typed'],
       });
       expect(holdingBy(field, key).balance).toBe(BALANCE_MINOR_UNITS);
     },

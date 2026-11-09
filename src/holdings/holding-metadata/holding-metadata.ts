@@ -142,15 +142,26 @@ export const BALANCE_READ_AT_FIELD = 'balanceReadAt';
 
 /**
  * The ids of the rows that the last balance read overwrote, written beside the balance by a
- * provider on the dated list: every row of the holding that is not of the syncing source, except on
- * the first dated read of a holding that had no read time (see `datedBalances`). The
- * read's figure replaced the balance, so a row the user typed before that read has no part in it.
- * It is in neither `carriedMetadataKeys` nor the disconnect's stripped list: a carried key would
- * join the new read's list to the stored one, so the id of a row that is gone would never leave
- * it, and a stripped one would put a disconnected holding's typed rows back on its line.
+ * provider on the dated list: every row of the holding that is not of the syncing source, except
+ * the rows of a holding that had no read time at its first dated read, which stay on its kept list
+ * (`KEPT_ROW_IDS_FIELD`, see `datedBalances`). The read's figure replaced the balance, so a row the
+ * user typed before that read has no part in it. It is in neither `carriedMetadataKeys` nor the
+ * disconnect's stripped list: a carried key would join the new read's list to the stored one, so
+ * the id of a row that is gone would never leave it, and a stripped one would put a disconnected
+ * holding's typed rows back on its line.
  */
 export const OVERWRITTEN_ROW_IDS_FIELD = 'overwrittenRowIds';
 
+/**
+ * The ids of the rows that were on a holding when its first dated read came, that were not of the
+ * syncing source, and that still exist: the rows a user typed (or a `.kiko` file brought) before
+ * the read was dated. They keep counting on every later read, so a read lists only the rows off
+ * this list, and rewrites it to the ids that are still there. Written beside the date of that first
+ * read, by the upsert's update branch alone, and only for a provider whose entry counts its source
+ * rows before the first read (`countsSourceRowsBeforeFirstRead`); Bybit never writes or reads it.
+ * It is in neither `carriedMetadataKeys` nor the disconnect's stripped list, as the mark is, and
+ * it is plain JSON in a `.kiko` file.
+ */
 export const KEPT_ROW_IDS_FIELD = 'keptRowIds';
 
 // The two stored shapes a balance sync writes (see the spec's "Data model"):
@@ -246,23 +257,28 @@ export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
  */
 export const balanceReadAtOf = numberFieldOf(BALANCE_READ_AT_FIELD);
 
+const rowIdsFieldOf =
+  (field: string) =>
+  (metadata: unknown): string[] => {
+    if (!isRecord(metadata)) {
+      return [];
+    }
+
+    const rowIds = metadata[field];
+
+    return Array.isArray(rowIds)
+      ? rowIds.filter((rowId): rowId is string => typeof rowId === 'string')
+      : [];
+  };
+
 /**
  * The ids of the rows that the holding's balance overwrote: the strings of the stored list. A
  * value that is not a list, and an entry that is not text, read as nothing.
  */
-export const overwrittenRowIdsOf = (metadata: unknown): string[] => {
-  if (!isRecord(metadata)) {
-    return [];
-  }
+export const overwrittenRowIdsOf = rowIdsFieldOf(OVERWRITTEN_ROW_IDS_FIELD);
 
-  const rowIds = metadata[OVERWRITTEN_ROW_IDS_FIELD];
-
-  return Array.isArray(rowIds)
-    ? rowIds.filter((rowId): rowId is string => typeof rowId === 'string')
-    : [];
-};
-
-export const keptRowIdsOf = (_metadata: unknown): string[] => [];
+/** The ids of the rows kept off the mark (see `KEPT_ROW_IDS_FIELD`), read as the mark's are. */
+export const keptRowIdsOf = rowIdsFieldOf(KEPT_ROW_IDS_FIELD);
 
 /**
  * One provider of the dated list: the `source` of the ledger rows that its balance holds, and
@@ -271,8 +287,9 @@ export const keptRowIdsOf = (_metadata: unknown): string[] => [];
  * counts no row of its source and opens at its stored balance, and the others counted every row
  * before the read was dated, so they keep counting them until their first dated read, and no
  * undated holding shows a line worse than it did. The first dated read marks no row of such a
- * holding, so its old typed rows keep counting through it; the second read lists them as it does
- * every row that is not of the source, and from then on a line can differ from what it was.
+ * holding: it keeps the ids of its rows that are not of the source on a kept list, and every later
+ * read marks only the rows off that list, so the rows typed before the update keep counting for
+ * good and the line differs from what it was by the rows typed after it alone.
  */
 type DatedBalance = {
   field: SyncedMetadataField;
@@ -285,8 +302,9 @@ type DatedBalance = {
  * holding the net-worth valuer dates: a provider that starts to write `BALANCE_READ_AT_FIELD` is
  * listed here and nowhere else, because the sync reads its write from `datesBalanceOf`, and the
  * valuer reads its entry from `datedBalanceOf`. The upsert of a holding on this list writes the
- * list of overwritten row ids as well, and no other holding gets that read or that key. Monobank
- * is not on it: its sync writes no read time.
+ * list of overwritten row ids (and the kept list, for an entry that counts its source rows before
+ * the first read) as well, and no other holding gets that read or those keys. Monobank is not on
+ * it: its sync writes no read time.
  */
 const datedBalances: readonly DatedBalance[] = [
   { field: 'bybitAsset', source: 'bybit', countsSourceRowsBeforeFirstRead: false },

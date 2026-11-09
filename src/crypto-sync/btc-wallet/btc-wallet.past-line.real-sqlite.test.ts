@@ -185,6 +185,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
       walletAddress: ADDRESS,
       syncedAt: at(2, 10),
       balanceReadAt: at(2, 10),
+      keptRowIds: ['typed-row'],
     });
     expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
   });

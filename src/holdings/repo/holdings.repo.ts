@@ -40,8 +40,10 @@ import {
   SYNC_CLOSED_FROM_FIELD,
   DEFAULT_NAME_RENAME_FIELD,
   OVERWRITTEN_ROW_IDS_FIELD,
+  KEPT_ROW_IDS_FIELD,
   datedBalanceOf,
   balanceReadAtOf,
+  keptRowIdsOf,
   isDefaultNameRenameSettled,
   withCarriedMetadataKeys,
 } from '../holding-metadata';
@@ -185,6 +187,9 @@ const insertSyncedHolding = async (
     .values({ id: id(), ...rest, metadata: merged, sortOrder });
 };
 
+const rowIdsPatch = (field: string, rowIds: string[]): Record<string, string[]> =>
+  rowIds.length === 0 ? {} : { [field]: rowIds };
+
 // The mark of a read on a dated balance (`datedBalanceOf`): the ids of the holding's rows
 // that are not of the syncing source, read in the upsert's own transaction, so the list and the
 // balance it describes are written together. The read's figure replaces the balance, so a row the
@@ -192,9 +197,11 @@ const insertSyncedHolding = async (
 // the dated list returns before any read, and a read with no such row returns no key.
 // The first dated read of a holding that shipped with no read date writes the date and no mark
 // (Q3 of the 1.4 track, the coordinator): its rows are old history that the user typed or
-// restored before the read existed, and they keep counting as they did, so the fix covers the
-// rows typed after the update. A provider whose entry does not count its rows before the first
-// read (Bybit) never shipped one, so it marks at once.
+// restored before the read existed, and they keep counting as they did. It writes their ids as the
+// kept list instead, and every later read marks only the rows off that list and rewrites it to the
+// ids still there, so the old rows keep counting for good and the fix covers the rows typed after
+// the update. A provider whose entry does not count its rows before the first read (Bybit) never
+// shipped an undated holding, so it marks every row at once and never reads or writes the list.
 const overwrittenRowsPatch = async (
   databaseTransaction: typeof database,
   holdingId: string,
@@ -203,10 +210,7 @@ const overwrittenRowsPatch = async (
 ): Promise<Record<string, string[]>> => {
   const dated = datedBalanceOf(merged);
 
-  if (
-    dated === undefined ||
-    (dated.countsSourceRowsBeforeFirstRead && balanceReadAtOf(storedMetadata) === null)
-  ) {
+  if (dated === undefined) {
     return {};
   }
 
@@ -215,8 +219,28 @@ const overwrittenRowsPatch = async (
     .from(transactions)
     .where(and(eq(transactions.holdingId, holdingId), ne(transactions.source, dated.source)))
     .orderBy(asc(transactions.id));
+  const rowIds = rows.map((row) => row.id);
 
-  return rows.length === 0 ? {} : { [OVERWRITTEN_ROW_IDS_FIELD]: rows.map((row) => row.id) };
+  if (!dated.countsSourceRowsBeforeFirstRead) {
+    return rowIdsPatch(OVERWRITTEN_ROW_IDS_FIELD, rowIds);
+  }
+
+  if (balanceReadAtOf(storedMetadata) === null) {
+    return rowIdsPatch(KEPT_ROW_IDS_FIELD, rowIds);
+  }
+
+  const kept = new Set(keptRowIdsOf(storedMetadata));
+
+  return {
+    ...rowIdsPatch(
+      OVERWRITTEN_ROW_IDS_FIELD,
+      rowIds.filter((rowId) => !kept.has(rowId)),
+    ),
+    ...rowIdsPatch(
+      KEPT_ROW_IDS_FIELD,
+      rowIds.filter((rowId) => kept.has(rowId)),
+    ),
+  };
 };
 
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
@@ -252,9 +276,9 @@ const overwrittenRowsPatch = async (
 // reads them, so it never revives a row.
 //
 // The update branch of a holding on the dated list (`datedBalances`) also replaces the list of
-// overwritten row ids (`overwrittenRowsPatch`), never joins it to the stored one. A holding off
-// that list reads no row and gets no key. A new holding has no row, so the insert branch writes
-// none either.
+// overwritten row ids, and the kept list of an entry that counts its source rows before the first
+// read (`overwrittenRowsPatch`), never joins either to the stored one. A holding off that list
+// reads no row and gets no key. A new holding has no row, so the insert branch writes none either.
 //
 // The known limit (a holding closed before the mark existed stays closed) is
 // stated on `reconcileClosedHoldings` in the Monobank sync.
