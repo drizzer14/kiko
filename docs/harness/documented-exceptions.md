@@ -1288,6 +1288,11 @@ verified usage, not dead weight:
     inset goes back to 0 only for a marked parent, when the stack's value goes to 0 or it leaves
     the parent, and only if no other stack of that parent still has a value above 0. A re-derived
     patch must keep it.
+    On iOS 27.2 `RNSInlineStackedPaneLargeTitle` sets the leading split pane's large title to
+    Inline when the measured layout stacks it under an empty bar row (a pane narrower than the
+    window, a title view over 0.5 pt tall and at least 0.5 pt below the bar's top, mode Always),
+    so it shares the bar row as in 27.1; it is inert otherwise, and the drop rule is in
+    `docs/harness/dependency-hygiene.md`.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or
