@@ -434,7 +434,9 @@ describe('the notes of a Bybit account', () => {
 
 describe('the kinds line of a Bybit account', () => {
   it('states what Kiko reads and what it leaves out, with what stays wrong', async () => {
-    const { getByText } = await renderState('bybit', { walks: {} });
+    const { getByText, getByTestId } = await renderState('bybit', { walks: {} });
+
+    await fireEvent.press(getByTestId('bybit-kinds-toggle'));
 
     expect(getByText(i18n.t('accountDetail.bybitKinds'))).toBeTruthy();
     expect(i18n.t('accountDetail.bybitKinds')).toContain('It does not read P2P orders');
@@ -442,26 +444,28 @@ describe('the kinds line of a Bybit account', () => {
   });
 
   it('shows on a state this build cannot read, since it states no stored fact', async () => {
-    const { getByText } = await renderState('bybit', '{not json');
+    const { getByText, getByTestId } = await renderState('bybit', '{not json');
+
+    await fireEvent.press(getByTestId('bybit-kinds-toggle'));
 
     expect(getByText(i18n.t('accountDetail.bybitKinds'))).toBeTruthy();
   });
 
-  it('holds the long text to its first lines until the toggle is tapped, and back on a second tap', async () => {
-    const { getByText, getByTestId } = await renderState('bybit', { walks: {} });
+  it('hides the long text until the toggle is tapped, and again on a second tap', async () => {
+    const { getByText, getByTestId, queryByText } = await renderState('bybit', { walks: {} });
     const kinds = i18n.t('accountDetail.bybitKinds');
 
-    expect(getByText(kinds).props.numberOfLines).toBe(3);
+    expect(queryByText(kinds)).toBeNull();
     expect(getByText(i18n.t('components.expandToggle.showAll'))).toBeTruthy();
 
     await fireEvent.press(getByTestId('bybit-kinds-toggle'));
 
-    expect(getByText(kinds).props.numberOfLines).toBeUndefined();
+    expect(getByText(kinds)).toBeTruthy();
     expect(getByText(i18n.t('components.expandToggle.showLess'))).toBeTruthy();
 
     await fireEvent.press(getByTestId('bybit-kinds-toggle'));
 
-    expect(getByText(kinds).props.numberOfLines).toBe(3);
+    expect(queryByText(kinds)).toBeNull();
   });
 
   it('gives a Binance account no toggle, since it has no such text', async () => {

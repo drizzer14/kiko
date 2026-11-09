@@ -1,9 +1,9 @@
-import type { FC } from 'react';
 import {
   bybitKeyRefusalOf,
   isBybitCoolingDown,
   saveBybitCredentials,
 } from '@kiko/crypto-sync/bybit';
+import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BYBIT_API_MANAGEMENT_URL } from '@env';
 import { isBybitSyncRunning } from '@kiko/crypto-sync/run-crypto-sync';
@@ -12,6 +12,7 @@ import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
 import Text from '../text';
+import ExpandToggle from '../expand-toggle';
 import ExchangeKeyForm from '../exchange-key-form';
 
 type BybitCredentialsFieldProps = {
@@ -60,6 +61,7 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
   connectError,
 }) => {
   const { t } = useTranslation();
+  const [introExpanded, setIntroExpanded] = useState(false);
 
   return (
     <Box gap={3}>
@@ -88,15 +90,25 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
         }
         save={saveBybitCredentials}
         intro={
-          <>
-            <Text variant="caption" tone="textSecondary">
-              {t('accountDetail.bybitConnectLimits')}
-            </Text>
+          <Box gap={1}>
+            <ExpandToggle
+              expanded={introExpanded}
+              onPress={() => setIntroExpanded((isExpanded) => !isExpanded)}
+              testID="bybit-intro-toggle"
+            />
 
-            <Text variant="caption" tone="textSecondary">
-              {t('accountDetail.bybitKinds')}
-            </Text>
-          </>
+            {introExpanded && (
+              <>
+                <Text variant="caption" tone="textSecondary">
+                  {t('accountDetail.bybitConnectLimits')}
+                </Text>
+
+                <Text variant="caption" tone="textSecondary">
+                  {t('accountDetail.bybitKinds')}
+                </Text>
+              </>
+            )}
+          </Box>
         }
       />
 

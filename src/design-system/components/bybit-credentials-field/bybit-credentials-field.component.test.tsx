@@ -151,6 +151,9 @@ describe('BybitCredentialsField', () => {
 
   it('states the limits of the connection and what Kiko reads above the inputs', async () => {
     const view = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
+
+    await fireEvent.press(view.getByTestId('bybit-intro-toggle'));
+
     const tree = JSON.stringify(view.toJSON());
     const at = (text: string): number => tree.indexOf(JSON.stringify(text).slice(1, -1));
 
@@ -158,6 +161,29 @@ describe('BybitCredentialsField', () => {
     expect(at(i18n.t('accountDetail.bybitKinds'))).toBeGreaterThan(-1);
     expect(at(i18n.t('accountDetail.bybitConnectLimits'))).toBeLessThan(at('Bybit API key'));
     expect(at(i18n.t('accountDetail.bybitKinds'))).toBeLessThan(at('Bybit API key'));
+  });
+
+  it('hides the limits and the kinds until the toggle is tapped, and again on a second tap', async () => {
+    const { getByText, getByTestId, queryByText } = await render(
+      <BybitCredentialsField accountId="acc-1" onConnect={onConnect} />,
+    );
+    const limits = i18n.t('accountDetail.bybitConnectLimits');
+    const kinds = i18n.t('accountDetail.bybitKinds');
+
+    expect(queryByText(limits)).toBeNull();
+    expect(queryByText(kinds)).toBeNull();
+    expect(getByTestId('bybit-intro-toggle')).toBeTruthy();
+    expect(getByText(i18n.t('accountDetail.bybitKeychainDisclosure'))).toBeTruthy();
+
+    await fireEvent.press(getByTestId('bybit-intro-toggle'));
+
+    expect(getByText(limits)).toBeTruthy();
+    expect(getByText(kinds)).toBeTruthy();
+
+    await fireEvent.press(getByTestId('bybit-intro-toggle'));
+
+    expect(queryByText(limits)).toBeNull();
+    expect(queryByText(kinds)).toBeNull();
   });
 
   it('shows the text of a failed Connect that it is given, in the negative tone, and none otherwise', async () => {
