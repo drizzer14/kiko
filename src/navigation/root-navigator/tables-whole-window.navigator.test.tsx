@@ -240,7 +240,7 @@ describe('Tables is in a layer over both panes', () => {
     // The layer tells its screens they are in no pane, so Tables reads as the single stack's: the
     // header owns the top inset, the other edges are the window's, and the table starts at the
     // bar's own inset with no top-bar pill.
-    it('lays Tables out as the window under its header: no top edge, no top padding of its own', async () => {
+    it('lays Tables out as the window under its header: no top edge, a gap under the bar as Statistics has', async () => {
       const rendered = await renderRoot();
 
       await pressTables(rendered);
@@ -253,7 +253,9 @@ describe('Tables is in a layer over both panes', () => {
         bottom: 'additive',
         left: 'additive',
       });
-      expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingTop).toBeUndefined();
+      expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingTop).toBe(
+        darkTheme.spacing(4),
+      );
     });
 
     it('keeps the Statistics beside Home mounted, with no route made for it', async () => {
@@ -510,7 +512,7 @@ describe('Tables is in a layer over both panes', () => {
   });
 
   describe('with one pane', () => {
-    it('has no panes and no layer, and Tables is not capped at the pane max width on a regular window', async () => {
+    it('has no panes and no layer on a regular window', async () => {
       layout.mode = 'single';
       reportWindow('regular', 669, 951);
       const rendered = await renderRoot();
@@ -518,17 +520,9 @@ describe('Tables is in a layer over both panes', () => {
       await goToTab('StatisticsTab');
       await pressTables(rendered);
 
-      const scroll = tablesScroll(rendered);
-
       expect(allOf(rendered, PRIMARY)).toHaveLength(0);
       expect(allOf(rendered, LAYER)).toHaveLength(0);
       expect(namesOf('StatisticsTab')).toEqual(['Statistics', 'Tables']);
-      expect(
-        [scroll.parent?.props.style, scroll.props.style, scroll.props.contentContainerStyle].map(
-          (style) => StyleSheet.flatten(style)?.maxWidth,
-        ),
-      ).toEqual([undefined, undefined, undefined]);
-      expect(darkTheme.layout.paneMaxWidth).toBeLessThan(669);
     });
 
     it('shows Home and Statistics as they were, with no panes', async () => {

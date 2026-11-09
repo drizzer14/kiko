@@ -192,12 +192,48 @@ describe('DataTable with a bar inset', () => {
       ).toBe(SIDE_MARGIN);
     });
 
+    it('starts a gap below the bar, as Statistics does, so the large title and the first control do not touch', async () => {
+      const rendered = await renderTable({ barInset: new Animated.Value(100) });
+
+      expect(
+        StyleSheet.flatten(rendered.getByTestId(ROOT).props.contentContainerStyle).paddingTop,
+      ).toBe(darkTheme.spacing(4));
+    });
+
+    it('keeps the header flush under the bar when that gap moves it down', async () => {
+      const barInset = new Animated.Value(100);
+      const eventSpy = jest.spyOn(Animated, 'event');
+      const rendered = await renderTable({ barInset });
+      const mapping = eventSpy.mock.calls[0][0] as unknown as {
+        nativeEvent: { contentOffset: { y: Animated.Value } };
+      }[];
+      const header = () =>
+        rendered.getByTestId(`${PREFIX}-header-shift`, { includeHiddenElements: true });
+      await fireEvent(header(), 'layout', layoutEvent(300, 300 + darkTheme.spacing(4)));
+      await act(async () => mapping[0].nativeEvent.contentOffset.y.setValue(230));
+      await rendered.rerender(<DataTable {...baseProps} barInset={barInset} />);
+
+      const [{ translateY }] = flat(header()).transform as { translateY: number }[];
+
+      expect(translateY).toBe(230 + 100 - (300 + darkTheme.spacing(4)));
+    });
+
     it('clears the tab bar by the automatic-inset clearance and the end gap', async () => {
       const rendered = await renderTable({ barInset: new Animated.Value(100) });
 
       expect(
         StyleSheet.flatten(rendered.getByTestId(ROOT).props.contentContainerStyle).paddingBottom,
       ).toBe(mockClearance.automatic + darkTheme.spacing(4));
+    });
+  });
+
+  describe('the scroll content without a bar inset', () => {
+    it('takes no top padding of its own', async () => {
+      const rendered = await renderTable();
+
+      expect(
+        StyleSheet.flatten(rendered.getByTestId(ROOT).props.contentContainerStyle).paddingTop,
+      ).toBeUndefined();
     });
   });
 

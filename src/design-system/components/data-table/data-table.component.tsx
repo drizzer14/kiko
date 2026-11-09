@@ -370,6 +370,7 @@ const DataTable: FC<DataTableProps> = ({
         hasBarInset
           ? {
               paddingHorizontal: sideMargin,
+              paddingTop: theme.spacing(4),
               paddingBottom: bottomClearance + theme.spacing(4),
             }
           : styles.scrollContent

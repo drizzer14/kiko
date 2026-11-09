@@ -305,7 +305,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   return (
     // The table is the safe-area view's own child, so it is the scroll the large title collapses
     // with, and it pads its own sides and clears the tab bar.
-    <Screen bleedTop uncapped>
+    <Screen bleedTop>
       {match(view)
         .with('categories', () => (
           <CategoryTable

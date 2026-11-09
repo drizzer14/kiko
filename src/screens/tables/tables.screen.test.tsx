@@ -326,30 +326,10 @@ describe('TablesScreen', () => {
       ).toBe(darkTheme.layout.paneMaxWidth);
     });
 
-    it('is not capped while the table shows', async () => {
-      expect(maxWidthsAround(await renderTables(), 'category-table')).toEqual([
-        undefined,
-        undefined,
-        undefined,
-      ]);
-    });
-
     it('is not capped while the data loads', async () => {
       mockUseLiveQuery.mockImplementation(() => ({ data: [], isLoading: true, isFresh: false }));
 
       expect(maxWidthsAround(await renderTables(), 'screen-scroll-view')).toEqual([
-        undefined,
-        undefined,
-        undefined,
-      ]);
-    });
-
-    it('is not capped in the empty state', async () => {
-      mockUseLiveQuery.mockImplementation(
-        answerWith((tables) => (tables[0] === 'transactions' ? [] : undefined)),
-      );
-
-      expect(maxWidthsAround(await renderTables(), 'category-table')).toEqual([
         undefined,
         undefined,
         undefined,
