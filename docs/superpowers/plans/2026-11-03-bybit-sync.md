@@ -634,7 +634,7 @@ surface's copy against spec section 8, help pins, the policy text against spec s
 that offers Kiko in place of the Bybit app) and C3 (no price, ad, IAP, tip or sponsor), both by judgment; kiko:translator on
 every new key.
 
-- [ ] **step 1/6: credentials field.** Extract `ExchangeKeyForm` from `binance-credentials-field`, Binance's suite unchanged;
+- [x] **step 1/6: credentials field.** Extract `ExchangeKeyForm` from `binance-credentials-field`, Binance's suite unchanged;
   new `bybit-credentials-field` over it, verifying through `fetchKeyInfo` and one real read of each shipped route, 10 calls (F8, O64, O65, O75; was: 11 with one Earn category, 12 with both); `bybitKeyMissingPermission` has no `{{kind}}` (F18); refusals in the order of spec section 6.8 (O13, PLANNER CALL 25), all before any Keychain write; `bybitConnectLimits` and `bybitKinds` before the
   inputs; `BYBIT_API_MANAGEMENT_URL` = https://www.bybit.com/en/app/user/api-management in the env files, and `www.bybit.com` in `scripts/privacy-site.js` `NON_REQUEST_HOSTS`
   in this same step. Rows A12, A13, A32, A33, A54 (C3: the exact URL). `bybitConnectLimits` and `bybitKeyRejected` carry the C1
@@ -645,7 +645,7 @@ every new key.
     - Text: `accountDetail.bybitKeyOtherAccount`, the words that the user's review of `.superpowers/sdd/1.4-bybit/texts-for-review-o93.md` returns; en and uk in this step; `kiko:translator` reads it, as every new key.
     - Pins that change, naming O93, with each listed in the commit body: `bybit.client.reads.test.ts` (the `userID` row of its sample now reads `userId`); each pin of `exchangeStateReset` that says walks only, and any exact state in `disconnect.real-sqlite.test.ts` on a Bybit world that seeds the value. Pins that stay green unchanged: A31 ("lets no identity field of the key reach the state or the holdings": the sentinel is not in the value, and no raw id is stored), A33, A32's count, Binance's reset pins (no such field), the `okAnswer({})` key reads of set 11's suites (no `userID`, so no patch). A sentinel test must read the raw id out of the whole state, so it cannot pass by a chance match on hex digits: the sentinel stays a non-hex text.
     - Rows A143 to A146. New `src/crypto-sync/bybit/bybit.other-account-key.real-sqlite.test.ts` for row 35. Check: `npx jest` with `--maxWorkers=2` on `src/crypto-sync/bybit/`, `src/crypto-sync/exchange/walk-state/`, `src/crypto-sync/disconnect/`, `src/design-system/components/bybit-credentials-field/`, `src/screens/account-detail/crypto-sync-section/`, `src/data-transfer/snapshot/restore-past-line-mark.test.ts`.
-- [ ] **step 2/6: wiring.** `exchange-catalog.ts` id and row before `other`, `exchange/registry/registry.ts` entry with
+- [x] **step 2/6: wiring.** `exchange-catalog.ts` id and row before `other`, `exchange/registry/registry.ts` entry with
   `notListedKey`; an optional registry field that `ExchangeHistoryFooter` reads for `earlierHistory`, set on Binance only, so its line stays byte-identical (PLANNER CALL 27, A59); `crypto-sync-form.component.tsx` arm, `crypto-sync-section.component.tsx` connect callback,
   `account-form.screen.tsx` and `use-connect-reminder.ts` per-provider props, `clearPairIfRowMissing` for Bybit. Re-pin
   `exchange-catalog.test.ts`, `registry.test.ts`, `crypto-sync-section.component.connect.test.tsx`, naming O9. Row A43,
@@ -653,12 +653,12 @@ every new key.
   C1 text, and clauses F2, F3 and "older than two years". `statistics.bybitPastLimits`, clause L1S with the sentence of O85 (PLANNER CALL 69; was: L1 word for word; then L1S with no such sentence): a registry field beside the `earlierHistory` one; `netWorthCard` in `statistics.screen.tsx` shows the line under `NetWorthLine` when `filtered.filteredAccounts` holds a provider with that field, caption tone, theme tokens only (PLANNER CALL 45, F14). Row A78. Grep `en.casing-by-role` and uk first. Owed from the set 4 review: a component test of a Bybit pick through the switch gate (`pick: string` stays until the catalog holds Bybit, so the test cannot run before this step).
   Owed from the set 4 last round: the create form must show the provider's refusal text on a failed first Connect. Today `account-form.screen.tsx:433` takes only `sync` from `useCryptoSync`, so the `error` from `use-sync.ts:66` is lost, and `binance-credentials-field.component.tsx:137-141` shows only the generic `couldNotConnectBinance`. A Bybit field built on that pattern would hide `bybitForbidden`, `bybitComplianceRefused`, `bybitKeyRefused` and the other refusal texts, which `bybit.failure-text.ts` writes for the user. Row A127: a test over the real Bybit provider, with a refusal answered by the client, shows that refusal's text in the create form, and not the generic text. Binance's own form has the same gap. Another track owns Binance, so this step does not change it.
   PLANNER CALL 148 (at 89d65c7e0): no code change. The field's status `couldNotConnectBybit` stays beside the refusal text, as on the detail screen; A127's "generic text" is `bybitRequestFailedNoCode`. Step 3/6 is unchanged.
-- [ ] **step 3/6: help and shipped copy.** Grep the help pins, `en.casing-by-role`, and uk first; in ONE step edit
+- [x] **step 3/6: help and shipped copy.** Grep the help pins, `en.casing-by-role`, and uk first; in ONE step edit
   `help-topics.ts` (a sixth step key), en, uk, `help-topics.test.ts` (count 6, step 3 still Binance). The keys of steps 4 and
   5 move: per harness-workflow "Removing or renaming a catalogue key", every dependent edit stays in this step. The step text
   ends with the shipped `bybitKinds` text, and it carries the C1 text. `bybit.shipped-copy.test.ts`, one row per kind set (O15).
   Clause "E2 and E4" lands here, in `bybitKinds`, the footer and the help step (O75, PLANNER CALL 85, `texts-for-review-o76.md`), with `BYBIT_PHRASES` in `en.casing-by-role.test.ts` re-read and changed in this same step as the `bybitKinds` edit. Rows A40, A51 (C1: the four surfaces, en and uk), A83 (clauses L1 and L1S, O64, O66, and the sentence of O85), A97 (F3 and L1, O65).
-- [ ] **step 4/6: the policy (O29, O24, O15, O34).** The block and the section 3 intro of spec section 9, with the variant
+- [x] **step 4/6: the policy (O29, O24, O15, O34).** The block and the section 3 intro of spec section 9, with the variant
   that fits the shipped kind set, in `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, site rebuilt under
   `docs/privacy-site/` (`npm run privacy:site -- build`); only the shipped paths in `BYBIT_SIGNED_PATHS` (O15);
   `bybit.privacy-policy.test.ts` on those paths. Effective date: bump it in this edit; the publish re-dates it to the
@@ -673,10 +673,10 @@ every new key.
   no Bybit logo in the store metadata. Check: the coordinator reads both texts and the store metadata against spec section 9; no
   app file changes.
 - [ ] **step 6/6: device check, user on device, one build (O75; was: two, PLANNER CALL 34; spec section 10).** The coordinator owns device builds. The coordinator merges current `next` into this tip first, so its journal holds every migration of `next` and none that `next` lacks (F3, PLANNER CALL 72), then this tip, `make deploy EXPECT=api.bybit.com`. The empty account with Last sync; the expiry line with 2027-02-04; each surface in section 6.4, `statistics.bybitPastLimits` too; connect in 10 calls; a wrong key; a read-write key; a key refused on a route (a narrow key, made and deleted by the user, optional); disconnect and reconnect; Binance still syncs; light and dark. Positive and negative pin checks of `docs/security/README.md`. Guard: A52 pins that no tracked env file, plist entry or source module names `api-testnet`. This check is "fundamentals done" (O44), the next device call for Bybit. It proves the connect path, the expiry, an empty read from a live answer and every stated limit. It does not prove a coin row, a set-aside line from a live answer, or any history row, which no build can show: those are the accepted residuals of spec section 10 (O64, O75, O76), and the report says that no coin row was seen. O73 does not block this build (O76). A defect in data, a stated limit or a condition blocks it. A visual wish does not block it: it goes to fast visual rounds after it, on this branch, before the batch merge. Pass: those rounds, then the batch merge. A stop here: sets 3 to 7, 9 and 10 stay out of `next`, and no removal row is needed, because the batch holds no migration: the table is already in `next`, so a phone's count never passes `next` (was: stated with the migration in set 10, which was false, F3).
-- [ ] **set 7 fix round: the whole-set review of 7582dc4ff (MINOR-3, MINOR-4; PLANNER CALLS 149 to 151).** One fresh
+- [x] **set 7 fix round: the whole-set review of 7582dc4ff (MINOR-3, MINOR-4; PLANNER CALLS 149 to 151).** One fresh
   kiko:developer. Base 7582dc4ff plus this planner commit. Re-grep every symbol and anchor on that base; counts are floors,
   measure them. Two commits, in this order. Not in the round: MINOR-1 (PLANNER CALL 150, backlog, Q-r), MINOR-2 (no code;
-  its spec row is a DRAFT for the user), the ponytail shrink (not a clear win, PLANNER CALL 151). Run
+  its spec row is now approved, O100; was: a DRAFT for the user), the ponytail shrink (not a clear win, PLANNER CALL 151). Run
   `bash scripts/wait-load.sh 15` before each heavy job.
   - **fix round 1/2: the Bybit policy label (MINOR-4).** Commit `1.4-bybit set 7/11 fix round (1/2): the Bybit policy
     label " — "`. Files: `src/crypto-sync/bybit/bybit.privacy-policy.test.ts`, `docs/privacy-policy.en.md`,
@@ -701,7 +701,7 @@ every new key.
     - Red first: in `bybit.shipped-copy.test.ts`, a pin "the Add an Account help names Bybit among the connect options,
       en and uk": `help.topics.addAccount.steps.4` holds "Bybit" and "Binance" in both languages, and equals the spec
       section 8 row (the DRAFT words). Red on the base.
-    - Fix: the words of the spec section 8 row, a DRAFT pending the user (PLANNER CALL 151):
+    - Fix: the words of the spec section 8 row, approved O100 (was: a DRAFT pending the user, PLANNER CALL 151):
       en "Optional: connect Monobank with a token, Binance or Bybit with an API key, or Bitcoin with a wallet address."
       uk «За бажанням підключіть Monobank за токеном, Binance чи Bybit за API-ключем або гаманець Bitcoin за адресою.»
       If the user returns other words, a later commit copies them into the row, the catalogue and the pin together.
@@ -722,9 +722,9 @@ every new key.
 
 Base: set 7 tip. Size: skill and agent text only. Reviewer: `make doc-suites`.
 
-- [ ] **step 1/2:** `kiko:retrospect` verifies `.claude/skills/`, `harness/kiko/skills/`, `harness/kiko/agents/` against the
+- [x] **step 1/2:** `kiko:retrospect` verifies `.claude/skills/`, `harness/kiko/skills/`, `harness/kiko/agents/` against the
   code.
-- [ ] **step 2/2:** `kiko:scribe` adds a "Bybit" section to `kiko-exchange-sync`, updates kiko-compliance, kiko-domain (registry)
+- [x] **step 2/2:** `kiko:scribe` adds a "Bybit" section to `kiko-exchange-sync`, updates kiko-compliance, kiko-domain (registry)
   and kiko-architecture (`.kiko` secrets), and commits. The report names the sha. In kiko-compliance, "Third-party trademarks":
   - A dated Bybit block like the Binance one (C7): the verdict of 2026-11-03 with its documents and dates, the clauses that
     matter (API 6.5, 6.7, 6.9, Global 40.4(e), EU 7.4), the pins, and standing items for C1 to C5, each with its test.
@@ -819,7 +819,7 @@ F6 (a state text that is not JSON, or a failed row query, shows "No holdings yet
 
 ### Backlog of set 7's whole-set review (7582dc4ff), at the next touch
 
-The closed-row write of PLANNER CALL 150 (Q-r default A; every provider's `upsertByMetadataKey`). A 403 at connect shows
+The closed-row write of PLANNER CALL 150 (Q-r ruled O100, option A; every provider's `upsertByMetadataKey`). A 403 at connect shows
 `bybitForbidden` ("waits up to 10 minutes"), but a connect sets no cooldown. A disconnected Bybit account keeps its past
 but shows no `bybitPastLimits` line. Split `account-form.screen.test.tsx` (4,269 lines).
 
