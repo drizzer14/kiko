@@ -17,7 +17,7 @@ index 9ae11c3..f16c51b 100644
  
  @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-index c233036..f02d676 100644
+index c233036..1cee57e 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
 @@ -3,6 +3,7 @@
@@ -28,7 +28,7 @@ index c233036..f02d676 100644
  #import <React/RCTSurfaceTouchHandler.h>
  #import <React/RCTSurfaceView.h>
  #import <React/UIView+React.h>
-@@ -38,7 +39,154 @@ namespace react = facebook::react;
+@@ -38,7 +39,208 @@ namespace react = facebook::react;
  
  @end
  
@@ -71,6 +71,60 @@ index c233036..f02d676 100644
 +// Set on a parent view controller while `syncParentSafeAreaTopInset` has written its additional
 +// top safe inset, so only this code's write is ever reset.
 +static char RNSParentSafeAreaTopInsetWrittenKey;
++
++#if !TARGET_OS_TV
++static UIView *RNSFindLargeTitleView(UIView *root, int depth)
++{
++  for (UIView *subview in root.subviews) {
++    if (strstr(object_getClassName(subview), "LargeTitle") != NULL) {
++      return subview;
++    }
++    UIView *nested = depth < 4 ? RNSFindLargeTitleView(subview, depth + 1) : nil;
++    if (nested != nil) {
++      return nested;
++    }
++  }
++  return nil;
++}
++#endif
++
++// iOS 27.2 draws the large title of the leading split pane in a separate row under an empty bar
++// row. Inline keeps it in the bar row, as in 27.1 and in the trailing pane. It acts on the measured
++// layout (a pane narrower than the window with a title row below the bar row), so it does nothing
++// if iOS stops stacking. A header config update writes Always back and the next layout pass applies
++// Inline once more.
++static void RNSInlineStackedPaneLargeTitle(RNSNavigationController *controller)
++{
++#if !TARGET_OS_TV
++  if (@available(iOS 27.2, *)) {
++    UIView *stackView = controller.view;
++    UIWindow *window = stackView.window;
++    UINavigationBar *bar = controller.navigationBar;
++    UINavigationItem *item = controller.topViewController.navigationItem;
++
++    if (window == nil || stackView.bounds.size.width >= window.bounds.size.width - 0.5) {
++      return;
++    }
++
++    UIView *largeTitleView = RNSFindLargeTitleView(bar, 0);
++    if (largeTitleView == nil) {
++      return;
++    }
++
++    CGRect largeTitleFrame = [largeTitleView.superview convertRect:largeTitleView.frame toView:bar];
++    if (largeTitleFrame.size.height <= 0.5 || largeTitleFrame.origin.y < 0.5) {
++      return;
++    }
++
++    if (item.largeTitleDisplayMode != UINavigationItemLargeTitleDisplayModeAlways) {
++      return;
++    }
++
++    item.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeInline;
++    [bar setNeedsLayout];
++  }
++#endif
++}
 +
 +@implementation RNSNavigationController {
 +  NSDirectionalEdgeInsets _viewMarginsBeforeFixedContentMargin;
@@ -184,16 +238,17 @@ index c233036..f02d676 100644
  
  #if !TARGET_OS_TV
  - (UIViewController *)childViewControllerForStatusBarStyle
-@@ -59,6 +207,8 @@ namespace react = facebook::react;
+@@ -59,6 +261,9 @@ namespace react = facebook::react;
  - (void)viewDidLayoutSubviews
  {
    [super viewDidLayoutSubviews];
 +  [self applyFixedContentMargin];
 +  [self syncParentSafeAreaTopInset];
++  RNSInlineStackedPaneLargeTitle(self);
    if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
      RNSScreen *screenController = (RNSScreen *)self.topViewController;
      BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -121,6 +271,9 @@ namespace react = facebook::react;
+@@ -121,6 +326,9 @@ namespace react = facebook::react;
  - (void)willMoveToParentViewController:(UIViewController *)parent
  {
    [super willMoveToParentViewController:parent];
@@ -203,7 +258,7 @@ index c233036..f02d676 100644
    if ([self.parentViewController isKindOfClass:RNSTabsScreenViewController.class]) {
      RNSTabsScreenViewController *previousParentTabsScreenVC =
          static_cast<RNSTabsScreenViewController *>(self.parentViewController);
-@@ -1279,6 +1432,9 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -1279,6 +1487,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
  
