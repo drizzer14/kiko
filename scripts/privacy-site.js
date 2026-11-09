@@ -27,6 +27,7 @@ const NON_REQUEST_HOSTS = [
   'www.w3.org',
   'developer.apple.com',
   'app.binance.com',
+  'www.bybit.com',
   'raw.githubusercontent.com',
   'drizzer14.github.io',
 ];

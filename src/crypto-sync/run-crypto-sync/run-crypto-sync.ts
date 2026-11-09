@@ -162,6 +162,9 @@ const inFlightBybitSyncs = new Map<string, Promise<BalanceSyncResult>>();
 export const isBinanceSyncRunning = (accountId: string): boolean =>
   inFlightBinanceSyncs.has(accountId);
 
+/** The Bybit counterpart of `isBinanceSyncRunning`: a Connect checks it for the same reason. */
+export const isBybitSyncRunning = (accountId: string): boolean => inFlightBybitSyncs.has(accountId);
+
 const joinedOrStarted = (
   inFlight: Map<string, Promise<BalanceSyncResult>>,
   targetAccountId: string,

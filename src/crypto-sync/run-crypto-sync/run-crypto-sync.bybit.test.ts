@@ -52,7 +52,7 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 
 import { bybitProvider, defaultBybitDeps } from '../bybit';
 
-import { runCryptoSync } from './run-crypto-sync';
+import { isBinanceSyncRunning, isBybitSyncRunning, runCryptoSync } from './run-crypto-sync';
 
 const lists = [
   { kind: 'coinList', coins: 'untrackedCoins', list: 'balance', tickers: ['PEPE'] },
@@ -304,6 +304,77 @@ describe('runCryptoSync for Bybit', () => {
     });
     expect(mockCreateBinanceHistoryRun).not.toHaveBeenCalled();
     expect(mockSyncBinanceTransactions).not.toHaveBeenCalled();
+  });
+
+  describe('isBybitSyncRunning', () => {
+    const heldBalanceRead = (): { resolve: () => void; reject: (error: Error) => void } => {
+      const held = { resolve: () => {}, reject: (_error: Error) => {} };
+      mockRunBalanceSync.mockReturnValueOnce(
+        new Promise((resolve, reject) => {
+          held.resolve = () => resolve({ syncedHoldings: 1 });
+          held.reject = reject;
+        }),
+      );
+
+      return held;
+    };
+
+    it('is false before any run of that account', () => {
+      expect(isBybitSyncRunning('acc-bybit-running-none')).toBe(false);
+    });
+
+    it('is true while that account run is in flight, and false for another account', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-bybit-running-1' });
+
+      expect(isBybitSyncRunning('acc-bybit-running-1')).toBe(true);
+      expect(isBybitSyncRunning('acc-bybit-running-other')).toBe(false);
+
+      held.resolve();
+      await run;
+    });
+
+    it('is false once the run resolves', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-bybit-running-2' });
+
+      held.resolve();
+      await run;
+
+      expect(isBybitSyncRunning('acc-bybit-running-2')).toBe(false);
+    });
+
+    it('is false once the run rejects', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-bybit-running-3' });
+
+      expect(isBybitSyncRunning('acc-bybit-running-3')).toBe(true);
+      held.reject(new Error('balance read failed'));
+
+      await expect(run).rejects.toThrow('balance read failed');
+      expect(isBybitSyncRunning('acc-bybit-running-3')).toBe(false);
+    });
+
+    it('counts no Binance run of that account id, and a Bybit run is no Binance run', async () => {
+      const held = heldBalanceRead();
+      const run = runCryptoSync({ providerId: 'bybit', targetAccountId: 'acc-bybit-running-4' });
+
+      expect(isBinanceSyncRunning('acc-bybit-running-4')).toBe(false);
+
+      held.resolve();
+      await run;
+
+      const heldBinance = heldBalanceRead();
+      const binanceRun = runCryptoSync({
+        providerId: 'binance',
+        targetAccountId: 'acc-bybit-running-5',
+      });
+
+      expect(isBybitSyncRunning('acc-bybit-running-5')).toBe(false);
+
+      heldBinance.resolve();
+      await binanceRun;
+    });
   });
 
   describe('the lists the read returned', () => {

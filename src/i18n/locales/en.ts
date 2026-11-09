@@ -872,6 +872,8 @@ export const en = {
     binanceSyncStillRunning: 'Kiko is still finishing the last Binance sync. Try again later.',
     blockExplorerRequestFailed: 'Block explorer request failed: {{status}}',
     btcAddressPlaceholder: 'BTC address',
+    bybitApiKeyPlaceholder: 'Bybit API key',
+    bybitApiSecretPlaceholder: 'Bybit API secret',
     bybitBalancesNotRead: {
       message:
         'Kiko could not read some balances on this Bybit account. The lines under Synchronization say which and why.',
@@ -887,6 +889,9 @@ export const en = {
       "{{coin}}: Kiko could not read this coin's amounts from Bybit, so it left the coin out. A balance shown here is from an earlier sync. With no earlier sync, this coin is not in your balance.",
     bybitComplianceRefused:
       'Bybit refused this request under its compliance rules (code 10024), so Kiko cannot read this account.',
+    bybitConnected: 'Bybit connected',
+    bybitConnectLimits:
+      'Kiko works only with global Bybit accounts (bybit.com). It does not support Bybit EU accounts, and an account of another regional Bybit site (Turkey, Kazakhstan and others) may not work here. On your main account, create a read-only key with every read box ticked and no IP restriction. Bybit ends such a key after about 90 days; you renew it on Bybit, and the key and secret stay the same.',
     bybitForbidden:
       'Bybit refused the connection: too many requests, or Bybit does not serve your current network location (for example the US or mainland China). Kiko waits before trying again, up to 10 minutes.',
     // English defines every plural form so both catalogues carry the same keys.
@@ -901,6 +906,8 @@ export const en = {
     bybitFundingNoId: 'Bybit gave some Funding moves no ID, so Kiko did not list them.',
     bybitHistoryDense:
       'Bybit lists too many records within one second on {{date}}. Kiko cannot read past them, so later trades or Funding moves stay out, and the past of your net worth can be off by those amounts.',
+    bybitKeychainDisclosure:
+      "Your Bybit API key is stored only in your device's Keychain, used only to fetch your own data directly from Bybit, and is never sent to Kiko or any server.",
     bybitKeyEnded:
       'Bybit key ended on {{date}}. Balances are as of the last sync. Try to renew it on Bybit: the key then stays the same, so there is nothing to enter here. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
     // English defines every plural form so both catalogues carry the same keys.
@@ -916,10 +923,16 @@ export const en = {
       'Kiko could not read when this Bybit key ends. A key with no IP restriction lasts about 90 days.',
     bybitKeyMissingPermission:
       'This key cannot read everything Kiko needs. Tick every read box Bybit offers for this key, or create a new read-only key with all of them, then connect again.',
+    bybitKeyNotMain:
+      'Bybit does not show this key as a main account key. Create a read-only key on your main Bybit account and connect with that one.',
+    bybitKeyNotReadOnly:
+      'This key can do more than read. Create a read-only key on Bybit and connect with that one.',
     bybitKeyRefused:
       'Bybit refused this key. If you deleted it, create a new key, then disconnect and connect again.',
     bybitKeyRefusedExpired:
       'Bybit no longer accepts this key. Its term of about 90 days may have ended. Try to renew it on Bybit: the key and secret then stay the same, so you do not enter them again. If Bybit offers no renewal, create a new key, then disconnect and connect again.',
+    bybitKeyRejected:
+      'Bybit did not accept this key. Check the key and the secret. Kiko works only with global Bybit accounts: it does not support Bybit EU accounts, and a key from another regional site may not be accepted here.',
     bybitKeyValidUntil: 'Bybit key ends on {{date}}.',
     // The first sentences are the kinds Kiko reads; the rest is what stays wrong.
     bybitKinds:
@@ -938,6 +951,7 @@ export const en = {
     bybitMissingBalances: 'Bybit account response did not contain a balances list',
     bybitRequestFailed: 'Bybit request failed: {{code}}',
     bybitRequestFailedNoCode: 'Bybit request failed.',
+    bybitSyncStillRunning: 'Kiko is still finishing the last Bybit sync. Try again later.',
     bybitWalletNotRead:
       'Kiko could not read {{wallet}} in the last sync, so it did not update that balance. A balance shown here is from an earlier sync. With no earlier sync, money there is not in your balance.',
     bybitWalletRefused:
@@ -956,6 +970,7 @@ export const en = {
       "It leaves your accounts and stops counting against your net worth. Its past values stay on the net worth chart. A closed loan can't be reopened.",
     closeLoanTitle: 'Close Loan "{{name}}"',
     connectBinance: 'Connect Binance',
+    connectBybit: 'Connect Bybit',
     connectedAs: 'Connected as {{name}}',
     connectExchangeAction: 'Connect an exchange or wallet',
     // The crypto `ProviderSheet` header — a sheet title, Title Case — kept separate from
@@ -964,6 +979,7 @@ export const en = {
     connectMonobank: 'Connect Monobank',
     connectWallet: 'Connect wallet',
     couldNotConnectBinance: 'Could not connect Binance',
+    couldNotConnectBybit: 'Could not connect Bybit',
     couldNotConnectMonobank: 'Could not connect Monobank',
     couldNotConnectWallet: 'Could not connect wallet',
     couldNotSaveCredentials: 'Could not save credentials',
@@ -1021,6 +1037,7 @@ export const en = {
     },
     noWalletAddressStored: 'No wallet address stored; connect a wallet before syncing.',
     openBinanceLink: 'Open Binance API management',
+    openBybitLink: 'Open Bybit API management',
     openMonobankLink: 'Open api.monobank.ua',
     oversizedAmount: '{{coin}}: Kiko could not import an amount exactly, so it was skipped.',
     pasteApiKey: 'Paste API key from clipboard',

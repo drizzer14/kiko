@@ -1,4 +1,6 @@
+export { bybitKeyRefusalOf } from './bybit.key-check';
 export { BYBIT_RESTART_FLOOR_MS } from './bybit.restart-floor';
+export { isBybitCoolingDown, setBybitCooldownUntil } from './bybit.cooldown';
 export {
   clearBybitCredentials,
   readBybitCredentials,

@@ -1,10 +1,34 @@
 import { i18n } from '@kiko/i18n/init';
 import { act } from '@testing-library/react-native';
 
-import { bybitFailureOf } from './bybit.failure-text';
 import { BybitRateLimitError, BybitRefusalError } from './bybit.client';
+import { bybitConnectFailureText, bybitFailureOf } from './bybit.failure-text';
 
 const textOf = (error: unknown): string => (error instanceof Error ? error.message : '');
+
+describe('bybitConnectFailureText', () => {
+  it('names a wrong key, and Bybit EU as not supported, for a rejected key', () => {
+    expect(bybitConnectFailureText(new BybitRefusalError('rejected', 10003))).toBe(
+      i18n.t('accountDetail.bybitKeyRejected'),
+    );
+  });
+
+  it.each([
+    new BybitRefusalError('expired', 33004),
+    new BybitRefusalError('permission', 10005),
+    new BybitRefusalError('compliance', 10024),
+    new BybitRateLimitError(403, 600_000),
+    new BybitRateLimitError(10006, 60_000),
+  ])('gives the text a sync shows for every other refusal (%#)', (refusal) => {
+    expect(bybitConnectFailureText(refusal)).toBe(textOf(bybitFailureOf(refusal)));
+  });
+
+  it('gives the failed-request text, with no code, for an error that is no Bybit refusal', () => {
+    expect(bybitConnectFailureText(new TypeError('Network request failed'))).toBe(
+      i18n.t('accountDetail.bybitRequestFailedNoCode'),
+    );
+  });
+});
 
 describe('bybitFailureOf', () => {
   it.each([

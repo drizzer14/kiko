@@ -67,6 +67,8 @@ const PROPER_NOUNS = new Set([
   'Settings',
   'Ukrainian',
   'Europe',
+  'Turkey',
+  'Kazakhstan',
   'Mondays',
   'Tuesdays',
   'Wednesdays',

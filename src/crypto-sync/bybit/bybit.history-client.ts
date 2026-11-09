@@ -223,17 +223,21 @@ const pageOf =
     };
   };
 
-type PageRead = { span: WalkWindow; cursor: string | undefined };
+/** `limit` asks for fewer rows than the series' page: the connect reads one row of each route. */
+type PageRead = { span: WalkWindow; cursor: string | undefined; limit?: number };
 
 const millisecondWindowOf = (span: WalkWindow): Record<string, string> => ({
   startTime: String(span.start),
   endTime: String(span.end),
 });
 
-const queryOf = (series: Series<unknown>, { span, cursor }: PageRead): Record<string, string> => ({
+const queryOf = (
+  series: Series<unknown>,
+  { span, cursor, limit }: PageRead,
+): Record<string, string> => ({
   ...series.params,
   ...(series.windowParamsOf ?? millisecondWindowOf)(span),
-  limit: String(series.pageSize ?? BYBIT_HISTORY_PAGE_SIZE),
+  limit: String(limit ?? series.pageSize ?? BYBIT_HISTORY_PAGE_SIZE),
   ...foldMap(maybe(cursor), (value) => ({ cursor: value })),
 });
 
@@ -484,14 +488,14 @@ const convertItemOf = (value: unknown): ConvertItem => {
 export const fetchConvertPage = async (
   apiKey: string,
   secret: string,
-  { index }: { index: number },
+  { index, limit = CONVERT_PAGE_SIZE }: { index: number; limit?: number },
   options: BybitReadOptions = {},
 ): Promise<{ rows: ConvertItem[] }> => {
   const result = await signedBybitGet(
     apiKey,
     secret,
     '/v5/asset/exchange/query-convert-history',
-    { index: String(index), limit: String(CONVERT_PAGE_SIZE) },
+    { index: String(index), limit: String(limit) },
     options,
   );
   const list = isRecord(result) ? result.list : undefined;

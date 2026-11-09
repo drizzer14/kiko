@@ -35,6 +35,9 @@ const textOfRefusal = (refusal: BybitRefusalClass, code: number | undefined): st
  */
 export const bybitCoolingFailure = (): Error => new Error(i18n.t('accountDetail.bybitForbidden'));
 
+const textOfRateLimit = (code: number): string =>
+  code === FORBIDDEN_STATUS ? i18n.t('accountDetail.bybitForbidden') : generic(code);
+
 /**
  * A typed Bybit refusal as the localized error the sync shows (`useSyncAction` surfaces its
  * message as it is), since a typed error carries a fixed English message that is no user text.
@@ -43,11 +46,25 @@ export const bybitCoolingFailure = (): Error => new Error(i18n.t('accountDetail.
 export const bybitFailureOf = (error: unknown): unknown =>
   match(error)
     .returnType<unknown>()
-    .with(P.instanceOf(BybitRateLimitError), ({ code }) =>
-      code === FORBIDDEN_STATUS ? bybitCoolingFailure() : new Error(generic(code)),
-    )
+    .with(P.instanceOf(BybitRateLimitError), ({ code }) => new Error(textOfRateLimit(code)))
     .with(
       P.instanceOf(BybitRefusalError),
       ({ refusal, code }) => new Error(textOfRefusal(refusal, code)),
     )
     .otherwise(() => error);
+
+/**
+ * The text that refuses a key at connect. A rejected key reads differently there than on a sync:
+ * the key may be wrong, or from a Bybit site Kiko does not serve, where a sync only ever sees a key
+ * that Bybit once accepted. Every other refusal has the text a sync shows. An error that is no
+ * Bybit refusal, a lost network for one, names no code.
+ */
+export const bybitConnectFailureText = (error: unknown): string =>
+  match(error)
+    .returnType<string>()
+    .with(P.intersection(P.instanceOf(BybitRefusalError), { refusal: 'rejected' }), () =>
+      i18n.t('accountDetail.bybitKeyRejected'),
+    )
+    .with(P.instanceOf(BybitRateLimitError), ({ code }) => textOfRateLimit(code))
+    .with(P.instanceOf(BybitRefusalError), ({ refusal, code }) => textOfRefusal(refusal, code))
+    .otherwise(() => generic(undefined));
