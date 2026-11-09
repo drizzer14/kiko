@@ -1685,12 +1685,14 @@ are built with `createPaneStackNavigator`.
   `layerRoutesOf`, `pane-assignment.types.d.ts`). The layer is a third stack with a placeholder
   root, `pane-layer-root`, and rests with `pointerEvents` off. Back in the layer closes down to
   floor 0 (`dismiss` in `pane-router.ts`). At rest the root has no header (`headerShown: false`).
-  While a page is above it the root has a shown header with an empty title that copies the
-  page's bar appearance options (`BAR_APPEARANCE_OPTIONS` in
-  `src/navigation/pane-stack/pane-stack-view/pane-slice.ts`), except the large title, so both
-  sides of the swipe share one appearance. A hidden root header hides the shared bar when a
-  swipe starts; a differing appearance fades the bar's background (implementation note, not a
-  user ruling; its native effect is a device point, not yet seen).
+  While a page is above it the root has a shown header whose title is an empty plain View
+  (`LAYER_ROOT_TITLE_STYLE`), not `''`, and that copies the page's bar appearance options
+  (`BAR_APPEARANCE_OPTIONS`), except the large title, so both sides of the swipe share one
+  appearance (all in `src/navigation/pane-stack/pane-stack-view/pane-slice.ts`; its comments
+  give the sizes). A hidden root header hides the shared bar when a swipe starts; a differing
+  appearance fades the bar's background; a content-free root item lays the compact landscape
+  bar out 0 high mid-pop (implementation note, not a user ruling; seen on the Duo simulator,
+  a held swipe stays solid after the fix; the device check is still owed).
   Back after a fold and unfold is an open fault with no found cause.
 - **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` decides
   by position alone: index 0 takes `rootPane`, every other route, a default included, takes the
@@ -1844,7 +1846,10 @@ are built with `createPaneStackNavigator`.
   `net-worth-table/` under `src/screens/tables/`, `table-cells/` shared cell formatters with
   `monthColumnsOf`, `cell-rows-sheet/` the tap-a-cell sheet: `use-cell-rows-sheet` holds the
   cell and computes the rows in render); the data in
-  `src/statistics/{table-period,category-by-month,cash-flow,tables-view,cell-rows}/`.
+  `src/statistics/{table-period,category-by-month,cash-flow,tables-view,cell-rows}/`; the kept
+  period is `src/statistics/use-tables-period-selection/` (see reminders.md "Shared UI state
+  across screens"). The CSV export is `src/data-transfer/csv-export/` with its screen in
+  `src/screens/settings/export-csv/`.
   `expenseRowsOf` and `incomeRowsOf` (`src/statistics/cell-rows/`, range type `CellRange`) list
   the rows behind a month or Total cell; expense rows come from `spendingContributionsOf`
   (`category-breakdown`, the donut's per-row calculation), income rows from `incomeAmountOf`

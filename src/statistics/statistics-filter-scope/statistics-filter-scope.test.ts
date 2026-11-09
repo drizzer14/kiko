@@ -1,12 +1,9 @@
-import {
-  categoryColorsLight,
-  entityColorsDark,
-  entityColorsLight,
-} from '@kiko/design-system/palette';
 import { i18n } from '@kiko/i18n/init';
+import { lightTheme } from '@kiko/design-system/theme';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
+import { entityColorsDark, entityColorsLight } from '@kiko/design-system/palette';
 
 import { type CategorySlice, resolveCategoryColor } from '../category-breakdown';
 
@@ -234,7 +231,9 @@ describe('buildCategoryOptions', () => {
     expect(option.color).toBe(resolveCategoryColor(null, 'groceries', 'dark'));
   });
 
-  it('a kept category option maps through the category set, like a slice', () => {
+  // Both light sets are one set under the v3.1 palette, so no hex tells the tables apart here; the
+  // routing between them is pinned in entity-tint.test.ts.
+  it('a kept category option maps through the light category colors, like a slice', () => {
     const colored = new Map<string, CategoryDisplay>([
       ['transport', { title: 'Transport', icon: 'bus', color: entityColorsDark.violet }],
     ]);
@@ -246,15 +245,14 @@ describe('buildCategoryOptions', () => {
       scheme: 'light',
     });
     const [sliced] = buildCategoryOptions({
-      slices: [{ ...slice('transport'), color: categoryColorsLight.violet }],
+      slices: [{ ...slice('transport'), color: lightTheme.colors.categoryColors.violet }],
       categories: CATEGORIES,
       categoryByKey: colored,
       keptKeys: [],
       scheme: 'light',
     });
 
-    expect(kept.color).toBe(categoryColorsLight.violet);
-    expect(kept.color).not.toBe(entityColorsLight.violet);
+    expect(kept.color).toBe(lightTheme.colors.categoryColors.violet);
     expect(kept.color).toBe(sliced.color);
   });
 

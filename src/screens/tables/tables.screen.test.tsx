@@ -1,4 +1,3 @@
-import type { ComponentProps } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -14,10 +13,12 @@ import {
 } from '@kiko/test-support/statistics-filter-data';
 import { darkTheme } from '@kiko/design-system/theme';
 import Screen from '@kiko/design-system/components/screen';
+import { markColor } from '@kiko/design-system/entity-tint';
 import { reportWindow } from '@kiko/test-support/window-size';
-import { paramsAfter } from '@kiko/test-support/navigation-props';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
+import { pickTablesPeriod } from '@kiko/test-support/tables-period-selection';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
 import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
@@ -34,19 +35,24 @@ import {
   SPENT_IN,
   spokenValue,
 } from './__fixtures__/tables-screen-world';
-import type TablesScreen from './tables.screen';
 import { monthTitle } from './month-column-label';
 
-jest.mock('@kiko/navigation/pane-stack', () => ({ useIsScreenVisible: () => true }));
+jest.mock('@kiko/navigation/pane-stack', () =>
+  (
+    require('@kiko/test-support/mock-pane-stack') as typeof import('@kiko/test-support/mock-pane-stack')
+  ).paneStackModule(() => jest.fn(), { useIsScreenVisible: () => true }),
+);
 
 // The data of the world starts two days before the fixed clock, so this quarter is the period that
 // is always offered besides this year.
 const { thisQuarter: THIS_QUARTER } = relativeTablePeriodsOf(FILTER_DATA_CLOCK);
 
-type Props = ComponentProps<typeof TablesScreen>;
-
 describe('TablesScreen', () => {
   setUpTablesWorld();
+
+  beforeEach(() => {
+    reportWindow('compact', 393, 852);
+  });
 
   describe('the category table', () => {
     it('shows each category of the data in the month it was spent, with the full amount spoken', async () => {
@@ -159,6 +165,53 @@ describe('TablesScreen', () => {
 
         expect(queryByTestId('cell-rows-sheet')).toBeNull();
       });
+
+      describe('then a tap on a row of its sheet', () => {
+        // The routes the stack holds under this screen, which it reads when a row is pressed.
+        const FORM_OF_GROCERIES = { name: 'TransactionForm', params: { transactionId: 'e1' } };
+        const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
+
+        const rowPressed = async (stack: object[] = []) => {
+          const rendered = await tapped(`Groceries, ${SPENT_IN}`);
+
+          rendered.navigation.getState.mockReturnValue({ routes: [...stack, { name: 'Tables' }] });
+
+          await fireEvent.press(rendered.getByTestId('cell-row-e1'));
+          await modal.finishClosing();
+
+          return rendered.navigation;
+        };
+
+        it('opens the transaction form for a row of a cell, with its id', async () => {
+          const navigation = await rowPressed();
+
+          expect(navigation.navigate).toHaveBeenCalledTimes(1);
+          expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {
+            transactionId: 'e1',
+          });
+          expect(navigation.goBack).not.toHaveBeenCalled();
+        });
+
+        // A second form of one transaction would hold the old values below the edited one, and a
+        // Save there would write them back.
+        it('goes back to the form of a row that is already open, and opens no second one', async () => {
+          const navigation = await rowPressed([FORM_OF_GROCERIES]);
+
+          expect(navigation.goBack).toHaveBeenCalledTimes(1);
+          expect(navigation.navigate).not.toHaveBeenCalled();
+        });
+
+        it("opens a new form when the open form is another transaction's", async () => {
+          const navigation = await rowPressed([
+            { name: 'TransactionForm', params: { transactionId: 'e2' } },
+          ]);
+
+          expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {
+            transactionId: 'e1',
+          });
+          expect(navigation.goBack).not.toHaveBeenCalled();
+        });
+      });
     });
   });
 
@@ -243,10 +296,6 @@ describe('TablesScreen', () => {
 
     beforeEach(() => {
       reportWindow('regular', 1376, 1032);
-    });
-
-    afterEach(() => {
-      reportWindow('compact', 393, 852);
     });
 
     it('is capped for a plain Screen of the same window, so the cases below are a change', async () => {
@@ -347,25 +396,45 @@ describe('TablesScreen', () => {
   });
 
   describe('the period', () => {
-    it('opens on this year when the route carries no period', async () => {
+    it('opens on this year when no period was picked', async () => {
       const { getByTestId } = await renderTables();
 
       expect(getByTestId('tables-period')).toHaveTextContent('This year', { exact: false });
     });
 
-    it('shows the period the route carries', async () => {
-      const { getByTestId } = await renderTables({ period: THIS_QUARTER });
+    it('shows the period picked on an earlier open', async () => {
+      await pickTablesPeriod(THIS_QUARTER);
+
+      const { getByTestId } = await renderTables();
 
       expect(getByTestId('tables-period')).toHaveTextContent('This quarter', { exact: false });
     });
 
-    it('reads a year the data does not reach as this year', async () => {
-      const { getByTestId } = await renderTables({ period: { kind: 'year', year: 1999 } });
+    it('reads a kept year the data does not reach as this year', async () => {
+      await pickTablesPeriod({ kind: 'year', year: 1999 });
+
+      const { getByTestId } = await renderTables();
 
       expect(getByTestId('tables-period')).toHaveTextContent('This year', { exact: false });
     });
 
-    it('writes a pick to the route params, so a remount opens on it', async () => {
+    it('keeps a pick for the next open, which a remount or a new push is', async () => {
+      const first = await renderTables();
+
+      await fireEvent.press(first.getByTestId('tables-period'));
+      await fireEvent.press(
+        first.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
+      );
+      await first.unmount();
+
+      const second = await renderTables();
+
+      expect(second.getByTestId('tables-period')).toHaveTextContent('This quarter', {
+        exact: false,
+      });
+    });
+
+    it('writes a picked period to no route param', async () => {
       const first = await renderTables();
 
       await fireEvent.press(first.getByTestId('tables-period'));
@@ -373,16 +442,7 @@ describe('TablesScreen', () => {
         first.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
       );
 
-      expect(first.navigation.setParams).toHaveBeenCalledWith({ period: THIS_QUARTER });
-      await first.unmount();
-
-      const second = await renderTables(
-        paramsAfter(first.navigation, {}) as Props['route']['params'],
-      );
-
-      expect(second.getByTestId('tables-period')).toHaveTextContent('This quarter', {
-        exact: false,
-      });
+      expect(first.navigation.setParams).not.toHaveBeenCalled();
     });
   });
 
@@ -503,7 +563,7 @@ describe('TablesScreen', () => {
       await held.unmount();
     });
 
-    it('tints a category option through the light map in the light scheme', async () => {
+    it('tints a category option through the light map and the light mark in the light scheme', async () => {
       registerLightThemeFirst();
 
       try {
@@ -515,7 +575,7 @@ describe('TablesScreen', () => {
           (node) => node.props.name === 'cart',
         )[0]?.props.tintColor;
 
-        expect(tint).toBe(resolveCategoryColor(null, 'groceries', 'light'));
+        expect(tint).toBe(markColor(resolveCategoryColor(null, 'groceries', 'light'), 'light'));
         expect(tint).not.toBe(categoryColor('groceries'));
       } finally {
         restoreThemeOrder();

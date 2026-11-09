@@ -151,6 +151,13 @@ is no EODHD entry (removed with the shares cut, Guideline 2.5.19). The live
 gh-pages policy may still name EODHD until the edited policy is
 published: check the live policy before an upload.
 
+The Tables CSV export (`src/data-transfer/csv-export/`) leaves the device only through the
+user's own share sheet, behind a device-passcode gate, as an unencrypted plain-text file the
+screen warns about; the file is deleted after the share or at the next launch
+(`useCsvExportCleanup`). It adds no network call and no SDK, so App Privacy stays "Data Not
+Collected". The policy's "Exports." paragraph (`docs/privacy-policy*.md`) must say what the
+CSV holds and when it is deleted; a change to the export edits that paragraph too.
+
 The Binance public price fallback (`src/rates/binance-market/`) is a price
 call for ANY user to `BINANCE_API_ENDPOINT` (`.env`), sending only the market
 symbol and the dates, never a key, account, amount, address or device id. It

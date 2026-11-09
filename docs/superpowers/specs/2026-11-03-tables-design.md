@@ -123,9 +123,12 @@ the Home stacks: on a wide window Statistics is Home's companion, and a name the
   `buildAccountOptions`, `visibleCategorySelection`, `excludedCategoryKeysOf`.
 
 A `SegmentedControl` at the top of Tables switches the tables, with three parts: Categories, Cash flow, Net worth (tabs-vs-chips
-rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. Selection and
-period are route params of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
-(`pane-stack-view`, "A switch between one pane and two"), keeps them; a new push still opens on Categories and the default period.
+rule, `component-set-forms.md`: the selection changes the appearance). It appears when a second table exists. The selection is a
+route param of the screen (`setParams`), so a fold or a resize across the columns width, which remounts the screen
+(`pane-stack-view`, "A switch between one pane and two"), keeps it; a new push still opens on Categories. The period (user ruling
+2026-11-08) is held in the session store `use-tables-period-selection` (`src/statistics/`), so it also survives Back: a new push
+opens on the period last picked, until the app is closed, and on the default only before a first pick. A kept period that the options
+no longer offer reads as the default.
 `resetTabStackOnBlur` pops the screen on a tab change, as for any pushed screen. The uk labels ("Категорії", "Рух коштів", "Капітал")
 must fit: `labelVariant: 'caption'` is the first step. Measure at large sizes; if they do not fit, the builder reports it. Do not shrink
 the text silently.
@@ -234,6 +237,13 @@ all C3 cells do not open (no rows sum to them). This also answers the HIG line o
 exact value behind a rounded cell. With a held category pick, the All cell of C1 lists only the picked categories, so its
 total equals the cell; C2's expense cell ignores the pick, as the C2 column does.
 
+User ruling 2026-11-08, replacing "read-only" above: a tap on a row of the list closes it and opens
+that transaction's form, as a row on Home does (a loan interest or fee row opens its payment, and a
+synced row opens read-only). The form opens once the list has finished closing. If a form of that
+transaction is already open under Tables, Tables closes and that form shows as it was, so no second
+form holds the old values. A row has no touch-and-hold menu. The Tables help topic says it in one
+sentence.
+
 ## 9. The table component (kiko:designer owns it)
 
 `src/design-system/components/data-table/`. Its props are strings and display flags, plus two `ReactNode` props of the
@@ -256,7 +266,7 @@ one horizontal scroller in the app (`raw-preview.component.tsx:55`) has no fixed
   Pick excludes it (`money-text.props.d.ts:37`). The designer adds it to the table's cell text.
 - Column order (Decision 3), ruled: oldest to newest, as the charts read, with Total and Average (or
   Change) on the right. Opens scrolled so that the last 3 months show on a phone, with a part of the next
-  column visible as the scroll hint. Sum columns have a `sheetBackground` tint. The last row ("All") is bold.
+  column visible as the scroll hint. Sum columns have a `colors.sumTint` tint. The last row ("All") is bold.
 - The header row stays visible on vertical scroll. RN has no sticky support in a horizontal list, so this is
   the first probe of the change set. Tables is its own screen, so the table owns its vertical scroll, and the header
   row is child 1 of that scroll (`stickyHeaderIndices={[1]}`), under the caption and `topContent`, and follows the horizontal offset. Measure before you build. Gestures: native arbitration of a horizontal scroll in a vertical page; no swipe
@@ -377,14 +387,14 @@ Rulings of 2026-11-04 (user, relayed by the coordinator):
 
 | # | Decision | Ruling |
 |---|---|---|
-| 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`) shown in a layer over both panes; the tab bar stays, Back returns to the two panes. User ruling (relayed by the coordinator, 2026-11-04): "A: It stays (Recommended)": with a form or Home open beside Statistics, the Monthly tables press keeps it open (`openFrom` keeps all routes), and Back returns to it as it was. Implementation note, not a user ruling: the layer root has a shown header with an empty title that takes the page's bar appearance options (not the large title) only while a page is in the layer, and no header at rest, because a hidden root header hides the shared bar when a swipe starts (fault A); its native effect is a device point, not yet seen. Back after fold and unfold is open, with no found cause |
+| 11 | Tables on a wide window | User on the Duo preview: "make "Tables" screen appear as a separate screen, and not a sub-screen of "STatistiscs" so that Duo displays is on full width. Access to "Tables" can be left where it is now, just move the button above statistics filters and double-check its visuals against iOS guidelines". Built as a whole-window route (`PaneConfig.wholeWindowRoutes`) shown in a layer over both panes; the tab bar stays, Back returns to the two panes. User ruling (relayed by the coordinator, 2026-11-04): "A: It stays (Recommended)": with a form or Home open beside Statistics, the Monthly tables press keeps it open (`openFrom` keeps all routes), and Back returns to it as it was. Implementation note, not a user ruling: the layer root has a shown header with an empty plain View title that takes the page's bar appearance options (not the large title) only while a page is in the layer, and no header at rest, because a hidden root header hides the shared bar when a swipe starts (fault A); seen on the Duo simulator (held swipe solid; a content-free root item laid the compact bar out 0 high mid-pop, fixed by the empty View title), device check still owed. Back after fold and unfold is open, with no found cause |
 | 12 | Tables title | "A: Small title (Recommended)": a normal small title in an opaque bar, content below it, Tables only |
 | 13 | Button size | "As it is now": 44 pt, full width (`size="compact"`) |
 | 14 | Button chevron | "Remove it (Recommended)" |
 
 ## 13. Left to the builder
 
-The sticky header technique; the exact token for the sum-column tint if `sheetBackground` looks wrong on a device; the file names under
+The sticky header technique; the file names under
 `src/statistics`; the period control's component (`SelectField` or the filter bar's own button); the account order source.
 
 ## 14. Change sets

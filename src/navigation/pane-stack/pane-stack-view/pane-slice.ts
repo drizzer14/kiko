@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import maybe, { foldMap } from 'fnts/maybe';
 import { createElement, Fragment } from 'react';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
@@ -99,12 +100,23 @@ const LAYER_ROOT_OPTIONS: NativeStackNavigationOptions = {
   contentStyle: { backgroundColor: 'transparent' },
 };
 
+// No taller than the classic compact (landscape iPhone) navigation bar, 32 pt, so it never grows a
+// bar. The compact-height bar lays out 0 high for a root item with no content mid-pop, which leaves
+// the page's bar see-through during a held swipe back; an empty title view gives the item content.
+const COMPACT_BAR_TITLE_HEIGHT = 32;
+
+// 1 pt wide: a view of no width is not shown to count as content. It is childless and not
+// accessible, so it shows nothing and VoiceOver has nothing to land on.
+const LAYER_ROOT_TITLE_STYLE = { width: 1, height: COMPACT_BAR_TITLE_HEIGHT };
+
+const layerRootTitle = () => createElement(View, { style: LAYER_ROOT_TITLE_STYLE });
+
 // A header that is there and shows no title. Root and the page over it share one navigation bar, so
 // a root with no header hides the page's own bar when a swipe back starts; a root with this one
 // keeps it, and the swipe can be cancelled with the bar in place.
 const LAYER_ROOT_HEADER: NativeStackNavigationOptions = {
   headerShown: true,
-  headerTitle: '',
+  headerTitle: layerRootTitle,
 };
 
 // The options that decide how a bar's background is drawn: its fill, blur, shadow, custom

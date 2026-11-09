@@ -236,7 +236,8 @@ describe('DataTable', () => {
   describe('column widths', () => {
     it('sizes each column from its measured text plus padding', async () => {
       const rendered = await renderTable();
-      await setContainerWidth(rendered, 1000);
+      // Narrow enough that the columns overflow: a room they fit in would be shared out.
+      await setContainerWidth(rendered, 300);
       await measureColumn(rendered, 'jan', 80);
       await measureColumn(rendered, 'feb', 40);
       await measureColumn(rendered, 'total', 120);
@@ -731,11 +732,11 @@ describe('DataTable', () => {
       });
 
       expect(flat(rendered.getByTestId(`${PREFIX}-cell-groceries-total`)).backgroundColor).toBe(
-        darkTheme.colors.sheetBackground,
+        darkTheme.colors.sumTint,
       );
-      expect(flat(header).backgroundColor).toBe(darkTheme.colors.sheetBackground);
+      expect(flat(header).backgroundColor).toBe(darkTheme.colors.sumTint);
       expect(flat(rendered.getByTestId(`${PREFIX}-cell-groceries-jan`)).backgroundColor).not.toBe(
-        darkTheme.colors.sheetBackground,
+        darkTheme.colors.sumTint,
       );
     });
 
@@ -929,6 +930,89 @@ describe('DataTable', () => {
 
       expect(colorsIn(literal).filter((color) => !tokens.has(color))).toEqual(['#123456']);
       expect(colorsIn(rendered.getByText('120')).length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('filling the room', () => {
+    const HAIRLINE = darkTheme.layout.hairline;
+    const LABEL_TEXT = 60;
+    const FIXED_WIDTH = LABEL_TEXT + HORIZONTAL_PADDING + HAIRLINE;
+
+    const testIdOf: Record<'header' | 'cell', (key: string) => string> = {
+      header: (key) => `${PREFIX}-header-${key}`,
+      cell: (key) => `${PREFIX}-cell-groceries-${key}`,
+    };
+
+    const widthsOf = (rendered: Rendered, kind: 'header' | 'cell') =>
+      columns.map(
+        (column) =>
+          flat(rendered.getByTestId(testIdOf[kind](column.key), { includeHiddenElements: true }))
+            .width as number,
+      );
+
+    const renderMeasured = async (containerWidth: number, textWidth: number) => {
+      const rendered = await renderTable();
+      await setContainerWidth(rendered, containerWidth);
+      await measureLabels(rendered, LABEL_TEXT);
+      await measureAllColumns(rendered, textWidth);
+
+      return rendered;
+    };
+
+    it('fills the room beside the fixed column exactly when every column fits', async () => {
+      for (const containerWidth of [1000, 1001, 777.3]) {
+        const rendered = await renderMeasured(containerWidth, 50);
+        const widths = widthsOf(rendered, 'cell');
+
+        expect(FIXED_WIDTH + widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(
+          containerWidth,
+          9,
+        );
+        expect(Math.min(...widths)).toBeGreaterThan(50 + HORIZONTAL_PADDING);
+      }
+    });
+
+    it('adds the same share to every column', async () => {
+      const rendered = await renderMeasured(1000, 50);
+      const share = (1000 - FIXED_WIDTH - 3 * (50 + HORIZONTAL_PADDING)) / 3;
+
+      for (const width of widthsOf(rendered, 'cell')) {
+        expect(width).toBeCloseTo(50 + HORIZONTAL_PADDING + share, 9);
+      }
+    });
+
+    it('adds no share when the columns overflow, so each keeps its natural width', async () => {
+      const rendered = await renderMeasured(300, 100);
+
+      expect(widthsOf(rendered, 'cell')).toEqual(Array(3).fill(100 + HORIZONTAL_PADDING));
+      expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(true);
+    });
+
+    it('keeps the horizontal scroll off for columns whose float sum edges past the room', async () => {
+      const naturalWidths = [18.235351530199683, 55.72896582257684, 119.73653724505381];
+      const room = 233.1768291905029;
+      // A 1pt label keeps the container under 256, where the sum below is exact: the room beside
+      // the fixed column is then exactly `room`, the float whose filled sum edges past it.
+      const labelText = 1;
+      const fixedWidth = labelText + HORIZONTAL_PADDING + HAIRLINE;
+      const rendered = await renderTable();
+
+      expect(fixedWidth + room - fixedWidth).toBe(room);
+
+      await setContainerWidth(rendered, fixedWidth + room);
+      await measureLabels(rendered, labelText);
+
+      for (const [index, column] of columns.entries()) {
+        await measureColumn(rendered, column.key, naturalWidths[index] - HORIZONTAL_PADDING);
+      }
+
+      expect(rendered.getByTestId(`${PREFIX}-body-scroll`).props.scrollEnabled).toBe(false);
+    });
+
+    it('gives a header cell the width of its body cell at fill', async () => {
+      const rendered = await renderMeasured(1000, 50);
+
+      expect(widthsOf(rendered, 'header')).toEqual(widthsOf(rendered, 'cell'));
     });
   });
 });

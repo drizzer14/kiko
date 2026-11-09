@@ -271,6 +271,7 @@ const topicsById = {
       'help.topics.backupData.steps.2',
       'help.topics.backupData.steps.3',
       'help.topics.backupData.steps.4',
+      'help.topics.backupData.steps.5',
     ],
     action: 'openExportData',
   },

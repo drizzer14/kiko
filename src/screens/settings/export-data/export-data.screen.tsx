@@ -19,22 +19,13 @@ import type { SettingsStackParamList } from '@kiko/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { styles } from './export-data.styles';
-import { shareAnchorOf } from './share-anchor';
+import { shareAnchorOf, toFileShareUrl } from './share-anchor';
 
 type ExportDataScreenProps = NativeStackScreenProps<SettingsStackParamList, 'ExportData'>;
 
 // How long the Copy Key button shows "Copied" feedback before reverting to
 // its normal label — the iOS-standard copy-confirmation duration.
 const COPIED_FEEDBACK_DURATION_MS = 2000;
-
-// `Share.share`'s `url` field needs an actual URL — a BARE filesystem path
-// (what `exportData` returns) can silently no-op on iOS instead of attaching
-// the file, with no error thrown and no share sheet shown, which reads on
-// device as "Export does nothing". Prefixing the `file://` scheme is the
-// fix; the `startsWith` guard makes this a no-op if a future caller ever
-// hands in an already-schemed URL.
-const toFileShareUrl = (path: string): string =>
-  path.startsWith('file://') ? path : `file://${path}`;
 
 const ExportDataScreen: FC<ExportDataScreenProps> = () => {
   const { t } = useTranslation();

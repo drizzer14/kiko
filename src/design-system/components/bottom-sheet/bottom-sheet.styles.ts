@@ -155,8 +155,8 @@ export const styles = StyleSheet.create((theme) => ({
   // pill (`surfaceHigh`) would swallow it. The base fill lives on `glassFill`
   // (a `GlassSurface` `material` — a real live-blur on iOS 26+ that reads the
   // true content behind the sheet) or, below iOS 26, on `sheetFallbackFill`
-  // (the opaque `sheetBackground` #1C1C1E, darker than `surfaceHigh` #2C2C2E,
-  // so the elevation split still holds), not a `backgroundColor` here. No
+  // (the opaque `sheetBackground`; in the dark scheme #1C1C1E, darker than `surfaceHigh`
+  // #2C2C2E, so the elevation split still holds), not a `backgroundColor` here. No
   // in-sheet element uses
   // the `surface`/`surfaceTranslucent` tone for
   // its own chrome (it is `surfaceHigh`, `accent`, or transparent — the
@@ -260,8 +260,8 @@ export const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing(3),
   },
   // The grabber pill itself: the standard iOS ~36x5pt rounded handle.
-  // `theme.colors.border` (#38383A, the hairline
-  // separator gray) read almost invisible against the sheet's own dark glass
+  // `theme.colors.border` (the hairline separator gray, #38383A in the dark scheme) read
+  // almost invisible against the sheet's own dark glass
   // background — both are near-black, so the drag affordance nearly
   // disappeared instead of reading clearly. `textSecondary` (the iOS
   // secondaryLabel translucency, ~6:1 contrast over true-black per the iOS HIG audit's

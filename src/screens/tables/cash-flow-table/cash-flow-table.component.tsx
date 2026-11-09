@@ -120,6 +120,7 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
   defaultCategoryKey,
   describeRow,
   sheetGeneration,
+  onOpenTransaction,
   topContent,
 }) => {
   const { t } = useTranslation();
@@ -142,7 +143,7 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
         .exhaustive(),
     [ledger, rateTable, baseCurrency, categoryDisplay, defaultCategoryKey, describeRow],
   );
-  const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf);
+  const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf, onOpenTransaction);
   const currentIsPartial = (months.at(-1)?.end ?? 0) >= now;
   const firstRowTime = useMemo(() => firstRowTimeOf(ledger), [ledger]);
   const flow = useMemo(

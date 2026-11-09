@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { en, uk } from '@kiko/i18n/locales';
 import { readdirSync, readFileSync } from 'node:fs';
 import { TITLE_KEYS } from '@kiko/i18n/locales/title-keys';
+import { appearanceModes } from '@kiko/appearance/appearance-mode';
 import { flattenCatalog } from '@kiko/i18n/locales/flatten-catalog';
 
 import { HELP_GROUPS, HELP_TOPICS, helpTopicById } from './help-topics';
@@ -164,7 +165,7 @@ describe('help topic registry', () => {
     ['categoryRules', 6],
     ['viewStatistics', 12],
     ['viewRecurringCharges', 5],
-    ['backupData', 4],
+    ['backupData', 5],
     ['restoreData', 4],
     ['systemSettings', 5],
   ] as const)('gives the %s topic %i steps', (topicId, count) => {
@@ -375,6 +376,20 @@ describe('the choices a help step names', () => {
       );
     }
   });
+
+  it.each([
+    ['en', enValues, /"([^"]*)"/g],
+    ['uk', ukValues, /«([^»]*)»/g],
+  ] as const)(
+    'names the appearance chips in the order the control shows them in step 3 of the systemSettings topic in %s',
+    (_language, values, quote) => {
+      const [, ...modes] = quotedSpans(stepOf(values, 'systemSettings', 3), quote);
+
+      expect(modes.slice(0, appearanceModes.length)).toEqual(
+        appearanceModes.map((mode) => values.get(`appearance.${mode}`)),
+      );
+    },
+  );
 
   it.each([
     ['en', enValues, /"([^"]*)"/g, en.statistics.title, en.home.title],
@@ -790,7 +805,7 @@ describe('the Ukrainian wording of the help topics', () => {
   it.each([
     ['importStatement', 5, 'рядок із назвами'],
     ['categoryRules', 1, 'натисніть «Категорії», а потім потрібну категорію'],
-    ['systemSettings', 3, 'У розділі «Вигляд» оберіть «Системний», «Світлий» або «Темний»'],
+    ['systemSettings', 3, 'У розділі «Вигляд» оберіть «Світлий», «Системний» або «Темний»'],
   ] as const)('words the %s topic step %i with «%s»', (topicId, step, wording) => {
     expect(ukValues.get(`help.topics.${topicId}.steps.${step}`)).toContain(wording);
   });

@@ -8,10 +8,13 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { Money } from '@kiko/currency/money';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { addMonths } from '@kiko/holdings/interest';
 import { formatMoney } from '@kiko/currency/format';
-import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
 import {
   EDIT_ACTION_TEST_ID,
@@ -23,9 +26,12 @@ import {
   VIEW_HOLDING_ACTION_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
 import { transactionsRepo } from '@kiko/transactions/repo';
+import { markColor } from '@kiko/design-system/entity-tint';
+import { entityColorsDark } from '@kiko/design-system/palette';
 import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 import { DAY_MS, formatDate, startOfLocalDay } from '@kiko/dates';
+import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
@@ -1579,6 +1585,50 @@ describe('HoldingDetailScreen', () => {
     const icon = getByLabelText('Food');
     expect(icon.props.name).toBe('fork.knife');
     expect(icon.props.tintColor).toBe('#FF5733');
+  });
+
+  describe('the ledger row category glyph', () => {
+    const rowGlyphTintOf = async () => {
+      seed(
+        cardHolding,
+        [
+          {
+            id: 'txn-cat',
+            amountMinorUnits: -5000,
+            time: 1,
+            description: 'Coffee',
+            category: 'Food',
+            source: 'manual',
+          },
+        ],
+        [{ key: 'food', title: 'Food', icon: 'fork.knife', color: entityColorsDark.yellow }],
+      );
+
+      const { getByLabelText } = await renderScreen();
+
+      return getByLabelText('Food').props.tintColor;
+    };
+
+    it('keeps the tile on the glyph in the dark world', async () => {
+      expect(await rowGlyphTintOf()).toBe(entityColorsDark.yellow);
+    });
+
+    describe('in the light world', () => {
+      beforeEach(() => {
+        registerLightThemeFirst();
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('paints the light mark of the tile, not the tile', async () => {
+        const tile = lightTheme.colors.entityColors.yellow;
+
+        expect(markColor(tile, 'light')).not.toBe(tile);
+        expect(await rowGlyphTintOf()).toBe(markColor(tile, 'light'));
+      });
+    });
   });
 
   it('renders the neutral category icon for an empty or unknown category', async () => {

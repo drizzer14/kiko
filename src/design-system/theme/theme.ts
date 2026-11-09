@@ -216,6 +216,12 @@ export const darkTheme = {
     // keeping a `textPrimary` (white) label legible on it.
     neutralSubtle: 'rgba(118,118,128,0.24)',
     border: '#38383A', // separator (dark)
+    // The alternate-row ground of a table: a faint white veil, translucent so it lies over the
+    // `surface` of the fixed column and the screen background under the scrolled rows alike.
+    rowBand: 'rgba(255,255,255,0.04)',
+    // The ground of a table's sum columns (total, average): translucent, so the row band runs
+    // across them too; 0.10 keeps them as distinct from the months as a solid grey over black.
+    sumTint: 'rgba(255,255,255,0.10)',
     // The translucent-black dismiss scrim behind a modal/bottom-sheet
     // overlay (BottomSheet) on iOS 26+. NOT the opaque `background` token: a
     // modal scrim reads as a frosted dim over whatever screen is behind it —
@@ -241,8 +247,8 @@ export const darkTheme = {
     // `scrim`.
     scrimFallback: 'rgba(0,0,0,0.55)',
     entityColors: entityColorsDark,
-    // Dark has one swatch set for accounts, holdings and categories alike, so the category
-    // set is the entity set; light splits them (see `categoryColorsLight`).
+    // One swatch set for accounts, holdings and categories alike, so the category set is the
+    // entity set; light does the same through `categoryColorsLight`.
     categoryColors: entityColorsDark,
     chartSeries: chartSeriesDark,
     glyphOnLightTile,
@@ -277,6 +283,8 @@ const lightColors = {
   negativeSubtle: 'rgba(194,0,25,0.12)',
   neutralSubtle: 'rgba(118,118,128,0.12)',
   border: '#C6C6C8',
+  rowBand: 'rgba(0,0,0,0.04)',
+  sumTint: 'rgba(60,60,67,0.06)',
   scrim: 'rgba(0,0,0,0.3)',
   scrimFallback: 'rgba(0,0,0,0.4)',
   entityColors: entityColorsLight,

@@ -60,6 +60,7 @@ import LargeTitleHeading, {
   useLargeTitleScroll,
 } from '@kiko/design-system/components/large-title-heading';
 import { isHoldingType } from '@kiko/holdings/holding-type';
+import { markColor } from '@kiko/design-system/entity-tint';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { groupByDay } from '@kiko/transactions/group-by-day';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -643,7 +644,10 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
                   name={category.icon}
                   size={theme.iconSizes.body}
                   tone="textSecondary"
-                  color={resolveCategoryColor(category.color, categoryKey, scheme)}
+                  color={markColor(
+                    resolveCategoryColor(category.color, categoryKey, scheme),
+                    scheme,
+                  )}
                   accessibilityLabel={category.title}
                 />
               }

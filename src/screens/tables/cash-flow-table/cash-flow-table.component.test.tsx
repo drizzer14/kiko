@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
@@ -13,6 +13,7 @@ import {
   transactionRow,
   worldInput,
 } from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
+import { spyOnModalDismissPerTest } from '@kiko/test-support/modal-dismiss-spy';
 
 import CashFlowTable from '.';
 
@@ -69,6 +70,8 @@ const WORLD = [
   entry('pay-jun', 100_00, JUNE.start + 1_000),
 ];
 
+const onOpenTransaction = jest.fn();
+
 const propsOf = (
   transactions: ReturnType<typeof transactionRow>[],
   overrides: Partial<CashFlowTableProps> = {},
@@ -82,6 +85,7 @@ const propsOf = (
   defaultCategoryKey: 'other',
   describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
   sheetGeneration: 0,
+  onOpenTransaction,
   topContent: <View testID="table-controls" />,
   ...overrides,
 });
@@ -281,6 +285,7 @@ describe('CashFlowTable', () => {
   });
 
   describe('a cell that opens the rows behind it', () => {
+    const modal = spyOnModalDismissPerTest('cell-rows-sheet-modal');
     const HINT = i18n.t('tables.cellRows.hint');
     // 0 January, 1 February, 2 March, 3 April, 4 May, 5 June, 6 Total, 7 Average. The columns
     // of each line that hold an amount, which are the ones that open.
@@ -425,6 +430,19 @@ describe('CashFlowTable', () => {
       await rendered.rerender(<CashFlowTable {...props} sheetGeneration={1} />);
 
       expect(rendered.queryByText('Income, January 2025')).toBeNull();
+    });
+
+    it('opens the credit of a pressed income row after the sheet closes', async () => {
+      const { rendered } = await pressed(propsOf(WORLD), 'income', 0);
+
+      await fireEvent.press(rendered.getByTestId('cell-row-salary-jan'));
+
+      expect(onOpenTransaction).not.toHaveBeenCalled();
+
+      await modal.finishClosing();
+
+      expect(onOpenTransaction).toHaveBeenCalledTimes(1);
+      expect(onOpenTransaction).toHaveBeenCalledWith('salary-jan');
     });
   });
 

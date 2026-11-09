@@ -99,6 +99,10 @@ what a change must keep.
   Tests that pick a filter reset them with
   `afterEach(resetStatisticsFilterSelection)` from
   `@kiko/test-support/reset-statistics-filter-selection`.
+  The Tables period is kept the same way (`src/statistics/use-tables-period-selection/`): a
+  session store, so a Tables screen opened again, or after a pop, starts on the last pick, not
+  on a route param across stacks. Tests reset it with `afterEach(resetTablesPeriodSelection)` from
+  `@kiko/test-support/tables-period-selection`.
   A reader publishes into the store in `useLayoutEffect`, never during
   render. The notification-permission store resets at once on
   `size === 0`: the deferral applies only where a whole-tree swap must keep

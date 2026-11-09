@@ -265,13 +265,20 @@ reach the toggle to turn the lock back off.
 
 `src/data-transfer/` (`export-data.ts`, `import-data.ts`, `crypto/envelope.ts`,
 `secrets/`, `snapshot/`) builds and reads the `.kiko` export file. Every
-export is an AES-256-GCM envelope: a fresh random key and a fresh random
+`.kiko` export is an AES-256-GCM envelope: a fresh random key and a fresh random
 12-byte nonce are generated per export (`crypto/generate-key.ts`,
 `crypto/envelope.ts`), and the key is returned to the caller for the user to
 save separately — it is never written into the file itself. Credentials
 (Monobank tokens, Binance API key/secret) are included only when the user
 opts in via `includeSecrets` (`secrets/read-secrets.ts`); the database
 encryption key is never exported.
+
+The CSV export (`src/data-transfer/csv-export/`, `export-csv.screen.tsx`) is plain text, not an
+envelope: anyone who holds the file can read it. It carries no id, IBAN, secret or key, and a
+holding name can still carry a card mask. The screen states this before any action and asks
+`confirmOwner` before the file is written; on a device with no passcode the warning is the whole
+gate, since the phone itself shows the same data to anyone. The file lives in the temporary
+folder only until its share settles, and `useCsvExportCleanup` deletes leftovers at app launch.
 
 **Re-authentication now gates a credential export.** `export-data.screen.tsx`
 calls `confirmOwner` (`src/auth/confirm-owner/`) before `exportData` ever runs
