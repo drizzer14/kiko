@@ -16,13 +16,7 @@ import { transactionsRepo } from './transactions.repo';
 
 type CountRow = { mcc: number; rowCount: number };
 
-type MccCountsQuery = PromiseLike<CountRow[]> & { toSQL: () => { sql: string } };
-
-// The method is read at run time so a repository without it fails here and not in the compiler.
-const mccCountsQuery = (): MccCountsQuery =>
-  (transactionsRepo as unknown as { mccCountsQuery: () => MccCountsQuery }).mccCountsQuery();
-
-const readCounts = async (): Promise<CountRow[]> => await mccCountsQuery();
+const readCounts = async (): Promise<CountRow[]> => await transactionsRepo.mccCountsQuery();
 
 let nextRow = 0;
 
@@ -104,7 +98,7 @@ describe('transactionsRepo.mccCountsQuery', () => {
   it('counts hand-set, balance, split-change and exchange-leg rows alike', async () => {
     insertRow(5411);
     insertRow(5411, { category: 'groceries', category_set_by_hand: 1 });
-    insertRow(5411, { category: 'balance' });
+    insertRow(5411, { sets_balance: 1 });
     insertRow(5411, { change_group_id: 'split-1' });
     insertRow(5411, { exchange_pair_id: 'pair-1', exchange_counterpart_holding_id: 'other' });
 
@@ -130,7 +124,7 @@ describe('transactionsRepo.mccCountsQuery', () => {
       return prepare(sql);
     });
 
-    const query = mccCountsQuery();
+    const query = transactionsRepo.mccCountsQuery();
     const rows = await query;
 
     expect(rows).toHaveLength(2);

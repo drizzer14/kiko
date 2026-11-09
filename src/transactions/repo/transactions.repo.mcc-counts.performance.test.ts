@@ -16,12 +16,6 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { transactionsRepo } from './transactions.repo';
 
-type CountRow = { mcc: number; rowCount: number };
-
-type MccCountsQuery = PromiseLike<CountRow[]> & {
-  toSQL: () => { sql: string; params: unknown[] };
-};
-
 const ROW_COUNT = 50_000;
 const DISTINCT_CODES = 300;
 const FIRST_CODE = 1_000;
@@ -50,10 +44,6 @@ const isInRange = (mcc: number | null): mcc is number =>
   mcc !== null && mcc >= 0 && mcc <= MAX_CODE;
 
 const seededCodes = Array.from({ length: ROW_COUNT }, (_unused, index) => mccOfRow(index));
-
-// The method is read at run time so a repository without it fails here and not in the compiler.
-const mccCountsQuery = (): MccCountsQuery =>
-  (transactionsRepo as unknown as { mccCountsQuery: () => MccCountsQuery }).mccCountsQuery();
 
 const seedLedger = (): void => {
   mockDatabase.exec(`
@@ -111,7 +101,7 @@ describe('transactionsRepo.mccCountsQuery at 50 000 rows', () => {
     async () => {
       const inRangeCount = seededCodes.filter(isInRange).length;
       const statements = spyOnStatements();
-      const query = mccCountsQuery();
+      const query = transactionsRepo.mccCountsQuery();
 
       const rows = await query;
 
@@ -124,7 +114,7 @@ describe('transactionsRepo.mccCountsQuery at 50 000 rows', () => {
   );
 
   it('plans one scan of transactions and no other table', () => {
-    const { sql, params } = mccCountsQuery().toSQL();
+    const { sql, params } = transactionsRepo.mccCountsQuery().toSQL();
     const plan = queryPlanOf(sql, params);
     const rest = plan.filter((detail) => detail !== 'SCAN transactions');
 
