@@ -1015,6 +1015,14 @@ in `scripts/mcc-names/generate-mcc-names.js` pads with `CODE_DIGITS`).
 is code + `MCC_NAME_SEPARATOR` + name; a code with no source name shows its
 digits alone (208 mapped codes today: 3791-3999 except 3816 and 3835, and
 6540; re-verify in the data).
+The rule form's mcc condition is `MccField`
+(`src/screens/forms/category-rule-form/mcc-field/`): a picker of "Your codes" (counts from
+`mccCountsQuery`, read by `useLiveQuery` on `['transactions']` only while the sheet is open) and
+"All codes", plus an "Other code" row for any four digits. It still stores
+`{ type: 'mcc', code }`; `mccOutcome` in
+`src/screens/forms/category-rule-form/rule-draft/rule-draft.ts` refuses anything but four digits
+with `ruleForm.errorMcc` (the catalogues hold the text; do not copy it). What the trigger shows
+equals what is stored on every path.
 Migration `0014_lowercase_categories` lowercased the legacy rows a
 capitalized-title era had already written. Neither
 `transactions.category` nor `category_rules.category` is COLLATE NOCASE;

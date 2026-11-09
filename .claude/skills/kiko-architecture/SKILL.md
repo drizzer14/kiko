@@ -793,8 +793,10 @@ with `rule-card/` and `rule-summary/` under it; the list card opens
   offered on the default.
 - The rule editor is the CategoryRuleForm route
   (`src/navigation/types/types.d.ts`), in
-  `src/screens/forms/category-rule-form/` (`matcher-row/`, `rule-draft/`,
-  `use-save-rule/`, `rule-rewrite-sheet/`). It has no Delete either; a
+  `src/screens/forms/category-rule-form/` (`matcher-row/`, `mcc-field/`
+  (MCC picker sheet; `mcc-picker-rows.ts` holds `matchesMccQuery`,
+  `mccPickerRows`, `DIGITS_ONLY`), `rule-draft/`, `use-save-rule/`,
+  `rule-rewrite-sheet/`). It has no Delete either; a
   rule is deleted from its rule card's hold menu on the category form.
   The rewrite confirm is a `BottomSheet` with buttons, opened from
   `use-save-rule/`, not a `ConfirmSheet`; a save that would rewrite

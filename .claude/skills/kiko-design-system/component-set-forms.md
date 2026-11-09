@@ -450,6 +450,10 @@
   and the group kinds. A heading row shows only while MORE THAN ONE group is showing, and a
   search drops a group it empties. Each group is ordered by `orderCurrencies` (read
   `currency-group.ts` for the rule), and an empty group is dropped.
+  `MccField` (`src/screens/forms/category-rule-form/mcc-field/`) is the second
+  searchable-picker user; it copies this sheet chrome (BottomSheet heading,
+  `scrollable={false}`, pinned search `TextField`, own `FlatList`,
+  `keyboardShouldPersistTaps="handled"`). Match it; do not add a third variant.
   Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
   a `disabled` read-only state. `error` follows every field's contract:
