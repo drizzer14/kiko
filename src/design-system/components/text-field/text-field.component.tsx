@@ -125,17 +125,18 @@ const TextField: FC<TextFieldProps> = ({
 
         {hasInset ? (
           <Box style={styles.insetContainer}>
+            {input}
+
             {leadingIcon !== undefined && leadingIcon !== '' && (
-              // Pinned to the leading edge and vertically centered; the reserved
-              // `inputWithLeadingIcon` padding keeps the caret clear of it. The
-              // slot's `pointerEvents: 'none'` lets a tap in the leading area
-              // fall through to focus the input rather than being swallowed.
+              // Rendered after the input so, as a later sibling, it paints above the opaque
+              // field background. Pinned to the leading edge and vertically centered; the
+              // reserved `inputWithLeadingIcon` padding keeps the caret clear of it. The
+              // slot's `pointerEvents: 'none'` lets a tap in the leading area fall through
+              // to focus the input rather than being swallowed.
               <Box style={styles.leadingSlot}>
                 <SymbolIcon name={leadingIcon} size={theme.iconSizes.body} />
               </Box>
             )}
-
-            {input}
 
             {hasSuffix && (
               <Box style={styles.suffixSlot}>
