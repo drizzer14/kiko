@@ -673,6 +673,50 @@ every new key.
   no Bybit logo in the store metadata. Check: the coordinator reads both texts and the store metadata against spec section 9; no
   app file changes.
 - [ ] **step 6/6: device check, user on device, one build (O75; was: two, PLANNER CALL 34; spec section 10).** The coordinator owns device builds. The coordinator merges current `next` into this tip first, so its journal holds every migration of `next` and none that `next` lacks (F3, PLANNER CALL 72), then this tip, `make deploy EXPECT=api.bybit.com`. The empty account with Last sync; the expiry line with 2027-02-04; each surface in section 6.4, `statistics.bybitPastLimits` too; connect in 10 calls; a wrong key; a read-write key; a key refused on a route (a narrow key, made and deleted by the user, optional); disconnect and reconnect; Binance still syncs; light and dark. Positive and negative pin checks of `docs/security/README.md`. Guard: A52 pins that no tracked env file, plist entry or source module names `api-testnet`. This check is "fundamentals done" (O44), the next device call for Bybit. It proves the connect path, the expiry, an empty read from a live answer and every stated limit. It does not prove a coin row, a set-aside line from a live answer, or any history row, which no build can show: those are the accepted residuals of spec section 10 (O64, O75, O76), and the report says that no coin row was seen. O73 does not block this build (O76). A defect in data, a stated limit or a condition blocks it. A visual wish does not block it: it goes to fast visual rounds after it, on this branch, before the batch merge. Pass: those rounds, then the batch merge. A stop here: sets 3 to 7, 9 and 10 stay out of `next`, and no removal row is needed, because the batch holds no migration: the table is already in `next`, so a phone's count never passes `next` (was: stated with the migration in set 10, which was false, F3).
+- [ ] **set 7 fix round: the whole-set review of 7582dc4ff (MINOR-3, MINOR-4; PLANNER CALLS 149 to 151).** One fresh
+  kiko:developer. Base 7582dc4ff plus this planner commit. Re-grep every symbol and anchor on that base; counts are floors,
+  measure them. Two commits, in this order. Not in the round: MINOR-1 (PLANNER CALL 150, backlog, Q-r), MINOR-2 (no code;
+  its spec row is a DRAFT for the user), the ponytail shrink (not a clear win, PLANNER CALL 151). Run
+  `bash scripts/wait-load.sh 15` before each heavy job.
+  - **fix round 1/2: the Bybit policy label (MINOR-4).** Commit `1.4-bybit set 7/11 fix round (1/2): the Bybit policy
+    label " — "`. Files: `src/crypto-sync/bybit/bybit.privacy-policy.test.ts`, `docs/privacy-policy.en.md`,
+    `docs/privacy-policy.md`, `docs/privacy-site/en.html` and `docs/privacy-site/index.html` (by the build only).
+    - Red first: in `bybit.privacy-policy.test.ts`, over every entry of `POLICY_FILES`, a pin "the Bybit entry
+      starts with its name and host, then ' — ', as the Monobank and Binance entries do": the text at the start of
+      `bybitEntryOf` matches `**Bybit** (\`api.bybit.com\`) — ` (md) or `<strong>Bybit</strong>
+      (<code>api.bybit.com</code>) — ` (html), and the Binance entry of the same file matches the same shape (the
+      pin's own control). Red on the base in all four files, Binance rows green.
+    - Fix: in both md files, the label's colon becomes " — " (en "`api.bybit.com`) — using", uk "`api.bybit.com`) —
+      за допомогою"); re-wrap that paragraph to the file's line width if a line grows past it; no other word
+      changes. Then `npm run privacy:site -- build`. The effective date stays (a punctuation change; the publish
+      re-dates the policy, release skill "Privacy policy check"). After the edit, spec section 9's block and both md
+      entries match word for word, whitespace aside (PLANNER CALL 149).
+    - Mutant to show red by hand (gates are paused): put the colon back in one md file only (the pin goes red for that
+      file and its html after a build).
+    - Check: `npx jest src/crypto-sync/bybit/bybit.privacy-policy.test.ts src/crypto-sync/binance/binance.privacy-policy.test.ts --maxWorkers=2`;
+      `npm run privacy:site -- hosts` (no host change); the uk apostrophe suite (re-grep its file name); A44, A50.
+  - **fix round 2/2: the Add an Account help names Bybit (MINOR-3).** Commit `1.4-bybit set 7/11 fix round (2/2): the
+    Add an Account help names Bybit`. Files: `src/i18n/locales/en.ts`, `src/i18n/locales/uk.ts`
+    (`help.topics.addAccount.steps.4`), `src/crypto-sync/bybit/bybit.shipped-copy.test.ts`.
+    - Red first: in `bybit.shipped-copy.test.ts`, a pin "the Add an Account help names Bybit among the connect options,
+      en and uk": `help.topics.addAccount.steps.4` holds "Bybit" and "Binance" in both languages, and equals the spec
+      section 8 row (the DRAFT words). Red on the base.
+    - Fix: the words of the spec section 8 row, a DRAFT pending the user (PLANNER CALL 151):
+      en "Optional: connect Monobank with a token, Binance or Bybit with an API key, or Bitcoin with a wallet address."
+      uk «За бажанням підключіть Monobank за токеном, Binance чи Bybit за API-ключем або гаманець Bitcoin за адресою.»
+      If the user returns other words, a later commit copies them into the row, the catalogue and the pin together.
+      The help step count does not change (`help-topics.test.ts` `['addAccount', 5]` stays green unchanged). Grep
+      `en.casing-by-role.test.ts` and its `BYBIT_PHRASES` first: if a Bybit phrase list must hold the step, change it
+      in this same commit.
+    - Mutant to show red by hand: drop "or Bybit" from the en value (red), then from the uk value (red).
+    - Check: `npx jest src/crypto-sync/bybit/bybit.shipped-copy.test.ts src/help/help-topics.test.ts src/i18n --maxWorkers=2`;
+      `make jest-affected BASE=<base>`; `npm run check:lint`, `check:import-order`, `check:comment-line-width`,
+      `check:typecheck`.
+  - End of round: kiko:translator reads both changed texts. The coordinator queues
+    `bash scripts/job-queue.sh verify /Users/drizzer14/orca/workspaces/pff-ios/1.4-bybit 1.4-bybit-set-7-fix` once, rerun
+    until green (never `make verify` by an agent). Mutation: the queued gate per this round with `KIKO_MUTATION_BASE` =
+    the planner commit (paused by the user since 2026-10-25: hand mutants above stand in). Then kiko:retrospect and
+    kiko:scribe (the set 8 drift list gains: the review's O-id checker miss, already on the coordinator DUE list O96).
 
 ## 1.4-bybit set 8/11: skill drift
 
@@ -772,6 +816,12 @@ R2, R3 and R4 with real money. No set waits for them. They turn stage B's docs-o
 ### Backlog of set 4's review (O80, O83), at the next touch
 
 F6 (a state text that is not JSON, or a failed row query, shows "No holdings yet"; no writer makes it), F9 (code 10010 shows "Bybit request failed: 10010"), and the twin tests of `exchange-history-gate.test.ts` (re-review finding 6).
+
+### Backlog of set 7's whole-set review (7582dc4ff), at the next touch
+
+The closed-row write of PLANNER CALL 150 (Q-r default A; every provider's `upsertByMetadataKey`). A 403 at connect shows
+`bybitForbidden` ("waits up to 10 minutes"), but a connect sets no cooldown. A disconnected Bybit account keeps its past
+but shows no `bybitPastLimits` line. Split `account-form.screen.test.tsx` (4,269 lines).
 
 ### Binance twin of PLANNER CALL 120, at the next touch
 
