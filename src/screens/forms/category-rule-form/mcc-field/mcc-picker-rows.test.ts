@@ -1,38 +1,6 @@
 import { MCC_NAMES, mccNameOf } from '@kiko/categories/mcc-names';
 
-type MccEntry = { code: string; name: string | undefined };
-
-type MccPickerRow =
-  | { type: 'other' }
-  | { type: 'heading'; section: 'own' | 'all' }
-  | { type: 'ownEmpty' }
-  | { type: 'noMatch' }
-  | {
-      type: 'code';
-      section: 'own' | 'all';
-      code: string;
-      name: string | undefined;
-      rowCount?: number;
-    };
-
-type PickerInput = {
-  own: readonly { mcc: number; rowCount: number }[];
-  ownLoading: boolean;
-  query: string;
-  language: string;
-};
-
-type PickerRows = {
-  matchesMccQuery: (entry: MccEntry, query: string) => boolean;
-  mccPickerRows: (input: PickerInput) => MccPickerRow[];
-};
-
-const pickerRows = (): PickerRows => require('./mcc-picker-rows');
-
-const matchesMccQuery = (entry: MccEntry, query: string): boolean =>
-  pickerRows().matchesMccQuery(entry, query);
-
-const mccPickerRows = (input: PickerInput): MccPickerRow[] => pickerRows().mccPickerRows(input);
+import { type MccPickerRow, matchesMccQuery, mccPickerRows } from './mcc-picker-rows';
 
 const allRow = (code: string, name: string | undefined): MccPickerRow => ({
   type: 'code',
