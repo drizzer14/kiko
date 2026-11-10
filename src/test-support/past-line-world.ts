@@ -14,15 +14,10 @@ import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 
 import { applyAllMigrations } from './real-sqlite';
 
-const TENTH_OF_A_COIN = 10_000_000;
-const SIX_TENTHS_OF_A_COIN = 60_000_000;
 const SEVEN_TENTHS_OF_A_COIN = 70_000_000;
-const LINE_AT_THE_TENTH_READ = [0.1, 0.1, 0.1, 0.1, 0.1];
 
-/** What `react-native-keychain` exposes to a test: only the accessibility constant is read. */
-export const keychainModule = {
-  ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
-};
+/** What a read left on a holding, as the test that seeded the read states it. */
+type ExpectedRead = { line: number[]; balanceMinorUnits: number };
 
 /**
  * A local calendar day of January 2026 at an hour, built from local fields: the line samples at
@@ -101,51 +96,63 @@ export const pastLineWorld = (resolveDatabase: () => DatabaseSync, accountId: st
     return points.map(({ amount }) => amount);
   };
 
-  // A read of 0.1 after a typed +0.5 overwrote the row: Home shows the read, and the line holds it.
-  const expectLineAtTheTenthRead = async (holding: HoldingRow): Promise<void> => {
-    expect(await lineFrom(-1, 3)).toEqual(LINE_AT_THE_TENTH_READ);
-    expect(holding.balanceMinorUnits).toBe(TENTH_OF_A_COIN);
+  // A read after a typed row overwrote it: Home shows the read, and the line holds it.
+  const expectLineAtTheRead = async (
+    holding: HoldingRow,
+    { line, balanceMinorUnits }: ExpectedRead,
+  ): Promise<void> => {
+    expect(await lineFrom(-1, 3)).toEqual(line);
+    expect(holding.balanceMinorUnits).toBe(balanceMinorUnits);
   };
 
-  const expectMarkedRowDeleteMovesNothing = async (rowId: string): Promise<void> => {
+  const expectMarkedRowDeleteMovesNothing = async (
+    rowId: string,
+    { line, balanceMinorUnits }: ExpectedRead,
+  ): Promise<void> => {
     expect(await deletedRowChanges(rowId)).toBeUndefined();
-    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
-    expect(await lineFrom(-1, 3)).toEqual(LINE_AT_THE_TENTH_READ);
+    expect((await storedHolding()).balanceMinorUnits).toBe(balanceMinorUnits);
+    expect(await lineFrom(-1, 3)).toEqual(line);
     expect(storedRowIds()).toEqual([]);
   };
 
-  const expectMarkedRowEditMovesNothing = async (rowId: string): Promise<void> => {
+  const expectMarkedRowEditMovesNothing = async (
+    rowId: string,
+    { line, balanceMinorUnits }: ExpectedRead,
+  ): Promise<void> => {
     await transactionsRepo.update({
       transactionId: rowId,
       amountMinorUnits: SEVEN_TENTHS_OF_A_COIN,
       time: at(1, 9),
     });
 
-    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
-    expect(await lineFrom(-1, 3)).toEqual(LINE_AT_THE_TENTH_READ);
+    expect((await storedHolding()).balanceMinorUnits).toBe(balanceMinorUnits);
+    expect(await lineFrom(-1, 3)).toEqual(line);
     expect(storedAmounts()).toEqual([{ id: rowId, amount: SEVEN_TENTHS_OF_A_COIN }]);
   };
 
   // A row typed after the first dated read is on the mark of the next read, so deleting it moves
-  // no balance.
-  const expectLaterRowOnTheMark = async (laterRowId: string): Promise<void> => {
+  // no balance: the balance stays what the test's read left.
+  const expectLaterRowOnTheMark = async (
+    laterRowId: string,
+    keptRowId: string,
+    balanceMinorUnits: number,
+  ): Promise<void> => {
     expect((await storedHolding()).metadata).toMatchObject({
       overwrittenRowIds: [laterRowId],
-      keptRowIds: ['typed-row'],
+      keptRowIds: [keptRowId],
     });
 
     await transactionsRepo.remove(laterRowId);
 
-    expect((await storedHolding()).balanceMinorUnits).toBe(SIX_TENTHS_OF_A_COIN);
+    expect((await storedHolding()).balanceMinorUnits).toBe(balanceMinorUnits);
   };
 
   return {
     storedHolding,
     typedRowAt,
-    storedRowIds,
     deletedRowChanges,
     lineFrom,
-    expectLineAtTheTenthRead,
+    expectLineAtTheRead,
     expectMarkedRowDeleteMovesNothing,
     expectMarkedRowEditMovesNothing,
     expectLaterRowOnTheMark,

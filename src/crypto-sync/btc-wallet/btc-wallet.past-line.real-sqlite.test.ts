@@ -11,7 +11,7 @@ jest.mock('@kiko/db/client', () =>
 );
 jest.mock(
   'react-native-keychain',
-  () => require('@kiko/test-support/past-line-world').keychainModule,
+  () => require('@kiko/test-support/keychain-module').keychainModule,
 );
 
 import type { DatabaseSync } from 'node:sqlite';
@@ -34,7 +34,7 @@ const {
   typedRowAt,
   deletedRowChanges,
   lineFrom,
-  expectLineAtTheTenthRead,
+  expectLineAtTheRead,
   expectMarkedRowDeleteMovesNothing,
   expectMarkedRowEditMovesNothing,
   expectLaterRowOnTheMark,
@@ -53,6 +53,7 @@ beforeEach(() => {
 
 describe('the line of a Bitcoin wallet whose read overwrote rows the user typed, on real SQLite', () => {
   // Read 0.1, disconnect, type +0.5 (the balance moves to 0.6), reconnect, read 0.1 again.
+  const readOfATenth = { line: [0.1, 0.1, 0.1, 0.1, 0.1], balanceMinorUnits: TENTH_OF_A_COIN };
   const typedRowThenReadOfATenth = async (): Promise<string> => {
     await readAt(at(0, 10), TENTH_OF_A_COIN);
     await disconnectCryptoAccount(ACCOUNT_ID, 'btc_wallet');
@@ -68,7 +69,7 @@ describe('the line of a Bitcoin wallet whose read overwrote rows the user typed,
     const typedRowId = await typedRowThenReadOfATenth();
     const holding = await storedHolding();
 
-    await expectLineAtTheTenthRead(holding);
+    await expectLineAtTheRead(holding, readOfATenth);
     expect(holding.metadata).toEqual({
       walletAddress: ADDRESS,
       syncedAt: at(2, 10),
@@ -78,11 +79,11 @@ describe('the line of a Bitcoin wallet whose read overwrote rows the user typed,
   });
 
   it('W8, deleting a row on the mark moves no balance and the confirm names no change', async () => {
-    await expectMarkedRowDeleteMovesNothing(await typedRowThenReadOfATenth());
+    await expectMarkedRowDeleteMovesNothing(await typedRowThenReadOfATenth(), readOfATenth);
   });
 
   it('W8, editing a row on the mark moves no balance and keeps its id', async () => {
-    await expectMarkedRowEditMovesNothing(await typedRowThenReadOfATenth());
+    await expectMarkedRowEditMovesNothing(await typedRowThenReadOfATenth(), readOfATenth);
   });
 });
 
@@ -136,7 +137,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
     const laterRowId = await typedRowAt(at(3, 9), HALF_OF_A_COIN);
 
     await readAt(at(4, 10), SIX_TENTHS_OF_A_COIN);
-    await expectLaterRowOnTheMark(laterRowId);
+    await expectLaterRowOnTheMark(laterRowId, 'typed-row', SIX_TENTHS_OF_A_COIN);
   });
 
   it('the old typed row stays off the mark at the second and the third dated read, with a disconnect between them, and keeps counting', async () => {
