@@ -195,13 +195,13 @@ const rowIdsPatch = (field: string, rowIds: string[]): Record<string, string[]> 
 // balance it describes are written together. The read's figure replaces the balance, so a row the
 // user typed before it has no part in the line above it (`rowsHeldByBalance`). A holding off
 // the dated list returns before any read, and a read with no such row returns no key.
-// The first dated read of a holding that shipped with no read date writes the date and no mark
-// (Q3 of the 1.4 track, the coordinator): its rows are old history that the user typed or
-// restored before the read existed, and they keep counting as they did. It writes their ids as the
-// kept list instead, and every later read marks only the rows off that list and rewrites it to the
-// ids still there, so the old rows keep counting for good and the fix covers the rows typed after
-// the update. A provider whose entry does not count its rows before the first read (Bybit) never
-// shipped an undated holding, so it marks every row at once and never reads or writes the list.
+// The first dated read of a holding that has no read date writes the date and no mark, because its
+// rows are old history that the user typed or restored before the read existed, and they keep
+// counting as they did. It writes their ids as the kept list instead, and every later read marks
+// only the rows off that list and rewrites it to the ids still there, so the old rows keep
+// counting for good and only the rows typed after that read are marked. A provider whose entry
+// does not count its rows before the first read (Bybit) never had an undated holding, so it marks
+// every row at once and never reads or writes the list.
 const overwrittenRowsPatch = async (
   databaseTransaction: typeof database,
   holdingId: string,

@@ -396,8 +396,8 @@ describe('runBalanceSync', () => {
 
   it('a provider that does not writes the stamp alone', async () => {
     const { provider } = makeProvider();
-    // Every balance provider is on the dated list now, so the stub names the one synced key that is
-    // not: Monobank's, whose sync writes no read time.
+    // The stub names Monobank's synced key, the one key of a provider that is not on the dated
+    // list, whose sync writes no read time.
     const stubProvider = {
       ...provider,
       metadataField: 'monobankId' as unknown as BalanceProvider<FakeDeps>['metadataField'],

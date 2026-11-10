@@ -174,7 +174,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
       .run(HALF_OF_A_COIN, at(1, 9));
   };
 
-  it('Q3, the first dated read writes the date and no mark, and the old typed row keeps counting', async () => {
+  it('the first dated read writes the date and no mark, and the old typed row keeps counting', async () => {
     seedShippedWalletWithTypedRow();
 
     expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
@@ -190,7 +190,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
     expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.6, 0.6, 0.6]);
   });
 
-  it('Q3, a delete of the old typed row after the first dated read moves the balance as today', async () => {
+  it('a delete of the old typed row after the first dated read moves the balance as today', async () => {
     seedShippedWalletWithTypedRow();
     await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
 
@@ -201,7 +201,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
     expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
   });
 
-  it('Q-j, a row typed after the first dated read is on the mark of the next read', async () => {
+  it('a row typed after the first dated read is on the mark of the next read', async () => {
     seedShippedWalletWithTypedRow();
     await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
     await disconnectCryptoAccount(ACCOUNT_ID, 'btc_wallet');

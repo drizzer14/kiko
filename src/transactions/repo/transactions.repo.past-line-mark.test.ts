@@ -292,8 +292,8 @@ describe('the confirm says what the delete does', () => {
 
 describe('a Binance or wallet holding, which a read dates', () => {
   // The mark names `marked`; `unmarked` is a row typed after the read. The statements are those of
-  // one `remove` and one `update`, counted on the code before the mark existed: a row off the mark
-  // sends them all, and a row on the mark sends every statement but the balance's own.
+  // one `remove` and one `update`, counted for a holding with no mark: a row off the mark sends
+  // them all, and a row on the mark sends every statement but the balance's own.
   const DATED_KINDS = [
     { label: 'Binance', metadata: { binanceAsset: 'BTC', syncedAt: MOVED, balanceReadAt: MOVED } },
     {
@@ -409,7 +409,7 @@ describe('a Binance or wallet holding, which a read dates', () => {
 
 describe('a holding that is not on the dated list', () => {
   // The mark is a hand-made file's: no sync of these kinds writes one. The statements are those of
-  // one `remove` and one `update`, counted on the code before the mark existed.
+  // one `remove` and one `update`, counted for a holding with no mark.
   const KINDS = [
     {
       label: 'Monobank',
