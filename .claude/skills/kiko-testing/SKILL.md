@@ -120,6 +120,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `binance-real-sqlite.ts`, `binance-backfill-world.ts`, `walk-marks.ts`, `walk-disturbances.ts`:
   the database set-up, the backfill world, the single reader of a walk's marks and the disturbance
   loop of the Binance history walk tests.
+- `past-line-world.ts`: the mechanics of the real-SQLite past-line tests of the dated holdings
+  (Binance, Bitcoin wallet): `openPastLineDatabase`, `pastLineWorld` (the stored holding, a typed
+  row, the net-worth line, and the shared marked-row expectations), `at`, and `keychainModule`.
+  Each test keeps its own seed rows and reads.
 - `property-sweep.ts`, `seeded-random.ts`: `sweep` for a property seed list; a seeded generator.
 - `local-days-from.ts`, `device-zone-offset.ts`: calendar-day arithmetic and a device-zone offset
   for a test whose dates cross DST.

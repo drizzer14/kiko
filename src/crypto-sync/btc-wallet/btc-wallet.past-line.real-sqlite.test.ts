@@ -6,27 +6,19 @@
 // what the database holds.
 let mockDatabase: DatabaseSync;
 
-jest.mock('@kiko/db/client', () => {
-  const actual = jest.requireActual('@kiko/db/client');
-  const { executingClient } = require('@kiko/test-support/real-sqlite');
-  const client = executingClient(() => mockDatabase);
+jest.mock('@kiko/db/client', () =>
+  require('@kiko/test-support/real-sqlite').databaseClientOver(() => mockDatabase),
+);
+jest.mock(
+  'react-native-keychain',
+  () => require('@kiko/test-support/past-line-world').keychainModule,
+);
 
-  return { ...actual, database: client.database, write: client.write };
-});
-jest.mock('react-native-keychain', () => ({
-  ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
-}));
-
-import { DatabaseSync } from 'node:sqlite';
-import type { HoldingRow } from '@kiko/db';
-import { holdingsRepo } from '@kiko/holdings/repo';
+import type { DatabaseSync } from 'node:sqlite';
 import { runBalanceSync } from '@kiko/crypto-sync/sync';
-import type { Currency } from '@kiko/currency/currency';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
-import { buildNetWorthSeries } from '@kiko/statistics/net-worth-series';
-import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
+import { at, openPastLineDatabase, pastLineWorld } from '@kiko/test-support/past-line-world';
 
 import { bitcoinWalletProvider } from './btc-wallet.provider';
 
@@ -36,11 +28,17 @@ const ONE_COIN = 100_000_000;
 const TENTH_OF_A_COIN = 10_000_000;
 const HALF_OF_A_COIN = 50_000_000;
 const SIX_TENTHS_OF_A_COIN = 60_000_000;
-const SEVEN_TENTHS_OF_A_COIN = 70_000_000;
 
-// A local calendar day of January 2026 at an hour, built from local fields: the line samples at
-// local midnight, so no fixed-millisecond offset may stand for a day.
-const at = (day: number, hour = 12): number => new Date(2026, 0, 1 + day, hour).getTime();
+const {
+  storedHolding,
+  typedRowAt,
+  deletedRowChanges,
+  lineFrom,
+  expectLineAtTheTenthRead,
+  expectMarkedRowDeleteMovesNothing,
+  expectMarkedRowEditMovesNothing,
+  expectLaterRowOnTheMark,
+} = pastLineWorld(() => mockDatabase, ACCOUNT_ID);
 
 const readAt = (time: number, balanceMinorUnits: number): ReturnType<typeof runBalanceSync> =>
   runBalanceSync(
@@ -49,55 +47,8 @@ const readAt = (time: number, balanceMinorUnits: number): ReturnType<typeof runB
     { targetAccountId: ACCOUNT_ID, now: () => time },
   );
 
-const storedHolding = async (): Promise<HoldingRow> => {
-  const [holding] = await holdingsRepo.listByAccountQuery(ACCOUNT_ID);
-
-  if (holding === undefined) {
-    throw new Error(`account ${ACCOUNT_ID} should hold a holding by now`);
-  }
-
-  return holding;
-};
-
-// A row the user types, which moves the balance as it is written. Returns the row's id.
-const typedRowAt = async (time: number, amountMinorUnits: number): Promise<string> => {
-  const { id } = await storedHolding();
-
-  return transactionsRepo.recordManual({ holdingId: id, amountMinorUnits, time });
-};
-
-const storedRowIds = (): string[] =>
-  (mockDatabase.prepare('SELECT id FROM transactions ORDER BY id').all() as { id: string }[]).map(
-    ({ id }) => id,
-  );
-
-// The net-worth line of the account's one holding at local midnight of each day from `firstDay` to
-// `lastDay`, in coins.
-const lineFrom = async (firstDay: number, lastDay: number): Promise<number[]> => {
-  const holding = await storedHolding();
-  const rows = mockDatabase
-    .prepare(
-      'SELECT id, time, amount_minor_units AS amountMinorUnits, source FROM transactions WHERE holding_id = ?',
-    )
-    .all(holding.id) as SeriesTransaction[];
-  const { points } = buildNetWorthSeries({
-    holdings: [holding],
-    transactionsByHolding: new Map([[holding.id, rows]]),
-    historyRows: [],
-    baseCurrency: 'BTC' as Currency,
-    range: { from: at(firstDay, 0), to: at(lastDay, 0) },
-  });
-
-  return points.map(({ amount }) => amount);
-};
-
 beforeEach(() => {
-  mockDatabase = new DatabaseSync(':memory:');
-  applyAllMigrations(mockDatabase);
-  mockDatabase.exec('PRAGMA foreign_keys = ON;');
-  mockDatabase
-    .prepare("INSERT INTO accounts (id, name, kind) VALUES (?, 'Wallet', 'crypto')")
-    .run(ACCOUNT_ID);
+  mockDatabase = openPastLineDatabase(ACCOUNT_ID, 'Wallet');
 });
 
 describe('the line of a Bitcoin wallet whose read overwrote rows the user typed, on real SQLite', () => {
@@ -117,8 +68,7 @@ describe('the line of a Bitcoin wallet whose read overwrote rows the user typed,
     const typedRowId = await typedRowThenReadOfATenth();
     const holding = await storedHolding();
 
-    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.1, 0.1, 0.1]);
-    expect(holding.balanceMinorUnits).toBe(TENTH_OF_A_COIN);
+    await expectLineAtTheTenthRead(holding);
     expect(holding.metadata).toEqual({
       walletAddress: ADDRESS,
       syncedAt: at(2, 10),
@@ -128,31 +78,11 @@ describe('the line of a Bitcoin wallet whose read overwrote rows the user typed,
   });
 
   it('W8, deleting a row on the mark moves no balance and the confirm names no change', async () => {
-    const typedRowId = await typedRowThenReadOfATenth();
-
-    expect((await transactionsRepo.removePlan(typedRowId)).balanceChanges).toBeUndefined();
-
-    await transactionsRepo.remove(typedRowId);
-
-    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
-    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.1, 0.1, 0.1]);
-    expect(storedRowIds()).toEqual([]);
+    await expectMarkedRowDeleteMovesNothing(await typedRowThenReadOfATenth());
   });
 
   it('W8, editing a row on the mark moves no balance and keeps its id', async () => {
-    const typedRowId = await typedRowThenReadOfATenth();
-
-    await transactionsRepo.update({
-      transactionId: typedRowId,
-      amountMinorUnits: SEVEN_TENTHS_OF_A_COIN,
-      time: at(1, 9),
-    });
-
-    expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
-    expect(await lineFrom(-1, 3)).toEqual([0.1, 0.1, 0.1, 0.1, 0.1]);
-    expect(
-      mockDatabase.prepare('SELECT id, amount_minor_units AS amount FROM transactions').all(),
-    ).toEqual([{ id: typedRowId, amount: SEVEN_TENTHS_OF_A_COIN }]);
+    await expectMarkedRowEditMovesNothing(await typedRowThenReadOfATenth());
   });
 });
 
@@ -194,10 +124,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
     seedShippedWalletWithTypedRow();
     await readAt(at(2, 10), SIX_TENTHS_OF_A_COIN);
 
-    expect((await transactionsRepo.removePlan('typed-row')).balanceChanges).toBeDefined();
-
-    await transactionsRepo.remove('typed-row');
-
+    expect(await deletedRowChanges('typed-row')).toBeDefined();
     expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
   });
 
@@ -209,15 +136,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
     const laterRowId = await typedRowAt(at(3, 9), HALF_OF_A_COIN);
 
     await readAt(at(4, 10), SIX_TENTHS_OF_A_COIN);
-
-    expect((await storedHolding()).metadata).toMatchObject({
-      overwrittenRowIds: [laterRowId],
-      keptRowIds: ['typed-row'],
-    });
-
-    await transactionsRepo.remove(laterRowId);
-
-    expect((await storedHolding()).balanceMinorUnits).toBe(SIX_TENTHS_OF_A_COIN);
+    await expectLaterRowOnTheMark(laterRowId);
   });
 
   it('the old typed row stays off the mark at the second and the third dated read, with a disconnect between them, and keeps counting', async () => {
@@ -248,10 +167,7 @@ describe('the line of a Bitcoin wallet that shipped with a row the user typed, o
     await disconnectCryptoAccount(ACCOUNT_ID, 'btc_wallet');
     await readAt(at(4, 10), SIX_TENTHS_OF_A_COIN);
 
-    expect((await transactionsRepo.removePlan('typed-row')).balanceChanges).toBeDefined();
-
-    await transactionsRepo.remove('typed-row');
-
+    expect(await deletedRowChanges('typed-row')).toBeDefined();
     expect((await storedHolding()).balanceMinorUnits).toBe(TENTH_OF_A_COIN);
   });
 

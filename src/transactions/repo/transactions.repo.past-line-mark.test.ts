@@ -96,6 +96,22 @@ const seedMarkedRow = (rowId: string, source?: string): void => {
   insertRow({ id: rowId, holdingId: 'coin', amountMinorUnits: 50_000_000, source });
 };
 
+// A card whose metadata carries a mark that names one row.
+const seedKindHolding = (metadata: Record<string, unknown>, markedRowId: string): void => {
+  seedFixture();
+  insertHolding('kind', 'card', 'UAH', 100_000, {
+    metadata: { ...metadata, [OVERWRITTEN_ROW_IDS_FIELD]: [markedRowId] },
+  });
+};
+
+const statementsDuring = async (work: () => Promise<unknown>): Promise<number> => {
+  const prepare = jest.spyOn(mockDatabase, 'prepare');
+
+  await work();
+
+  return prepare.mock.calls.length;
+};
+
 const edit = (transactionId: string, amountMinorUnits: number): Promise<void> =>
   transactionsRepo.update({ transactionId, amountMinorUnits, time: MOVED });
 
@@ -303,20 +319,9 @@ describe('a Binance or wallet holding, which a read dates', () => {
   ];
 
   const seedDatedKind = ({ metadata }: (typeof DATED_KINDS)[number]): void => {
-    seedFixture();
-    insertHolding('kind', 'card', 'UAH', 100_000, {
-      metadata: { ...metadata, [OVERWRITTEN_ROW_IDS_FIELD]: ['marked'] },
-    });
+    seedKindHolding(metadata, 'marked');
     insertRow({ id: 'marked', holdingId: 'kind', amountMinorUnits: 5_000 });
     insertRow({ id: 'unmarked', holdingId: 'kind', amountMinorUnits: 3_000 });
-  };
-
-  const statementsDuring = async (work: () => Promise<unknown>): Promise<number> => {
-    const prepare = jest.spyOn(mockDatabase, 'prepare');
-
-    await work();
-
-    return prepare.mock.calls.length;
   };
 
   it.each(DATED_KINDS)(
@@ -431,19 +436,8 @@ describe('a holding that is not on the dated list', () => {
   const PLAN_STATEMENTS = 2;
 
   const seedKind = ({ metadata, source }: (typeof KINDS)[number]): void => {
-    seedFixture();
-    insertHolding('kind', 'card', 'UAH', 100_000, {
-      metadata: { ...metadata, [OVERWRITTEN_ROW_IDS_FIELD]: ['row'] },
-    });
+    seedKindHolding(metadata, 'row');
     insertRow({ id: 'row', holdingId: 'kind', amountMinorUnits: 5_000, source });
-  };
-
-  const statementsDuring = async (work: () => Promise<unknown>): Promise<number> => {
-    const prepare = jest.spyOn(mockDatabase, 'prepare');
-
-    await work();
-
-    return prepare.mock.calls.length;
   };
 
   it.each(KINDS)('$label moves by a delete as today, with a mark in its metadata', async (kind) => {
