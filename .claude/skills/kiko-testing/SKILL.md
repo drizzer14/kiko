@@ -121,7 +121,7 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   the database set-up, the backfill world, the single reader of a walk's marks and the disturbance
   loop of the Binance history walk tests.
 - `past-line-world.ts`: the mechanics of the real-SQLite past-line tests of the dated holdings
-  (Binance, Bitcoin wallet): `openPastLineDatabase`, `pastLineWorld` (the stored holding, a typed
+  (`datedBalances`): `openPastLineDatabase`, `pastLineWorld` (the stored holding, a typed
   row, the net-worth line, and the shared marked-row expectations), and `at`. Each test keeps its
   own seed rows and reads, and passes its own row ids, line and balance to an expectation.
   `keychain-module.ts`: the `react-native-keychain` stub for a `jest.mock` factory, in a module

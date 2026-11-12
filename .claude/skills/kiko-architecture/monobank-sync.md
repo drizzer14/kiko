@@ -20,7 +20,10 @@ header for the crash-safe order and never write a second migration path for it.
    `fetchClientInfo`, then `markMonobankAccount` writes the mark. A
    wrong token, an offline device or a 429 must never leave the
    account half-connected; mirrors `src/crypto-sync/`'s
-   `runBalanceSync` ordering. A Connect and a successful disconnect re-plan reminders: see
+   `runBalanceSync` ordering. `runSyncInner` takes `readAt = deps.now()` right after this answer,
+   and `upsertAllHoldings` writes it on each card and jar through `datedAt` (the `datedBalances`
+   read date), so rows a later statement read imports with a later time stay off the line until
+   the next read. A Connect and a successful disconnect re-plan reminders: see
    "Re-plan after a write" in reminders.md. `runSync` does not create the settings
    row itself — the single settings row is guaranteed to exist by the
    app-boot migrations gate (`src/migration/`) before any
@@ -93,7 +96,8 @@ header for the crash-safe order and never write a second migration path for it.
    phase — not once per card. The per-card write loop it replaced fanned
    out N+M reactive fires in a tight burst at sync start, each re-running
    the Home screen's O(n) render and starving the JS thread (the laggy
-   pull spinner). This used to throw outside the per-card try/catch and
+   pull spinner). The batch carries `readAt` (see step 2) as `BALANCE_READ_AT_FIELD`.
+   This used to throw outside the per-card try/catch and
    abort the whole sync on one foreign-currency sub-account; now every
    other, representable card still imports and the cursor still
    advances. The trade-off: an unrepresentable-currency holding is

@@ -334,7 +334,8 @@ than restated here:
   metadata object on every run, for every provider: `{ syncedAt }`, plus the read date for a
   provider whose balance is dated (`datesBalanceOf` in `holding-metadata.ts`). The update
   branch of the upsert also writes the overwritten-row list and the kept list of a dated holding
-  (`overwrittenRowsPatch`, `src/holdings/repo/holdings.repo.ts`). The walk
+  (`overwrittenRowsPatch`, `src/holdings/repo/holdings.repo.ts`). Monobank's `upsertAllHoldings`
+  writes the read date the same way (see monobank-sync.md). The walk
   marks are not in that metadata (they live in `sync_state.exchange_state`),
   so nothing there needs carrying except what `carriedMetadataKeys`
   (`holding-metadata.ts`) names: `STATEMENT_FROM_FIELD` (a reopened Monobank
@@ -1183,9 +1184,10 @@ Balance sync, notes, set-aside coins, cooling and the history walks:
   hide a failure.
 - Past-line mark: a dated provider's balance (the providers on `datedBalances`) is dated by its
   last read (`balanceReadAt`), and a read lists the rows it overwrote (`overwrittenRowIds`). A row
-  on that list moves no balance when the user edits or deletes it. A holding with no read time
-  counts no source row for Bybit, but Binance and the wallet count every row until the first
-  dated read (`countsSourceRowsBeforeFirstRead`). That first read writes no mark and stores the
+  on that list moves no balance when the user edits or deletes it. A holding whose `datedBalances`
+  entry has `countsSourceRowsBeforeFirstRead` false counts no source row before its first read;
+  the others count every row until then. An entry's `markedSources` limits what a read marks, so
+  an import row is never marked there. That first read writes no mark and stores the
   kept list (`keptRowIds`); later reads mark only rows off the list, so rows typed before the
   first dated read keep counting for good. Read `datedBalanceOf`, `keptRowIdsOf`,
   `datedBalanceSourceOf`, `isOverwrittenRow` and `datesBalanceOf` in
