@@ -11,7 +11,10 @@ jest.mock('@kiko/db/client', () =>
 );
 jest.mock(
   'react-native-keychain',
-  () => require('@kiko/test-support/keychain-module').keychainModule,
+  () =>
+    (
+      require('@kiko/test-support/keychain-module') as typeof import('@kiko/test-support/keychain-module')
+    ).keychainModule,
 );
 jest.mock('./binance.credentials', () => ({
   ...jest.requireActual('./binance.credentials'),
