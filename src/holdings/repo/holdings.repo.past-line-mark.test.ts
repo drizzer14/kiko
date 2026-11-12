@@ -9,7 +9,7 @@ jest.mock('@kiko/db/client', () =>
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
-import type { SyncedMetadataField } from '../holding-metadata';
+import type { ExchangeMetadataField, SyncedMetadataField } from '../holding-metadata';
 
 import { holdingsRepo } from './holdings.repo';
 
@@ -74,31 +74,19 @@ const bybitRead = () =>
     },
   ]);
 
-const upsertOf = (field: SyncedMetadataField, key: string) =>
-  field === 'monobankId'
-    ? holdingsRepo.upsertMonobankMany([
-        {
-          accountId: ACCOUNT_ID,
-          name: 'Card',
-          type: 'card',
-          currency: 'UAH',
-          balanceMinorUnits: BALANCE_MINOR_UNITS,
-          metadata: { syncedAt: READ_AT },
-          monobankId: key,
-        },
-      ])
-    : holdingsRepo.upsertExchangeMany([
-        {
-          accountId: ACCOUNT_ID,
-          name: 'Coin',
-          type: 'crypto_asset',
-          currency: 'BTC',
-          balanceMinorUnits: BALANCE_MINOR_UNITS,
-          metadata: { syncedAt: READ_AT, balanceReadAt: READ_AT },
-          metadataField: field,
-          metadataKey: key,
-        },
-      ]);
+const upsertOf = (field: ExchangeMetadataField, key: string) =>
+  holdingsRepo.upsertExchangeMany([
+    {
+      accountId: ACCOUNT_ID,
+      name: 'Coin',
+      type: 'crypto_asset',
+      currency: 'BTC',
+      balanceMinorUnits: BALANCE_MINOR_UNITS,
+      metadata: { syncedAt: READ_AT, balanceReadAt: READ_AT },
+      metadataField: field,
+      metadataKey: key,
+    },
+  ]);
 
 // The statements that a call sends to the open engine and that name the ledger table.
 const statementsOnLedgerDuring = async (work: () => Promise<unknown>): Promise<string[]> => {
@@ -456,16 +444,5 @@ describe('holdingsRepo.upsertMonobankMany on a Monobank card', () => {
       monobankId: CARD_KEY,
       balanceReadAt: READ_AT,
     });
-  });
-});
-
-describe('a holding that is not Bybit, Binance or a wallet', () => {
-  it('Monobank makes no read of the rows and gets no new key', async () => {
-    seedHolding('h-kind', { monobankId: 'card-1', syncedAt: 1_000 });
-    seedRow('row-typed', 'manual', 'h-kind');
-
-    expect(await statementsOnLedgerDuring(() => upsertOf('monobankId', 'card-1'))).toEqual([]);
-    expect(metadataBy('monobankId', 'card-1')).toEqual({ monobankId: 'card-1', syncedAt: READ_AT });
-    expect(holdingBy('monobankId', 'card-1').balance).toBe(BALANCE_MINOR_UNITS);
   });
 });

@@ -370,7 +370,6 @@ describe('createHoldingValuer against a holding that is not on the dated list', 
   // The filter must add no pass for a holding off the list, so each row is read exactly twice
   // (`time`, `amountMinorUnits`) and neither `source` nor `id` is ever read.
   it.each([
-    ['a Monobank key', { monobankId: 'card-1', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
     ['no source key', { balanceReadAt: at(0, 10) }],
     ['no metadata', null],
   ])('reads each row twice and counts every row, with %s', (_, metadata) => {
@@ -381,13 +380,14 @@ describe('createHoldingValuer against a holding that is not on the dated list', 
   });
 });
 
-describe('createHoldingValuer against a Binance or a wallet holding, whose balance is dated', () => {
+describe('createHoldingValuer against a Binance, a wallet or a Monobank holding, whose balance is dated', () => {
   // A holding on the list pays the filter's pass: each row is read twice for the sum, and its
   // `source` and its `id` once each, so two rows read four times for the filter. Measured on the
   // tip; a row read more often than that is a second pass over the ledger.
   it.each([
     ['a Binance key', { binanceAsset: 'BTC', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
     ['a wallet address', { walletAddress: 'bc1q', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
+    ['a Monobank key', { monobankId: 'card-1', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
   ])('reads each row four times in all and counts every row, with %s', (_, metadata) => {
     const { readCounter, line } = valuedWithCountedRows(metadata);
 

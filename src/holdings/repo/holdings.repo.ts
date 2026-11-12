@@ -190,11 +190,12 @@ const insertSyncedHolding = async (
 const rowIdsPatch = (field: string, rowIds: string[]): Record<string, string[]> =>
   rowIds.length === 0 ? {} : { [field]: rowIds };
 
-// The mark of a read on a dated balance (`datedBalanceOf`): the ids of the holding's rows
-// that are not of the syncing source, read in the upsert's own transaction, so the list and the
-// balance it describes are written together. The read's figure replaces the balance, so a row the
-// user typed before it has no part in the line above it (`rowsHeldByBalance`). A holding off
-// the dated list returns before any read, and a read with no such row returns no key.
+// The mark of a read on a dated balance (`datedBalanceOf`): the ids of the holding's rows that the
+// entry lets a read mark (every row that is not of the syncing source, or the rows of the sources
+// the entry names), read in the upsert's own transaction, so the list and the balance it describes
+// are written together. The read's figure replaces the balance, so a row the user typed before it
+// has no part in the line above it (`rowsHeldByBalance`). A holding off the dated list returns
+// before any read, and a read with no such row returns no key.
 // The first dated read of a holding that has no read date writes the date and no mark, because its
 // rows are old history that the user typed or restored before the read existed, and they keep
 // counting as they did. It writes their ids as the kept list instead, and every later read marks
@@ -214,10 +215,13 @@ const overwrittenRowsPatch = async (
     return {};
   }
 
+  const markedSource =
+    foldMap(maybe(dated.markedSources), (sources) => inArray(transactions.source, [...sources])) ??
+    ne(transactions.source, dated.source);
   const rows = await databaseTransaction
     .select({ id: transactions.id })
     .from(transactions)
-    .where(and(eq(transactions.holdingId, holdingId), ne(transactions.source, dated.source)))
+    .where(and(eq(transactions.holdingId, holdingId), markedSource))
     .orderBy(asc(transactions.id));
   const rowIds = rows.map((row) => row.id);
 

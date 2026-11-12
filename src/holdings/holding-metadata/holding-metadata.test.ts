@@ -341,12 +341,12 @@ describe('datedBalanceSourceOf', () => {
     ['Bybit', { bybitAsset: 'BTC:unified' }, 'bybit'],
     ['Binance', { binanceAsset: 'BTC' }, 'binance'],
     ['a wallet', { walletAddress: 'bc1q' }, 'btc_wallet'],
+    ['a Monobank card', { monobankId: 'card-1' }, 'monobank'],
   ])('names the row source of %s', (_, metadata, source) => {
     expect(datedBalanceSourceOf(metadata)).toBe(source);
   });
 
   it.each([
-    ['a Monobank key', { monobankId: 'card-1', syncedAt: 1_000 }],
     ['no source key', { syncedAt: 1_000, balanceReadAt: 1_000 }],
     ['a key that is not a string', { bybitAsset: 5 }],
     ['null', null],
@@ -375,7 +375,6 @@ describe('datedBalanceOf', () => {
   });
 
   it.each([
-    ['a Monobank key', { monobankId: 'card-1' }],
     ['a key that is not a string', { binanceAsset: 5 }],
     ['null', null],
     ['text', 'binanceAsset'],
@@ -385,16 +384,12 @@ describe('datedBalanceOf', () => {
 });
 
 describe('datesBalanceOf', () => {
-  it.each(['bybitAsset', 'binanceAsset', 'walletAddress'] as const)(
+  it.each(['bybitAsset', 'binanceAsset', 'walletAddress', 'monobankId'] as const)(
     'is true for %s, which is on the list',
     (field) => {
       expect(datesBalanceOf(field)).toBe(true);
     },
   );
-
-  it('is false for monobankId, which is not on the list', () => {
-    expect(datesBalanceOf('monobankId')).toBe(false);
-  });
 });
 
 describe('overwrittenRowIdsOf', () => {
@@ -462,12 +457,9 @@ describe('isOverwrittenRow', () => {
   it.each([
     ['binanceAsset', 'BTC'],
     ['walletAddress', 'bc1q'],
+    ['monobankId', 'card-1'],
   ])('is true for a listed id on a dated %s holding', (field, key) => {
     expect(isOverwrittenRow({ [field]: key, overwrittenRowIds: ['a'] }, 'a')).toBe(true);
-  });
-
-  it('is false for monobankId, which is not on the list', () => {
-    expect(isOverwrittenRow({ monobankId: 'card-1', overwrittenRowIds: ['a'] }, 'a')).toBe(false);
   });
 
   it.each([
@@ -494,14 +486,6 @@ describe('a Monobank card on the dated list', () => {
 
   it('lets a read mark the manual rows alone', () => {
     expect(datedBalanceOf(card)).toMatchObject({ markedSources: ['manual'] });
-  });
-
-  it('has its sync write the read time', () => {
-    expect(datesBalanceOf('monobankId')).toBe(true);
-  });
-
-  it('has a delete or an edit of a listed row move no balance', () => {
-    expect(isOverwrittenRow({ ...card, overwrittenRowIds: ['a'] }, 'a')).toBe(true);
   });
 
   it.each([
