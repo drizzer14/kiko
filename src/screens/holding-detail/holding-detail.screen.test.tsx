@@ -3265,6 +3265,61 @@ describe('HoldingDetailScreen', () => {
       );
     });
 
+    it('hides the scheduled payment a linked payment on the start day paid', async () => {
+      const startDay = startOfLocalDay(Date.now());
+      // A short term: the whole list mounts in the FlatList's first render window.
+      const meta: LoanMeta = { ...annuityLoanMeta, startDate: startDay, termMonths: 3 };
+      const holding = { ...annuityLoanHolding, metadata: meta };
+      const [first, second] = loanInstallments(meta);
+      const payment = {
+        transactionId: 'txn-first',
+        loanHoldingId: 'h-1',
+        time: startDay,
+        amountMinorUnits: -first.paymentMinorUnits,
+        currency: 'UAH' as const,
+      };
+      const outstanding = loanLedgerOutstandingMinorAt(
+        meta,
+        LOAN,
+        buildPriceBook([], [payment]),
+        Date.now(),
+      );
+
+      seed(
+        holding,
+        [],
+        [],
+        [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+        [],
+        [{ baseCurrency: 'UAH' }],
+        undefined,
+        [],
+        {},
+        [
+          {
+            id: 'txn-first',
+            holdingId: 'payer-1',
+            amountMinorUnits: payment.amountMinorUnits,
+            currency: 'UAH',
+            time: payment.time,
+            description: 'First installment',
+            source: 'manual',
+            loanHoldingId: 'h-1',
+            loanLinkSource: 'manual',
+          },
+        ],
+      );
+
+      const { getByTestId, queryByTestId } = await renderScreen();
+
+      expect(first.dueDate).toBe(startDay);
+      expect(queryByTestId(`scheduled-payment-${first.index}`)).toBeNull();
+      expect(getByTestId(`scheduled-payment-${second.index}`)).toHaveTextContent(
+        `Remaining ${money(outstanding - second.principalMinorUnits)}`,
+        { exact: false },
+      );
+    });
+
     it('equals the header outstanding less the next payment principal for the schedule alone', async () => {
       const meta = awayFromToday();
       const holding = { ...annuityLoanHolding, metadata: meta };

@@ -1,4 +1,5 @@
 import {
+  loanInstallmentsLeftToPay,
   loanRemaindersAfterMinor,
   loanLedgerOutstandingMinorAt,
   type UpcomingLoanInstallment,
@@ -78,6 +79,9 @@ const balanceSpec: HoldingDetailSpec = {
 // payments that repaid the loan hide the list even while `loanInstallments`
 // still has future rows on the ORIGINAL schedule. A zero-payment row (a tiny
 // loan repaid before its term ends) is not a payment, so it is never listed.
+// A row the counted linked payments paid in full is not listed either
+// (`loanInstallmentsLeftToPay`), and since its share of the remainder chain was 0, the rows that
+// stay keep their remainders.
 // Each row carries the balance left once it is paid (`loanRemaindersAfterMinor`).
 const loanUpcomingInstallments = (
   holding: HoldingRow,
@@ -96,8 +100,12 @@ const loanUpcomingInstallments = (
 
   const todayStart = startOfLocalDay(now);
 
-  const rows = loanInstallments(meta).filter(
-    (row) => isScheduledPayment(row) && row.dueDate >= todayStart,
+  const rows = loanInstallmentsLeftToPay(
+    meta,
+    holding,
+    book,
+    now,
+    loanInstallments(meta).filter((row) => isScheduledPayment(row) && row.dueDate >= todayStart),
   );
   const remainders = loanRemaindersAfterMinor(meta, holding, book, now, rows);
 
