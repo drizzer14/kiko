@@ -11,7 +11,6 @@ import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
-import { useUnistyles } from 'react-native-unistyles';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
@@ -54,7 +53,6 @@ const storedMoney = ({ draft }: TransactionTemplate): Money | undefined =>
 
 const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const scheme = useActiveColorScheme();
   const liveOptions = { cached: true } as const;
   const { data: rows, isLoading: templatesLoading } = useLiveQuery(
@@ -104,7 +102,7 @@ const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navig
         category: display,
         categoryColor: resolveCategoryColor(display.color, key, scheme),
       })),
-    ) ?? { category: neutralCategory(), categoryColor: theme.colors.textSecondary };
+    ) ?? { category: neutralCategory(), categoryColor: undefined };
     const typeLabel = t(`forms.transaction.${draft.mode}`);
     const holdingName = foldMap(maybe(draft.holdingId), (holdingId) =>
       holdingNameById.get(holdingId),
