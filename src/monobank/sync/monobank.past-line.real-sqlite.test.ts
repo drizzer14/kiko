@@ -10,8 +10,10 @@ let mockDatabase: DatabaseSync;
 jest.mock('@kiko/db/client', () =>
   require('@kiko/test-support/real-sqlite').databaseClientOver(() => mockDatabase),
 );
+jest.mock('@kiko/monobank/token', () => ({ clearToken: jest.fn(async () => undefined) }));
 
 import { DatabaseSync } from 'node:sqlite';
+import { isRecord } from '@kiko/type-guards';
 import { accountsRepo } from '@kiko/accounts';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { at } from '@kiko/test-support/past-line-world';
@@ -21,6 +23,7 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import clientInfo from '@kiko/monobank/__fixtures__/client-info.json';
 import { createHoldingValuer, type SeriesTransaction } from '@kiko/statistics/holding-value-at';
 
+import { disconnectMonobank } from '../disconnect';
 import type { MonobankAccount, MonobankStatementItem } from '../monobank-types';
 
 import { runSync } from './sync';
@@ -35,7 +38,7 @@ const TWENTY = 2_000;
 const THIRTY = 3_000;
 const SEVENTY = 7_000;
 const ONE_FIFTY = 15_000;
-const [CARD] = clientInfo.accounts;
+const [CARD, OTHER_CARD] = clientInfo.accounts;
 
 // The card as the bank answers for it, at a balance.
 const cardAt = (balance: number): MonobankAccount[] => [{ ...CARD, balance } as MonobankAccount];
@@ -49,7 +52,9 @@ const itemAt = (id: string, time: number, amount: number): MonobankStatementItem
 });
 
 const storedCard = async () => {
-  const [holding] = await holdingsRepo.listByAccountQuery(ACCOUNT_ID);
+  const holding = (await holdingsRepo.listByAccountQuery(ACCOUNT_ID)).find(
+    ({ metadata }) => isRecord(metadata) && metadata.monobankId === CARD.id,
+  );
 
   if (holding === undefined) {
     throw new Error('the account should hold its card by now');
@@ -58,19 +63,22 @@ const storedCard = async () => {
   return holding;
 };
 
-// A run whose statement read hands back `payments` whatever its window: the bank's clock is ahead
-// of the device's, so a payment is dated after the read time of the run that imports it.
+type Answer = { accounts?: MonobankAccount[]; payments?: MonobankStatementItem[] };
+
+// A run over the bank's answer: the card at `balance` unless the answer lists other cards, and
+// `payments` handed back by the statement read whatever its window, since the bank's clock can be
+// ahead of the device's and a payment then is dated after the read time of the run that imports it.
 const readOfCard = (
   time: number,
   balance: number,
-  payments: MonobankStatementItem[] = [],
+  { accounts = cardAt(balance), payments = [] }: Answer = {},
 ): ReturnType<typeof runSync> =>
   runSync({
     targetAccountId: ACCOUNT_ID,
     now: () => time,
     sleep: async () => undefined,
     readToken: async () => 'token',
-    fetchClientInfo: async () => ({ accounts: cardAt(balance), jars: [] }),
+    fetchClientInfo: async () => ({ accounts, jars: [] }),
     fetchStatement: async () => payments,
   });
 
@@ -159,7 +167,7 @@ describe('the line of a Monobank card whose balance is older than its rows, on r
   it('a payment dated after the read of its run stays off the line until the next run, which counts it', async () => {
     const payment = itemAt('payment', at(0, 10) + SECOND, -HUNDRED);
 
-    await readOfCard(at(0, 10), THOUSAND, [payment]);
+    await readOfCard(at(0, 10), THOUSAND, { payments: [payment] });
 
     expect(await lineFrom(-1, 1)).toEqual([THOUSAND, THOUSAND, THOUSAND]);
     expect((await storedCard()).metadata).toMatchObject({ balanceReadAt: at(0, 10) });
@@ -320,5 +328,74 @@ describe('the line of a Monobank card that shipped with a row the user typed, on
     await transactionsRepo.remove(laterRowId);
 
     expect((await storedCard()).balanceMinorUnits).toBe(ONE_FIFTY);
+  });
+});
+
+describe('the read time, the mark and the kept list of a Monobank card, through a close and a disconnect, on real SQLite', () => {
+  // A card that shipped at 150 with a +50 typed long before, read, then a +20 typed while it was
+  // disconnected, and read again: the read time, the mark of the +20 and the kept list of the +50.
+  const markedCard = async (): Promise<string> => {
+    seedShippedCard(ONE_FIFTY);
+    seedRow('typed-row', 'manual', at(1, 9), FIFTY);
+    await readOfCard(at(2, 10), ONE_FIFTY);
+    await accountsRepo.disconnect(ACCOUNT_ID);
+
+    const laterRowId = await typedRowAt(at(3, 9), TWENTY);
+
+    await readOfCard(at(4, 10), ONE_FIFTY);
+
+    return laterRowId;
+  };
+
+  const lineOfTheMarkedCard = [HUNDRED, HUNDRED, ONE_FIFTY, ONE_FIFTY, ONE_FIFTY];
+
+  const cardRow = () =>
+    mockDatabase
+      .prepare(
+        "SELECT closed_at AS closedAt, metadata FROM holdings WHERE json_extract(metadata, '$.monobankId') = ?",
+      )
+      .get(CARD.id) as { closedAt: number | null; metadata: string };
+
+  const cardMetadata = (): Record<string, unknown> => JSON.parse(cardRow().metadata);
+
+  it('a sync-closed card keeps its read time, its mark and its kept list through the reopen', async () => {
+    const laterRowId = await markedCard();
+
+    await readOfCard(at(44, 10), 0, { accounts: [OTHER_CARD as MonobankAccount] });
+
+    expect(cardRow().closedAt).not.toBeNull();
+    expect(cardMetadata()).toMatchObject({
+      balanceReadAt: at(4, 10),
+      overwrittenRowIds: [laterRowId],
+      keptRowIds: ['typed-row'],
+      syncClosedFromMs: expect.any(Number),
+    });
+
+    await readOfCard(at(46, 10), ONE_FIFTY);
+
+    expect(cardRow().closedAt).toBeNull();
+    expect(cardMetadata()).toEqual({
+      ...readMetadata(at(46, 10)),
+      overwrittenRowIds: [laterRowId],
+      keptRowIds: ['typed-row'],
+    });
+    expect(await lineFrom(-1, 3)).toEqual(lineOfTheMarkedCard);
+  });
+
+  it('a disconnect keeps the read time, the mark and the kept list, so the old row counts and the marked row moves nothing', async () => {
+    const laterRowId = await markedCard();
+
+    await disconnectMonobank(ACCOUNT_ID);
+
+    expect(cardMetadata()).toEqual({
+      ...readMetadata(at(4, 10)),
+      overwrittenRowIds: [laterRowId],
+      keptRowIds: ['typed-row'],
+    });
+    expect(await lineFrom(-1, 3)).toEqual(lineOfTheMarkedCard);
+    expect(await deletedRowChanges(laterRowId)).toBeUndefined();
+    expect((await storedCard()).balanceMinorUnits).toBe(ONE_FIFTY);
+    expect(await deletedRowChanges('typed-row')).toBeDefined();
+    expect((await storedCard()).balanceMinorUnits).toBe(HUNDRED);
   });
 });

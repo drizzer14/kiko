@@ -559,6 +559,19 @@ describe('withCarriedMetadataKeys', () => {
     );
   });
 
+  it('carries the statement cursor of a Monobank card alone, not its read time, mark or kept list', () => {
+    const target = { monobankId: 'card-1', [BALANCE_READ_AT_FIELD]: 2_000 };
+    const stored = {
+      monobankId: 'card-1',
+      statementFromMs: 500,
+      [BALANCE_READ_AT_FIELD]: 1_000,
+      [OVERWRITTEN_ROW_IDS_FIELD]: ['row-1'],
+      [KEPT_ROW_IDS_FIELD]: ['row-2'],
+    };
+
+    expect(withCarriedMetadataKeys(target, stored)).toEqual({ ...target, statementFromMs: 500 });
+  });
+
   it('leaves the target unchanged when the stored metadata has no sync-owned key', () => {
     const target = { binanceAsset: 'BTC', syncedAt: 2_000 };
 
