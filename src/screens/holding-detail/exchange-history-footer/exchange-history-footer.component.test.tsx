@@ -197,6 +197,83 @@ describe('ExchangeHistoryFooter on a Bybit holding', () => {
   });
 });
 
+describe('ExchangeHistoryFooter on a dated Binance holding', () => {
+  const ONE_COIN = 100_000_000;
+  const THREE_TENTHS = 30_000_000;
+  const HALF_A_COIN = 50_000_000;
+  const FIFTH_OF_A_COIN = 20_000_000;
+  const BEFORE_THE_READ = 1_000;
+  const THE_READ = 2_000;
+  const AFTER_THE_READ = 3_000;
+
+  const datedHolding = (
+    balanceMinorUnits: number,
+    extraMetadata: Record<string, unknown> = {},
+  ): Holding => ({
+    currency: 'BTC',
+    balanceMinorUnits,
+    metadata: { binanceAsset: 'BTC', balanceReadAt: THE_READ, ...extraMetadata },
+  });
+
+  const rowAt = (
+    time: number,
+    amountMinorUnits: number,
+    source: 'binance' | 'manual',
+    id = `row-${time}`,
+  ) => ({ id, time, amountMinorUnits, source });
+
+  it('shows the balance less the rows the line counts', async () => {
+    const { getByText } = await render(
+      <ExchangeHistoryFooter
+        holding={datedHolding(ONE_COIN + HALF_A_COIN, { overwrittenRowIds: ['typed'] })}
+        account={binanceAccount}
+        transactions={[
+          rowAt(BEFORE_THE_READ, ONE_COIN, 'binance'),
+          rowAt(BEFORE_THE_READ, HALF_A_COIN, 'manual', 'typed'),
+        ]}
+      />,
+    );
+
+    expect(getByText(EARLIER_HISTORY)).toHaveTextContent('Earlier history: ₿0.50');
+  });
+
+  it('shows no line when a row after the read explains the gap', async () => {
+    const { getByText, queryByText } = await render(
+      <ExchangeHistoryFooter
+        holding={datedHolding(ONE_COIN)}
+        account={binanceAccount}
+        transactions={[
+          rowAt(BEFORE_THE_READ, ONE_COIN, 'binance'),
+          rowAt(AFTER_THE_READ, -FIFTH_OF_A_COIN, 'binance'),
+        ]}
+      />,
+    );
+
+    expect(queryByText(EARLIER_HISTORY)).toBeNull();
+    expect(getByText(NOT_LISTED)).toBeTruthy();
+  });
+
+  it('counts an old typed row on the kept list and leaves a later typed row on the mark out', async () => {
+    const { getByText, queryByText } = await render(
+      <ExchangeHistoryFooter
+        holding={datedHolding(ONE_COIN + HALF_A_COIN, {
+          keptRowIds: ['old'],
+          overwrittenRowIds: ['later'],
+        })}
+        account={binanceAccount}
+        transactions={[
+          rowAt(BEFORE_THE_READ, ONE_COIN, 'binance'),
+          rowAt(BEFORE_THE_READ, HALF_A_COIN, 'manual', 'old'),
+          rowAt(BEFORE_THE_READ, THREE_TENTHS, 'manual', 'later'),
+        ]}
+      />,
+    );
+
+    expect(queryByText(EARLIER_HISTORY)).toBeNull();
+    expect(getByText(NOT_LISTED)).toBeTruthy();
+  });
+});
+
 describe('ExchangeHistoryFooter on a Bybit holding in Ukrainian', () => {
   beforeEach(async () => {
     await act(async () => {
