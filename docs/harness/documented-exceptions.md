@@ -1223,7 +1223,7 @@ verified usage, not dead weight:
 
 - **patch-package patches (`patches/`, applied by `postinstall`)**: five patches edit
   `node_modules` after `npm ci`; re-check each on upgrade of its package.
-  - `patches/react-native-screens+4.27.0.patch` (`react-native-screens@4.27.0`: the iOS
+  - `patches/react-native-screens+4.30.1.patch` (`react-native-screens@4.30.1`: the iOS
     `RNSScreenStack` header and implementation, the codegen spec `ScreenStackNativeComponent.ts`,
     `contexts.tsx`, `ScreenStack.tsx` and `index.tsx` of the package's own `src`, and the
     `lib/commonjs` and `lib/typescript` copies of them, which Jest and `tsc` load): the native
@@ -1318,10 +1318,18 @@ verified usage, not dead weight:
     its tab bar at the top, so no resize reaches it there. Only the Fabric (new
     architecture) path is patched, as the stack takes its props in `updateProps`; `lib/module` is
     not patched (nothing here loads it). The patch was derived against the pristine tarball
-    (`npm pack react-native-screens@4.27.0`): applying it to that tarball gives the installed
-    tree.
+    (`npm pack react-native-screens@4.30.1`): applying it to that tarball gives the installed
+    tree. Since 4.30.1 `RNSScreenStack.mm` has its own `RNSNavigationController` class extension
+    (`RNSNavigationBarLayoutDelegate`), instance variable block and `init`: the patch puts the
+    static helpers before that extension, its two margin instance variables into upstream's
+    block after the `#endif`, its four methods after upstream's `init`, and the three
+    `viewDidLayoutSubviews` calls directly after `[super viewDidLayoutSubviews]`, before
+    upstream's navigation bar frame check; the pins compare the text.
     Pinned by `__tests__/react-native-patch.test.ts` ("the react-native-screens fixed content
-    margin patch": the patch touches only react-native-screens, the version is exactly `4.27.0`,
+    margin patch": the patch touches only react-native-screens, the version is exactly `4.30.1`,
+    the installed upstream still notifies the header height from `navigationBarDidLayoutSubviews:`
+    and still has `calculateMinimizationAwareHeaderHeightInNavigationController:` (the Tables
+    column header follows the minimized bar through them),
     the installed files carry the patch, the margins written back are the stored ones and are
     skipped when equal, the parent safe top inset (gate, formula, threshold, reset, layout pass
     only, bounded writes), and the context reads 0 outside a provider) and by
