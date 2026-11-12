@@ -481,6 +481,30 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
       expect(header).toBeGreaterThan(rows[6].balanceMinorUnits);
       expect(upcoming[0].remainderMinorUnits).toBe(rows[6].balanceMinorUnits);
     });
+
+    it('hides a future row that a payment above its payment overpaid', () => {
+      const now = local(2025, 6, 18, 15);
+      const meta = structuredMeta({ startDate: local(2025, 0, 20), termMonths: 12 });
+      const rows = loanInstallments(meta);
+      const book = bookPaying(local(2025, 6, 17, 12), -rows[6].paymentMinorUnits * 2);
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(loanHolding(meta), book, now);
+
+      expect(upcoming[0].index).toBe(rows[7].index);
+      expect(upcoming.map((row) => row.index)).not.toContain(rows[6].index);
+    });
+
+    it('keeps a future row whose payment is dated after today, as it is not counted yet', () => {
+      const now = local(2025, 6, 18, 15);
+      const meta = structuredMeta({ startDate: local(2025, 0, 20), termMonths: 12 });
+      const rows = loanInstallments(meta);
+      const book = bookPaying(local(2025, 6, 19, 12), -rows[6].paymentMinorUnits);
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(loanHolding(meta), book, now);
+
+      expect(upcoming[0].index).toBe(rows[6].index);
+      expect(upcoming).toHaveLength(rows.length - 6);
+    });
   });
 });
 

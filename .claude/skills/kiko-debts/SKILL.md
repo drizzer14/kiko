@@ -342,8 +342,8 @@ Zero-payment rows are skipped too, and so is a row the linked payments paid in
 full (a payment on the start day of a loan that starts today, or one made a few
 days before a future due date): it has no paid state, so listing it would read
 as owed. A partly paid row stays, with only its unpaid principal off its
-remainder. The filters live in
-`src/screens/holding-detail/holding-detail-spec/holding-detail-spec.ts`.
+remainder. The paid-in-full filter is `loanInstallmentsLeftToPay`
+(`src/holdings/loan-ledger/loan-ledger.ts`); `holding-detail-spec.ts` calls it.
 
 A loan correction (the "Update outstanding" `PricePointForm` write
 above) accepts **0**, unlike every other holding type's "Update
