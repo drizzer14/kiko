@@ -115,6 +115,12 @@ new component can land between reviews of this skill:
   with a vertical bar edge and the `columns` layout) reads `useVerticalBarEdge` and the SETTLED
   layout mode (`useSettledLayoutMode`), never the raw mode: a raw change shows one wrong frame
   and would close an open sheet. See `src/screens/tables/tables.screen.tsx`.
+  In that pose the row is Period at the leading end, then a `flexGrow: 1` spacer
+  (`tables-filter-bar-spacer`, `filterBarSpacer` in `src/screens/tables/tables.styles.ts`), then
+  the account and category filters at the trailing end. The spacer's `marginStart` is minus the
+  bar gap, so the least Period-to-first-filter distance stays one gap. Period keeps its DS height
+  (user ruling 2026-11-09: no height change). At large type the row can wrap (known limit: the
+  category filter can wrap to the start of line 2).
   Keyboard offset: `react-native` 0.87.1 is patched
   (`patches/react-native+0.87.1.patch`, listed in `docs/harness/documented-exceptions.md`) so a
   ScrollView with `automaticallyAdjustKeyboardInsets` moves its content offset only when the
