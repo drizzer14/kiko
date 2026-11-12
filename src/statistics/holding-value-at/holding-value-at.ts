@@ -46,11 +46,12 @@ export type SeriesTransaction = {
 // so a row the user typed before the read has no part in it, whatever the row's date, and the
 // holding's list of overwritten ids names it. Whether the figure contains that row's amount
 // depends on the world. A row with no id is on no list. Every row of a holding whose balance is
-// not dated counts as it is.
-const rowsHeldByBalance = (
-  holding: SeriesHolding,
-  transactions: SeriesTransaction[],
-): SeriesTransaction[] => {
+// not dated counts as it is. Exported so the "Earlier history" line of a holding's detail sums
+// the same rows as this series' opening.
+export const rowsHeldByBalance = (
+  holding: Pick<SeriesHolding, 'metadata'>,
+  transactions: readonly SeriesTransaction[],
+): readonly SeriesTransaction[] => {
   const dated = datedBalanceOf(holding.metadata);
 
   if (dated === undefined) {

@@ -17,7 +17,8 @@ const holdingOf = (currency: Holding['currency'], balanceMinorUnits: number): Ho
   metadata: { binanceAsset: currency },
 });
 
-const rowsOf = (...amounts: number[]) => amounts.map((amountMinorUnits) => ({ amountMinorUnits }));
+const rowsOf = (...amounts: number[]) =>
+  amounts.map((amountMinorUnits) => ({ time: 0, amountMinorUnits }));
 
 const EARLIER_HISTORY = /^Earlier history:/;
 const NOT_LISTED = /^Not listed:/;
