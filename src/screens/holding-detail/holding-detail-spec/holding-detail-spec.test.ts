@@ -5,6 +5,7 @@ import {
 import type { HoldingRow } from '@kiko/db';
 import { addMonths } from '@kiko/holdings/interest';
 import type { BondTerms } from '@kiko/bonds/nbu-register';
+import { loanInstallments } from '@kiko/holdings/loan-schedule';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import type { BondMeta, LoanMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, EMPTY_PRICE_BOOK } from '@kiko/prices/price-book';
@@ -410,6 +411,100 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
         now,
       ),
     ).toEqual([]);
+  });
+
+  describe('a row the linked payments paid', () => {
+    // A DEVICE-LOCAL instant: every loan boundary is built from local Y/M/D fields.
+    const local = (year: number, monthIndex: number, day: number, hour = 0): number =>
+      new Date(year, monthIndex, day, hour).getTime();
+
+    const loanHolding = (meta: LoanMeta): HoldingRow => holding({ type: 'loan', metadata: meta });
+
+    const bookPaying = (time: number, amountMinorUnits: number) =>
+      buildPriceBook(
+        [],
+        [
+          {
+            transactionId: 'payment-1',
+            loanHoldingId: 'h1',
+            time,
+            amountMinorUnits,
+            currency: 'UAH',
+          },
+        ],
+      );
+
+    // Row 1 is due on the start day; a scheduled payment on that day pays its principal exactly,
+    // so the row sits on the paid-in-full limit.
+    it('hides row 1 that a payment on the start day paid, and lists row 2 against the header', () => {
+      const now = local(2025, 6, 15, 15);
+      const meta = structuredMeta({ startDate: local(2025, 6, 15), termMonths: 12 });
+      const [first, second] = loanInstallments(meta);
+      const book = bookPaying(local(2025, 6, 15, 9), -first.paymentMinorUnits);
+      const header = loanLedgerOutstandingMinorAt(meta, loanHolding(meta), book, now);
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(loanHolding(meta), book, now);
+
+      expect(first.dueDate).toBe(meta.startDate);
+      expect(header).toBe(meta.principalMinorUnits - first.principalMinorUnits);
+      expect(upcoming).toHaveLength(11);
+      expect(upcoming[0].index).toBe(second.index);
+      expect(upcoming[0].remainderMinorUnits).toBe(header - second.principalMinorUnits);
+      expect(upcoming.at(-1)?.remainderMinorUnits).toBe(0);
+    });
+
+    it('hides a future row that a payment three days before its due date paid', () => {
+      const now = local(2025, 6, 18, 15);
+      const meta = structuredMeta({ startDate: local(2025, 0, 20), termMonths: 12 });
+      const rows = loanInstallments(meta);
+      const book = bookPaying(local(2025, 6, 17, 12), -rows[6].paymentMinorUnits);
+      const header = loanLedgerOutstandingMinorAt(meta, loanHolding(meta), book, now);
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(loanHolding(meta), book, now);
+
+      expect(rows[6].dueDate).toBe(local(2025, 6, 20));
+      expect(upcoming[0].index).toBe(rows[7].index);
+      expect(upcoming[0].remainderMinorUnits).toBe(header - rows[7].principalMinorUnits);
+      expect(upcoming[0].remainderMinorUnits).toBe(rows[7].balanceMinorUnits);
+    });
+
+    it('keeps a partly paid future row with only its unpaid principal off the header', () => {
+      const now = local(2025, 6, 18, 15);
+      const meta = structuredMeta({ startDate: local(2025, 0, 20), termMonths: 12 });
+      const rows = loanInstallments(meta);
+      const book = bookPaying(local(2025, 6, 17, 12), -Math.round(rows[6].paymentMinorUnits / 2));
+      const header = loanLedgerOutstandingMinorAt(meta, loanHolding(meta), book, now);
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(loanHolding(meta), book, now);
+
+      expect(upcoming[0].index).toBe(rows[6].index);
+      expect(header).toBeGreaterThan(rows[6].balanceMinorUnits);
+      expect(upcoming[0].remainderMinorUnits).toBe(rows[6].balanceMinorUnits);
+    });
+
+    it('hides a future row that a payment above its payment overpaid', () => {
+      const now = local(2025, 6, 18, 15);
+      const meta = structuredMeta({ startDate: local(2025, 0, 20), termMonths: 12 });
+      const rows = loanInstallments(meta);
+      const book = bookPaying(local(2025, 6, 17, 12), -rows[6].paymentMinorUnits * 2);
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(loanHolding(meta), book, now);
+
+      expect(upcoming[0].index).toBe(rows[7].index);
+      expect(upcoming.map((row) => row.index)).not.toContain(rows[6].index);
+    });
+
+    it('keeps a future row whose payment is dated after today, as it is not counted yet', () => {
+      const now = local(2025, 6, 18, 15);
+      const meta = structuredMeta({ startDate: local(2025, 0, 20), termMonths: 12 });
+      const rows = loanInstallments(meta);
+      const book = bookPaying(local(2025, 6, 19, 12), -rows[6].paymentMinorUnits);
+
+      const upcoming = holdingDetailSpecs.loan.upcomingInstallments(loanHolding(meta), book, now);
+
+      expect(upcoming[0].index).toBe(rows[6].index);
+      expect(upcoming).toHaveLength(rows.length - 6);
+    });
   });
 });
 

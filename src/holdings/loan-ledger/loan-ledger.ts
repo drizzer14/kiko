@@ -181,6 +181,30 @@ const balanceAfterPaymentsMinor = (anchor: LoanAnchor, paid: readonly LedgerEntr
         .reduce((sum, entry) => sum + principalOf(entry), 0),
   );
 
+// The principal the counted payments paid on each installment row, keyed by the row's `index`:
+// each payment goes to the row its time maps to (`installmentIndexOf`), and a row no payment maps
+// to has no key. The remainders and the paid-in-full filter read this one mapping.
+const paidPrincipalByRowOf = (
+  meta: LoanMeta,
+  ledger: Ledger,
+  counted: readonly LedgerEntry[],
+): ReadonlyMap<number, number> => {
+  const paidByRow = new Map<number, number>();
+
+  for (const entry of counted) {
+    const rowIndex = foldMap(
+      maybe(installmentIndexOf(meta, ledger.plan, entry.payment.time)),
+      (index) => ledger.plan.installments[index].index,
+    );
+
+    if (rowIndex !== undefined) {
+      paidByRow.set(rowIndex, (paidByRow.get(rowIndex) ?? 0) + principalOf(entry));
+    }
+  }
+
+  return paidByRow;
+};
+
 /**
  * A loan's outstanding at `instant`, the ONE number every valuation site
  * reads (card, detail, totals, statistics, net-worth history). With no
@@ -241,22 +265,13 @@ export const loanRemaindersAfterMinor = (
   const ledger = ledgerOf(meta, loan, book);
   const counted = countedEntries(ledger, now);
   const header = loanLedgerOutstandingMinorAt(meta, loan, book, now);
-  const paidPrincipals = counted.flatMap(
-    (entry) =>
-      foldMap(maybe(installmentIndexOf(meta, ledger.plan, entry.payment.time)), (index) => [
-        { rowIndex: index + 1, principalMinorUnits: principalOf(entry) },
-      ]) ?? [],
-  );
+  const paidPrincipalByRow = paidPrincipalByRowOf(meta, ledger, counted);
   const uncountedPrincipalOf = (row: LoanInstallment): number => {
     if (counted.length === 0) {
       return dayKeyOf(row.dueDate) <= dayKeyOf(now) ? 0 : row.principalMinorUnits;
     }
 
-    const paidPrincipal = paidPrincipals
-      .filter((paid) => paid.rowIndex === row.index)
-      .reduce((sum, paid) => sum + paid.principalMinorUnits, 0);
-
-    return Math.max(0, row.principalMinorUnits - paidPrincipal);
+    return Math.max(0, row.principalMinorUnits - (paidPrincipalByRow.get(row.index) ?? 0));
   };
   let uncountedThroughRow = 0;
 
@@ -264,6 +279,30 @@ export const loanRemaindersAfterMinor = (
     uncountedThroughRow += uncountedPrincipalOf(row);
 
     return Math.max(0, header - uncountedThroughRow);
+  });
+};
+
+/**
+ * `rows` less each row the counted linked payments paid in full: at least one counted payment
+ * maps to it (`installmentIndexOf`) and their principal reaches the row's principal. A partly paid
+ * row stays, and with no counted payment nothing is dropped (the row due today keeps its place).
+ * The remainder chain (`loanRemaindersAfterMinor`) subtracts 0 for a dropped row, so the rows that
+ * stay keep their remainders.
+ */
+export const loanInstallmentsLeftToPay = (
+  meta: LoanMeta,
+  loan: LedgerLoan,
+  book: PriceBook,
+  now: number,
+  rows: readonly LoanInstallment[],
+): readonly LoanInstallment[] => {
+  const ledger = ledgerOf(meta, loan, book);
+  const paidPrincipalByRow = paidPrincipalByRowOf(meta, ledger, countedEntries(ledger, now));
+
+  return rows.filter((row) => {
+    const paidPrincipal = paidPrincipalByRow.get(row.index);
+
+    return paidPrincipal === undefined || paidPrincipal < row.principalMinorUnits;
   });
 };
 

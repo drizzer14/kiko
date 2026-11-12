@@ -218,6 +218,14 @@ together.
   counted payments mapped to it)`, so a partly paid row keeps its unpaid
   principal. Pins: `loan-ledger.property.test.ts` and its due-today row;
   read `loan-ledger.ts`.
+- `loanInstallmentsLeftToPay(meta, loan, book, now, rows)` → `rows` less
+  each row the counted linked payments paid in full: at least one counted
+  payment maps to it (`installmentIndexOf`) and their principal reaches the
+  row's principal. It shares `paidPrincipalByRowOf` with
+  `loanRemaindersAfterMinor`, so a dropped row is one the remainder chain
+  subtracts 0 for and the remaining rows keep their remainders. No counted
+  payment (schedule branch) drops nothing, so the row due today stays.
+  Pins: `holding-detail-spec.test.ts` "a row the linked payments paid".
 
 Known limit: with linked payments and no correction, the outstanding
 before the first link is the schedule's, so a loan paid off faster or
@@ -312,9 +320,10 @@ interest-0 split reads `holdingDetail.paymentSplitPrincipalOnly`
 An `'annuity'`/`'differentiated'` loan additionally lists the next scheduled
 installments in the loan's ONE day-grouped ledger, beside its linked payments
 (the loan entry's own `upcomingInstallments` — every `loanInstallments` row that
-`isScheduledPayment` accepts and that is due on or after today's local day
-(zero-payment rows after an early payoff are skipped), in schedule order; its
-first row is the next installment). Read the screen's `LedgerRow` (a
+`isScheduledPayment` accepts, that is due on or after today's local day
+(zero-payment rows after an early payoff are skipped) and that the counted
+linked payments have not paid in full (`loanInstallmentsLeftToPay`), in
+schedule order; its first row is the next installment still owed). Read the screen's `LedgerRow` (a
 `kind: 'scheduled'` row), `scheduled-payment-row/`, `use-scheduled-preview/`
 (the preview count and the expand toggle) and `use-linked-loan-payments/`
 under `src/screens/holding-detail/`. A scheduled row is built on the shared
@@ -329,8 +338,12 @@ The scheduled list is also empty once `loanLedgerOutstandingMinorAt` reads 0
 (`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
 linked payments, or overpaid/over-corrected, lists nothing even while
 `loanInstallments` still has future rows on the loan's ORIGINAL schedule.
-Zero-payment rows are skipped too; the filter lives in
-`src/screens/holding-detail/holding-detail-spec/holding-detail-spec.ts`.
+Zero-payment rows are skipped too, and so is a row the linked payments paid in
+full (a payment on the start day of a loan that starts today, or one made a few
+days before a future due date): it has no paid state, so listing it would read
+as owed. A partly paid row stays, with only its unpaid principal off its
+remainder. The paid-in-full filter is `loanInstallmentsLeftToPay`
+(`src/holdings/loan-ledger/loan-ledger.ts`); `holding-detail-spec.ts` calls it.
 
 A loan correction (the "Update outstanding" `PricePointForm` write
 above) accepts **0**, unlike every other holding type's "Update
