@@ -319,54 +319,79 @@ describe('createHoldingValuer against a Bybit holding whose read overwrote typed
   });
 });
 
-describe('createHoldingValuer against a holding that is not a Bybit one', () => {
-  // A row whose own fields count every read: the filter must add no pass for a holding that is
-  // not Bybit's, so each row is read exactly twice (`time`, `amountMinorUnits`) and neither
-  // `source` nor `id` is ever read.
-  const countedRow = (
-    time: number,
-    amountMinorUnits: number,
-    readCounter: { reads: number; sourceReads: number },
-  ): SeriesTransaction => ({
-    get time() {
-      readCounter.reads += 1;
+// A row whose own fields count every read, so a test can pin how many times the filter touches a
+// row: `time` and `amountMinorUnits` are what the sum itself reads, `source` and `id` are what the
+// filter reads for a holding whose balance is dated.
+const countedRow = (
+  time: number,
+  amountMinorUnits: number,
+  readCounter: { reads: number; sourceReads: number },
+): SeriesTransaction => ({
+  get time() {
+    readCounter.reads += 1;
 
-      return time;
-    },
-    get amountMinorUnits() {
-      readCounter.reads += 1;
+    return time;
+  },
+  get amountMinorUnits() {
+    readCounter.reads += 1;
 
-      return amountMinorUnits;
-    },
-    get source() {
-      readCounter.sourceReads += 1;
+    return amountMinorUnits;
+  },
+  get source() {
+    readCounter.sourceReads += 1;
 
-      return 'bybit' as const;
-    },
-    get id() {
-      readCounter.sourceReads += 1;
+    return 'bybit' as const;
+  },
+  get id() {
+    readCounter.sourceReads += 1;
 
-      return 'row-1';
-    },
-  });
+    return 'row-1';
+  },
+});
 
+// The reads of two rows over three buckets of a holding of one coin, and the line they gave.
+const valuedWithCountedRows = (
+  metadata: SeriesHolding['metadata'],
+): { readCounter: { reads: number; sourceReads: number }; line: number[] } => {
+  const readCounter = { reads: 0, sourceReads: 0 };
+  const rows = [
+    countedRow(at(1, 9), -FIFTH_OF_A_COIN, readCounter),
+    countedRow(at(-1, 9), ONE_COIN, readCounter),
+  ];
+  const valueAt = createHoldingValuer(holdingOf(ONE_COIN, metadata), rows);
+
+  return {
+    readCounter,
+    line: [valueAt(midnightOf(-2)), valueAt(midnightOf(0)), valueAt(midnightOf(1))],
+  };
+};
+
+describe('createHoldingValuer against a holding that is not on the dated list', () => {
+  // The filter must add no pass for a holding off the list, so each row is read exactly twice
+  // (`time`, `amountMinorUnits`) and neither `source` nor `id` is ever read.
   it.each([
-    ['a Binance key', { binanceAsset: 'BTC', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
-    ['a Monobank key', { monobankId: 'card-1', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
-    ['a wallet address', { walletAddress: 'bc1q', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
     ['no source key', { balanceReadAt: at(0, 10) }],
     ['no metadata', null],
   ])('reads each row twice and counts every row, with %s', (_, metadata) => {
-    const readCounter = { reads: 0, sourceReads: 0 };
-    const rows = [
-      countedRow(at(1, 9), -FIFTH_OF_A_COIN, readCounter),
-      countedRow(at(-1, 9), ONE_COIN, readCounter),
-    ];
-    const valueAt = createHoldingValuer(holdingOf(ONE_COIN, metadata), rows);
+    const { readCounter, line } = valuedWithCountedRows(metadata);
 
-    expect(valueAt(midnightOf(-2))).toBe(FIFTH_OF_A_COIN);
-    expect(valueAt(midnightOf(0))).toBe(ONE_COIN + FIFTH_OF_A_COIN);
-    expect(valueAt(midnightOf(1))).toBe(ONE_COIN);
+    expect(line).toEqual([FIFTH_OF_A_COIN, ONE_COIN + FIFTH_OF_A_COIN, ONE_COIN]);
     expect(readCounter).toEqual({ reads: 4, sourceReads: 0 });
+  });
+});
+
+describe('createHoldingValuer against a Binance, a wallet or a Monobank holding, whose balance is dated', () => {
+  // A holding on the list pays the filter's pass: each row is read twice for the sum, and its
+  // `source` and its `id` once each, so two rows read four times for the filter. Measured on the
+  // tip; a row read more often than that is a second pass over the ledger.
+  it.each([
+    ['a Binance key', { binanceAsset: 'BTC', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
+    ['a wallet address', { walletAddress: 'bc1q', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
+    ['a Monobank key', { monobankId: 'card-1', syncedAt: at(0, 10), balanceReadAt: at(0, 10) }],
+  ])('reads each row four times in all and counts every row, with %s', (_, metadata) => {
+    const { readCounter, line } = valuedWithCountedRows(metadata);
+
+    expect(line).toEqual([FIFTH_OF_A_COIN, ONE_COIN + FIFTH_OF_A_COIN, ONE_COIN]);
+    expect(readCounter).toEqual({ reads: 4, sourceReads: 4 });
   });
 });

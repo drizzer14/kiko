@@ -40,7 +40,10 @@ import {
   SYNC_CLOSED_FROM_FIELD,
   DEFAULT_NAME_RENAME_FIELD,
   OVERWRITTEN_ROW_IDS_FIELD,
-  datedBalanceSourceOf,
+  KEPT_ROW_IDS_FIELD,
+  datedBalanceOf,
+  balanceReadAtOf,
+  keptRowIdsOf,
   isDefaultNameRenameSettled,
   withCarriedMetadataKeys,
 } from '../holding-metadata';
@@ -184,29 +187,64 @@ const insertSyncedHolding = async (
     .values({ id: id(), ...rest, metadata: merged, sortOrder });
 };
 
-// The mark of a read on a dated balance (`datedBalanceSourceOf`): the ids of the holding's rows
-// that are not of the syncing source, read in the upsert's own transaction, so the list and the
-// balance it describes are written together. The read's figure replaces the balance, so a row the
-// user typed before it has no part in the line above it (`rowsHeldByBalance`). A holding off
-// the dated list returns before any read, and a read with no such row returns no key.
+const rowIdsPatch = (field: string, rowIds: string[]): Record<string, string[]> =>
+  rowIds.length === 0 ? {} : { [field]: rowIds };
+
+// The mark of a read on a dated balance (`datedBalanceOf`): the ids of the holding's rows that the
+// entry lets a read mark (every row that is not of the syncing source, or the rows of the sources
+// the entry names), read in the upsert's own transaction, so the list and the balance it describes
+// are written together. The read's figure replaces the balance, so a row the user typed before it
+// has no part in the line above it (`rowsHeldByBalance`). A holding off the dated list returns
+// before any read, and a read with no such row returns no key.
+// The first dated read of a holding that has no read date writes the date and no mark, because its
+// rows are old history that the user typed or restored before the read existed, and they keep
+// counting as they did. It writes their ids as the kept list instead, and every later read marks
+// only the rows off that list and rewrites it to the ids still there, so the old rows keep
+// counting for good and only the rows typed after that read are marked. A provider whose entry
+// does not count its rows before the first read (Bybit) never had an undated holding, so it marks
+// every row at once and never reads or writes the list.
 const overwrittenRowsPatch = async (
   databaseTransaction: typeof database,
   holdingId: string,
   merged: Record<string, unknown>,
+  storedMetadata: unknown,
 ): Promise<Record<string, string[]>> => {
-  const datedSource = datedBalanceSourceOf(merged);
+  const dated = datedBalanceOf(merged);
 
-  if (datedSource === undefined) {
+  if (dated === undefined) {
     return {};
   }
 
+  const markedSource =
+    foldMap(maybe(dated.markedSources), (sources) => inArray(transactions.source, [...sources])) ??
+    ne(transactions.source, dated.source);
   const rows = await databaseTransaction
     .select({ id: transactions.id })
     .from(transactions)
-    .where(and(eq(transactions.holdingId, holdingId), ne(transactions.source, datedSource)))
+    .where(and(eq(transactions.holdingId, holdingId), markedSource))
     .orderBy(asc(transactions.id));
+  const rowIds = rows.map((row) => row.id);
 
-  return rows.length === 0 ? {} : { [OVERWRITTEN_ROW_IDS_FIELD]: rows.map((row) => row.id) };
+  if (!dated.countsSourceRowsBeforeFirstRead) {
+    return rowIdsPatch(OVERWRITTEN_ROW_IDS_FIELD, rowIds);
+  }
+
+  if (balanceReadAtOf(storedMetadata) === null) {
+    return rowIdsPatch(KEPT_ROW_IDS_FIELD, rowIds);
+  }
+
+  const kept = new Set(keptRowIdsOf(storedMetadata));
+
+  return {
+    ...rowIdsPatch(
+      OVERWRITTEN_ROW_IDS_FIELD,
+      rowIds.filter((rowId) => !kept.has(rowId)),
+    ),
+    ...rowIdsPatch(
+      KEPT_ROW_IDS_FIELD,
+      rowIds.filter((rowId) => kept.has(rowId)),
+    ),
+  };
 };
 
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
@@ -241,9 +279,10 @@ const overwrittenRowsPatch = async (
 // and already holds what the user deleted. The sync clears the keys but never
 // reads them, so it never revives a row.
 //
-// The update branch of a holding on the dated list (Bybit) also replaces the list of overwritten
-// row ids (`overwrittenRowsPatch`), never joins it to the stored one. A holding off that list reads
-// no row and gets no key. A new holding has no row, so the insert branch writes none either.
+// The update branch of a holding on the dated list (`datedBalances`) also replaces the list of
+// overwritten row ids, and the kept list of an entry that counts its source rows before the first
+// read (`overwrittenRowsPatch`), never joins either to the stored one. A holding off that list
+// reads no row and gets no key. A new holding has no row, so the insert branch writes none either.
 //
 // The known limit (a holding closed before the mark existed stays closed) is
 // stated on `reconcileClosedHoldings` in the Monobank sync.
@@ -282,7 +321,7 @@ const upsertByMetadataKey = async (
     const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
     const carried = {
       ...withCarriedMetadataKeys(merged, current.metadata),
-      ...(await overwrittenRowsPatch(databaseTransaction, current.id, merged)),
+      ...(await overwrittenRowsPatch(databaseTransaction, current.id, merged, current.metadata)),
     };
     await databaseTransaction
       .update(holdings)

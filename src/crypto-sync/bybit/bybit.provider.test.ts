@@ -91,10 +91,10 @@ describe('bybitProvider', () => {
     expect(bybitProvider.metadataField).toBe('bybitAsset');
   });
 
-  it('has its key on the dated list, and the wallet and Binance keys are not on it', () => {
+  it('has its key on the dated list, and so have the wallet and Binance keys', () => {
     expect(datesBalanceOf(bybitProvider.metadataField)).toBe(true);
-    expect(datesBalanceOf(binanceProvider.metadataField)).toBe(false);
-    expect(datesBalanceOf(bitcoinWalletProvider.metadataField)).toBe(false);
+    expect(datesBalanceOf(binanceProvider.metadataField)).toBe(true);
+    expect(datesBalanceOf(bitcoinWalletProvider.metadataField)).toBe(true);
   });
 
   it('wires the real client, credentials reader, clock and fetch as its default deps', () => {

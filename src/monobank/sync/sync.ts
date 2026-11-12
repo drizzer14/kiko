@@ -6,9 +6,9 @@ import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { syncStateRepo } from '@kiko/sync-state';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { statementFromOf } from '@kiko/holdings/holding-metadata';
 import { holdingsRepo, type MonobankHolding } from '@kiko/holdings/repo';
 import type { AccountRow, HoldingRow, SyncStateRow, TransactionRow } from '@kiko/db';
+import { BALANCE_READ_AT_FIELD, statementFromOf } from '@kiko/holdings/holding-metadata';
 
 import {
   beginProgressSession,
@@ -407,11 +407,22 @@ const isUnrepresentableCurrency = (currencyCode: number, id: string): boolean =>
   return true;
 };
 
+/**
+ * A card or jar of one client-info answer with the time of that answer, which dates the balance it
+ * stores (`BALANCE_READ_AT_FIELD`): the statements that follow import rows dated after it, and the
+ * line leaves those off until the next answer holds them.
+ */
+const datedAt = (holding: NewHolding, readAt: number): NewHolding => ({
+  ...holding,
+  metadata: { ...(holding.metadata as Record<string, unknown>), [BALANCE_READ_AT_FIELD]: readAt },
+});
+
 const upsertAllHoldings = async (
   deps: SyncDeps,
   accountId: string,
   accounts: MonobankAccount[],
   jars: MonobankJar[] | undefined,
+  readAt: number,
 ): Promise<void> => {
   // Collect every representable card/jar and upsert them in ONE batched write,
   // so the reactive `holdings` callback fires ONCE for the whole fast phase. The
@@ -431,7 +442,10 @@ const upsertAllHoldings = async (
     if (isUnrepresentableCurrency(account.currencyCode, account.id)) {
       continue;
     }
-    holdings.push({ ...mapAccountToHolding(account, accountId), monobankId: account.id });
+    holdings.push({
+      ...datedAt(mapAccountToHolding(account, accountId), readAt),
+      monobankId: account.id,
+    });
   }
 
   for (const jar of jars ?? []) {
@@ -440,7 +454,7 @@ const upsertAllHoldings = async (
     if (isUnrepresentableCurrency(jar.currencyCode, jar.id)) {
       continue;
     }
-    holdings.push({ ...mapJarToHolding(jar, accountId), monobankId: jar.id });
+    holdings.push({ ...datedAt(mapJarToHolding(jar, accountId), readAt), monobankId: jar.id });
   }
 
   await deps.holdingsRepo.upsertMonobankMany(holdings);
@@ -1187,6 +1201,9 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
 
   await gate.wait();
   const { accounts, jars } = await deps.fetchClientInfo(token, deps.fetchImpl);
+  // Taken before anything else that follows the answer: a row dated after it is not in the
+  // balances the answer holds, and the line must not count it against them.
+  const readAt = deps.now();
   await markMonobankAccount(deps, accountId);
 
   // Capture each card/jar's PRIOR stored holding BEFORE `upsertHoldings`
@@ -1198,7 +1215,7 @@ const runSyncInner = async (overrides: Partial<SyncDeps> = {}): Promise<SyncResu
     await deps.holdingsRepo.listByAccountQuery(accountId),
   );
 
-  await upsertAllHoldings(deps, accountId, accounts, jars);
+  await upsertAllHoldings(deps, accountId, accounts, jars, readAt);
 
   // The FAST phase is done: client-info is fetched and the balances are
   // committed. Fire the signal now — the pull-to-refresh spinner ends here,

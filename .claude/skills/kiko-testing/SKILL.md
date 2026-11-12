@@ -120,6 +120,14 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
 - `binance-real-sqlite.ts`, `binance-backfill-world.ts`, `walk-marks.ts`, `walk-disturbances.ts`:
   the database set-up, the backfill world, the single reader of a walk's marks and the disturbance
   loop of the Binance history walk tests.
+- `past-line-world.ts`: the mechanics of the real-SQLite past-line tests of the dated holdings
+  (`datedBalances`): `openPastLineDatabase`, `pastLineWorld` (the stored holding, a typed
+  row, the net-worth line, and the shared marked-row expectations), and `at`. Each test keeps its
+  own seed rows and reads, and passes its own row ids, line and balance to an expectation.
+  `keychain-module.ts`: the `react-native-keychain` stub for a `jest.mock` factory, in a module
+  that imports no app code (a factory runs while the app's modules first load). A factory loads
+  it as `require('<path>') as typeof import('<path>')` so knip counts it as used; a bare
+  `require` hides it from knip.
 - `property-sweep.ts`, `seeded-random.ts`: `sweep` for a property seed list; a seeded generator.
 - `local-days-from.ts`, `device-zone-offset.ts`: calendar-day arithmetic and a device-zone offset
   for a test whose dates cross DST.

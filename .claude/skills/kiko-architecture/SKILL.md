@@ -1334,6 +1334,12 @@ via `@noble/ciphers`), `snapshot/{read,restore}-snapshot.ts`,
 `secrets/{read,restore}-secrets.ts`, `payload.d.ts` for the plaintext JSON
 shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
 
+- `balanceReadAt`, `overwrittenRowIds` and `keptRowIds` are plain JSON holding metadata: they
+  survive a `.kiko` restore and a disconnect strips only `syncedAt`
+  (`strippedOnDisconnect` in `src/accounts/accounts.repo.ts`). Read `BALANCE_READ_AT_FIELD`,
+  `OVERWRITTEN_ROW_IDS_FIELD` and `KEPT_ROW_IDS_FIELD` in
+  `src/holdings/holding-metadata/holding-metadata.ts`.
+
 - **Every schema table must be in the snapshot.** `snapshot/data-snapshot.d.ts`
   (`DataSnapshot`) is the one list every table `db/schema.ts` exports must
   appear in. This is mechanized, not prose: `src/data-transfer/snapshot/

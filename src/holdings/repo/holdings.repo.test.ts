@@ -709,7 +709,11 @@ const makeUpsertDatabaseTransaction = (
         where: () => {
           const rows = selectResults.shift() ?? [];
 
-          return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+          return Object.assign(Promise.resolve(rows), {
+            limit: () => Promise.resolve(rows),
+            // The update path reads the ledger rows a dated balance overwrites: none seeded.
+            orderBy: () => Promise.resolve([]),
+          });
         },
       }),
     }),
@@ -912,7 +916,11 @@ describe('holdingsRepo.upsertExchangeMany', () => {
           where: () => {
             const rows = [{ id: 'h-existing' }];
 
-            return Object.assign(Promise.resolve(rows), { limit: () => Promise.resolve(rows) });
+            return Object.assign(Promise.resolve(rows), {
+              limit: () => Promise.resolve(rows),
+              // The update path's read of the ledger rows a dated balance overwrites: none seeded.
+              orderBy: () => Promise.resolve([]),
+            });
           },
         }),
       }),
@@ -1003,6 +1011,8 @@ const makeSharedDatabaseTransaction = (
 
           return Object.assign(Promise.resolve(rows), {
             limit: () => Promise.resolve(store.holdings.filter(matches)),
+            // The update path of a dated balance reads the ledger rows a read overwrites.
+            orderBy: () => Promise.resolve(store.transactions),
           });
         },
       }),
