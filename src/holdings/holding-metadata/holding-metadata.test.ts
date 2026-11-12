@@ -481,6 +481,38 @@ describe('isOverwrittenRow', () => {
   });
 });
 
+describe('a Monobank card on the dated list', () => {
+  const card = { monobankId: 'card-1', syncedAt: 1_000 };
+
+  it('names the monobank row source and counts its own rows before the first read', () => {
+    expect(datedBalanceSourceOf(card)).toBe('monobank');
+    expect(datedBalanceOf(card)).toMatchObject({
+      source: 'monobank',
+      countsSourceRowsBeforeFirstRead: true,
+    });
+  });
+
+  it('lets a read mark the manual rows alone', () => {
+    expect(datedBalanceOf(card)).toMatchObject({ markedSources: ['manual'] });
+  });
+
+  it('has its sync write the read time', () => {
+    expect(datesBalanceOf('monobankId')).toBe(true);
+  });
+
+  it('has a delete or an edit of a listed row move no balance', () => {
+    expect(isOverwrittenRow({ ...card, overwrittenRowIds: ['a'] }, 'a')).toBe(true);
+  });
+
+  it.each([
+    ['Bybit', { bybitAsset: 'BTC:unified' }],
+    ['Binance', { binanceAsset: 'BTC' }],
+    ['a wallet', { walletAddress: 'bc1q' }],
+  ])('leaves the marked sources of %s unset, so every other source is marked', (_, metadata) => {
+    expect(datedBalanceOf(metadata)).not.toHaveProperty('markedSources');
+  });
+});
+
 describe('withCarriedMetadataKeys', () => {
   it('carries a sync-owned key from the stored metadata onto the target', () => {
     const target = { monobankId: 'card-1', syncedAt: 2_000 };

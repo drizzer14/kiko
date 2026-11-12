@@ -254,18 +254,15 @@ describe('ExchangeHistoryFooter on a dated Binance holding', () => {
     expect(getByText(NOT_LISTED)).toBeTruthy();
   });
 
-  it('counts an old typed row on the kept list and leaves a later typed row on the mark out', async () => {
+  it('counts a typed row that is off the mark and leaves a typed row on the mark out', async () => {
     const { getByText, queryByText } = await render(
       <ExchangeHistoryFooter
-        holding={datedHolding(ONE_COIN + HALF_A_COIN, {
-          keptRowIds: ['old'],
-          overwrittenRowIds: ['later'],
-        })}
+        holding={datedHolding(ONE_COIN + HALF_A_COIN, { overwrittenRowIds: ['on-the-mark'] })}
         account={binanceAccount}
         transactions={[
           rowAt(BEFORE_THE_READ, ONE_COIN, 'binance'),
-          rowAt(BEFORE_THE_READ, HALF_A_COIN, 'manual', 'old'),
-          rowAt(BEFORE_THE_READ, THREE_TENTHS, 'manual', 'later'),
+          rowAt(BEFORE_THE_READ, HALF_A_COIN, 'manual', 'off-the-mark'),
+          rowAt(BEFORE_THE_READ, THREE_TENTHS, 'manual', 'on-the-mark'),
         ]}
       />,
     );

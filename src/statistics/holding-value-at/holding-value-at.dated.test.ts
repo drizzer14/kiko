@@ -129,3 +129,54 @@ describe('createHoldingValuer against a Binance holding whose balance was read b
     ]);
   });
 });
+
+describe('createHoldingValuer against a Monobank card', () => {
+  const THOUSAND = 100_000;
+  const HUNDRED = 10_000;
+  const FIFTY = 5_000;
+  const TWENTY = 2_000;
+  const THREE_HUNDRED = 30_000;
+
+  const cardOf = (metadata: SeriesHolding['metadata']): SeriesHolding => ({
+    id: 'card1',
+    currency: 'UAH',
+    type: 'card',
+    balanceMinorUnits: THOUSAND,
+    metadata,
+    closedAt: null,
+  });
+
+  // The rows of one world: a card payment before the read and one after it, a statement row of a
+  // bank account before the read, and a typed row before the read.
+  const rows: SeriesTransaction[] = [
+    { id: 'payment-before', time: at(-1, 9), amountMinorUnits: THREE_HUNDRED, source: 'monobank' },
+    { id: 'payment-after', time: at(1, 9), amountMinorUnits: -HUNDRED, source: 'monobank' },
+    { id: 'statement', time: at(-1, 9), amountMinorUnits: FIFTY, source: 'import' },
+    { id: 'typed', time: at(-1, 9), amountMinorUnits: TWENTY, source: 'manual' },
+  ];
+
+  it('a dated card counts a payment up to its read, a statement row and a typed row off the mark, and no more', () => {
+    const holding = cardOf({
+      monobankId: 'card-1',
+      balanceReadAt: at(0, 10),
+      overwrittenRowIds: ['typed'],
+    });
+
+    expect(lineOf(holding, rows, [-2, -1, 1])).toEqual([
+      THOUSAND - THREE_HUNDRED - FIFTY,
+      THOUSAND,
+      THOUSAND,
+    ]);
+  });
+
+  it('an undated card counts every row, as it did', () => {
+    const holding = cardOf({ monobankId: 'card-1' });
+    const opening = THOUSAND - (THREE_HUNDRED - HUNDRED + FIFTY + TWENTY);
+
+    expect(lineOf(holding, rows, [-2, -1, 1])).toEqual([
+      opening,
+      opening + THREE_HUNDRED + FIFTY + TWENTY,
+      THOUSAND,
+    ]);
+  });
+});

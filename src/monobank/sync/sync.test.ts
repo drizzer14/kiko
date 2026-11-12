@@ -4,11 +4,15 @@
 // through SyncDeps, so the real repos are never exercised here.
 import { DAY_MS } from '@kiko/dates';
 import { i18n } from '@kiko/i18n/init';
+import {
+  balanceReadAtOf,
+  statementFromOf,
+  syncClosedFromOf,
+} from '@kiko/holdings/holding-metadata';
 import maybe, { foldMap } from 'fnts/maybe';
 import statement from '@kiko/monobank/__fixtures__/statement.json';
 import clientInfo from '@kiko/monobank/__fixtures__/client-info.json';
 import type { AccountRow, HoldingRow, TransactionRow } from '@kiko/db';
-import { statementFromOf, syncClosedFromOf } from '@kiko/holdings/holding-metadata';
 
 import {
   getProgressSnapshot,
@@ -497,6 +501,34 @@ describe('runSync', () => {
       (transaction) => transaction.externalId === `acc-1:${statement[0].id}`,
     );
     expect(groceryTransaction?.category).toBe('groceries');
+  });
+
+  it('the fast phase writes the read time beside each card and jar, taken after the client-info answer', async () => {
+    const STARTED_AT = 1_700_000_000_000;
+    const ANSWERED_AT = STARTED_AT + 4_000;
+    let clock = STARTED_AT;
+    const { deps, holdingsStore } = makeInMemoryDeps(onlyFirstAccount, [
+      bankAccount({ id: 'acc-1', institution: null }),
+    ]);
+    deps.targetAccountId = 'acc-1';
+    deps.now = () => clock;
+    deps.fetchClientInfo = async () => {
+      clock = ANSWERED_AT;
+
+      return {
+        accounts: clientInfo.accounts as MonobankAccount[],
+        jars: clientInfo.jars as MonobankJar[],
+      };
+    };
+
+    await runSync(deps);
+
+    expect(holdingsStore).toHaveLength(3);
+    expect(holdingsStore.map((holding) => balanceReadAtOf(holding.metadata))).toEqual([
+      ANSWERED_AT,
+      ANSWERED_AT,
+      ANSWERED_AT,
+    ]);
   });
 
   it('with no target id, syncs into the existing institution=monobank account', async () => {

@@ -378,6 +378,87 @@ describe('holdingsRepo.upsertExchangeMany on a Binance or a wallet holding', () 
   );
 });
 
+describe('holdingsRepo.upsertMonobankMany on a Monobank card', () => {
+  const CARD_KEY = 'card-1';
+
+  const cardRead = () =>
+    holdingsRepo.upsertMonobankMany([
+      {
+        accountId: ACCOUNT_ID,
+        name: 'Card',
+        type: 'card',
+        currency: 'UAH',
+        balanceMinorUnits: BALANCE_MINOR_UNITS,
+        metadata: { balanceReadAt: READ_AT },
+        monobankId: CARD_KEY,
+      },
+    ]);
+
+  it('a read marks the manual rows alone, and neither an import row nor a card payment', async () => {
+    seedHolding(HOLDING_ID, { monobankId: CARD_KEY, balanceReadAt: 1_000 });
+    seedRow('row-typed-b', 'manual');
+    seedRow('row-typed-a', 'manual');
+    seedRow('row-import', 'import');
+    seedRow('row-payment', 'monobank');
+
+    await cardRead();
+
+    expect(metadataBy('monobankId', CARD_KEY)).toEqual({
+      monobankId: CARD_KEY,
+      balanceReadAt: READ_AT,
+      overwrittenRowIds: ['row-typed-a', 'row-typed-b'],
+    });
+    expect(holdingBy('monobankId', CARD_KEY).balance).toBe(BALANCE_MINOR_UNITS);
+  });
+
+  it('the first dated read of a shipped card keeps the ids of its manual rows with no mark, in one statement on the ledger', async () => {
+    seedHolding(HOLDING_ID, { monobankId: CARD_KEY });
+    seedRow('row-typed', 'manual');
+    seedRow('row-import', 'import');
+    seedRow('row-payment', 'monobank');
+
+    expect(await statementsOnLedgerDuring(cardRead)).toHaveLength(1);
+    expect(metadataBy('monobankId', CARD_KEY)).toEqual({
+      monobankId: CARD_KEY,
+      balanceReadAt: READ_AT,
+      keptRowIds: ['row-typed'],
+    });
+  });
+
+  it('a later read marks only the manual rows off its kept list and prunes a gone id', async () => {
+    seedHolding(HOLDING_ID, {
+      monobankId: CARD_KEY,
+      balanceReadAt: 1_000,
+      keptRowIds: ['row-gone', 'row-old'],
+    });
+    seedRow('row-old', 'manual');
+    seedRow('row-new', 'manual');
+    seedRow('row-import', 'import');
+    seedRow('row-payment', 'monobank');
+
+    await cardRead();
+
+    expect(metadataBy('monobankId', CARD_KEY)).toEqual({
+      monobankId: CARD_KEY,
+      balanceReadAt: READ_AT,
+      overwrittenRowIds: ['row-new'],
+      keptRowIds: ['row-old'],
+    });
+  });
+
+  it('a card that a read creates gets no key', async () => {
+    seedHolding('h-other', { monobankId: 'card-other' });
+    seedRow('row-other', 'manual', 'h-other');
+
+    await cardRead();
+
+    expect(metadataBy('monobankId', CARD_KEY)).toEqual({
+      monobankId: CARD_KEY,
+      balanceReadAt: READ_AT,
+    });
+  });
+});
+
 describe('a holding that is not Bybit, Binance or a wallet', () => {
   it('Monobank makes no read of the rows and gets no new key', async () => {
     seedHolding('h-kind', { monobankId: 'card-1', syncedAt: 1_000 });
