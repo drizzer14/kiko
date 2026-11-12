@@ -240,5 +240,18 @@ describe('TransactionCard category glyph mark', () => {
     it('still passes no color on the accent fill, so the glyph takes onAccent', async () => {
       expect(await glyphTintOf(true)).toBe(lightTheme.colors.onAccent);
     });
+
+    it('draws a neutral mark, with no category color, in the secondary tone', async () => {
+      const { getByLabelText } = await render(
+        <TransactionCard
+          title="Rent"
+          categoryIcon="creditcard"
+          categoryAccessibilityLabel="Uncategorized"
+        />,
+      );
+
+      // The light textSecondary token, rgba(60,60,67,0.78), as the symbol view takes it.
+      expect(getByLabelText('Uncategorized').props.tintColor).toBe('#3c3c43c7');
+    });
   });
 });

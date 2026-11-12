@@ -4,7 +4,9 @@ import type { StyleProp, ViewStyle } from 'react-native';
 export type TransactionCardProps = {
   title: string;
   categoryIcon: string;
-  categoryIconColor: string;
+  // A `#RRGGBB` category display color. Omitted draws the neutral glyph in the secondary tone: a
+  // theme token such as `textSecondary` is rgba, which the light-mark derivation refuses.
+  categoryIconColor?: string;
   // The icon's accessibilityLabel — the category's display title.
   categoryAccessibilityLabel: string;
   // Always rendered with `MoneyText`'s `"transaction"` context (a positive

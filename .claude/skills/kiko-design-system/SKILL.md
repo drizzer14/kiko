@@ -363,7 +363,10 @@ every one of them, so scan this list rather than the reference files for what is
   `TransactionCard`'s `money` prop is optional (a transaction template's
   amount is optional): omitted, the `rowAmount` box and its `MoneyText`
   do not render and the title cluster keeps its `flex: 1` row; with
-  `money` the output is unchanged.
+  `money` the output is unchanged. Its `categoryIconColor` is optional
+  too: omitted, the glyph uses the SymbolIcon `textSecondary` tone (the
+  neutral mark); given, an entity hex, which the light scheme passes
+  through `markColor`.
   Pinned per family by a style-contract test (`ancestorWithStyle`: the
   title's own box is `flex: 1` with no row direction, no
   `numberOfLines`). The two card tests also pin the amount's box
@@ -910,7 +913,10 @@ Light palette v3.1 rules (source of truth
   every swatch keeps the 3 stop floor, and teal meets both.
 - `markColor(hex, scheme)` (`entity-tint.ts`) is the color for icon and
   line sinks: a gamut-safe chroma clamp with a module cache. The sinks
-  are icon and line tints only; tiles keep the tile color.
+  are icon and line tints only; tiles keep the tile color. `markColor`
+  and `parseHex` take hex only (`parseHex` throws on rgba): never pass a
+  theme token such as `theme.colors.textSecondary` as an entity or mark
+  color; omit the color for a neutral mark.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —

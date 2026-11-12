@@ -2,13 +2,19 @@ import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
+import {
+  registerLightThemeFirst,
+  restoreThemeOrder,
+} from '@kiko/test-support/light-theme-registered';
 import { holdCard } from '@kiko/test-support/hold-card';
 import {
   DELETE_ACTION_TEST_ID,
   DELETE_CONFIRM_TEST_ID,
   EDIT_ACTION_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
+import { markColor } from '@kiko/design-system/entity-tint';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { EMPTY_DRAFT, type TemplateDraft } from '@kiko/transaction-templates/draft';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -213,6 +219,45 @@ describe('TransactionTemplatesScreen — list', () => {
 
     expect(getByLabelText('Uncategorized')).toBeTruthy();
     expect(queryByLabelText('Other')).toBeNull();
+  });
+
+  describe('in the light scheme', () => {
+    // The light textSecondary token, rgba(60,60,67,0.78), as the symbol view takes it.
+    const LIGHT_SECONDARY_TINT = '#3c3c43c7';
+
+    beforeEach(() => {
+      registerLightThemeFirst();
+    });
+
+    afterEach(() => {
+      restoreThemeOrder();
+    });
+
+    it('draws a template with no category with the neutral glyph in the secondary tone', async () => {
+      seed({ templates: [SALARY] });
+
+      const { getByLabelText } = await renderScreen();
+
+      expect(getByLabelText('Uncategorized').props.tintColor).toBe(LIGHT_SECONDARY_TINT);
+    });
+
+    it('draws a template with an unknown category with the neutral glyph in the secondary tone', async () => {
+      seed({ templates: [templateRow('t-ghost', 'Ghost', draftOf({ category: 'vanished' }))] });
+
+      const { getByLabelText } = await renderScreen();
+
+      expect(getByLabelText('Uncategorized').props.tintColor).toBe(LIGHT_SECONDARY_TINT);
+    });
+
+    it('still draws a known category in its light mark', async () => {
+      seed({ templates: [RENT] });
+
+      const { getByLabelText } = await renderScreen();
+
+      expect(getByLabelText('Groceries').props.tintColor).toBe(
+        markColor(resolveCategoryColor('#FFCC00', 'groceries', 'light'), 'light'),
+      );
+    });
   });
 
   it('opens the template for editing on a tap', async () => {
