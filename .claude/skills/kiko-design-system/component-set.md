@@ -164,13 +164,14 @@ new component can land between reviews of this skill:
   translucent bar): the scroll is the component root, no wrapper (UIKit's first-child chain
   drives the large title), with the automatic inset; side padding from `useContentMargin`, top
   `spacing(4)` (16 pt), bottom tab-bar clearance plus 16; the header is shifted flush under
-  the bar by an `Animated` transform (`zIndex` 1) instead of a sticky index; the content does
-  not grow to the scroll's height; the raw scroll width is kept and the side margin subtracted
-  at render. The measure layer is the scroll's last child. `stickyHeaderIndices`
-  moves the sticky child's own style to a wrapper, so that child must be a plain `View` that holds
-  the row. `emptyContent` replaces the header and the body: no sticky index, `topContent` stays
-  mounted (a filter sheet in it stays open), the measuring layer is unmounted and the offsets and
-  measured widths reset while it shows
+  the bar by an `Animated` transform that follows the bar's height, which on iOS 27 shrinks as
+  the bar minimizes (the value is native-driven) (`zIndex` 1) instead of a sticky
+  index; the content does not grow to the scroll's height; the raw scroll width is kept and the
+  side margin subtracted at render. The measure layer is the scroll's last child.
+  `stickyHeaderIndices` moves the sticky child's own style to a wrapper, so that child must be a
+  plain `View` that holds the row. `emptyContent` replaces the header and the body: no sticky
+  index, `topContent` stays mounted (a filter sheet in it stays open), the measuring layer is
+  unmounted and the offsets and measured widths reset while it shows
   (`src/design-system/components/data-table/data-table.component.tsx`);
   the header follows the body's horizontal offset through reanimated's `useScrollOffset`, and a
   horizontal scroll that turns on only when the columns overflow, measured against the natural
