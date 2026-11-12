@@ -380,8 +380,8 @@ balance written
 without its ledger row retroactively shifts the ENTIRE historical
 net-worth series by that amount, and the holding-detail transaction list
 stops reconciling with its own displayed Value. An exchange holding's "Earlier history" line
-(`exchange-history-footer.component.tsx`) shows the same residual, `balance - sum(rows)`,
-so it and the Statistics series never disagree; a backfill still owed leaves it nonzero
+(`exchange-history-footer.component.tsx`) shows the balance minus
+the rows `rowsHeldByBalance` keeps, so it and the Statistics series never disagree; a backfill still owed leaves it nonzero
 until the ground is read. None of the three routes
 through `transactionsRepo.recordManual` (which would apply the amount to
 the balance a second time), and none persists a description or a
