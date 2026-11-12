@@ -155,7 +155,7 @@ describe('createHoldingValuer against a Monobank card', () => {
     { id: 'typed', time: at(-1, 9), amountMinorUnits: TWENTY, source: 'manual' },
   ];
 
-  it('a dated card counts a payment up to its read, a statement row and a typed row off the mark, and no more', () => {
+  it('a dated card counts a payment up to its read and a statement row, and leaves out a typed row on its mark and a payment after the read', () => {
     const holding = cardOf({
       monobankId: 'card-1',
       balanceReadAt: at(0, 10),

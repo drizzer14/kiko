@@ -520,6 +520,15 @@ describe('runSync', () => {
         jars: clientInfo.jars as MonobankJar[],
       };
     };
+    const statementOf = deps.fetchStatement;
+
+    // A payment between the answer and a card's statement read is not in the balance the answer
+    // holds, so a time taken after a statement read would count it.
+    deps.fetchStatement = async (...args) => {
+      clock = ANSWERED_AT + 3_000;
+
+      return statementOf(...args);
+    };
 
     await runSync(deps);
 

@@ -63,24 +63,37 @@ const storedCard = async () => {
   return holding;
 };
 
-type Answer = { accounts?: MonobankAccount[]; payments?: MonobankStatementItem[] };
+type Answer = {
+  accounts?: MonobankAccount[];
+  payments?: MonobankStatementItem[];
+  statementTakes?: number;
+};
 
 // A run over the bank's answer: the card at `balance` unless the answer lists other cards, and
 // `payments` handed back by the statement read whatever its window, since the bank's clock can be
 // ahead of the device's and a payment then is dated after the read time of the run that imports it.
+// The device's clock stands at `time` until the statement read, which takes `statementTakes` more:
+// a read time taken after that read is a later time than the answer's.
 const readOfCard = (
   time: number,
   balance: number,
-  { accounts = cardAt(balance), payments = [] }: Answer = {},
-): ReturnType<typeof runSync> =>
-  runSync({
+  { accounts = cardAt(balance), payments = [], statementTakes = 0 }: Answer = {},
+): ReturnType<typeof runSync> => {
+  let clock = time;
+
+  return runSync({
     targetAccountId: ACCOUNT_ID,
-    now: () => time,
+    now: () => clock,
     sleep: async () => undefined,
     readToken: async () => 'token',
     fetchClientInfo: async () => ({ accounts, jars: [] }),
-    fetchStatement: async () => payments,
+    fetchStatement: async () => {
+      clock += statementTakes;
+
+      return payments;
+    },
   });
+};
 
 const typedRowAt = async (time: number, amountMinorUnits: number): Promise<string> => {
   const { id } = await storedCard();
@@ -167,7 +180,7 @@ describe('the line of a Monobank card whose balance is older than its rows, on r
   it('a payment dated after the read of its run stays off the line until the next run, which counts it', async () => {
     const payment = itemAt('payment', at(0, 10) + SECOND, -HUNDRED);
 
-    await readOfCard(at(0, 10), THOUSAND, { payments: [payment] });
+    await readOfCard(at(0, 10), THOUSAND, { payments: [payment], statementTakes: 2 * SECOND });
 
     expect(await lineFrom(-1, 1)).toEqual([THOUSAND, THOUSAND, THOUSAND]);
     expect((await storedCard()).metadata).toMatchObject({ balanceReadAt: at(0, 10) });
