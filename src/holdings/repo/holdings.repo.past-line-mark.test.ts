@@ -434,6 +434,17 @@ describe('holdingsRepo.upsertMonobankMany on a Monobank card', () => {
     });
   });
 
+  it('a read of an existing card sends four statements in all, the read of the ledger one of them', async () => {
+    seedHolding(HOLDING_ID, { monobankId: CARD_KEY, balanceReadAt: 1_000 });
+    seedRow('row-typed', 'manual');
+
+    const prepare = jest.spyOn(mockDatabase, 'prepare');
+
+    await cardRead();
+
+    expect(prepare).toHaveBeenCalledTimes(4);
+  });
+
   it('a card that a read creates gets no key', async () => {
     seedHolding('h-other', { monobankId: 'card-other' });
     seedRow('row-other', 'manual', 'h-other');

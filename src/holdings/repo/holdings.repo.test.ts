@@ -1011,6 +1011,8 @@ const makeSharedDatabaseTransaction = (
 
           return Object.assign(Promise.resolve(rows), {
             limit: () => Promise.resolve(store.holdings.filter(matches)),
+            // The update path of a dated balance reads the ledger rows a read overwrites.
+            orderBy: () => Promise.resolve(store.transactions),
           });
         },
       }),
