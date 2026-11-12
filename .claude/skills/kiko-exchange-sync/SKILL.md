@@ -333,7 +333,7 @@ than restated here:
   upsert (`runBalanceSyncInner` -> `upsertExchangeMany`) writes a FRESH
   metadata object on every run, for every provider: `{ syncedAt }`, plus the read date for a
   provider whose balance is dated (`datesBalanceOf` in `holding-metadata.ts`). The update
-  branch of the upsert also writes the overwritten-row list of a dated holding
+  branch of the upsert also writes the overwritten-row list and the kept list of a dated holding
   (`overwrittenRowsPatch`, `src/holdings/repo/holdings.repo.ts`). The walk
   marks are not in that metadata (they live in `sync_state.exchange_state`),
   so nothing there needs carrying except what `carriedMetadataKeys`
@@ -1181,9 +1181,14 @@ Balance sync, notes, set-aside coins, cooling and the history walks:
   (`bybit.failure-text.ts`). A kept holding with no stamp does not count.
 - A provider failure throws. `sync.ts` reads an empty answer as success, so an empty return can
   hide a failure.
-- Past-line mark: a Bybit balance is dated by its last read (`balanceReadAt`), and a read lists
-  the rows it overwrote (`overwrittenRowIds`). A row on that list moves no balance when the user
-  edits or deletes it. Read `datedBalanceSourceOf`, `isOverwrittenRow` and `datesBalanceOf` in
+- Past-line mark: a dated provider's balance (the providers on `datedBalances`) is dated by its
+  last read (`balanceReadAt`), and a read lists the rows it overwrote (`overwrittenRowIds`). A row
+  on that list moves no balance when the user edits or deletes it. A holding with no read time
+  counts no source row for Bybit, but Binance and the wallet count every row until the first
+  dated read (`countsSourceRowsBeforeFirstRead`). That first read writes no mark and stores the
+  kept list (`keptRowIds`); later reads mark only rows off the list, so rows typed before the
+  first dated read keep counting for good. Read `datedBalanceOf`, `keptRowIdsOf`,
+  `datedBalanceSourceOf`, `isOverwrittenRow` and `datesBalanceOf` in
   `src/holdings/holding-metadata/holding-metadata.ts`; copy no list from here.
 
 ## Crypto re-sync request
