@@ -442,7 +442,7 @@ every one of them, so scan this list rather than the reference files for what is
   `largeTitleScreenOptions` plus `headerShown: true`. The table is the first scroll view of the
   screen (see `DataTable` `barInset` in the component set). On iOS 27 the bar minimizes on
   scroll and the column header follows it up to the status bar (react-native-screens'
-  minimization-aware header height read); rows pass above it. Rulings 2026-11-09: the iOS 18 bar
+  minimization-aware header height read); rows pass under it. Rulings 2026-11-09: the iOS 18 bar
   fade is accepted; on the Duo in landscape the title is native; Settings behaves the same on
   iOS 27.
 - **The Statistics Tables button stays 44 pt and full width** (2026-11-04; user: "As it is now").
