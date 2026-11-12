@@ -70,7 +70,9 @@ const HAS_CATEGORY_FILTER: Record<TablesView, boolean> = {
 const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   // The live height of the large-title bar the table scrolls under, which the table keeps its
-  // header row flush below; read here so the design system's table stays free of navigation.
+  // header row flush below; read here so the design system's table stays free of navigation. On
+  // iOS 27 the bar minimizes natively while the table scrolls (82 down to the status bar, 24 in
+  // Duo), and react-native-screens 4.30.1 reports the minimized height, so the header follows it.
   const barInset = useAnimatedHeaderHeight();
   const scheme = useActiveColorScheme();
   // Visibility, not focus: in two panes the panes behind this screen are in view without being the

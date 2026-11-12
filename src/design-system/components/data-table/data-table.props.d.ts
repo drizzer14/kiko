@@ -44,11 +44,12 @@ export type DataTableProps = {
   // start.
   initialColumnIndex?: number;
   // The live height of a translucent bar the table scrolls under (the native stack's animated
-  // header height). Given, the table is a scroll view with the automatic content inset, so a large
-  // title collapses with it; it keeps the header row flush under the bar, pads its own sides and
-  // clears the tab bar itself, and its content does not grow to the scroll's height (the inset
-  // would make a short table scroll). Absent, the caller lays the table out and the header sticks
-  // at the top.
+  // header height; on iOS 27 it follows the bar as it minimizes to the status bar and back, since
+  // react-native-screens 4.30.1 reads the visible bar bottom). Given, the table is a scroll view
+  // with the automatic content inset, so a large title collapses with it; it keeps the header row
+  // flush under the bar, pads its own sides and clears the tab bar itself, and its content does
+  // not grow to the scroll's height (the inset would make a short table scroll). Absent, the
+  // caller lays the table out and the header sticks at the top.
   barInset?: Animated.Value | Animated.AnimatedInterpolation<number>;
   testID?: string;
 };

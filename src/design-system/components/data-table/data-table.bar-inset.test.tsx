@@ -139,6 +139,34 @@ describe('DataTable with a bar inset', () => {
       expect(await shiftOf()).toBe(resolveHeaderShift(260, 60, 300));
     });
 
+    it('follows the bar down to the status bar when it minimizes and back when it returns', async () => {
+      const barInset = new Animated.Value(82);
+      const eventSpy = jest.spyOn(Animated, 'event');
+      const rendered = await renderTable({ barInset });
+      const mapping = eventSpy.mock.calls[0][0] as unknown as {
+        nativeEvent: { contentOffset: { y: Animated.Value } };
+      }[];
+      const header = () =>
+        rendered.getByTestId(`${PREFIX}-header-shift`, { includeHiddenElements: true });
+      await fireEvent(header(), 'layout', layoutEvent(300, 408));
+      await act(async () => mapping[0].nativeEvent.contentOffset.y.setValue(446));
+      const shiftOf = async () => {
+        await rendered.rerender(<DataTable {...baseProps} barInset={barInset} />);
+
+        const [{ translateY }] = flat(header()).transform as { translateY: number }[];
+
+        return translateY;
+      };
+      const shifts = [await shiftOf()];
+
+      for (const inset of [24, 82]) {
+        await act(async () => barInset.setValue(inset));
+        shifts.push(await shiftOf());
+      }
+
+      expect(shifts).toEqual([120, 62, 120]);
+    });
+
     it('draws the header above the body rows it slides over', async () => {
       const rendered = await renderTable({ barInset: new Animated.Value(100) });
       const shifted = rendered.getByTestId(`${PREFIX}-header-shift`, {
@@ -198,24 +226,6 @@ describe('DataTable with a bar inset', () => {
       expect(
         StyleSheet.flatten(rendered.getByTestId(ROOT).props.contentContainerStyle).paddingTop,
       ).toBe(darkTheme.spacing(4));
-    });
-
-    it('keeps the header flush under the bar when that gap moves it down', async () => {
-      const barInset = new Animated.Value(100);
-      const eventSpy = jest.spyOn(Animated, 'event');
-      const rendered = await renderTable({ barInset });
-      const mapping = eventSpy.mock.calls[0][0] as unknown as {
-        nativeEvent: { contentOffset: { y: Animated.Value } };
-      }[];
-      const header = () =>
-        rendered.getByTestId(`${PREFIX}-header-shift`, { includeHiddenElements: true });
-      await fireEvent(header(), 'layout', layoutEvent(300, 300 + darkTheme.spacing(4)));
-      await act(async () => mapping[0].nativeEvent.contentOffset.y.setValue(230));
-      await rendered.rerender(<DataTable {...baseProps} barInset={barInset} />);
-
-      const [{ translateY }] = flat(header()).transform as { translateY: number }[];
-
-      expect(translateY).toBe(230 + 100 - (300 + darkTheme.spacing(4)));
     });
 
     it('clears the tab bar by the automatic-inset clearance and the end gap', async () => {
