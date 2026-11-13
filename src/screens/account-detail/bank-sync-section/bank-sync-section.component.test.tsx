@@ -191,6 +191,20 @@ describe('BankSyncSection — disconnected', () => {
     const view = await pickMonobankFromSheet();
 
     expect(view.getByText('monobank boom')).toBeTruthy();
+    expect(view.getByRole('alert', { name: 'monobank boom' })).toBeTruthy();
+  });
+
+  it('surfaces the sync error of a connected bank as an alert notice under the actions row', async () => {
+    mockUseSync.mockReturnValue({
+      isSyncing: false,
+      error: 'monobank boom',
+      sync: mockMonobankSync,
+    });
+    const view = await renderConnectedBank();
+
+    expect(view.getByRole('alert', { name: 'monobank boom' })).toBeTruthy();
+    expect(view.getByText('monobank boom')).toBeTruthy();
+    expect(view.getByTestId('bank-sync-actions-row')).toBeTruthy();
   });
 
   // An account whose identity picker (BankTypeField, in the

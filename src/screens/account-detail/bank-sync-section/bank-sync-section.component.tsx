@@ -12,6 +12,7 @@ import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { bankProviderRegistry } from '@kiko/bank-sync/registry';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import ErrorNotice from '@kiko/design-system/components/error-notice';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
@@ -253,11 +254,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
           />
         </Box>
 
-        {error !== undefined && (
-          <Text variant="body" tone="negative">
-            {error}
-          </Text>
-        )}
+        {error !== undefined && <ErrorNotice message={error} />}
 
         {/* The bank Disconnect confirmation — the same shared themed
             `ConfirmSheet` the grid-card long-press delete uses, replacing the
@@ -329,11 +326,7 @@ const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {
         </Box>
       )}
 
-      {error !== undefined && (
-        <Text variant="body" tone="negative">
-          {error}
-        </Text>
-      )}
+      {error !== undefined && <ErrorNotice message={error} />}
 
       <ProviderSheet
         visible={providerPickerOpen}

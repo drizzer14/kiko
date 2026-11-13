@@ -188,10 +188,10 @@ describe('BybitCredentialsField', () => {
     expect(queryByText(kinds)).toBeNull();
   });
 
-  it('shows the text of a failed Connect that it is given, in the negative tone, and none otherwise', async () => {
+  it('shows the text of a failed Connect it is given as an alert notice, and none otherwise', async () => {
     const without = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
 
-    expect(without.queryByTestId('text-tone-negative')).toBeNull();
+    expect(without.queryByRole('alert')).toBeNull();
 
     const refused = await render(
       <BybitCredentialsField
@@ -201,9 +201,8 @@ describe('BybitCredentialsField', () => {
       />,
     );
 
-    expect(refused.getByTestId('text-tone-negative')).toHaveTextContent(
-      'Bybit refused the connection.',
-    );
+    expect(refused.getByRole('alert', { name: 'Bybit refused the connection.' })).toBeTruthy();
+    expect(refused.getByText('Bybit refused the connection.')).toBeTruthy();
   });
 
   it('shows a required error per blank field and calls no network when Connect is pressed', async () => {

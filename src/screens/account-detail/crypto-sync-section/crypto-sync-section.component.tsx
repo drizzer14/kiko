@@ -42,6 +42,7 @@ import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import { resyncRequest } from '@kiko/crypto-sync/resync-request';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import ErrorNotice from '@kiko/design-system/components/error-notice';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import NoticeBanner from '@kiko/design-system/components/notice-banner';
@@ -667,11 +668,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
           />
         </Box>
 
-        {error !== undefined && (
-          <Text variant="body" tone="negative">
-            {error}
-          </Text>
-        )}
+        {error !== undefined && <ErrorNotice message={error} />}
 
         {/* The crypto provider Disconnect confirmation — the same shared themed
             `ConfirmSheet` the grid-card long-press delete uses. A scrim/back
@@ -704,11 +701,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         onConnectBybit={connectBybit}
       />
 
-      {error !== undefined && (
-        <Text variant="body" tone="negative">
-          {error}
-        </Text>
-      )}
+      {error !== undefined && <ErrorNotice message={error} />}
     </Box>
   );
 };

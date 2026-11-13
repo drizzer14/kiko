@@ -476,10 +476,24 @@ describe('CryptoSyncSection', () => {
       error: 'Binance request failed: 401',
       sync: mockSync,
     });
-    const { getByText } = await renderSection({ institution: 'binance' });
+    const { getByText, getByRole, getByTestId } = await renderSection({ institution: 'binance' });
 
     expect(getByText('Syncing…')).toBeTruthy();
     expect(getByText('Binance request failed: 401')).toBeTruthy();
+    expect(getByRole('alert', { name: 'Binance request failed: 401' })).toBeTruthy();
+    expect(getByTestId('crypto-sync-actions-row')).toBeTruthy();
+  });
+
+  it('surfaces the sync error of an unconnected crypto account as an alert notice', async () => {
+    mockUseCryptoSync.mockReturnValue({
+      isSyncing: false,
+      error: 'Binance request failed: 401',
+      sync: mockSync,
+    });
+    const { getByText, getByRole } = await renderSection();
+
+    expect(getByText('Binance request failed: 401')).toBeTruthy();
+    expect(getByRole('alert', { name: 'Binance request failed: 401' })).toBeTruthy();
   });
 
   it('shows the lagging-history caption when the Binance history walks are more than a day behind the balance sync', async () => {
