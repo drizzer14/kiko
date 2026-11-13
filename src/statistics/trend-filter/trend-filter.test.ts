@@ -2,6 +2,7 @@ import type { CategoryMeasure } from '../category-trend';
 
 import {
   DEFAULT_TREND_FILTER,
+  isTrendFilterActive,
   resolveTrendFilter,
   selectTopCategories,
   type TrendFilter,
@@ -142,5 +143,34 @@ describe('resolveTrendFilter', () => {
     const stored = { mode: 'bogus', amount: 9, by: 'rising' } as unknown as TrendFilter;
 
     expect(resolveTrendFilter(stored, existing)).toEqual({ mode: 'top', amount: 5, by: 'rising' });
+  });
+});
+
+describe('isTrendFilterActive', () => {
+  it('is inactive on the default top 3 by contribution', () => {
+    expect(isTrendFilterActive({ mode: 'top', amount: 3, by: 'contribution' })).toBe(false);
+    expect(isTrendFilterActive(DEFAULT_TREND_FILTER)).toBe(false);
+  });
+
+  it('is active on another top amount', () => {
+    expect(isTrendFilterActive({ mode: 'top', amount: 5, by: 'contribution' })).toBe(true);
+  });
+
+  it('is active on another measure', () => {
+    expect(isTrendFilterActive({ mode: 'top', amount: 3, by: 'frequency' })).toBe(true);
+  });
+
+  it('is inactive on a manual filter with no categories', () => {
+    expect(isTrendFilterActive({ mode: 'manual', keys: [] })).toBe(false);
+  });
+
+  it('is active on a manual pick of one category', () => {
+    expect(isTrendFilterActive({ mode: 'manual', keys: ['groceries'] })).toBe(true);
+  });
+
+  it('is inactive once a manual pick is pruned to empty by resolveTrendFilter', () => {
+    const resolved = resolveTrendFilter({ mode: 'manual', keys: ['deleted'] }, new Set(['salary']));
+
+    expect(isTrendFilterActive(resolved)).toBe(false);
   });
 });

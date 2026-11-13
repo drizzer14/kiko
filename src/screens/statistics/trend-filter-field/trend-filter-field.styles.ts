@@ -1,19 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
-  // The tappable filter chip: same bordered, filled chrome as the Accounts /
-  // Categories / date-range controls so the filter row reads as one set. A
-  // leading filter glyph sits before the applied-selection label.
-  field: {
-    alignSelf: 'flex-start',
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.sm,
-    backgroundColor: theme.colors.surface,
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-  },
   // The manual-mode section (its "Categories" header + the scrollable list),
   // sized to SHRINK inside the sheet's 66% cap so only this list scrolls while
   // the sheet title above and the Clear/Save row below stay fixed.

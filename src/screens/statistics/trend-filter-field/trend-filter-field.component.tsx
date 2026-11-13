@@ -1,18 +1,19 @@
 import { match } from 'ts-pattern';
 import {
-  DEFAULT_TREND_FILTER,
+  DEFAULT_TOP_TREND_FILTER,
+  isTrendFilterActive,
   type TrendFilter,
   type TrendMeasure,
   type TrendMode,
 } from '@kiko/statistics/trend-filter';
 import { type FC, useState } from 'react';
+import { ScrollView } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView } from 'react-native';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import Button from '@kiko/design-system/components/button';
 import ChipRow from '@kiko/design-system/components/chip-row';
-import SymbolIcon from '@kiko/design-system/components/symbol';
+import FilterPill from '@kiko/design-system/components/filter-pill';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import SheetFooter from '@kiko/design-system/components/sheet-footer';
@@ -35,10 +36,6 @@ const MODE_SYMBOL: Record<TrendMode, string> = {
   top: 'chart.bar.fill',
 };
 
-// The saved default is always a "top" filter, so its amount/by seed the top
-// controls when the sheet opens on a manual-mode filter.
-const DEFAULT_TOP = DEFAULT_TREND_FILTER as Extract<TrendFilter, { mode: 'top' }>;
-
 // The draft the sheet edits: mode, the manual selection (empty = all), and the
 // top amount/measure — all four held at once so switching mode preserves the
 // other mode's choices until Save.
@@ -48,8 +45,8 @@ const seedDraft = (filter: TrendFilter): Draft => {
   const derived: { manualKeys: Set<string>; amount: number; by: TrendMeasure } = match(filter)
     .with({ mode: 'manual' }, (manualFilter) => ({
       manualKeys: new Set(manualFilter.keys),
-      amount: DEFAULT_TOP.amount,
-      by: DEFAULT_TOP.by,
+      amount: DEFAULT_TOP_TREND_FILTER.amount,
+      by: DEFAULT_TOP_TREND_FILTER.by,
     }))
     .with({ mode: 'top' }, (topFilter) => ({
       manualKeys: new Set<string>(),
@@ -238,20 +235,14 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <Pressable
-        accessibilityRole="button"
+      <FilterPill
+        label={buttonLabel}
+        icon={MODE_SYMBOL[filter.mode]}
         accessibilityLabel={t('statistics.trendFilter.title')}
+        active={isTrendFilterActive(filter)}
         onPress={openSheet}
         testID={testID}
-      >
-        <Box direction="row" gap={2} style={styles.field}>
-          <SymbolIcon name={MODE_SYMBOL[filter.mode]} size={18} tone="textPrimary" />
-
-          <Text variant="body" tone="textPrimary">
-            {buttonLabel}
-          </Text>
-        </Box>
-      </Pressable>
+      />
 
       {/* `scrollable={false}`: the sheet title, the section controls, and the
           Clear/Save action row all stay FIXED. Only the manual-category list
