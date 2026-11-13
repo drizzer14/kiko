@@ -3,23 +3,12 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { compositeOver } from '@kiko/test-support/composite-over';
 import { wcagContrastRatio } from '@kiko/design-system/entity-tint';
 
 import SegmentedControl from '.';
 
 const options = ['single', 'debitCredit'] as const;
-
-// An `rgba(r,g,b,a)` token composited over an opaque `#RRGGBB` backdrop, as the
-// opaque hex a contrast check needs.
-const compositeOver = (rgba: string, backdropHex: string): string => {
-  const [red, green, blue, alpha] = (rgba.match(/[\d.]+/g) ?? []).map(Number);
-  const backdrop = [1, 3, 5].map((offset) => parseInt(backdropHex.slice(offset, offset + 2), 16));
-
-  return `#${[red, green, blue]
-    .map((channel, index) => Math.round(channel * alpha + backdrop[index] * (1 - alpha)))
-    .map((channel) => channel.toString(16).padStart(2, '0'))
-    .join('')}`;
-};
 
 describe('SegmentedControl', () => {
   it('reports the pressed option through onSelect', async () => {

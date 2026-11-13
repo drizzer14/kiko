@@ -80,10 +80,14 @@ const iconSizes = {
 // `selectTriggerMaxWidth` is the widest a capped select trigger grows (a field whose label is one
 // short phrase, such as a period): 240 pt holds the longest such label at the default text size on
 // one line, and a larger Dynamic Type size wraps it inside the cap instead of widening the field.
+// `filterPillHeight` is the minimum height of a filter pill; `filterPillHitSlop` is the tap inset
+// above and below it that restores the 44 pt target (36 + 2 x 4).
 const layout = {
   paneMaxWidth: 600,
   sheetMaxWidth: 540,
   selectTriggerMaxWidth: 240,
+  filterPillHeight: 36,
+  filterPillHitSlop: 4,
   hairline: StyleSheet.hairlineWidth,
 } as const;
 
@@ -185,6 +189,10 @@ export const darkTheme = {
     textPrimary: '#FFFFFF', // label
     textSecondary: 'rgba(235,235,245,0.60)', // secondaryLabel
     accent: '#0A84FF', // systemBlue (dark)
+    // The accent hue at 0.18 alpha: the fill of an ACTIVE filter pill. Only the pill's glyph and
+    // hairline border take `accent` on it; its label stays `textPrimary`, because accent text
+    // misses 4.5:1 on this tint over `surface`.
+    accentSubtle: 'rgba(10,132,255,0.18)',
     // Foreground for anything sitting ON a filled accent/destructive surface —
     // a primary Button's label+icon, a Switch thumb on the accent track. Always
     // white and kept as its own token (never `textPrimary`) so text on a
@@ -277,6 +285,7 @@ const lightColors = {
   textPrimary: '#000000',
   textSecondary: 'rgba(60,60,67,0.78)',
   accent: '#0066E6',
+  accentSubtle: 'rgba(0,102,230,0.12)',
   onAccent: '#FFFFFF',
   positive: '#0F7A4A',
   negative: '#C20019',
