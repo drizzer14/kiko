@@ -1,16 +1,11 @@
-import { Pressable } from 'react-native';
 import { formatTime } from '@kiko/dates';
 import { type FC, useState } from 'react';
-import Box from '@kiko/design-system/components/box';
-import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
-import SymbolIcon from '@kiko/design-system/components/symbol';
-import FieldLabel from '@kiko/design-system/components/field-label';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
+import FieldTrigger from '@kiko/design-system/components/field-trigger';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
-import { styles } from './time-field.styles';
 import type { TimeFieldProps } from './time-field.props';
 
 // Combine the DAY (year/month/date) of the current value with the picked
@@ -45,7 +40,6 @@ const TimeField: FC<TimeFieldProps> = ({
   invalid = false,
   testID,
 }) => {
-  const { theme } = useUnistyles();
   const clock = useTimeClock();
   const [open, setOpen] = useState(false);
 
@@ -58,25 +52,17 @@ const TimeField: FC<TimeFieldProps> = ({
   };
 
   return (
-    <Box gap={1}>
-      <FieldLabel label={label} invalid={invalid} />
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ disabled }}
+    <>
+      <FieldTrigger
+        label={label}
+        icon="clock"
+        value={value === null ? placeholder : formatTime(value, clock)}
+        valueTone={disabled || value === null ? 'textSecondary' : 'textPrimary'}
+        invalid={invalid}
         disabled={disabled}
-        onPress={() => setOpen(true)}
         testID={testID}
-      >
-        <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
-          <SymbolIcon name="clock" size={theme.iconSizes.body} tone="textSecondary" />
-
-          <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
-            {value === null ? placeholder : formatTime(value, clock)}
-          </Text>
-        </Box>
-      </Pressable>
+        onPress={() => setOpen(true)}
+      />
 
       <BottomSheet
         visible={open}
@@ -92,7 +78,7 @@ const TimeField: FC<TimeFieldProps> = ({
           onChange={handleChange}
         />
       </BottomSheet>
-    </Box>
+    </>
   );
 };
 
