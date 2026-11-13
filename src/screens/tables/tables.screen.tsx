@@ -12,9 +12,9 @@ import {
   visibleCategorySelection,
 } from '@kiko/statistics/statistics-filter-scope';
 import Box from '@kiko/design-system/components/box';
+import { rowContextOf } from '@kiko/statistics/cell-rows';
 import Screen from '@kiko/design-system/components/screen';
 import { useVerticalBarEdge } from '@kiko/display-regions';
-import { rowDescriberOf } from '@kiko/statistics/cell-rows';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
@@ -131,9 +131,9 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
     shownHoldings: filtered.netWorthHoldings,
   });
 
-  // The label a row shows in the list behind a cell is the one Home shows, so it needs the
-  // holdings' names, and re-reads the language when it changes.
-  const describeRow = useMemo(() => rowDescriberOf(holdings, t), [holdings, t]);
+  // What a row shows in the list behind a cell is what Home shows, so it needs the holdings' names
+  // and types and the accounts' names, and re-reads the language when it changes.
+  const rowContext = useMemo(() => rowContextOf(holdings, accounts, t), [holdings, accounts, t]);
 
   // The Duo unfolded in landscape: a side bar on a window with room for two panes. The vertical
   // bar is the system's own trait, the layout mode the app's own test for that room, so a folded
@@ -324,7 +324,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
             baseCurrency={baseCurrency}
             defaultCategoryKey={defaultCategoryKey}
             excludedCategories={excludedCategories}
-            describeRow={describeRow}
+            rowContext={rowContext}
             sheetGeneration={sheetGeneration}
             onOpenTransaction={openTransaction}
             topContent={controls}
@@ -340,7 +340,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
             rateTable={rateTable}
             baseCurrency={baseCurrency}
             defaultCategoryKey={defaultCategoryKey}
-            describeRow={describeRow}
+            rowContext={rowContext}
             sheetGeneration={sheetGeneration}
             onOpenTransaction={openTransaction}
             topContent={controls}

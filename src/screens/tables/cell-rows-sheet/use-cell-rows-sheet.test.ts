@@ -11,6 +11,11 @@ const rowOf = (id: string, minorUnits: number): CellRow => ({
   description: id,
   native: Money.of('UAH', minorUnits),
   base: Money.of('UAH', minorUnits),
+  category: null,
+  accountName: '',
+  holdingType: null,
+  loanHoldingId: null,
+  flow: 'expense',
 });
 
 const COFFEE = rowOf('coffee', 1_500);

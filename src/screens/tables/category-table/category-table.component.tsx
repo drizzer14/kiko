@@ -84,7 +84,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
   baseCurrency,
   defaultCategoryKey,
   excludedCategories,
-  describeRow,
+  rowContext,
   sheetGeneration,
   onOpenTransaction,
   topContent,
@@ -102,7 +102,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
         rateTable,
         baseCurrency,
         defaultCategoryKey,
-        describe: describeRow,
+        context: rowContext,
       };
 
       return match(selector)
@@ -119,7 +119,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
       baseCurrency,
       defaultCategoryKey,
       excludedCategories,
-      describeRow,
+      rowContext,
     ],
   );
   const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf, onOpenTransaction);

@@ -1,10 +1,12 @@
 import type { TFunction } from 'i18next';
-import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import type { CalendarMonth } from '@kiko/dates';
+import type { AccountRow, HoldingRow } from '@kiko/db';
 import type { RateTable } from '@kiko/rates/conversion';
 import type { Currency } from '@kiko/currency/currency';
+import type { HoldingType } from '@kiko/holdings/holding-type';
+import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 
@@ -26,33 +28,60 @@ export type CellRow = {
   base: Money;
   /** Set on an entry derived from a loan payment: which part of the payment it is. */
   loanPart?: LoanEntryPart;
+  /** A derived loan entry's own category (`loan_interest` for interest), not its payment's. */
+  category: string | null;
+  /** As Home names the account; empty when the row's payment is not among the shown rows. */
+  accountName: string;
+  /** Null when the row's holding is not known. */
+  holdingType: HoldingType | null;
+  /** The loan a payment is linked to; a derived loan entry takes its payment's. */
+  loanHoldingId: string | null;
+  /** `base` and `native` stay positive; the card signs them by this, as Home does. */
+  flow: 'expense' | 'income';
 };
 
 /** The time span a table cell covers: a month's, or the whole period's for a Total. */
 export type CellRange = Pick<CalendarMonth, 'start' | 'end'>;
 
-/** The label a row shows, as the lists on Home and in a holding show it. */
-export type RowDescriber = (row: LedgerRow) => string;
+/** What a row's card shows of its holding: its label, its account and its type. */
+export type RowContext = (row: LedgerRow) => {
+  description: string;
+  accountName: string;
+  holdingType: HoldingType | null;
+};
 
 /**
  * Describes a row the way Home does (`transactionRowDescription`): its own description, else the
  * default label of its holding, so a cash expense with none reads "Cash expense" in a sheet too.
+ * The account is named as every screen names it (`accountDisplayName`), since an implicit
+ * account's stored name is an English sentinel.
  */
-export const rowDescriberOf = (
-  holdings: readonly Pick<HoldingRow, 'id' | 'name' | 'currency'>[],
+export const rowContextOf = (
+  holdings: readonly Pick<HoldingRow, 'id' | 'name' | 'currency' | 'type' | 'accountId'>[],
+  accounts: readonly Pick<AccountRow, 'id' | 'kind' | 'name' | 'archivedAt'>[],
   t: TFunction,
-): RowDescriber => {
+): RowContext => {
   const holdingNameById = new Map(holdings.map((holding) => [holding.id, holding.name]));
   const holdingCurrencyById = new Map(holdings.map((holding) => [holding.id, holding.currency]));
+  const holdingById = new Map(holdings.map((holding) => [holding.id, holding]));
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
 
-  return (row) =>
-    transactionRowDescription({
-      transaction: row,
-      holdingName: holdingNameById.get(row.holdingId) ?? '',
-      holdingNameById,
-      holdingCurrencyById,
-      t,
-    });
+  return (row) => {
+    const holding = holdingById.get(row.holdingId);
+    const account = foldMap(maybe(holding), ({ accountId }) => accountById.get(accountId));
+
+    return {
+      description: transactionRowDescription({
+        transaction: row,
+        holdingName: holdingNameById.get(row.holdingId) ?? '',
+        holdingNameById,
+        holdingCurrencyById,
+        t,
+      }),
+      accountName: foldMap(maybe(account), (found) => accountDisplayName(found, t)) ?? '',
+      holdingType: foldMap(maybe(holding), ({ type }) => type) ?? null,
+    };
+  };
 };
 
 type ExpenseDisplay = {
@@ -60,7 +89,7 @@ type ExpenseDisplay = {
   rateTable: RateTable;
   baseCurrency: Currency;
   defaultCategoryKey: string;
-  describe: RowDescriber;
+  context: RowContext;
 };
 
 /** Newest first; rows of one time by id, so the order never moves between renders. */
@@ -86,7 +115,7 @@ export const expenseRowsOf = (
   held: { categoryKey?: string; excludedCategories?: ReadonlySet<string> },
   display: ExpenseDisplay,
 ): CellRow[] => {
-  const { describe, ...conversion } = display;
+  const { context, ...conversion } = display;
   const sourceById = new Map(ledger.shownRows.map((row) => [row.id, row]));
 
   return spendingContributionsOf({
@@ -98,17 +127,25 @@ export const expenseRowsOf = (
     .filter(({ key }) => held.categoryKey === undefined || key === held.categoryKey)
     .map(({ transaction, netMagnitude, baseMinorUnits }): CellRow => {
       const paymentId = loanPaymentIdOf(transaction.id);
+      // A derived entry has no holding of its own: its payment's row names the account and the
+      // holding type. With no such row they stay empty, as the description keeps its own text;
+      // the fields are display-only and never feed a write.
+      const source = maybe(sourceById.get(paymentId ?? transaction.id));
+      const sourceContext = foldMap(source, context);
 
       return {
         id: transaction.id,
         transactionId: paymentId ?? transaction.id,
         time: transaction.time,
-        description:
-          foldMap(maybe(sourceById.get(paymentId ?? transaction.id)), describe) ??
-          transaction.description,
+        description: sourceContext?.description ?? transaction.description,
         native: Money.of(transaction.currency, netMagnitude),
         base: Money.of(display.baseCurrency, baseMinorUnits),
         ...foldMap(maybe(loanEntryPartOf(transaction.id)), (part) => ({ loanPart: part })),
+        category: transaction.category,
+        accountName: sourceContext?.accountName ?? '',
+        holdingType: sourceContext?.holdingType ?? null,
+        loanHoldingId: foldMap(source, (row) => row.loanHoldingId) ?? null,
+        flow: 'expense',
       };
     })
     .sort(newestFirst);
@@ -123,7 +160,7 @@ export const incomeRowsOf = (
   range: CellRange,
   rateTable: RateTable,
   baseCurrency: Currency,
-  describe: RowDescriber,
+  context: RowContext,
 ): CellRow[] =>
   ledger.shownRows
     .filter((row) => row.time >= range.start && row.time <= range.end)
@@ -136,9 +173,12 @@ export const incomeRowsOf = (
               id: row.id,
               transactionId: row.id,
               time: row.time,
-              description: describe(row),
+              ...context(row),
               native: Money.of(row.currency, row.amountMinorUnits),
               base,
+              category: row.category,
+              loanHoldingId: row.loanHoldingId,
+              flow: 'income',
             },
           ],
         ) ?? [],

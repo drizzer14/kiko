@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { CalendarMonth } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
 import type { RateTable } from '@kiko/rates/conversion';
-import type { RowDescriber } from '@kiko/statistics/cell-rows';
+import type { RowContext } from '@kiko/statistics/cell-rows';
 import type { SpendingLedger } from '@kiko/statistics/spending-ledger';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
 import type { DataTableProps } from '@kiko/design-system/components/data-table';
@@ -19,8 +19,8 @@ export type CategoryTableProps = {
   defaultCategoryKey: string;
   /** Category keys a held pick leaves out; empty means every category. */
   excludedCategories: ReadonlySet<string>;
-  /** The label of a row in the list a cell opens, as Home labels it. */
-  describeRow: RowDescriber;
+  /** What a row in the list a cell opens shows: its label, its account and its holding type. */
+  rowContext: RowContext;
   /** The screen's count of times it stopped showing; a sheet opened before the last one closes. */
   sheetGeneration: number;
   /** A row of the list a cell opens was pressed and the list has closed: open its transaction. */

@@ -4,7 +4,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { calendarMonthsBetween } from '@kiko/dates';
-import { rowDescriberOf } from '@kiko/statistics/cell-rows';
+import { rowContextOf } from '@kiko/statistics/cell-rows';
 import { buildSpendingLedger } from '@kiko/statistics/spending-ledger';
 import type DataTable from '@kiko/design-system/components/data-table';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
@@ -77,7 +77,7 @@ const propsOf = (
   baseCurrency: 'UAH',
   defaultCategoryKey: 'other',
   excludedCategories: new Set<string>(),
-  describeRow: rowDescriberOf(worldInput().holdings, i18n.t),
+  rowContext: rowContextOf(worldInput().holdings, worldInput().accounts, i18n.t),
   sheetGeneration: 0,
   onOpenTransaction,
   topContent: <View testID="table-controls" />,

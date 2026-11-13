@@ -17,6 +17,11 @@ const COFFEE: CellRow = {
   description: 'Coffee',
   native: Money.of('UAH', 1_500),
   base: Money.of('UAH', 1_500),
+  category: 'groceries',
+  accountName: 'Monobank',
+  holdingType: 'card',
+  loanHoldingId: null,
+  flow: 'expense',
 };
 const COIN: CellRow = {
   id: 'coin',
@@ -25,6 +30,11 @@ const COIN: CellRow = {
   description: 'Coin purchase',
   native: Money.of('USDT', 250_000_000),
   base: Money.of('UAH', 10_000),
+  category: null,
+  accountName: 'Binance',
+  holdingType: 'crypto_asset',
+  loanHoldingId: null,
+  flow: 'expense',
 };
 const INTEREST: CellRow = {
   id: 'loan-interest:payment',
@@ -34,6 +44,11 @@ const INTEREST: CellRow = {
   native: Money.of('UAH', 9_000),
   base: Money.of('UAH', 9_000),
   loanPart: 'interest',
+  category: 'loan_interest',
+  accountName: 'Monobank',
+  holdingType: 'card',
+  loanHoldingId: 'loan',
+  flow: 'expense',
 };
 const FEE: CellRow = {
   id: 'loan-excess:payment',
@@ -43,6 +58,11 @@ const FEE: CellRow = {
   native: Money.of('UAH', 300),
   base: Money.of('UAH', 300),
   loanPart: 'fee',
+  category: 'utilities',
+  accountName: 'Monobank',
+  holdingType: 'card',
+  loanHoldingId: 'loan',
+  flow: 'expense',
 };
 // More rows than a sheet can mount at once: a 12-month Total on a synced card holds this many.
 const MANY_ROWS = 400;

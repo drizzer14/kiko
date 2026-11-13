@@ -3,6 +3,6 @@ export {
   type CellRow,
   expenseRowsOf,
   incomeRowsOf,
-  type RowDescriber,
-  rowDescriberOf,
+  type RowContext,
+  rowContextOf,
 } from './cell-rows';

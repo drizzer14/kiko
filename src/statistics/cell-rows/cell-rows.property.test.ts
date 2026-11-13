@@ -44,8 +44,8 @@ const DISPLAY_INPUT = {
   defaultCategoryKey: 'other',
 };
 
-// The sums never read a label.
-const NO_LABEL = () => '';
+// The sums never read a label, an account or a holding type.
+const NO_LABEL = () => ({ description: '', accountName: '', holdingType: null });
 
 const MONTHS = calendarMonthsBetween(
   new Date(2024, 0, 15).getTime(),
@@ -240,7 +240,7 @@ const rowsIn = (
   ledger: SpendingLedger,
   range: { start: number; end: number },
   held: Parameters<typeof expenseRowsOf>[2] = {},
-) => expenseRowsOf(ledger, range, held, { ...DISPLAY_INPUT, describe: NO_LABEL });
+) => expenseRowsOf(ledger, range, held, { ...DISPLAY_INPUT, context: NO_LABEL });
 
 const incomeIn = (ledger: SpendingLedger, range: { start: number; end: number }) =>
   incomeRowsOf(ledger, range, RATE_TABLE, 'UAH', NO_LABEL);
