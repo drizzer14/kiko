@@ -68,12 +68,12 @@ describe('transactionCardPropsOf', () => {
   it("hashes the colour on the resolved key, so an unknown slug takes the default category's colour", () => {
     const unknown = transactionCardPropsOf(sourceOf({ category: 'gone' }), contextOf());
     const defaultCategory = transactionCardPropsOf(sourceOf({ category: 'other' }), contextOf());
-    const capitalised = transactionCardPropsOf(sourceOf({ category: 'Food' }), contextOf());
-    const stored = transactionCardPropsOf(sourceOf({ category: 'food' }), contextOf());
+    const capitalised = transactionCardPropsOf(sourceOf({ category: 'Travel' }), contextOf());
+    const hashed = transactionCardPropsOf(sourceOf({ category: 'travel' }), contextOf());
 
     expect(unknown.categoryIconColor).toBe(defaultCategory.categoryIconColor);
-    expect(capitalised.categoryIconColor).toBe(stored.categoryIconColor);
-    expect(stored.categoryIconColor).not.toBe(defaultCategory.categoryIconColor);
+    expect(capitalised.categoryIconColor).toBe(hashed.categoryIconColor);
+    expect(hashed.categoryIconColor).not.toBe(defaultCategory.categoryIconColor);
   });
 
   it('reads the footer as "account · category"', () => {

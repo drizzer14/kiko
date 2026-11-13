@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import {
   type CategoryDisplay,
   resolveCategoryDisplay,
@@ -53,11 +54,10 @@ const trailingOf = (
 ): string | undefined => {
   const timed = isTimedHolding(holdingType);
 
-  if (trailing === 'time') {
-    return timed ? formatTime(time, clock) : undefined;
-  }
-
-  return timed ? formatDateTime(time, clock) : formatDate(time);
+  return match(trailing)
+    .with('time', () => (timed ? formatTime(time, clock) : undefined))
+    .with('dateTime', () => (timed ? formatDateTime(time, clock) : formatDate(time)))
+    .exhaustive();
 };
 
 export const transactionCardPropsOf = (
