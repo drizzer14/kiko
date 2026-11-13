@@ -20,9 +20,10 @@ export const styles = StyleSheet.create((theme) => ({
   },
   // The row-level error's own left offset: the icon chip's fixed
   // `theme.spacing(11)` width (icon-editor.styles.ts's
-  // `iconChip`) plus the row's own `gap={3}` before the name column — so the
-  // message aligns under the NAME INPUT it actually describes, not flush-left
-  // under the icon beside it.
+  // `iconChip`) plus the row's own `gap={3}` before the name column — so
+  // `FieldError`'s leading warning triangle starts at the NAME INPUT's left edge
+  // and its text sits 24pt further in (16pt icon + 8pt gap), not flush-left
+  // under the icon chip beside it.
   nameFieldError: {
     marginLeft: theme.spacing(11) + theme.spacing(3),
   },

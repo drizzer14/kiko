@@ -1,9 +1,11 @@
-import { createRef } from 'react';
+import { Keyboard } from 'react-native';
+import { createRef, type ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
+import { expectNoticeUnderConnectRow } from '@kiko/test-support/expect-notice-under-connect-row';
 
 import WalletAddressField from '.';
 
@@ -25,6 +27,29 @@ const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } =>
   return { promise, resolve };
 };
 
+const connectLabel = i18n.t('accountDetail.connectWallet');
+
+type View = Awaited<ReturnType<typeof render>>;
+
+// Most cases care about the field alone, so a bare connect stands in unless a case brings its own.
+const renderField = (
+  props: Partial<ComponentProps<typeof WalletAddressField>> = {},
+): Promise<View> => render(<WalletAddressField onConnect={jest.fn()} {...props} />);
+
+const pressConnect = async (view: View): Promise<void> => {
+  await act(async () => {
+    await fireEvent.press(view.getByText('Connect wallet'));
+  });
+};
+
+const typeAddress = (view: View, address: string): Promise<unknown> =>
+  fireEvent.changeText(view.getByPlaceholderText('BTC address'), address);
+
+const typeAndConnect = async (view: View, address: string): Promise<void> => {
+  await typeAddress(view, address);
+  await pressConnect(view);
+};
+
 describe('WalletAddressField', () => {
   const onConnect = jest.fn<Promise<boolean>, [string]>();
 
@@ -34,9 +59,7 @@ describe('WalletAddressField', () => {
   });
 
   it('renders a plain (non-secure) address input, a paste button and a Connect wallet action', async () => {
-    const { getByPlaceholderText, getByLabelText, getByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
+    const { getByPlaceholderText, getByLabelText, getByText } = await renderField({ onConnect });
 
     expect(getByPlaceholderText('BTC address').props.secureTextEntry).toBeFalsy();
     expect(getByLabelText('Paste from clipboard')).toBeTruthy();
@@ -44,7 +67,7 @@ describe('WalletAddressField', () => {
   });
 
   it('uses the lock glyph for Connect and the Kiko UI clipboard glyph for Paste', async () => {
-    const { root } = await render(<WalletAddressField onConnect={onConnect} />);
+    const { root } = await renderField({ onConnect });
 
     // Connect carries the `lock` glyph; the paste button carries the Kiko UI
     // `document.on.clipboard` spelling (SFSymbolView forwards `name`).
@@ -56,9 +79,7 @@ describe('WalletAddressField', () => {
 
   it('fills the input from the clipboard, trimmed', async () => {
     mockGetString.mockResolvedValue(`  ${ADDRESS}\n`);
-    const { getByLabelText, getByPlaceholderText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
+    const { getByLabelText, getByPlaceholderText } = await renderField({ onConnect });
 
     await act(async () => {
       await fireEvent.press(getByLabelText('Paste from clipboard'));
@@ -67,120 +88,124 @@ describe('WalletAddressField', () => {
     expect(getByPlaceholderText('BTC address').props.value).toBe(ADDRESS);
   });
 
+  it('dismisses the keyboard on every Connect press, even one a blank field blocks', async () => {
+    const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    const view = await renderField({ onConnect });
+
+    await pressConnect(view);
+    expect(dismissSpy).toHaveBeenCalledTimes(1);
+
+    await typeAndConnect(view, ADDRESS);
+    expect(dismissSpy).toHaveBeenCalledTimes(2);
+
+    dismissSpy.mockRestore();
+  });
+
   it('rejects a malformed address locally and never calls onConnect', async () => {
-    const { getByPlaceholderText, getByText, findByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
+    const view = await renderField({ onConnect });
 
-    await fireEvent.changeText(getByPlaceholderText('BTC address'), 'not an address');
-    await act(async () => {
-      await fireEvent.press(getByText('Connect wallet'));
-    });
+    await typeAndConnect(view, 'not an address');
 
-    expect(await findByText('Invalid BTC address')).toBeTruthy();
+    expect(await view.findByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeTruthy();
     expect(onConnect).not.toHaveBeenCalled();
   });
 
   it('connects a valid (trimmed) address and shows success when onConnect resolves true', async () => {
-    const { getByPlaceholderText, getByText, findByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
+    const view = await renderField({ onConnect });
 
-    await fireEvent.changeText(getByPlaceholderText('BTC address'), ` ${ADDRESS} `);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect wallet'));
-    });
+    await typeAndConnect(view, ` ${ADDRESS} `);
 
     expect(onConnect).toHaveBeenCalledWith(ADDRESS);
-    expect(await findByText('Wallet connected')).toBeTruthy();
+    expect(await view.findByText('Wallet connected')).toBeTruthy();
   });
 
   it('shows a connect error (not "Invalid BTC address") when onConnect resolves false', async () => {
     onConnect.mockResolvedValue(false);
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
+    const view = await renderField({ onConnect });
+
+    await typeAndConnect(view, ADDRESS);
+
+    expect(await view.findByText(i18n.t('accountDetail.couldNotConnectWallet'))).toBeTruthy();
+    expect(view.queryByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeNull();
+    expect(view.queryByText('Wallet connected')).toBeNull();
+  });
+
+  it('shows a malformed address as an alert notice under the Connect row, not beside it', async () => {
+    const view = await renderField({ onConnect });
+
+    await typeAndConnect(view, 'not an address');
+
+    await expectNoticeUnderConnectRow(
+      view,
+      connectLabel,
+      i18n.t('accountDetail.invalidBTCAddress'),
     );
+  });
 
-    await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect wallet'));
-    });
+  it('shows a failed Connect as an alert notice under the Connect row, not beside it', async () => {
+    onConnect.mockResolvedValue(false);
+    const view = await renderField({ onConnect });
 
-    expect(await findByText('Could not connect wallet')).toBeTruthy();
-    expect(queryByText('Invalid BTC address')).toBeNull();
-    expect(queryByText('Wallet connected')).toBeNull();
+    await typeAndConnect(view, ADDRESS);
+
+    await expectNoticeUnderConnectRow(
+      view,
+      connectLabel,
+      i18n.t('accountDetail.couldNotConnectWallet'),
+    );
   });
 
   it('shows the wallet-address-required error and calls no network when Connect is pressed blank', async () => {
-    const { getByText, findByText } = await render(<WalletAddressField onConnect={onConnect} />);
+    const view = await renderField({ onConnect });
 
-    await act(async () => {
-      await fireEvent.press(getByText('Connect wallet'));
-    });
+    await pressConnect(view);
 
-    expect(await findByText('Enter a wallet address.')).toBeTruthy();
+    expect(await view.findByText('Enter a wallet address.')).toBeTruthy();
     expect(onConnect).not.toHaveBeenCalled();
   });
 
   it('clears the wallet-address-required error once an address is typed', async () => {
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
+    const view = await renderField({ onConnect });
 
-    await act(async () => {
-      await fireEvent.press(getByText('Connect wallet'));
-    });
-    expect(await findByText('Enter a wallet address.')).toBeTruthy();
+    await pressConnect(view);
+    expect(await view.findByText('Enter a wallet address.')).toBeTruthy();
 
-    await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
-    expect(queryByText('Enter a wallet address.')).toBeNull();
+    await typeAddress(view, ADDRESS);
+    expect(view.queryByText('Enter a wallet address.')).toBeNull();
   });
 
   it('shows Checking… and disables the action while onConnect is in flight', async () => {
     const pending = deferred<boolean>();
     onConnect.mockReturnValue(pending.promise);
-    const { getByPlaceholderText, getByText, getByRole, findByText, queryByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
+    const view = await renderField({ onConnect });
 
-    await fireEvent.changeText(getByPlaceholderText('BTC address'), ADDRESS);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect wallet'));
-    });
+    await typeAndConnect(view, ADDRESS);
 
-    expect(await findByText(/Checking/)).toBeTruthy();
+    expect(await view.findByText(/Checking/)).toBeTruthy();
     // PressableButton forwards `disabled` to its Pressable, which RN exposes as
     // accessibilityState.disabled — the built-in RNTL matcher reads exactly that.
-    expect(getByRole('button', { name: 'Connect wallet' })).toBeDisabled();
+    expect(view.getByRole('button', { name: 'Connect wallet' })).toBeDisabled();
 
     await act(async () => {
       pending.resolve(true);
       await pending.promise;
     });
 
-    expect(queryByText(/Checking/)).toBeNull();
+    expect(view.queryByText(/Checking/)).toBeNull();
   });
 
   it('clears a stale status when the address is edited afterward', async () => {
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
-    const input = getByPlaceholderText('BTC address');
+    const view = await renderField({ onConnect });
 
-    await fireEvent.changeText(input, 'bad');
-    await act(async () => {
-      await fireEvent.press(getByText('Connect wallet'));
-    });
-    expect(await findByText('Invalid BTC address')).toBeTruthy();
+    await typeAndConnect(view, 'bad');
+    expect(await view.findByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeTruthy();
 
-    await fireEvent.changeText(input, ADDRESS);
-    expect(queryByText('Invalid BTC address')).toBeNull();
+    await typeAddress(view, ADDRESS);
+    expect(view.queryByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeNull();
   });
 });
 
 describe('WalletAddressField — localization', () => {
-  const onConnect = jest.fn<Promise<boolean>, [string]>();
-
   afterEach(async () => {
     await act(async () => {
       await i18n.changeLanguage('en');
@@ -192,9 +217,7 @@ describe('WalletAddressField — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByPlaceholderText, getByLabelText, getByText, queryByText } = await render(
-      <WalletAddressField onConnect={onConnect} />,
-    );
+    const { getByPlaceholderText, getByLabelText, getByText, queryByText } = await renderField();
 
     expect(getByPlaceholderText('BTC-адреса')).toBeTruthy();
     expect(getByLabelText('Вставити з буфера обміну')).toBeTruthy();
@@ -217,7 +240,7 @@ describe('WalletAddressField — connect reminder', () => {
 
   it('shows the reminder message under the Connect button, and nothing without one', async () => {
     const reminder = makeReminder('Tap Connect first.');
-    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderField({ reminder });
 
     expect(view.getByText('Tap Connect first.')).toBeTruthy();
     expect(view.getByLabelText('Tap Connect first.')).toBeTruthy();
@@ -235,30 +258,30 @@ describe('WalletAddressField — connect reminder', () => {
 
   it('attaches the reminder ref to the Connect row so a blocked Save can scroll to it', async () => {
     const reminder = makeReminder();
-    await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+    await renderField({ reminder });
 
     expect(reminder.ref.current).not.toBeNull();
   });
 
   it('reports whether an address is typed on every edit, a whitespace-only one counting as none', async () => {
     const reminder = makeReminder();
-    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderField({ reminder });
 
-    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), 'bc1');
+    await typeAddress(view, 'bc1');
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
 
-    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), 'bc1q');
+    await typeAddress(view, 'bc1q');
     expect(reminder.onDraftChange).toHaveBeenCalledTimes(2);
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
 
-    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), '   ');
+    await typeAddress(view, '   ');
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
   });
 
   it('reports a clipboard paste as a typed address', async () => {
     mockGetString.mockResolvedValue(ADDRESS);
     const reminder = makeReminder();
-    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderField({ reminder });
 
     await act(async () => {
       await fireEvent.press(view.getByLabelText('Paste from clipboard'));
@@ -269,7 +292,7 @@ describe('WalletAddressField — connect reminder', () => {
 
   it('reports no typed address once it unmounts', async () => {
     const reminder = makeReminder();
-    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderField({ reminder });
 
     await view.unmount();
 
@@ -278,7 +301,7 @@ describe('WalletAddressField — connect reminder', () => {
 
   it('does not report on a plain re-render', async () => {
     const reminder = makeReminder();
-    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderField({ reminder });
 
     await view.rerender(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
 
@@ -288,20 +311,16 @@ describe('WalletAddressField — connect reminder', () => {
   it('reports no typed address once a connect succeeds, and keeps it while one fails', async () => {
     const reminder = makeReminder();
     const onConnect = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(false);
-    const view = await render(<WalletAddressField onConnect={onConnect} reminder={reminder} />);
-    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), ADDRESS);
+    const view = await renderField({ onConnect, reminder });
+    await typeAddress(view, ADDRESS);
 
-    await act(async () => {
-      await fireEvent.press(view.getByText('Connect wallet'));
-    });
+    await pressConnect(view);
 
     expect(reminder.onDraftChange).toHaveBeenCalledTimes(1);
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
 
     onConnect.mockResolvedValueOnce(true);
-    await act(async () => {
-      await fireEvent.press(view.getByText('Connect wallet'));
-    });
+    await pressConnect(view);
 
     expect(reminder.onDraftChange).toHaveBeenCalledTimes(2);
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
@@ -309,11 +328,9 @@ describe('WalletAddressField — connect reminder', () => {
 
   it('reports a Connect press, blank or not', async () => {
     const reminder = makeReminder();
-    const view = await render(<WalletAddressField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderField({ reminder });
 
-    await act(async () => {
-      await fireEvent.press(view.getByText('Connect wallet'));
-    });
+    await pressConnect(view);
 
     expect(reminder.onConnectPress).toHaveBeenCalledTimes(1);
   });

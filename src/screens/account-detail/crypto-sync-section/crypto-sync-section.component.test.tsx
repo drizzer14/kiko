@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Alert, StyleSheet } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import {
@@ -11,23 +11,25 @@ import {
   withWalkMarks,
 } from '@kiko/test-support/walk-marks';
 import { DAY_MS, formatDateTime } from '@kiko/dates';
+import {
+  expectRemindersReplannedAfter,
+  mockSyncReminders,
+  mockUseLiveQuery,
+} from '@kiko/test-support/sync-section-test-support';
 import type { AccountRow, HoldingRow } from '@kiko/db';
 
 import CryptoSyncSection from './crypto-sync-section.component';
 
-const mockUseLiveQuery = jest.fn();
 const mockSync = jest.fn();
 const mockUseCryptoSync = jest.fn();
 const mockDisconnect = jest.fn();
-const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
-jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
-}));
-jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
-  syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
-  drainReminderResponses: async () => [],
-}));
+jest.mock('@kiko/db/use-live-query', () =>
+  require('@kiko/test-support/sync-section-test-support').liveQueryModule(),
+);
+jest.mock('@kiko/reminders/scheduler/sync-reminders', () =>
+  require('@kiko/test-support/sync-section-test-support').syncRemindersModule(),
+);
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
     getQuery: (accountId: string) => ({
@@ -185,8 +187,13 @@ let syncStateResult: { data: { exchangeState: string }[]; isLoading: boolean } =
   isLoading: false,
 };
 
+// The column is stored as text, so a state no build reads is seeded as text, not as a seed object.
+const setSyncStateText = (text: string, isLoading = false): void => {
+  syncStateResult = { data: [{ exchangeState: text }], isLoading };
+};
+
 const setSyncState = (state: ExchangeStateSeed, isLoading = false): void => {
-  syncStateResult = { data: [{ exchangeState: JSON.stringify(state) }], isLoading };
+  setSyncStateText(JSON.stringify(state), isLoading);
 };
 
 const CONNECTED_WALLET_SYNCED_AT = 1_700_000_000_000;
@@ -220,8 +227,23 @@ const walkCursors = (
     ),
   );
 
-// A connected Binance account whose spot holding the balance sync stamped, over the given walk
-// state row (and whether that row's first read is still queued).
+// A connected account whose spot holding the balance sync stamped, over whatever `sync_state` row
+// the test seeded first.
+const renderStampedAccount = (
+  institution: 'binance' | 'btc_wallet' = 'binance',
+  metadata: Record<string, unknown> = {},
+) =>
+  render(
+    <CryptoSyncSection
+      account={account({ institution })}
+      holdings={[
+        holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT, ...metadata }),
+      ]}
+    />,
+  );
+
+// A connected Binance account over the given walk state row (and whether that row's first read is
+// still queued).
 const renderBinance = (
   state: ExchangeStateSeed,
   isLoading = false,
@@ -229,14 +251,7 @@ const renderBinance = (
 ) => {
   setSyncState(state, isLoading);
 
-  return render(
-    <CryptoSyncSection
-      account={account({ institution: 'binance' })}
-      holdings={[
-        holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT, ...metadata }),
-      ]}
-    />,
-  );
+  return renderStampedAccount('binance', metadata);
 };
 
 // Shared by every "already connected to a wallet" test below — each one only
@@ -255,6 +270,25 @@ const renderConnectedWallet = () =>
 // differs in what account override and assertion it needs.
 const renderSection = (overrides: Partial<AccountRow> = {}) =>
   render(<CryptoSyncSection account={account(overrides)} holdings={[]} />);
+
+const setLanguage = async (language: 'en' | 'uk'): Promise<void> => {
+  await act(async () => {
+    await i18n.changeLanguage(language);
+  });
+};
+
+// Registers, for the describe block that calls it, the Ukrainian catalog before each test (over
+// idle doubles) and English again after each, so no other block reads translated text.
+const inUkrainianCatalog = (): void => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setConnected({});
+    await setLanguage('uk');
+  });
+
+  afterEach(() => setLanguage('en'));
+};
 
 describe('CryptoSyncSection', () => {
   beforeEach(() => {
@@ -320,10 +354,7 @@ describe('CryptoSyncSection', () => {
 
       await fireEvent.press(getByLabelText('binance-field'));
 
-      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
-      expect(mockSync.mock.invocationCallOrder[0]).toBeLessThan(
-        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
-      );
+      await expectRemindersReplannedAfter(mockSync);
     },
   );
 
@@ -335,10 +366,7 @@ describe('CryptoSyncSection', () => {
 
       await fireEvent.press(getByLabelText('wallet-field'));
 
-      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
-      expect(mockSync.mock.invocationCallOrder[0]).toBeLessThan(
-        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
-      );
+      await expectRemindersReplannedAfter(mockSync);
     },
   );
 
@@ -441,10 +469,7 @@ describe('CryptoSyncSection', () => {
     await fireEvent.press(getByText('Disconnect'));
     await fireEvent.press(getByTestId('crypto-disconnect-confirm'));
 
-    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
-    expect(mockDisconnect.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
-    );
+    await expectRemindersReplannedAfter(mockDisconnect);
   });
 
   it('re-plans nothing after a failed Disconnect', async () => {
@@ -476,10 +501,25 @@ describe('CryptoSyncSection', () => {
       error: 'Binance request failed: 401',
       sync: mockSync,
     });
-    const { getByText } = await renderSection({ institution: 'binance' });
+    const { getByText, getByRole, getByTestId } = await renderSection({ institution: 'binance' });
 
     expect(getByText('Syncing…')).toBeTruthy();
     expect(getByText('Binance request failed: 401')).toBeTruthy();
+    expect(getByRole('alert', { name: 'Binance request failed: 401' })).toBeTruthy();
+    expect(getByTestId('crypto-sync-actions-row')).toBeTruthy();
+    expect(within(getByTestId('crypto-sync-actions-row')).queryByRole('alert')).toBeNull();
+  });
+
+  it('surfaces the sync error of an unconnected crypto account as an alert notice', async () => {
+    mockUseCryptoSync.mockReturnValue({
+      isSyncing: false,
+      error: 'Binance request failed: 401',
+      sync: mockSync,
+    });
+    const { getByText, getByRole } = await renderSection();
+
+    expect(getByText('Binance request failed: 401')).toBeTruthy();
+    expect(getByRole('alert', { name: 'Binance request failed: 401' })).toBeTruthy();
   });
 
   it('shows the lagging-history caption when the Binance history walks are more than a day behind the balance sync', async () => {
@@ -629,17 +669,10 @@ describe('CryptoSyncSection', () => {
   });
 
   describe('a walk state this build cannot read', () => {
-    // The column is stored as text, so a state no build reads is seeded as text, not as a seed
-    // object.
     const renderMalformed = (text: string, isLoading = false) => {
-      syncStateResult = { data: [{ exchangeState: text }], isLoading };
+      setSyncStateText(text, isLoading);
 
-      return render(
-        <CryptoSyncSection
-          account={account({ institution: 'binance' })}
-          holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
-        />,
-      );
+      return renderStampedAccount();
     };
 
     it.each([
@@ -681,7 +714,7 @@ describe('CryptoSyncSection', () => {
     });
 
     it('never shows the paused caption for a wallet account', async () => {
-      syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+      setSyncStateText('{not json');
 
       const { queryByText } = await renderConnectedWallet();
 
@@ -708,16 +741,10 @@ describe('CryptoSyncSection — localization', () => {
     setConnected({});
   });
 
-  afterEach(async () => {
-    await act(async () => {
-      await i18n.changeLanguage('en');
-    });
-  });
+  afterEach(() => setLanguage('en'));
 
   it('renders the heading and the connect button from the Ukrainian catalog', async () => {
-    await act(async () => {
-      await i18n.changeLanguage('uk');
-    });
+    await setLanguage('uk');
 
     const { getByText, queryByText } = await renderSection();
 
@@ -728,9 +755,7 @@ describe('CryptoSyncSection — localization', () => {
   });
 
   it('renders the never label in Ukrainian for an unsynced provider', async () => {
-    await act(async () => {
-      await i18n.changeLanguage('uk');
-    });
+    await setLanguage('uk');
 
     const { getByText } = await renderSection({ institution: 'binance' });
 
@@ -739,30 +764,12 @@ describe('CryptoSyncSection — localization', () => {
 });
 
 describe('CryptoSyncSection — paused caption localization', () => {
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    setConnected({});
-    await act(async () => {
-      await i18n.changeLanguage('uk');
-    });
-  });
-
-  afterEach(async () => {
-    await act(async () => {
-      await i18n.changeLanguage('en');
-    });
-  });
+  inUkrainianCatalog();
 
   it('renders the paused caption in Ukrainian, naming Binance twice', async () => {
-    syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+    setSyncStateText('{not json');
 
-    const { getByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
-      />,
-    );
+    const { getByText } = await renderStampedAccount();
 
     expect(
       getByText(
@@ -789,17 +796,9 @@ const renderWithLists = (
   institution: 'binance' | 'btc_wallet' = 'binance',
   isLoading = false,
 ) => {
-  syncStateResult = {
-    data: [{ exchangeState: JSON.stringify({ version: 1, walks: {}, ...lists }) }],
-    isLoading,
-  };
+  setSyncStateText(JSON.stringify({ version: 1, walks: {}, ...lists }), isLoading);
 
-  return render(
-    <CryptoSyncSection
-      account={account({ institution })}
-      holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
-    />,
-  );
+  return renderStampedAccount(institution);
 };
 
 describe('CryptoSyncSection — not-tracked and oversized lines', () => {
@@ -893,14 +892,9 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
   });
 
   it('shows neither line for a state this build cannot read', async () => {
-    syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+    setSyncStateText('{not json');
 
-    const { queryByText } = await render(
-      <CryptoSyncSection
-        account={account({ institution: 'binance' })}
-        holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
-      />,
-    );
+    const { queryByText } = await renderStampedAccount();
 
     expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
     expect(queryByText(OVERSIZED_LINE_FRAGMENT, { exact: false })).toBeNull();
@@ -921,20 +915,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
 });
 
 describe('CryptoSyncSection — not-tracked and oversized lines in Ukrainian', () => {
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    setConnected({});
-    await act(async () => {
-      await i18n.changeLanguage('uk');
-    });
-  });
-
-  afterEach(async () => {
-    await act(async () => {
-      await i18n.changeLanguage('en');
-    });
-  });
+  inUkrainianCatalog();
 
   it('renders both lines from the Ukrainian catalog', async () => {
     const { getByText } = await renderWithLists({

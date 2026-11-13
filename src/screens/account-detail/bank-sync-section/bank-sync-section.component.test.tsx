@@ -1,26 +1,28 @@
 import { Alert } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import type { AccountRow } from '@kiko/db';
+import {
+  expectRemindersReplannedAfter,
+  mockSyncReminders,
+  mockUseLiveQuery,
+} from '@kiko/test-support/sync-section-test-support';
 
 import BankSyncSection from './bank-sync-section.component';
 import visibleCatalogEntries from './visible-catalog-entries';
 
-const mockUseLiveQuery = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockUseSync = jest.fn();
 const mockSaveToken = jest.fn();
 const mockDisconnectMonobank = jest.fn();
-const mockSyncReminders = jest.fn().mockResolvedValue(undefined);
 
-jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
-}));
-jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
-  syncReminders: (...args: unknown[]) => mockSyncReminders(...args),
-  drainReminderResponses: async () => [],
-}));
+jest.mock('@kiko/db/use-live-query', () =>
+  require('@kiko/test-support/sync-section-test-support').liveQueryModule(),
+);
+jest.mock('@kiko/reminders/scheduler/sync-reminders', () =>
+  require('@kiko/test-support/sync-section-test-support').syncRemindersModule(),
+);
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
@@ -146,10 +148,7 @@ describe('BankSyncSection — disconnected', () => {
         await fireEvent.press(view.getByLabelText('monobank-field'));
       });
 
-      await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
-      expect(mockMonobankSync.mock.invocationCallOrder[0]).toBeLessThan(
-        mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
-      );
+      await expectRemindersReplannedAfter(mockMonobankSync);
     },
   );
 
@@ -191,6 +190,21 @@ describe('BankSyncSection — disconnected', () => {
     const view = await pickMonobankFromSheet();
 
     expect(view.getByText('monobank boom')).toBeTruthy();
+    expect(view.getByRole('alert', { name: 'monobank boom' })).toBeTruthy();
+  });
+
+  it('surfaces the sync error of a connected bank as an alert notice under the actions row', async () => {
+    mockUseSync.mockReturnValue({
+      isSyncing: false,
+      error: 'monobank boom',
+      sync: mockMonobankSync,
+    });
+    const view = await renderConnectedBank();
+
+    expect(view.getByRole('alert', { name: 'monobank boom' })).toBeTruthy();
+    expect(view.getByText('monobank boom')).toBeTruthy();
+    expect(view.getByTestId('bank-sync-actions-row')).toBeTruthy();
+    expect(within(view.getByTestId('bank-sync-actions-row')).queryByRole('alert')).toBeNull();
   });
 
   // An account whose identity picker (BankTypeField, in the
@@ -307,10 +321,7 @@ describe('BankSyncSection — connected', () => {
 
     await confirmDisconnect(view);
 
-    await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
-    expect(mockDisconnectMonobank.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSyncReminders.mock.invocationCallOrder[0] ?? 0,
-    );
+    await expectRemindersReplannedAfter(mockDisconnectMonobank);
   });
 
   it('re-plans nothing after a failed Disconnect', async () => {

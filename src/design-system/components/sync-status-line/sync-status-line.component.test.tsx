@@ -22,19 +22,15 @@ describe('SyncStatusLine', () => {
     expect(getByLabelText('Icon checkmark.circle')).toBeTruthy();
   });
 
-  it('shows an invalid message with an xmark glyph', async () => {
-    const { getByText, getByLabelText } = await render(
+  it('renders nothing for an invalid or saveError status: the field shows it as an ErrorNotice', async () => {
+    const invalid = await render(
       <SyncStatusLine status={{ kind: 'invalid', message: 'Invalid token' }} />,
     );
-    expect(getByText('Invalid token')).toBeTruthy();
-    expect(getByLabelText('Icon xmark.circle')).toBeTruthy();
-  });
+    expect(invalid.toJSON()).toBeNull();
 
-  it('shows a save-error message with an xmark glyph', async () => {
-    const { getByText, getByLabelText } = await render(
+    const saveError = await render(
       <SyncStatusLine status={{ kind: 'saveError', message: 'Could not save token' }} />,
     );
-    expect(getByText('Could not save token')).toBeTruthy();
-    expect(getByLabelText('Icon xmark.circle')).toBeTruthy();
+    expect(saveError.toJSON()).toBeNull();
   });
 });

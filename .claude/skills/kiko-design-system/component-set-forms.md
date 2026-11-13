@@ -267,7 +267,9 @@
   own field (`Text variant="caption" tone="negative"`, the same tone
   `FieldLabel`'s required asterisk uses) — never next to the nav-bar Save
   item, and never a reserved-height slot: it fades in on failure and
-  the layout reflows, so a valid field shows no error node at all.
+  the layout reflows, so a valid field shows no error node at all. It leads with a
+  `SymbolIcon` `exclamationmark.triangle.fill` (`iconSizes.caption`, negative) laid out like
+  `InfoHint`; the row is one accessible element with `accessibilityLabel={message}`.
   Every
   invalid field shows its OWN error at the same Save/Import press —
   each field's message is computed from ONLY that field's own inputs,
@@ -303,6 +305,19 @@
   Every form composes this instead of hand-rolling its own error
   caption — see `kiko-code-style`'s "Form validation model" section for
   when to show it.
+- **ErrorNotice** (`src/design-system/components/error-notice/`) — the persistent full-width
+  tinted block under the control that FAILED (a Connect, a sync, a list). FieldError is the
+  form-validation line; ErrorNotice is a failed Connect/sync or a list failure. The triangle
+  is at `iconSizes.body` and the text is `textPrimary` (red text on the tint falls below
+  4.5:1); the row has role alert. Props (read `error-notice.props.d.ts`): `message` OR
+  `lines` (`{key, text, testID?}[]`, never both), `announce?` (default true: it announces
+  itself in a `useEffect` on the label) and `testID?`; the `lines` label joins with '. '.
+  Consumers: read the `ErrorNotice` imports under `src/`.
+- **SyncStatusLine** (`src/design-system/components/sync-status-line/`) — renders only the
+  checking and success states beside a Connect button and returns null otherwise (read
+  `sync-status-line.component.tsx`). The failure text comes from `syncErrorMessage(status)`
+  in `sync-status-line/sync-error-message.ts`; the owning field shows it as a full-width
+  `ErrorNotice` under the row.
 - **PairedFieldsRow** (`src/screens/forms/paired-fields-row/`; read the
   component for its props) lays two fields in one row of equal `flex: 1`
   columns (`Box` gap token 3, as `DateTimeRow`) and stacks them, first on

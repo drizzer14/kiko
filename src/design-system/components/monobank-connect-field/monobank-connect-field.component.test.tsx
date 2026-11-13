@@ -1,9 +1,11 @@
+import { Keyboard } from 'react-native';
 import { createRef, type ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
+import { expectNoticeUnderConnectRow } from '@kiko/test-support/expect-notice-under-connect-row';
 
 import MonobankConnectField from './monobank-connect-field.component';
 
@@ -65,6 +67,23 @@ it('shows the token-required error and calls no network when Connect is pressed 
   );
   expect(mockFetchClientInfo).not.toHaveBeenCalled();
   expect(onConnect).not.toHaveBeenCalled();
+});
+
+it('dismisses the keyboard on every Connect press, even one a blank field blocks', async () => {
+  const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+  mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
+  const view = await render(
+    <MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn().mockResolvedValue(true)} />,
+  );
+
+  await pressConnect(view);
+  expect(dismissSpy).toHaveBeenCalledTimes(1);
+
+  await type(view, 'tok');
+  await pressConnect(view);
+  expect(dismissSpy).toHaveBeenCalledTimes(2);
+
+  dismissSpy.mockRestore();
 });
 
 it('clears the token-required error once a token is typed', async () => {
@@ -150,6 +169,32 @@ it('shows couldNotConnectMonobank when a valid token fails to store/sync, keepin
   await pressConnect(view);
   await waitFor(() => expect(onConnect).toHaveBeenCalledTimes(2));
   expect(onConnect).toHaveBeenLastCalledWith('tok');
+});
+
+it('shows a failed Connect as an alert notice under the Connect row, not beside it', async () => {
+  mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
+  const view = await render(
+    <MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn().mockResolvedValue(false)} />,
+  );
+
+  await type(view, 'tok');
+  await pressConnect(view);
+
+  await expectNoticeUnderConnectRow(
+    view,
+    connectLabel,
+    i18n.t('accountDetail.couldNotConnectMonobank'),
+  );
+});
+
+it('shows an invalid token as an alert notice under the Connect row, not beside it', async () => {
+  mockFetchClientInfo.mockRejectedValue(new Error('401'));
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn()} />);
+
+  await type(view, 'bad');
+  await pressConnect(view);
+
+  await expectNoticeUnderConnectRow(view, connectLabel, i18n.t('accountDetail.invalidToken'));
 });
 
 it('disables Connect while validation is in flight, even with a filled token', async () => {

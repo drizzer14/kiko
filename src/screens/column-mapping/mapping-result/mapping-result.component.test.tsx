@@ -1,4 +1,5 @@
-import { render } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
+import { render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 
@@ -166,6 +167,66 @@ describe('MappingResult', () => {
 
     expect(queryAllByTestId(/^column-mapping-row-error-/)).toHaveLength(20);
     expect(getByText(i18n.t('columnMapping.rowsSkipped', { count: 5 }))).toBeTruthy();
+  });
+
+  describe('the row errors notice', () => {
+    const noRowsStats = {
+      displayName: 'x',
+      transactionCount: 0,
+      currency: 'UAH' as const,
+      dateSpan: '',
+      maskedCardHints: [],
+      unresolvedRowCount: 0,
+      detectedCurrencies: [],
+    };
+    const manyRowErrors = Array.from({ length: 25 }, (_, index) => ({
+      rowNumber: index + 2,
+      reason: 'date' as const,
+      value: 'x',
+    }));
+
+    beforeEach(() => {
+      jest.mocked(AccessibilityInfo.announceForAccessibility).mockClear();
+    });
+
+    it('shows the visible row errors in one alert notice that keeps each row testID and stays silent', async () => {
+      const { getAllByRole, getByRole, getByTestId, queryAllByTestId } = await render(
+        <MappingResult stats={noRowsStats} rowErrors={manyRowErrors} mappingIncomplete={false} />,
+      );
+
+      expect(getAllByRole('alert')).toHaveLength(1);
+      expect(within(getByTestId('column-mapping-row-errors')).getByRole('alert')).toBe(
+        getByRole('alert'),
+      );
+      expect(queryAllByTestId(/^column-mapping-row-error-/)).toHaveLength(20);
+      expect(AccessibilityInfo.announceForAccessibility).not.toHaveBeenCalled();
+    });
+
+    it('keeps the overflow count outside the notice', async () => {
+      const overflow = i18n.t('columnMapping.rowsSkipped', { count: 5 });
+      const { getByRole, getByText } = await render(
+        <MappingResult stats={noRowsStats} rowErrors={manyRowErrors} mappingIncomplete={false} />,
+      );
+
+      expect(within(getByRole('alert')).queryByText(overflow)).toBeNull();
+      expect(getByText(overflow)).toBeTruthy();
+    });
+
+    it('reads the rows to VoiceOver as sentences joined by a period and a space while the visible lines stay as they are', async () => {
+      const rowErrors = [
+        { rowNumber: 2, reason: 'date' as const, value: 'x' },
+        { rowNumber: 3, reason: 'amount' as const, value: 'y' },
+      ];
+      const first = i18n.t('columnMapping.rowError.date', { row: 2, value: 'x' });
+      const second = i18n.t('columnMapping.rowError.amount', { row: 3, value: 'y' });
+      const { getByRole, getByText } = await render(
+        <MappingResult stats={noRowsStats} rowErrors={rowErrors} mappingIncomplete={false} />,
+      );
+
+      expect(getByRole('alert').props.accessibilityLabel).toBe(`${first}. ${second}`);
+      expect(getByText(first)).toBeTruthy();
+      expect(getByText(second)).toBeTruthy();
+    });
   });
 
   it('renders no overflow count when there are 20 or fewer row errors', async () => {

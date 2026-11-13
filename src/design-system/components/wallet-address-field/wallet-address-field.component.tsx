@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
 import { isValidBitcoinAddress } from '@kiko/crypto-sync/btc-wallet';
@@ -7,8 +7,9 @@ import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import Box from '../box';
 import Button from '../button';
 import InfoHint from '../info-hint';
+import ErrorNotice from '../error-notice';
 import ClipboardTextField from '../clipboard-text-field';
-import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
+import SyncStatusLine, { type SyncStatus, syncErrorMessage } from '../sync-status-line';
 
 import { styles } from './wallet-address-field.styles';
 
@@ -38,6 +39,7 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect, reminder }
   // disabled state.
   const [showAddressRequiredError, setShowAddressRequiredError] = useState(false);
   const onDraftChange = reminder?.onDraftChange;
+  const errorMessage = syncErrorMessage(status);
 
   // The typed address goes with the field, so a draft it reported must not outlive it.
   useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
@@ -53,6 +55,8 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect, reminder }
   };
 
   const handleConnect = (): void => {
+    // Connect submits like Return, and a notice under the row can sit under the keyboard.
+    Keyboard.dismiss();
     reminder?.onConnectPress();
 
     const trimmed = address.trim();
@@ -111,6 +115,8 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect, reminder }
 
             <SyncStatusLine status={status} />
           </Box>
+
+          {errorMessage !== undefined && <ErrorNotice message={errorMessage} />}
 
           {reminder?.message !== undefined && <InfoHint message={reminder.message} />}
         </Box>

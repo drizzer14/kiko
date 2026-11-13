@@ -948,7 +948,7 @@ describe('AccountDetailScreen', () => {
       await fireEvent.press(view.getByText('Connect Monobank'));
     });
 
-    expect(await view.findByText('Invalid token')).toBeTruthy();
+    expect(await view.findByText(i18n.t('accountDetail.invalidToken'))).toBeTruthy();
     expect(mockSaveToken).not.toHaveBeenCalled();
     expect(mockSync).not.toHaveBeenCalled();
     // The entered text is kept so the user can retry immediately, without
@@ -968,7 +968,7 @@ describe('AccountDetailScreen', () => {
       await fireEvent.press(getByText('Connect Monobank'));
     });
 
-    expect(await findByText('Could not connect Monobank')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.couldNotConnectMonobank'))).toBeTruthy();
     // The token is kept in the field (not cleared) so a retry does not require
     // re-entering it.
     expect(getByPlaceholderText('Monobank token').props.value).toBe('entered-here');

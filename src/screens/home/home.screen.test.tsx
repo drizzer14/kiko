@@ -2539,10 +2539,19 @@ describe('HomeScreen', () => {
       failures: ['Binance', 'Cold storage'],
       syncAll: mockSyncAll,
     });
-    const { getByText } = await renderHome();
+    const { getByText, getByRole } = await renderHome();
 
     expect(getByText(/Binance/)).toBeTruthy();
     expect(getByText(/Cold storage/)).toBeTruthy();
+    expect(getByRole('alert').props.accessibilityLabel).toBe(
+      i18n.t('home.syncFailedMessage', { accounts: 'Binance, Cold storage' }),
+    );
+  });
+
+  it('shows no sync-failure notice when every account synced', async () => {
+    const { queryByRole } = await renderHome();
+
+    expect(queryByRole('alert')).toBeNull();
   });
 
   // The footprint of the "+" button is added on every placement of the tab bar, so the last row

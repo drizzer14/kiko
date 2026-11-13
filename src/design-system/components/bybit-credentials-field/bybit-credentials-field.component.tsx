@@ -12,6 +12,7 @@ import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
 import Text from '../text';
+import ErrorNotice from '../error-notice';
 import ExpandToggle from '../expand-toggle';
 import ExchangeKeyForm from '../exchange-key-form';
 
@@ -113,11 +114,7 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
         }
       />
 
-      {connectError !== undefined && (
-        <Text variant="body" tone="negative">
-          {connectError}
-        </Text>
-      )}
+      {connectError !== undefined && <ErrorNotice message={connectError} />}
     </Box>
   );
 };

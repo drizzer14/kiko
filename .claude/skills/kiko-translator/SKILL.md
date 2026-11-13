@@ -368,7 +368,10 @@ trailing punctuation is decided by its UI ROLE, not habit:
   bodies, even for a one-word fragment (`isinNotInRegister`: "Not in
   the NBU register."); a full-sentence empty-page explanation shown as
   a caption (`reminders.emptyHint`). Note that the user's key review
-  decides it (no test checks it yet).
+  decides it; `src/i18n/locales/en.final-stop-by-role.test.ts` checks it
+  (`LABEL_VALUE_ALLOWLIST` lists the exceptions). The Connect and credential error keys
+  (see `src/i18n/locales/en.ts`, e.g. `couldNotConnectMonobank`) end with "." in en and uk
+  (rulings Q3, Q4).
 
 Key families added with onboarding (read `en.ts` for the current
 strings in `src/i18n/locales/en.ts`): `emptyStates.*` title is sentence case with no final ".", its
