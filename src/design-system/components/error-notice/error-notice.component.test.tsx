@@ -1,7 +1,9 @@
 import { AccessibilityInfo } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { FadeIn } from 'react-native-reanimated';
+import { render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 
@@ -69,10 +71,25 @@ describe('ErrorNotice', () => {
     expect(JSON.stringify(getByRole('alert').props.style)).toContain('flex-start');
   });
 
-  it('applies an optional testID to its outer container', async () => {
+  it('spaces the icon from the text by the spacing(2) gap', async () => {
+    const { getByRole } = await render(<ErrorNotice message={message} />);
+
+    expect(JSON.stringify(getByRole('alert').props.style)).toContain(
+      `"gap":${darkTheme.spacing(2)}`,
+    );
+  });
+
+  it('puts an optional testID on the outer container, around the alert row and not on it', async () => {
+    const view = await render(<ErrorNotice message={message} testID="notice" />);
+
+    expect(view.getByTestId('notice')).not.toBe(view.getByRole('alert'));
+    expect(within(view.getByTestId('notice')).getByRole('alert')).toBe(view.getByRole('alert'));
+  });
+
+  it('enters with the FadeIn preset', async () => {
     const { getByTestId } = await render(<ErrorNotice message={message} testID="notice" />);
 
-    expect(getByTestId('notice')).toBeTruthy();
+    expect(getByTestId('notice').props.entering).toBe(FadeIn);
   });
 
   it('announces the message to VoiceOver on mount, once per text, again when the text changes', async () => {
@@ -112,5 +129,32 @@ describe('ErrorNotice', () => {
     expect(view.getByTestId('b')).toHaveTextContent('line 2');
     expect(view.getByRole('alert').props.accessibilityLabel).toBe('line 1 line 2');
     expect(glyphNamesWithin(view.getByRole('alert'))).toEqual(['exclamationmark.triangle.fill']);
+  });
+
+  it('shows each line as body text in the textPrimary tone, the lines spaced by the spacing(1) gap', async () => {
+    const view = await render(
+      <ErrorNotice
+        lines={[
+          { key: 'one', text: 'line 1', testID: 'a' },
+          { key: 'two', text: 'line 2', testID: 'b' },
+        ]}
+      />,
+    );
+
+    for (const text of ['line 1', 'line 2']) {
+      expect(view.getByText(text).props.variant).toBe('body');
+      expect(view.getByText(text).props.tone).toBe('textPrimary');
+    }
+
+    const lineBlock = view.getByTestId('a').parent;
+
+    if (lineBlock === null) {
+      throw new Error('The first line has no parent');
+    }
+
+    const gapped = ancestorWithStyle(lineBlock, 'gap');
+
+    expect(within(gapped).getByTestId('b')).toBeTruthy();
+    expect(JSON.stringify(gapped.props.style)).toContain(`"gap":${darkTheme.spacing(1)}`);
   });
 });

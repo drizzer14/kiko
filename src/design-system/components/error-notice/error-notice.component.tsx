@@ -1,3 +1,4 @@
+import { match, P } from 'ts-pattern';
 import { type FC, useEffect } from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
@@ -18,8 +19,30 @@ import type { ErrorNoticeProps } from './error-notice.props';
 const ErrorNotice: FC<ErrorNoticeProps> = (props) => {
   const { theme } = useUnistyles();
   const { announce = true, testID } = props;
-  const label =
-    props.lines === undefined ? props.message : props.lines.map((line) => line.text).join(' ');
+  const { label, content } = match(props)
+    .with({ lines: P.nonNullable }, ({ lines }) => ({
+      label: lines.map((line) => line.text).join(' '),
+      content: (
+        <Box gap={1}>
+          {lines.map((line) => (
+            <Box key={line.key} testID={line.testID}>
+              <Text variant="body" tone="textPrimary">
+                {line.text}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      ),
+    }))
+    .with({ message: P.string }, ({ message }) => ({
+      label: message,
+      content: (
+        <Text variant="body" tone="textPrimary">
+          {message}
+        </Text>
+      ),
+    }))
+    .exhaustive();
 
   // RN's iOS `alert` role does not speak by itself, and content that appears in response to a
   // press is silent to VoiceOver. The dependency on the text, not on the render, keeps a parent
@@ -46,23 +69,7 @@ const ErrorNotice: FC<ErrorNoticeProps> = (props) => {
           tone="negative"
         />
 
-        <Box style={styles.text}>
-          {props.lines === undefined ? (
-            <Text variant="body" tone="textPrimary">
-              {props.message}
-            </Text>
-          ) : (
-            <Box gap={1}>
-              {props.lines.map((line) => (
-                <Box key={line.key} testID={line.testID}>
-                  <Text variant="body" tone="textPrimary">
-                    {line.text}
-                  </Text>
-                </Box>
-              ))}
-            </Box>
-          )}
-        </Box>
+        <Box style={styles.text}>{content}</Box>
       </Box>
     </Animated.View>
   );
