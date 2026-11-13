@@ -16,6 +16,10 @@ export type TransactionCardProps = {
   // amount is optional: omitted renders no amount, and the title keeps the
   // full row width.
   money?: Money;
+  // A secondary caption directly under the amount, textSecondary (a cell-rows sheet row: the
+  // amount in its own currency under the base amount). Omitted renders nothing; it needs `money`,
+  // since it hangs under the amount.
+  amountCaption?: string;
   // The footer's left caption (Home: "account · category") and right caption
   // (Home: the transaction time). Both optional — omitted footer content
   // simply leaves that side of the row blank; the footer row itself only

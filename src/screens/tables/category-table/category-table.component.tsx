@@ -222,6 +222,8 @@ const CategoryTable: FC<CategoryTableProps> = ({
           key={`cell-rows-${sheetGeneration}`}
           {...sheet}
           baseCurrency={baseCurrency}
+          categoryDisplay={categoryDisplay}
+          defaultCategoryKey={defaultCategoryKey}
         />
       )}
     </>

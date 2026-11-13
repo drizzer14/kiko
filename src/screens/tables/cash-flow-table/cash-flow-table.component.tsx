@@ -250,6 +250,8 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
           key={`cell-rows-${sheetGeneration}`}
           {...sheet}
           baseCurrency={baseCurrency}
+          categoryDisplay={categoryDisplay}
+          defaultCategoryKey={defaultCategoryKey}
         />
       )}
     </>
