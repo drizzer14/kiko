@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -70,9 +71,9 @@ describe('FieldError', () => {
       <FieldError message="A long message that wraps" />,
     );
 
-    expect(JSON.stringify(getByText('A long message that wraps').parent?.props.style)).toContain(
-      '"flex":1',
-    );
+    expect(
+      StyleSheet.flatten(getByText('A long message that wraps').parent?.props.style).flex,
+    ).toBe(1);
     expect(JSON.stringify(getByLabelText('A long message that wraps').props.style)).toContain(
       'flex-start',
     );

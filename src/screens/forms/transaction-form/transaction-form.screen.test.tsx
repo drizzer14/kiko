@@ -18,6 +18,7 @@ import {
   saveItem,
 } from '@kiko/test-support/form-header-items';
 import { darkTheme } from '@kiko/design-system/theme';
+import { gapAbove } from '@kiko/test-support/gap-above';
 import { holdingTypes } from '@kiko/holdings/holding-type';
 import { pickCategory } from '@kiko/test-support/pick-category';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
@@ -650,10 +651,8 @@ describe('TransactionFormScreen — add mode', () => {
     await pressSave(navigation.setOptions);
 
     // A select field's error needs the same gap TextField's own `Box gap={1}`
-    // already gives its error line. The group sits above FieldError's icon row (text box, row,
-    // animated root).
-    const errorGroup = utils.getByText('Select a category.').parent?.parent?.parent?.parent;
-    expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+    // already gives its error line.
+    expect(gapAbove(utils.getByLabelText('Select a category.'))).toBe(darkTheme.spacing(1));
   });
 
   it('offers Save only as the prominent nav-bar item — no body button, even on a blocked path', async () => {

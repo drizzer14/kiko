@@ -106,6 +106,8 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   shared notification-permission notice cases.
 - `rendered-element.d.ts` (the element type of every RNTL query), `ancestor-with-style.ts`,
   `layout-of.ts`, `glyphs-within.ts`, `field-suffix.ts`: readers over a rendered tree.
+- `gap-above.ts`: `gapAbove`, the `gap` of the nearest ancestor above an element, for a pin that a
+  field's error line sits under the field's own `Box gap={1}` whatever FieldError's inner depth.
 - `mock-text-tone.tsx`, `mock-text-variant-tone.tsx`, `field-label-spy.ts`: Text and FieldLabel
   mocks that hand through a unistyles variant the Jest mock strips.
 - `composite-over.ts`: `compositeOver` flattens an `rgba()` token over an opaque `#RRGGBB`

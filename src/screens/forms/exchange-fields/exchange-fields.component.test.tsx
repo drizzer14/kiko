@@ -3,6 +3,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { gapAbove } from '@kiko/test-support/gap-above';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
 import ExchangeFields from './exchange-fields.component';
@@ -86,14 +87,12 @@ describe('ExchangeFields', () => {
   });
 
   it('adds the same vertical gap above the destination error that a text field has above its own', async () => {
-    const { getByText } = await setup({ destinationError: 'Select a destination account.' });
+    const { getByLabelText } = await setup({ destinationError: 'Select a destination account.' });
 
-    // FieldError's own root is three levels above the Text (text box, icon row, root); the gap
-    // lives one level up, on the Box wrapping the picker + its error — a select field
+    // The gap lives on the Box wrapping the picker + its error — a select field
     // needs the same gap TextField's own `Box gap={1}` already gives its
     // error line.
-    const errorGroup = getByText('Select a destination account.').parent?.parent?.parent?.parent;
-    expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+    expect(gapAbove(getByLabelText('Select a destination account.'))).toBe(darkTheme.spacing(1));
   });
 
   it('caps the Date calendar at the day of maxDate', async () => {

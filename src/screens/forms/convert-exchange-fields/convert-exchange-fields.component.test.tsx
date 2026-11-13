@@ -3,6 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
+import { gapAbove } from '@kiko/test-support/gap-above';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
@@ -130,15 +131,13 @@ describe('ConvertExchangeFields', () => {
   });
 
   it('adds the same vertical gap above the counterpart error that a text field has above its own', async () => {
-    const { getByText } = await render(
+    const { getByLabelText } = await render(
       <ConvertExchangeFields {...baseProps} counterpartError="Select a counterpart account." />,
     );
 
     // A select field's error lacked the same
-    // gap TextField's own `Box gap={1}` already gives its error line. The group sits above
-    // FieldError's icon row (text box, row, animated root).
-    const errorGroup = getByText('Select a counterpart account.').parent?.parent?.parent?.parent;
-    expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
+    // gap TextField's own `Box gap={1}` already gives its error line.
+    expect(gapAbove(getByLabelText('Select a counterpart account.'))).toBe(darkTheme.spacing(1));
   });
 
   it('caps the Date calendar at the day of maxDate', async () => {
