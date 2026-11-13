@@ -1,5 +1,5 @@
 import { Alert } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import type { AccountRow } from '@kiko/db';
@@ -204,6 +204,7 @@ describe('BankSyncSection — disconnected', () => {
     expect(view.getByRole('alert', { name: 'monobank boom' })).toBeTruthy();
     expect(view.getByText('monobank boom')).toBeTruthy();
     expect(view.getByTestId('bank-sync-actions-row')).toBeTruthy();
+    expect(within(view.getByTestId('bank-sync-actions-row')).queryByRole('alert')).toBeNull();
   });
 
   // An account whose identity picker (BankTypeField, in the

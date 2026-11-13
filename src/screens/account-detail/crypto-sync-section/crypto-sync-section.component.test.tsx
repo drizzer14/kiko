@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Alert, StyleSheet } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import {
@@ -507,6 +507,7 @@ describe('CryptoSyncSection', () => {
     expect(getByText('Binance request failed: 401')).toBeTruthy();
     expect(getByRole('alert', { name: 'Binance request failed: 401' })).toBeTruthy();
     expect(getByTestId('crypto-sync-actions-row')).toBeTruthy();
+    expect(within(getByTestId('crypto-sync-actions-row')).queryByRole('alert')).toBeNull();
   });
 
   it('surfaces the sync error of an unconnected crypto account as an alert notice', async () => {
