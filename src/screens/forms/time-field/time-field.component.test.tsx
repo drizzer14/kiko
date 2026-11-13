@@ -4,6 +4,7 @@ import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { formatTime } from '@kiko/dates';
 import { remindersNative } from '@kiko/reminders/native';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import TimeField from './time-field.component';
 import type { TimeFieldProps } from './time-field.props';
@@ -100,7 +101,7 @@ describe('TimeField', () => {
   it('dims the field to read as locked when disabled', async () => {
     const { getByText } = await renderTimeField({ value: null, disabled: true });
 
-    const fieldRow = getByText('Pick a time').parent;
-    expect(StyleSheet.flatten(fieldRow?.props.style).opacity).toBe(0.5);
+    const fieldRow = ancestorWithStyle(getByText('Pick a time'), 'opacity');
+    expect(StyleSheet.flatten(fieldRow.props.style).opacity).toBe(0.5);
   });
 });

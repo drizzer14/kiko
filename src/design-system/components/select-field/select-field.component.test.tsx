@@ -1,8 +1,10 @@
 import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
+import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
 import SelectField from '.';
 import type { SelectFieldProps } from './select-field.props';
@@ -66,6 +68,70 @@ describe('SelectField', () => {
     expect(StyleSheet.flatten(getByTestId('kind-field').props.style).maxWidth).toBe(
       darkTheme.layout.selectTriggerMaxWidth,
     );
+  });
+
+  describe('appearance', () => {
+    it('hugs the pill to its text in a column: the pill root aligns its children to the start', async () => {
+      const { getByTestId } = await setup({ appearance: 'pill' });
+
+      expect(StyleSheet.flatten(getByTestId('kind-field').parent?.props.style).alignItems).toBe(
+        'flex-start',
+      );
+    });
+
+    it('renders a filter pill with the label as its prefix when appearance is pill', async () => {
+      const { getByTestId, getByText } = await setup({ appearance: 'pill' });
+      const style = StyleSheet.flatten(getByTestId('kind-field').props.style);
+
+      expect(getByText('Kind: Alpha')).toBeTruthy();
+      expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(style.minHeight).toBe(darkTheme.layout.filterPillHeight);
+    });
+
+    it('labels the pill for accessibility with the field label', async () => {
+      const { getByLabelText } = await setup({ appearance: 'pill' });
+      const pill = getByLabelText('Kind');
+
+      expect(pill.props.accessibilityRole).toBe('button');
+      expect(pill.props.accessibilityValue).toEqual({ text: 'Alpha' });
+    });
+
+    it('caps the pill when told to, as the form field is', async () => {
+      const { getByTestId } = await setup({ appearance: 'pill', capped: true });
+
+      expect(StyleSheet.flatten(getByTestId('kind-field').props.style).maxWidth).toBe(
+        darkTheme.layout.selectTriggerMaxWidth,
+      );
+    });
+
+    it('opens the same single-choice sheet from the pill', async () => {
+      const { onSelect, getByTestId, queryByTestId } = await setup({ appearance: 'pill' });
+
+      expect(queryByTestId('kind-field-option-b')).toBeNull();
+
+      await fireEvent.press(getByTestId('kind-field'));
+
+      for (const option of options) {
+        expect(getByTestId(`kind-field-option-${option}`)).toBeTruthy();
+      }
+
+      await fireEvent.press(getByTestId('kind-field-option-b'));
+
+      expect(onSelect).toHaveBeenCalledWith('b');
+      expect(queryByTestId('kind-field-option-b')).toBeNull();
+    });
+
+    it('keeps the form field by default', async () => {
+      const { getByTestId, getByText, queryByText } = await setup();
+      const fieldBox = ancestorWithStyle(getByText('Alpha'), 'backgroundColor');
+      const fieldRoot = getByTestId('kind-field').parent?.parent;
+
+      expect(queryByText('Kind: Alpha')).toBeNull();
+      expect(StyleSheet.flatten(fieldBox.props.style).backgroundColor).toBe(
+        darkTheme.colors.fieldBackground,
+      );
+      expect(StyleSheet.flatten(fieldRoot?.props.style)?.alignItems).not.toBe('flex-start');
+    });
   });
 
   it("shows the selected option's label in the trigger", async () => {

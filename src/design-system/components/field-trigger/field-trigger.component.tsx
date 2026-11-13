@@ -19,9 +19,9 @@ import type { FieldTriggerProps } from './field-trigger.props';
 // the caller's own sheet. CategoryField and HoldingSelectField rendered this
 // exact JSX (down to an identical `field` style block) independently before
 // being unified onto this one component — see each caller's own doc comment
-// for why they are meant to read as one family. A future field-plus-sheet
-// picker (DateField already has its own near-identical shape) should reach
-// for this too rather than re-copying it a third time.
+// for why they are meant to read as one family. DateField and TimeField render
+// it too, so a new field-plus-sheet picker should reach for it rather than
+// re-copying the box.
 const FieldTrigger: FC<FieldTriggerProps> = ({
   label,
   onPress,
@@ -43,10 +43,14 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   // A defined, non-empty `error` IS the invalid signal — same contract as
   // TextField's own `hasError` (see text-field.component.tsx).
   const hasError = error !== undefined && error !== '';
+  // A wrapper Box carries the flex, because Text's `style` admits typography keys only. It grows
+  // to push the trailing content and chevron to the end and shrinks so a long value wraps.
   const valueText = (
-    <Text variant="body" tone={valueTone}>
-      {value}
-    </Text>
+    <Box style={styles.value}>
+      <Text variant="body" tone={valueTone}>
+        {value}
+      </Text>
+    </Box>
   );
 
   return (
@@ -83,9 +87,13 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
             </Text>
           )}
 
-          {capped ? <Box style={styles.valueCapped}>{valueText}</Box> : valueText}
+          {valueText}
 
           {trailing}
+
+          <Box accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <SymbolIcon name="chevron.down" size={theme.iconSizes.caption} tone="textSecondary" />
+          </Box>
         </Box>
       </Pressable>
 

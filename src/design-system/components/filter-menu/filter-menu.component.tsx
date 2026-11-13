@@ -1,15 +1,11 @@
-import { Pressable } from 'react-native';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUnistyles } from 'react-native-unistyles';
 
-import Box from '../box';
 import Text from '../text';
-import SymbolIcon from '../symbol';
+import FilterPill from '../filter-pill';
 import BottomSheet from '../bottom-sheet';
 import SelectableRow from '../selectable-row';
 
-import { styles } from './filter-menu.styles';
 import type { FilterMenuProps, FilterOption } from './filter-menu.props';
 
 /** The default option in every filter menu — selecting it clears that dimension. */
@@ -37,11 +33,11 @@ const FilterMenu: FC<FilterMenuProps> = ({
   triggerIcon = 'line.3.horizontal.decrease.circle',
   testID,
 }) => {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
-  const buttonLabel = selected.size > 0 ? `${label} · ${selected.size}` : label;
+  const active = selected.size > 0;
+  const buttonLabel = active ? `${label} · ${selected.size}` : label;
   // Prepend the synthetic "All" row (no icon) to the real options. Every row is
   // a FilterOption so the render path is uniform; matching still keys on `value`.
   const rows: FilterOption[] = [{ value: FILTER_ALL }, ...options];
@@ -60,18 +56,15 @@ const FilterMenu: FC<FilterMenuProps> = ({
 
   return (
     <>
-      <Pressable
-        accessibilityRole="button"
+      <FilterPill
+        label={buttonLabel}
+        icon={triggerIcon}
         accessibilityLabel={label}
+        accessibilityValue={active ? { text: String(selected.size) } : undefined}
+        active={active}
         onPress={() => setOpen(true)}
         testID={testID}
-      >
-        <Box direction="row" gap={2} style={styles.button}>
-          <SymbolIcon name={triggerIcon} size={theme.iconSizes.body} tone="textPrimary" />
-
-          <Text variant="body">{buttonLabel}</Text>
-        </Box>
-      </Pressable>
+      />
 
       <BottomSheet
         visible={open}

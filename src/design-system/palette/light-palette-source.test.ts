@@ -192,6 +192,7 @@ describe('the approved light palette file', () => {
       textPrimary: '#FFFFFF',
       textSecondary: 'rgba(235,235,245,0.60)',
       accent: '#0A84FF',
+      accentSubtle: 'rgba(10,132,255,0.18)',
       onAccent: '#FFFFFF',
       positive: '#30D158',
       negative: '#FF453A',

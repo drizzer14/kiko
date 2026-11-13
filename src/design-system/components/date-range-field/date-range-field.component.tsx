@@ -1,8 +1,8 @@
 import { formatDate } from '@kiko/dates';
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
+import { ScrollView } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import type { DateData } from 'react-native-calendars';
 import KikoCalendar from '@kiko/calendar/kiko-calendar';
@@ -10,7 +10,7 @@ import KikoCalendar from '@kiko/calendar/kiko-calendar';
 import Box from '../box';
 import Text from '../text';
 import Button from '../button';
-import SymbolIcon from '../symbol';
+import FilterPill from '../filter-pill';
 import BottomSheet from '../bottom-sheet';
 import SheetFooter from '../sheet-footer';
 
@@ -200,20 +200,14 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   const marks = buildPeriodMarks(draftFrom, draftTo, theme.colors.accent);
 
   return (
-    <Box gap={1}>
-      <Pressable
-        accessibilityRole="button"
+    <Box gap={1} style={styles.root}>
+      <FilterPill
+        label={fieldLabel}
+        icon="calendar"
         accessibilityLabel={t('home.dateRangeField.label')}
+        active={hasActiveRange}
         onPress={openModal}
-      >
-        <Box direction="row" gap={2} style={styles.field}>
-          <SymbolIcon name="calendar" size={theme.iconSizes.body} tone="textPrimary" />
-
-          <Text variant="body" tone="textPrimary">
-            {fieldLabel}
-          </Text>
-        </Box>
-      </Pressable>
+      />
 
       {/* `scrollable={false}`: the Clear/Apply row below must stay reachable
           regardless of scroll position (every sheet's overflow must scroll,

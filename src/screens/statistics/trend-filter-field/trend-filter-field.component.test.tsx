@@ -65,6 +65,33 @@ describe('TrendFilterField trigger icon', () => {
   });
 });
 
+describe('TrendFilterField filter pill', () => {
+  it('draws the mode glyph at the body icon size', async () => {
+    const { getByTestId } = await renderField();
+    const [glyph] = getByTestId(TEST_ID).queryAll((node) => node.props.name === 'chart.bar.fill');
+
+    expect(glyph.props.size).toBe(darkTheme.iconSizes.body);
+  });
+
+  it('tints the button active on a non-default filter', async () => {
+    const { getByTestId } = await renderField({
+      filter: { mode: 'top', amount: 5, by: 'contribution' },
+    });
+    const style = StyleSheet.flatten(getByTestId(TEST_ID).props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
+    expect(style.borderColor).toBe(darkTheme.colors.accent);
+  });
+
+  it('keeps the button inactive on the default filter', async () => {
+    const { getByTestId } = await renderField();
+    const style = StyleSheet.flatten(getByTestId(TEST_ID).props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+    expect(style.borderColor).toBe(darkTheme.colors.border);
+  });
+});
+
 describe('TrendFilterField button label', () => {
   it('reads "Top N by <measure>" in top mode', async () => {
     const { getByTestId } = await renderField({

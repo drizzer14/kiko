@@ -1,19 +1,13 @@
-import { Pressable } from 'react-native';
 import { formatDate } from '@kiko/dates';
 import { type FC, useState } from 'react';
 import maybe, { foldMap } from 'fnts/maybe';
-import Box from '@kiko/design-system/components/box';
 import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
 import type { DateData } from 'react-native-calendars';
 import KikoCalendar from '@kiko/calendar/kiko-calendar';
-import SymbolIcon from '@kiko/design-system/components/symbol';
-import FieldError from '@kiko/design-system/components/field-error';
-import FieldLabel from '@kiko/design-system/components/field-label';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
-import { deriveFieldTestID } from '@kiko/design-system/derive-field-test-id';
+import FieldTrigger from '@kiko/design-system/components/field-trigger';
 
-import { styles } from './date-field.styles';
 import type { DateFieldProps } from './date-field.props';
 
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
@@ -46,9 +40,6 @@ const DateField: FC<DateFieldProps> = ({
 }) => {
   const { theme } = useUnistyles();
   const [open, setOpen] = useState(false);
-  // A defined, non-empty `error` IS the invalid signal — same contract as
-  // TextField's own `hasError` (see text-field.component.tsx).
-  const hasError = error !== undefined && error !== '';
 
   const handleDayPress = (day: DateData): void => {
     // Move the DAY only, carrying over the existing value's time-of-day so a
@@ -84,29 +75,19 @@ const DateField: FC<DateFieldProps> = ({
   const initialDate = toCalendarKey(value ?? Date.now());
 
   return (
-    <Box gap={1}>
-      <FieldLabel label={label} required={required} invalid={hasError || invalid} />
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ disabled }}
+    <>
+      <FieldTrigger
+        label={label}
+        icon="calendar"
+        value={value === null ? placeholder : formatDate(value)}
+        valueTone={disabled || value === null ? 'textSecondary' : 'textPrimary'}
+        required={required}
+        error={error}
+        invalid={invalid}
         disabled={disabled}
-        onPress={() => setOpen(true)}
         testID={testID}
-      >
-        <Box direction="row" gap={2} style={[styles.field, disabled && styles.fieldDisabled]}>
-          <SymbolIcon name="calendar" size={theme.iconSizes.body} tone="textSecondary" />
-
-          <Text variant="body" tone={disabled || value === null ? 'textSecondary' : 'textPrimary'}>
-            {value === null ? placeholder : formatDate(value)}
-          </Text>
-        </Box>
-      </Pressable>
-
-      {/* REFLOW, not reserve (the reflow error model; see `FieldError`): no
-        error node while valid — uniform with every other field type. */}
-      {hasError && <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />}
+        onPress={() => setOpen(true)}
+      />
 
       <BottomSheet
         visible={open}
@@ -122,7 +103,7 @@ const DateField: FC<DateFieldProps> = ({
           onDayPress={handleDayPress}
         />
       </BottomSheet>
-    </Box>
+    </>
   );
 };
 

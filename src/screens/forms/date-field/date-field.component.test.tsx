@@ -62,7 +62,7 @@ describe('DateField', () => {
     const active = await renderDateField();
     const disabled = await renderDateField({ disabled: true });
     const fillOf = (text: ReturnType<typeof active.getByText>) =>
-      StyleSheet.flatten(text.parent?.props.style).backgroundColor;
+      StyleSheet.flatten(ancestorWithStyle(text, 'backgroundColor').props.style).backgroundColor;
 
     expect(fillOf(active.getByText('Pick a day'))).toBe('transparent');
     expect(fillOf(disabled.getByText('Pick a day'))).toBe('#111112');
@@ -72,10 +72,10 @@ describe('DateField', () => {
     const { getByText } = await renderDateField({ disabled: true });
 
     // The bordered field chip dims to opacity 0.5, matching the disabled
-    // TextField / ChipRow treatment; the field row is the parent of the
-    // placeholder Text (placeholder Text -> field Box).
-    const fieldRow = getByText('Pick a day').parent;
-    expect(StyleSheet.flatten(fieldRow?.props.style).opacity).toBe(0.5);
+    // TextField / ChipRow treatment; the field row is the nearest ancestor of
+    // the placeholder Text that carries the opacity (past the value box).
+    const fieldRow = ancestorWithStyle(getByText('Pick a day'), 'opacity');
+    expect(StyleSheet.flatten(fieldRow.props.style).opacity).toBe(0.5);
   });
 
   it('shows sheetTitle, not label, as the sheet header', async () => {
@@ -169,8 +169,8 @@ describe('DateField', () => {
     expect(getByText('Select a date.')).toBeTruthy();
     // Same reflow error model as TextField: no per-field outline, ever — the
     // field row's own border stays its ordinary neutral token.
-    const fieldRow = getByText('Pick a day').parent;
-    expect(StyleSheet.flatten(fieldRow?.props.style).borderColor).not.toBe('#FF453A');
+    const fieldRow = ancestorWithStyle(getByText('Pick a day'), 'borderColor');
+    expect(StyleSheet.flatten(fieldRow.props.style).borderColor).not.toBe('#FF453A');
   });
 
   it('reflows rather than reserves: no error node renders while valid', async () => {

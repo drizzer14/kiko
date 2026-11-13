@@ -118,8 +118,10 @@ new component can land between reviews of this skill:
   In that pose the row is Period at the leading end, then a `flexGrow: 1` spacer
   (`tables-filter-bar-spacer`, `filterBarSpacer` in `src/screens/tables/tables.styles.ts`), then
   the account and category filters at the trailing end. The spacer's `marginStart` is minus the
-  bar gap, so the least Period-to-first-filter distance stays one gap. Period keeps its DS height
-  (user ruling 2026-11-09: no height change). At large type the row can wrap (known limit: the
+  bar gap, so the least Period-to-first-filter distance stays one gap. Period is a FilterPill
+  (`SelectField appearance="pill"`, user ruling Q1 2026-11-12) on the same centred row: beside
+  the filters Period leads and the spacer stays; on a narrow screen Period sits below the
+  filters; the old with-period bar style is gone. At large type the row can wrap (known limit: the
   category filter can wrap to the start of line 2).
   Keyboard offset: `react-native` 0.87.1 is patched
   (`patches/react-native+0.87.1.patch`, listed in `docs/harness/documented-exceptions.md`) so a
@@ -139,6 +141,14 @@ new component can land between reviews of this skill:
   Guideline 5.1.1(i) needs the in-app privacy policy link easily
   accessible (reachable without scrolling). A short page stays top-anchored; nothing in
   this codebase pins non-footer content to the bottom.
+- **FilterPill** (`src/design-system/components/filter-pill/`) — a bordered `surface` chip that
+  shows a label and its value (one string, key `components.filterPill.labelValue`) and opens a
+  filter sheet. Height is `theme.layout.filterPillHeight` (a minimum, so Dynamic Type grows it)
+  and `theme.layout.filterPillHitSlop` adds the rest of the 44 pt target. Active fill is
+  `accentSubtle`: the label stays `textPrimary` and the accent goes on the glyph and the
+  border, because accent text failed AA. It has no `alignSelf`: the row aligns it. The value
+  is capped at 240 pt (`selectTriggerMaxWidth`) only with `capped`. `FilterMenu`, `DateRangeField`,
+  `TrendFilterField` and the Tables Period `SelectField` render it.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
   the shared "this screen's own data has not loaded yet" visual: a
   plain centered native `ActivityIndicator`, no text at all — a
@@ -622,7 +632,7 @@ new component can land between reviews of this skill:
   GENERIC version of this shape — `label`/`sheetTitle`/`options`/
   `selected` (nullable — see below)/`onSelect`/`labels`/optional
   `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
-  `error`/`testID`/optional `capped` (caps the trigger at
+  `error`/`testID`/optional `appearance?: 'field' | 'pill'`/optional `capped` (caps the trigger at
   `theme.layout.selectTriggerMaxWidth` in `src/design-system/theme/theme.ts`:
   trigger = min(column, cap); for a short one-phrase value such as the Tables
   period; a larger Dynamic Type size wraps inside the cap) — and is now the ONE shared

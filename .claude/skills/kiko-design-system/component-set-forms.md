@@ -240,7 +240,8 @@
   `TimeField`, the `HoldingIdentityField` name input and the `IconEditor` icon chip (white
   in light, none in dark). In light a disabled field and an active one share a white fill;
   the faded `surfaceHigh` border, the 0.5 opacity and the `textSecondary` text tell them
-  apart. `DateRangeField`, `FilterMenu` and `TrendFilterField` keep `surface`.
+  apart. `DateRangeField`, `FilterMenu` and `TrendFilterField` are FilterPills (see the
+  FilterPill entry in `component-set.md`).
   `fieldBackground` is opaque in light, so an absolutely positioned icon or adornment over a
   field renders AFTER the field's input (a later sibling paints above it). Dark does not show
   the fault because its fill is transparent. The `TextField` test "paints the leading icon
@@ -326,7 +327,9 @@
   the shared "labeled field that opens a picker sheet" trigger (its fill is `fieldBackground`): a
   caption above a bordered row showing the current icon (or leading
   text mark) + value, tapping which opens the caller's own
-  `BottomSheet`. Optional `capped` caps the trigger at
+  `BottomSheet`. Every form picker shows a trailing `chevron.down` (caption size,
+  `textSecondary`) in a value box; the `IconEditor` chip has none. `DateField` and `TimeField`
+  render `FieldTrigger`. Optional `capped` caps the trigger at
   `theme.layout.selectTriggerMaxWidth` (`src/design-system/theme/theme.ts`), trigger =
   min(column, cap), for a short one-phrase value; larger Dynamic Type wraps inside the cap.
   `CategoryField`, `HoldingSelectField`,

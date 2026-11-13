@@ -178,6 +178,17 @@ describe('entity/chart palettes', () => {
     expect(darkTheme.layout.sheetMaxWidth).toBe(540);
   });
 
+  it('tints the accent at 0.18 alpha in dark and 0.12 in light for an active filter', () => {
+    expect(darkTheme.colors.accentSubtle).toBe('rgba(10,132,255,0.18)');
+    expect(lightTheme.colors.accentSubtle).toBe('rgba(0,102,230,0.12)');
+  });
+
+  it('exposes the filter pill height and the tap inset that restores 44pt', () => {
+    expect(darkTheme.layout.filterPillHeight).toBe(36);
+    expect(darkTheme.layout.filterPillHitSlop).toBe(4);
+    expect(darkTheme.layout.filterPillHeight + 2 * darkTheme.layout.filterPillHitSlop).toBe(44);
+  });
+
   it('exposes a categorical chart palette of >= 6 distinct hex hues', () => {
     expect(chartSeriesDark.length).toBeGreaterThanOrEqual(6);
 

@@ -34,6 +34,11 @@ export type SelectFieldProps<Option extends string> = {
   icons?: Record<Option, string>;
   // Shown as the trigger's value while `selected` is `null`.
   placeholder: string;
+  // `'field'` (default) is the form picker: a caption over a bordered `FieldTrigger`. `'pill'` is a
+  // screen filter: one `FilterPill` reading "<label>: <value>", so a select can sit in a filter
+  // row. The sheet is the same. The pill never shows the active tint and takes no `required`,
+  // `disabled`, `error` or option icons.
+  appearance?: 'field' | 'pill';
   required?: boolean;
   disabled?: boolean;
   // Caps the trigger at the shared select trigger width (`FieldTrigger`'s `capped`), for a field

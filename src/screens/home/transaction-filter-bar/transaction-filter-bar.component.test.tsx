@@ -1,8 +1,10 @@
 import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
+import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import TransactionFilterBar from './transaction-filter-bar.component';
 
@@ -86,6 +88,16 @@ const pressDay = async (queries: BarRender, date: Date): Promise<void> => {
 };
 
 describe('TransactionFilterBar', () => {
+  describe('layout', () => {
+    it('keeps each pill at its natural height by top-aligning the pill row', async () => {
+      const { getByTestId } = await renderBar();
+      const row = ancestorWithStyle(getByTestId('account-filter-menu'), 'alignItems');
+
+      expect(StyleSheet.flatten(row.props.style).alignItems).toBe('flex-start');
+      expect(row).toBe(ancestorWithStyle(getByTestId('category-filter-menu'), 'alignItems'));
+    });
+  });
+
   describe('accounts dropdown', () => {
     it('labels the control "Accounts" when nothing is selected', async () => {
       const { getByText } = await renderBar();

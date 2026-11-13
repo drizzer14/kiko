@@ -2,6 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { brokerIds } from '@kiko/brokers';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 
 import BrokerTypeField from '.';
 import type { BrokerTypeFieldProps } from './broker-type-field.props';
@@ -72,12 +73,17 @@ describe('BrokerTypeField', () => {
     expect(getByTestId('broker-type-field-option-other')).toHaveTextContent('Other broker');
   });
 
-  it('shows no logo or glyph on the trigger or any row', async () => {
-    const { getByTestId, toJSON } = await setup({ selected: null });
+  it('shows no logo or glyph on any row, only the picker chevron on the trigger', async () => {
+    const { getByTestId, getAllByTestId } = await setup({ selected: null });
+
+    expect(glyphNamesWithin(getByTestId('broker-type-field'))).toEqual(['chevron.down']);
 
     await fireEvent.press(getByTestId('broker-type-field'));
 
-    expect(JSON.stringify(toJSON())).not.toContain('fallbackName');
+    const rows = getAllByTestId(/^broker-type-field-option-[a-z0-9]+$/);
+
+    expect(rows).not.toEqual([]);
+    expect(rows.flatMap((row) => glyphNamesWithin(row))).toEqual([]);
   });
 
   it('reports the picked broker and closes the sheet', async () => {

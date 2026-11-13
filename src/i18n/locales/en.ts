@@ -1769,6 +1769,9 @@ export const en = {
       showAll: 'Show all',
       showLess: 'Show less',
     },
+    filterPill: {
+      labelValue: '{{label}}: {{value}}',
+    },
     netWorthLine: {
       loadingHistory: 'Loading history',
       selectedDay: '{{amount}}, {{date}}',

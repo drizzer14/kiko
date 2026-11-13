@@ -12,6 +12,7 @@ import {
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
 import pkg from '../../../../package.json';
@@ -156,6 +157,14 @@ describe('SettingsScreen', () => {
     // glyph is unique to the base-currency row, so a whole-tree lookup suffices.
     const glyphs = root?.queryAll((node) => node.props.name === 'hryvniasign.circle') ?? [];
     expect(glyphs.length).toBeGreaterThan(0);
+  });
+
+  it('shows one chevron.down and no chevron.right on the base currency row', async () => {
+    const { getByTestId } = await renderScreen();
+    const glyphs = glyphNamesWithin(getByTestId('settings-card-base-currency'));
+
+    expect(glyphs.filter((name) => name === 'chevron.down')).toHaveLength(1);
+    expect(glyphs).not.toContain('chevron.right');
   });
 
   it('gives the Categories row a leading tag icon', async () => {

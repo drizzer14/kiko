@@ -103,6 +103,8 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   `layout-of.ts`, `glyphs-within.ts`, `field-suffix.ts`: readers over a rendered tree.
 - `mock-text-tone.tsx`, `mock-text-variant-tone.tsx`, `field-label-spy.ts`: Text and FieldLabel
   mocks that hand through a unistyles variant the Jest mock strips.
+- `composite-over.ts`: `compositeOver` flattens an `rgba()` token over an opaque `#RRGGBB`
+  backdrop, for a contrast check on a translucent fill.
 - `layout-mode-spy.ts`, `modal-animation-spy.ts`, `mock-reanimated-scroll-to-end.ts`,
   `gesture-root-wrapper.tsx`: doubles for the layout mode, a Modal's animation, a scroll ref and
   a gesture root.

@@ -100,6 +100,11 @@
       "light": "#0066E6",
       "use": "Primary Button fill, selected chip/row fill, Switch on track, links and accent text, calendar today/arrows/selected day, tab bar active, navigation primary, glassTint of the primary footer button. Light: systemBlue #007AFF is only 4.0:1 under white text; #0066E6 keeps the 213 degree hue and gives 5.19:1."
     },
+    "accentSubtle": {
+      "dark": "rgba(10,132,255,0.18)",
+      "light": "rgba(0,102,230,0.12)",
+      "use": "Fill of an active filter pill. Its glyph and hairline border take accent; the label stays textPrimary, because accent text on this tint misses 4.5:1 on three of the four screen backdrops."
+    },
     "onAccent": {
       "dark": "#FFFFFF",
       "light": "#FFFFFF",

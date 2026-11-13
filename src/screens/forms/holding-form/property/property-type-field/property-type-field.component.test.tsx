@@ -45,7 +45,7 @@ describe('PropertyTypeField', () => {
       <PropertyTypeField selected="vehicle" onSelect={jest.fn()} testID="property-type" />,
     );
 
-    expect(glyphNamesWithin(getByTestId('property-type'))).toEqual(['car.fill']);
+    expect(glyphNamesWithin(getByTestId('property-type'))).toEqual(['car.fill', 'chevron.down']);
 
     await fireEvent.press(getByTestId('property-type'));
 

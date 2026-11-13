@@ -1,6 +1,7 @@
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import { SETTLE_DELAY_MS } from '@kiko/navigation/pane-stack';
 import { relativeTablePeriodsOf } from '@kiko/statistics/table-period';
 import { act, fireEvent, within } from '@testing-library/react-native';
@@ -100,6 +101,25 @@ describe('the period field on the Tables screen', () => {
       // margin of one gap takes the first of them back.
       expect(gap).toBeGreaterThan(0);
       expect(spacerMargin).toBe(-gap);
+    });
+
+    it('centres the period pill and the filters on one line', async () => {
+      const { getByTestId } = await renderTables();
+      const flatten = (testID: string) => StyleSheet.flatten(getByTestId(testID).props.style);
+
+      // No pill sets `alignSelf`, so each one takes the bar's centre.
+      expect(flatten('tables-period').alignSelf).toBeUndefined();
+      expect(flatten('tables-account-filter').alignSelf).toBeUndefined();
+      expect(flatten('tables-filter-bar').alignItems).toBe('center');
+    });
+
+    it('draws the period as a pill as tall as the filters', async () => {
+      const { getByTestId } = await renderTables();
+      const minHeightOf = (testID: string) =>
+        StyleSheet.flatten(getByTestId(testID).props.style).minHeight;
+
+      expect(minHeightOf('tables-period')).toBe(darkTheme.layout.filterPillHeight);
+      expect(minHeightOf('tables-period')).toBe(minHeightOf('tables-account-filter'));
     });
 
     it('is on screen once, not repeated in a row of its own', async () => {

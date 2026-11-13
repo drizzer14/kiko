@@ -24,7 +24,26 @@ const MIN_TOP_AMOUNT = 1;
 const MAX_TOP_AMOUNT = 5;
 
 /** The fallback filter when nothing is saved: the top 3 by contribution. */
-export const DEFAULT_TREND_FILTER: TrendFilter = { mode: 'top', amount: 3, by: 'contribution' };
+export const DEFAULT_TREND_FILTER: Extract<TrendFilter, { mode: 'top' }> = {
+  mode: 'top',
+  amount: 3,
+  by: 'contribution',
+};
+
+/**
+ * Whether a resolved filter narrows the chart: a manual pick of at least one category, or a top
+ * filter other than the default. An empty manual pick shows every category, so it reads inactive.
+ */
+export const isTrendFilterActive = (filter: TrendFilter): boolean =>
+  match(filter)
+    .with({ mode: 'manual' }, (manualFilter) => manualFilter.keys.length > 0)
+    .with(
+      { mode: 'top' },
+      (topFilter) =>
+        topFilter.amount !== DEFAULT_TREND_FILTER.amount ||
+        topFilter.by !== DEFAULT_TREND_FILTER.by,
+    )
+    .exhaustive();
 
 // Clamp a "Top N" amount into the picker's 1..5 range, flooring a non-integer.
 const clampAmount = (amount: number): number =>
