@@ -1,5 +1,6 @@
+import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
@@ -172,5 +173,78 @@ describe('FilterPill', () => {
     const { getByTestId } = await renderPill();
 
     expect(StyleSheet.flatten(getByTestId(TEST_ID).props.style).alignSelf).toBeUndefined();
+  });
+
+  describe('with a value', () => {
+    it('reads "<label>: <value>" when a value is given', async () => {
+      const { getByText, queryByText } = await renderPill({ label: 'Period', value: 'This year' });
+
+      expect(getByText('Period: This year')).toBeTruthy();
+      expect(queryByText('Period')).toBeNull();
+    });
+
+    it('keeps the value in the accessibility value and the label as the accessibility label', async () => {
+      const { getByLabelText, queryByLabelText } = await renderPill({
+        label: 'Period',
+        value: 'This year',
+        accessibilityLabel: 'Period',
+      });
+
+      expect(getByLabelText('Period').props.accessibilityValue).toEqual({ text: 'This year' });
+      expect(queryByLabelText('Period: This year')).toBeNull();
+    });
+
+    it('lets an explicit accessibilityValue win over the value', async () => {
+      const { getByLabelText } = await renderPill({
+        label: 'Period',
+        value: 'This year',
+        accessibilityLabel: 'Period',
+        accessibilityValue: { text: 'chosen' },
+      });
+
+      expect(getByLabelText('Period').props.accessibilityValue).toEqual({ text: 'chosen' });
+    });
+
+    it('leaves the pill as wide as its content unless it is told to cap', async () => {
+      const { getByTestId } = await renderPill({ label: 'Period', value: 'This year' });
+
+      expect(StyleSheet.flatten(getByTestId(TEST_ID).props.style).maxWidth).toBeUndefined();
+    });
+
+    it('caps the pill at the select trigger width and wraps the value inside it', async () => {
+      const longValue = 'A very long period name that wraps at accessibility text sizes';
+      const { getByTestId, getByText } = await renderPill({
+        label: 'Period',
+        value: longValue,
+        capped: true,
+      });
+      const text = getByText(`Period: ${longValue}`);
+
+      expect(StyleSheet.flatten(getByTestId(TEST_ID).props.style).maxWidth).toBe(
+        darkTheme.layout.selectTriggerMaxWidth,
+      );
+      expect(text.props.numberOfLines).toBeUndefined();
+      expect(StyleSheet.flatten(text.parent?.props.style).flexShrink).toBe(1);
+    });
+
+    describe('under the uk language', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('reads the label and value from the Ukrainian catalog', async () => {
+        const { getByText } = await renderPill({ label: 'Період', value: 'Цей рік' });
+
+        expect(getByText('Період: Цей рік')).toBeTruthy();
+      });
+    });
   });
 });

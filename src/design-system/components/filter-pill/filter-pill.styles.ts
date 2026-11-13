@@ -21,6 +21,10 @@ export const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.accent,
     backgroundColor: theme.colors.accentSubtle,
   },
+  // The same cap as a capped FieldTrigger, so a long value wraps inside the pill.
+  pillCapped: {
+    maxWidth: theme.layout.selectTriggerMaxWidth,
+  },
   row: {
     alignItems: 'center',
   },

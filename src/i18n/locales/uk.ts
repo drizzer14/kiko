@@ -1551,6 +1551,9 @@ export const uk: typeof en = {
       showAll: 'Показати всі',
       showLess: 'Згорнути',
     },
+    filterPill: {
+      labelValue: '{{label}}: {{value}}',
+    },
     netWorthLine: {
       loadingHistory: 'Завантаження історії',
       selectedDay: '{{amount}}, {{date}}',
