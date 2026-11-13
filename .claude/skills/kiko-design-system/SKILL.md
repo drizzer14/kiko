@@ -142,7 +142,7 @@ The token categories, defined once in a single theme module (read
   `accentSubtle` is the active FilterPill fill; `layout.filterPillHeight` and
   `layout.filterPillHitSlop` size the pill. The trend filter is "active" when
   `isTrendFilterActive` (`src/statistics/trend-filter/trend-filter.ts`) says it differs from
-  the single `DEFAULT_TREND_FILTER`.
+  the single `DEFAULT_TREND_FILTER`; a manual filter with no categories picked reads inactive.
 - **spacing** — a scale used for all padding/margin/gap; components
   never hardcode a pixel value for spacing.
 - **typography** — font sizes/weights/line-heights for the type

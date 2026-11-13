@@ -147,7 +147,7 @@ new component can land between reviews of this skill:
   and `theme.layout.filterPillHitSlop` adds the rest of the 44 pt target. Active fill is
   `accentSubtle`: the label stays `textPrimary` and the accent goes on the glyph and the
   border, because accent text failed AA. It has no `alignSelf`: the row aligns it. The value
-  is capped at 240 pt (`selectTriggerMaxWidth`). `FilterMenu`, `DateRangeField`,
+  is capped at 240 pt (`selectTriggerMaxWidth`) only with `capped`. `FilterMenu`, `DateRangeField`,
   `TrendFilterField` and the Tables Period `SelectField` render it.
 - **LoadingState** (`src/design-system/components/loading-state/`) —
   the shared "this screen's own data has not loaded yet" visual: a
