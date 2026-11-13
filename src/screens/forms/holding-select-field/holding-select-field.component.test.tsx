@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
@@ -97,6 +98,20 @@ describe('HoldingSelectField', () => {
     const wrapper = ancestorWithStyle(getByText('Personal'), 'marginLeft');
 
     expect(StyleSheet.flatten(wrapper.props.style).marginLeft).toBe('auto');
+  });
+
+  it('keeps the account caption right-aligned before the chevron', async () => {
+    const { getByLabelText, getByText } = await renderHoldingSelectField({ selectedId: 'h2' });
+    const inOrder = getByLabelText('To').queryAll(
+      (node) => node.props.children === 'Personal' || node.props.fallbackName === 'chevron.down',
+    );
+    const wrapper = ancestorWithStyle(getByText('Personal'), 'marginLeft');
+
+    expect(inOrder.map((node) => node.props.fallbackName ?? node.props.children)).toEqual([
+      'Personal',
+      'chevron.down',
+    ]);
+    expect(glyphNamesWithin(wrapper)).toEqual([]);
   });
 
   it('opens the sheet and reports the picked id', async () => {
