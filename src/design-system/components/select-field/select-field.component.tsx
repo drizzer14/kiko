@@ -3,10 +3,12 @@ import { type ReactElement, useEffect, useRef, useState } from 'react';
 
 import Box from '../box';
 import Text from '../text';
+import FilterPill from '../filter-pill';
 import BottomSheet from '../bottom-sheet';
 import FieldTrigger from '../field-trigger';
 import SelectableRow from '../selectable-row';
 
+import { styles } from './select-field.styles';
 import type { SelectFieldProps } from './select-field.props';
 
 // The generic "labeled field that opens a picker sheet" family
@@ -28,6 +30,7 @@ const SelectField = <Option extends string>({
   subtitles,
   icons,
   placeholder,
+  appearance = 'field',
   required,
   disabled,
   capped,
@@ -88,20 +91,35 @@ const SelectField = <Option extends string>({
     });
   };
 
+  const selectedLabel = foldMap(selectedOption, (option) => labels[option]) ?? placeholder;
+
   return (
-    <Box gap={1}>
-      <FieldTrigger
-        label={label}
-        required={required}
-        disabled={disabled}
-        capped={capped}
-        onPress={handleOpen}
-        icon={foldMap(selectedOption, (option) => icons?.[option])}
-        value={foldMap(selectedOption, (option) => labels[option]) ?? placeholder}
-        valueTone={selected === null || selected === emptyOption ? 'textSecondary' : 'textPrimary'}
-        error={error}
-        testID={testID}
-      />
+    <Box gap={1} style={appearance === 'pill' && styles.pillRoot}>
+      {appearance === 'pill' ? (
+        <FilterPill
+          label={label}
+          accessibilityLabel={label}
+          value={selectedLabel}
+          capped={capped}
+          onPress={handleOpen}
+          testID={testID}
+        />
+      ) : (
+        <FieldTrigger
+          label={label}
+          required={required}
+          disabled={disabled}
+          capped={capped}
+          onPress={handleOpen}
+          icon={foldMap(selectedOption, (option) => icons?.[option])}
+          value={selectedLabel}
+          valueTone={
+            selected === null || selected === emptyOption ? 'textSecondary' : 'textPrimary'
+          }
+          error={error}
+          testID={testID}
+        />
+      )}
 
       <BottomSheet
         visible={open}
