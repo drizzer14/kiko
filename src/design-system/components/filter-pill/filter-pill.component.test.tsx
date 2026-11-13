@@ -240,9 +240,14 @@ describe('FilterPill', () => {
         });
       });
 
-      it('reads the label and value from the Ukrainian catalog', async () => {
+      // The uk template reads the same as the en one, so the rendered text alone cannot tell a uk
+      // key from the en fallback: the uk catalog must own the key itself.
+      it('joins the label and value with the Ukrainian catalog template', async () => {
         const { getByText } = await renderPill({ label: 'Період', value: 'Цей рік' });
 
+        expect(i18n.getResource('uk', 'translation', 'components.filterPill.labelValue')).toBe(
+          '{{label}}: {{value}}',
+        );
         expect(getByText('Період: Цей рік')).toBeTruthy();
       });
     });

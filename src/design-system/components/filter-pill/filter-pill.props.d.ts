@@ -1,5 +1,6 @@
 export type FilterPillProps = {
-  // The text shown on the pill; a caller with a count or a value builds the whole string.
+  // The text shown on the pill; a caller with a count builds the whole string, a caller with a
+  // named choice passes it as `value` instead.
   label: string;
   // A value shown after the label as "<label>: <value>", for a filter that picks one of several
   // named choices. It is also the spoken value unless `accessibilityValue` says otherwise.
@@ -10,7 +11,8 @@ export type FilterPillProps = {
   // What a screen reader announces. It stays the same whatever `label` shows, so a count or a
   // value in the visible text never renames the control.
   accessibilityLabel: string;
-  // A spoken state that the visible text does not carry, such as how many options are selected.
+  // The spoken state; it defaults to `value` when there is one. Set it when the visible text does
+  // not carry the state, such as how many options are selected.
   accessibilityValue?: { text: string };
   // Whether a filter is applied: the fill takes the accent tint, the glyph and border the accent.
   active?: boolean;
