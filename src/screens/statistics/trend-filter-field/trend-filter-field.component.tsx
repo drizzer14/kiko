@@ -1,7 +1,6 @@
 import { match } from 'ts-pattern';
 import {
   DEFAULT_TREND_FILTER,
-  isTrendFilterActive,
   type TrendFilter,
   type TrendMeasure,
   type TrendMode,
@@ -239,7 +238,6 @@ const TrendFilterField: FC<TrendFilterFieldProps> = ({
         label={buttonLabel}
         icon={MODE_SYMBOL[filter.mode]}
         accessibilityLabel={t('statistics.trendFilter.title')}
-        active={isTrendFilterActive(filter)}
         onPress={openSheet}
         testID={testID}
       />

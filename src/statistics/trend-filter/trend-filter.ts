@@ -30,21 +30,6 @@ export const DEFAULT_TREND_FILTER: Extract<TrendFilter, { mode: 'top' }> = {
   by: 'contribution',
 };
 
-/**
- * Whether a resolved filter narrows the chart: a manual pick of at least one category, or a top
- * filter other than the default. An empty manual pick shows every category, so it reads inactive.
- */
-export const isTrendFilterActive = (filter: TrendFilter): boolean =>
-  match(filter)
-    .with({ mode: 'manual' }, (manualFilter) => manualFilter.keys.length > 0)
-    .with(
-      { mode: 'top' },
-      (topFilter) =>
-        topFilter.amount !== DEFAULT_TREND_FILTER.amount ||
-        topFilter.by !== DEFAULT_TREND_FILTER.by,
-    )
-    .exhaustive();
-
 // Clamp a "Top N" amount into the picker's 1..5 range, flooring a non-integer.
 const clampAmount = (amount: number): number =>
   Math.min(MAX_TOP_AMOUNT, Math.max(MIN_TOP_AMOUNT, Math.floor(amount)));
