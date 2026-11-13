@@ -9,8 +9,9 @@ import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import Box from '../box';
 import Button from '../button';
 import InfoHint from '../info-hint';
+import ErrorNotice from '../error-notice';
 import MonobankTokenInput from '../monobank-token-input';
-import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
+import SyncStatusLine, { type SyncStatus, syncErrorMessage } from '../sync-status-line';
 
 import { styles } from './monobank-connect-field.styles';
 
@@ -50,6 +51,7 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({
   const [showTokenRequiredError, setShowTokenRequiredError] = useState(false);
   const onDraftChange = reminder?.onDraftChange;
   const isMounted = useIsMounted();
+  const errorMessage = syncErrorMessage(status);
 
   // The typed token goes with the field, so a draft it reported must not outlive it.
   useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
@@ -146,6 +148,8 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({
 
             <SyncStatusLine status={status} />
           </Box>
+
+          {errorMessage !== undefined && <ErrorNotice message={errorMessage} />}
 
           {reminder?.message !== undefined && <InfoHint message={reminder.message} />}
         </Box>

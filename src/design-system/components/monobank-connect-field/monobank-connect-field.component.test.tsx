@@ -1,8 +1,9 @@
 import { createRef, type ComponentProps } from 'react';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import MonobankConnectField from './monobank-connect-field.component';
@@ -150,6 +151,48 @@ it('shows couldNotConnectMonobank when a valid token fails to store/sync, keepin
   await pressConnect(view);
   await waitFor(() => expect(onConnect).toHaveBeenCalledTimes(2));
   expect(onConnect).toHaveBeenLastCalledWith('tok');
+});
+
+// The Button's own Pressable is a row too, so the walk starts at the button's parent: the
+// nearest row from there is the Connect row, and the notice must sit outside it.
+const expectNoticeUnderConnectRow = async (view: View, message: string): Promise<void> => {
+  expect(await view.findByRole('alert', { name: message })).toBeTruthy();
+
+  const button = view.getByRole('button', { name: connectLabel });
+  const buttonParent = button.parent;
+
+  if (buttonParent === null) {
+    throw new Error('Connect button has no parent');
+  }
+
+  const row = ancestorWithStyle(buttonParent, 'flexDirection');
+
+  expect(row).not.toBe(button);
+  expect(within(row).getByRole('button', { name: connectLabel })).toBe(button);
+  expect(within(row).queryByRole('alert')).toBeNull();
+  expect(within(row).queryByText(message)).toBeNull();
+};
+
+it('shows a failed Connect as an alert notice under the Connect row, not beside it', async () => {
+  mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
+  const view = await render(
+    <MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn().mockResolvedValue(false)} />,
+  );
+
+  await type(view, 'tok');
+  await pressConnect(view);
+
+  await expectNoticeUnderConnectRow(view, i18n.t('accountDetail.couldNotConnectMonobank'));
+});
+
+it('shows an invalid token as an alert notice under the Connect row, not beside it', async () => {
+  mockFetchClientInfo.mockRejectedValue(new Error('401'));
+  const view = await render(<MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn()} />);
+
+  await type(view, 'bad');
+  await pressConnect(view);
+
+  await expectNoticeUnderConnectRow(view, i18n.t('accountDetail.invalidToken'));
 });
 
 it('disables Connect while validation is in flight, even with a filled token', async () => {

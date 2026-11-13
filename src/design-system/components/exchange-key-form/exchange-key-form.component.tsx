@@ -10,8 +10,9 @@ import Box from '../box';
 import Text from '../text';
 import Button from '../button';
 import InfoHint from '../info-hint';
+import ErrorNotice from '../error-notice';
 import ClipboardTextField from '../clipboard-text-field';
-import SyncStatusLine, { type SyncStatus } from '../sync-status-line';
+import SyncStatusLine, { type SyncStatus, syncErrorMessage } from '../sync-status-line';
 
 import { styles } from './exchange-key-form.styles';
 
@@ -131,6 +132,7 @@ const ExchangeKeyForm: FC<ExchangeKeyFormProps> = ({
     attemptedConnect && secret.trim() === '' ? t('accountDetail.secretRequiredError') : undefined;
   const onDraftChange = reminder?.onDraftChange;
   const isMounted = useIsMounted();
+  const errorMessage = syncErrorMessage(status);
 
   // The typed pair goes with the field, so a draft it reported must not outlive it.
   useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
@@ -280,6 +282,8 @@ const ExchangeKeyForm: FC<ExchangeKeyFormProps> = ({
 
             <SyncStatusLine status={status} />
           </Box>
+
+          {errorMessage !== undefined && <ErrorNotice message={errorMessage} />}
 
           {reminder?.message !== undefined && <InfoHint message={reminder.message} />}
         </Box>

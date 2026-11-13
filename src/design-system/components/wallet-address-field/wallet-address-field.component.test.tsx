@@ -1,8 +1,9 @@
 import { createRef } from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import WalletAddressField from '.';
@@ -23,6 +24,31 @@ const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } =>
   });
 
   return { promise, resolve };
+};
+
+const connectLabel = i18n.t('accountDetail.connectWallet');
+
+// The Button's own Pressable is a row too, so the walk starts at the button's parent: the
+// nearest row from there is the Connect row, and the notice must sit outside it.
+const expectNoticeUnderConnectRow = async (
+  view: Awaited<ReturnType<typeof render>>,
+  message: string,
+): Promise<void> => {
+  expect(await view.findByRole('alert', { name: message })).toBeTruthy();
+
+  const button = view.getByRole('button', { name: connectLabel });
+  const buttonParent = button.parent;
+
+  if (buttonParent === null) {
+    throw new Error('Connect button has no parent');
+  }
+
+  const row = ancestorWithStyle(buttonParent, 'flexDirection');
+
+  expect(row).not.toBe(button);
+  expect(within(row).getByRole('button', { name: connectLabel })).toBe(button);
+  expect(within(row).queryByRole('alert')).toBeNull();
+  expect(within(row).queryByText(message)).toBeNull();
 };
 
 describe('WalletAddressField', () => {
@@ -109,6 +135,29 @@ describe('WalletAddressField', () => {
     expect(await findByText('Could not connect wallet')).toBeTruthy();
     expect(queryByText('Invalid BTC address')).toBeNull();
     expect(queryByText('Wallet connected')).toBeNull();
+  });
+
+  it('shows a malformed address as an alert notice under the Connect row, not beside it', async () => {
+    const view = await render(<WalletAddressField onConnect={onConnect} />);
+
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), 'not an address');
+    await act(async () => {
+      await fireEvent.press(view.getByText(connectLabel));
+    });
+
+    await expectNoticeUnderConnectRow(view, i18n.t('accountDetail.invalidBTCAddress'));
+  });
+
+  it('shows a failed Connect as an alert notice under the Connect row, not beside it', async () => {
+    onConnect.mockResolvedValue(false);
+    const view = await render(<WalletAddressField onConnect={onConnect} />);
+
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), ADDRESS);
+    await act(async () => {
+      await fireEvent.press(view.getByText(connectLabel));
+    });
+
+    await expectNoticeUnderConnectRow(view, i18n.t('accountDetail.couldNotConnectWallet'));
   });
 
   it('shows the wallet-address-required error and calls no network when Connect is pressed blank', async () => {
