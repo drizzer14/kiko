@@ -1,9 +1,10 @@
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
+import { emitRowLayout, emitSheetContentSize } from '@kiko/test-support/sheet-scroll';
 import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
 import SelectField from '.';
@@ -531,5 +532,70 @@ describe('SelectField', () => {
 
     expect(onSelect).toHaveBeenCalledWith('b');
     expect(queryByTestId(/undefined-option-/)).toBeNull();
+  });
+
+  // LAST in the file: a mocked `scrollTo` leaves React 19's act environment dirty for the next
+  // test that opens a sheet. An awaited press can flush a prior scroll into the shared spy, so
+  // each test clears it after its presses and counts only the synchronous signals below.
+  describe('opens scrolled to the selected option', () => {
+    let scrollToSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      scrollToSpy = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('scrolls once to the selected row, however often the content size settles', async () => {
+      const utils = await setup({ selected: 'c' });
+
+      await fireEvent.press(utils.getByTestId('kind-field'));
+      scrollToSpy.mockClear();
+      emitRowLayout(utils.getByTestId('kind-field-option-c'), 96);
+      emitSheetContentSize(utils, 'kind-field');
+      emitSheetContentSize(utils, 'kind-field');
+      emitSheetContentSize(utils, 'kind-field');
+
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
+      expect(scrollToSpy).toHaveBeenCalledWith({ y: 96, animated: false });
+    });
+
+    it('stays at the top when the selected option is the first row', async () => {
+      const utils = await setup({ selected: 'a' });
+
+      await fireEvent.press(utils.getByTestId('kind-field'));
+      scrollToSpy.mockClear();
+      emitRowLayout(utils.getByTestId('kind-field-option-a'), 0);
+      emitSheetContentSize(utils, 'kind-field');
+
+      expect(scrollToSpy).not.toHaveBeenCalled();
+    });
+
+    it('scrolls again on reopen, from the content size alone', async () => {
+      const utils = await setup({ selected: 'c' });
+
+      await fireEvent.press(utils.getByTestId('kind-field'));
+      emitRowLayout(utils.getByTestId('kind-field-option-c'), 96);
+      await fireEvent.press(utils.getByTestId('kind-field-option-c'));
+      await fireEvent.press(utils.getByTestId('kind-field'));
+      scrollToSpy.mockClear();
+      emitSheetContentSize(utils, 'kind-field');
+
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
+      expect(scrollToSpy).toHaveBeenCalledWith({ y: 96, animated: false });
+    });
+
+    it('stays at the top while nothing is selected', async () => {
+      const utils = await setup({ selected: null });
+
+      await fireEvent.press(utils.getByTestId('kind-field'));
+      scrollToSpy.mockClear();
+      emitRowLayout(utils.getByTestId('kind-field-option-c'), 96);
+      emitSheetContentSize(utils, 'kind-field');
+
+      expect(scrollToSpy).not.toHaveBeenCalled();
+    });
   });
 });

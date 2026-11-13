@@ -110,6 +110,10 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   a gesture root.
 - `modal-render-spy.ts`, `modal-dismiss-spy.ts`: read the props of a Modal's latest render per
   `testID`, and call its latest `onDismiss` as native does when a close has finished.
+- `sheet-scroll.ts`: `emitRowLayout` (a row's `onLayout` with a synthetic offset) and
+  `emitSheetContentSize` (the sheet's `${testID}-sheet-scroll` content-size signal), for a
+  scroll-to-selection pin; both are no-ops on a missing handler, so a pin fails on its `scrollTo`
+  assertion. Spy on `ScrollView.prototype.scrollTo` and put that describe LAST in the file.
 - `tables-period-selection.ts`: `pickTablesPeriod` starts a test from a kept Tables period;
   `resetTablesPeriodSelection` goes in `afterEach`.
 - `lift-grid-card.ts`, `hold-card.ts`: a drag lifecycle and a touch-and-hold driven through props,

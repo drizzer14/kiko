@@ -1,6 +1,13 @@
-import type { ReactElement } from 'react';
+import {
+  Dimensions,
+  Keyboard,
+  ScrollView,
+  type ScrollViewInstance,
+  StyleSheet,
+  Text,
+} from 'react-native';
 import { State } from 'react-native-gesture-handler';
-import { Dimensions, Keyboard, StyleSheet, Text } from 'react-native';
+import { createRef, type ReactElement } from 'react';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
@@ -445,13 +452,33 @@ describe('BottomSheet', () => {
       // theme.spacing(5) === 5 * 4.
       expect(contentFlat.gap).toBe(20);
     });
+
+    it('hands its ScrollView to scrollRef and forwards the content size to the caller', async () => {
+      const scrollRef = createRef<ScrollViewInstance>();
+      const onContentSizeChange = jest.fn();
+      const { getByTestId } = await render(
+        <BottomSheet
+          visible
+          onDismiss={jest.fn()}
+          testID={SHEET_TEST_ID}
+          scrollRef={scrollRef}
+          onContentSizeChange={onContentSizeChange}
+        >
+          <Text>sheet body</Text>
+        </BottomSheet>,
+      );
+
+      getByTestId(`${SHEET_TEST_ID}-scroll`).props.onContentSizeChange?.(320, 640);
+
+      expect(scrollRef.current).toBeInstanceOf(ScrollView);
+      expect(onContentSizeChange).toHaveBeenCalledWith(320, 640);
+    });
   });
 
-  // The `scrollable={false}` opt-out: a sheet with a pinned header/footer/
-  // ref-controlled scroll region (date-range-field's Apply/Clear row,
-  // category-field's scroll-to-selected ref, icon-picker-modal's
-  // Remove/Cancel header) owns its OWN inner ScrollView around just the part
-  // that should scroll, so the primitive must render no ScrollView of its
+  // The `scrollable={false}` opt-out: a sheet with a pinned header/footer or its own row
+  // layout (date-range-field's Apply/Clear row, category-field's flush row list,
+  // icon-picker-modal's Remove/Cancel header) owns its OWN inner ScrollView around just the
+  // part that should scroll, so the primitive must render no ScrollView of its
   // own here — otherwise the two would nest on the same axis.
   describe('scrollable={false}', () => {
     it('renders no ScrollView of its own, so a call site can own one without nesting', async () => {

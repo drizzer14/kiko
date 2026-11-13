@@ -43,8 +43,9 @@ file before you edit the component it describes.
   `DayOfMonthGrid`,
   `SegmentedControl` with the tabs-vs-chips rule, the chart components (`BarChart`, `PieChart`,
   `NetWorthLine`), `ColorPicker`, `TransactionCard`, and the form header) and the rules
-  "No imports across screen folders", "Scroll to the first invalid field" and
-  "Empty holding picker". Read it before you build or change any of them.
+  "No imports across screen folders", "Scroll to the first invalid field",
+  "Scroll a picker sheet to its selection" and "Empty holding picker". Read it before you build or
+  change any of them.
 
 ## iOS Human Interface Guidelines (standing reference)
 

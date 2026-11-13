@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { Ref, ReactNode } from 'react';
+import type { ScrollViewInstance } from 'react-native';
 
 /** The Modal transition that presents the sheet. */
 type BottomSheetAnimation = 'fade' | 'slide' | 'none';
@@ -67,15 +68,27 @@ export type BottomSheetProps = {
    * scroll container of its own and would otherwise be clipped at the cap.
    *
    * Set to `false` only when the sheet needs a pinned header/footer/actions
-   * row that must stay OUTSIDE the scrollable region, or needs direct control
-   * of its own `ScrollView` (a scroll-to-selection ref): date-range-field
-   * (its Apply/Clear row), category-field (its scroll-to-selected-row ref
-   * and heading), and icon-picker-modal (its Remove/Cancel header) each pass
+   * row that must stay OUTSIDE the scrollable region, or lays its rows out in
+   * a `ScrollView` of its own (no row gap, the bottom padding under its
+   * frame): date-range-field (its Apply/Clear row), category-field (its flush
+   * row list) and icon-picker-modal (its Remove/Cancel header) each pass
    * `false` and render their own inner `ScrollView` around just the region
    * that should scroll — never BOTH the shared one and their own, which would
-   * nest two same-axis `ScrollView`s.
+   * nest two same-axis `ScrollView`s. A scroll-to-selection ref alone needs no
+   * opt-out: see `scrollRef`.
    */
   scrollable?: boolean;
+  /**
+   * The ref of the sheet's own `ScrollView`, so a caller can scroll it (to a
+   * selected row). Read only on the default `scrollable` path; a
+   * `scrollable={false}` sheet owns its `ScrollView` and its ref.
+   */
+  scrollRef?: Ref<ScrollViewInstance>;
+  /**
+   * Called with the sheet's `ScrollView` content size once it is measured.
+   * Read only on the default `scrollable` path, like `scrollRef`.
+   */
+  onContentSizeChange?: (contentWidth: number, contentHeight: number) => void;
   /** A `testID` for the sheet card itself (its content container). */
   testID?: string;
   /** A `testID` for the dismiss scrim (e.g. a filter menu's `${id}-backdrop`). */

@@ -319,6 +319,11 @@
   onContentSizeChange, scrollTo(fieldRef, onSettled?) }`), so no screen
   re-derives the header inset or the content height: two copies of that
   geometry drift apart.
+- **Scroll a picker sheet to its selection.** `useScrollToSelected(open, selectedKey)` from
+  `@kiko/design-system/use-scroll-to-selected` (`{ scrollRef, onContentSizeChange,
+  onRowLayout(key, event) }`) scrolls once per open to the selected row's measured offset and
+  re-arms on close. `SelectField` passes `scrollRef` and `onContentSizeChange` to `BottomSheet`;
+  `CategoryField` puts them on its own `ScrollView`. A new picker sheet reuses it.
 - **`useIsMounted()`** (`src/design-system/use-is-mounted/`) returns a stable
   function that answers whether the component is still mounted. An async
   handler asks it after an await and drops its result when it is unmounted

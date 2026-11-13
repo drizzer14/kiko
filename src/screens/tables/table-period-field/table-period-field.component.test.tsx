@@ -1,5 +1,5 @@
 import { i18n } from '@kiko/i18n/init';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -8,6 +8,7 @@ import {
   tablePeriodKey,
   tablePeriodOptions,
 } from '@kiko/statistics/table-period';
+import { emitRowLayout, emitSheetContentSize } from '@kiko/test-support/sheet-scroll';
 
 import TablePeriodField from '.';
 
@@ -175,6 +176,27 @@ describe('TablePeriodField', () => {
       await fireEvent.press(getByTestId('period'));
 
       expect(getByTestId(`period-option-${key}`)).toHaveTextContent(label, { exact: false });
+    });
+  });
+
+  // LAST in the file: a mocked `scrollTo` leaves React 19's act environment dirty for the next
+  // test that opens a sheet.
+  describe('opens scrolled to the picked period', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('scrolls once to this year, a row below the first, when the sheet opens on the default', async () => {
+      const scrollToSpy = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+      const utils = await setup();
+
+      await fireEvent.press(utils.getByTestId('period'));
+      scrollToSpy.mockClear();
+      emitRowLayout(utils.getByTestId('period-option-year-2026'), 336);
+      emitSheetContentSize(utils, 'period');
+
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
+      expect(scrollToSpy).toHaveBeenCalledWith({ y: 336, animated: false });
     });
   });
 });

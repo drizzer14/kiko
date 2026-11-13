@@ -511,8 +511,10 @@ new component can land between reviews of this skill:
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
-  `ScrollView` so overflow scrolls instead of clipping — a sheet that
-  needs its own pinned header/footer or a scroll-to-selection ref
+  `ScrollView` so overflow scrolls instead of clipping. That default path takes an optional
+  `scrollRef` and `onContentSizeChange` (a scroll-to-selection needs no opt-out; `SelectField` and
+  `useScrollToSelected` use them). A sheet that
+  needs its own pinned header/footer or its own row layout
   (date-range-field, category-field, icon-picker-modal) passes
   `scrollable={false}` and renders its own inner `ScrollView`, or a `FlatList` when the rows
   are unbounded (`currency-field`, `src/screens/tables/cell-rows-sheet/`; the total stays
@@ -667,7 +669,10 @@ new component can land between reviews of this skill:
   design-system component), the action runs after the sheet has closed with no animation, and it
   is never reported to `onSelect` or `onSelectClosed`. `SelectField`'s optional `emptyOption`
   (an `Option`) makes the trigger's value `textSecondary` while it is selected, as for a `null`
-  selection (`RecurringMarkField` passes `'none'`). `TemplateSelect`'s "Add template" row
+  selection (`RecurringMarkField` passes `'none'`). Every `SelectField` sheet opens scrolled to its
+  selected row through `useScrollToSelected` (`@kiko/design-system/use-scroll-to-selected`, shared
+  with `CategoryField`): one scroll per open, none for the first row or a `null` selection.
+  `TemplateSelect`'s "Add template" row
   (`forms.transaction.addTemplate`, en and uk) uses it; `HoldingSelectField` and
   `PaymentHoldingField` build their own sheet and keep their own create row. The
   `closesWithoutAnimation` flag is opt-in per call site; every other pick and

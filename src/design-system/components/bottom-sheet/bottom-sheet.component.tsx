@@ -140,6 +140,8 @@ const BottomSheet: FC<BottomSheetProps> = ({
   animationType = 'fade',
   maxHeight,
   scrollable = true,
+  scrollRef,
+  onContentSizeChange,
   testID,
   backdropTestID,
   backdropAccessibilityLabel,
@@ -312,10 +314,12 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // taller than the cap was simply CLIPPED rather than scrollable. The
   // default path wraps `children` in a `ScrollView` so every sheet scrolls
   // its overflow; `scrollable={false}` opts a sheet that needs its own
-  // pinned header/footer/ref-controlled scroll region out of this (see the
+  // pinned header/footer or its own row layout out of this (see the
   // prop's own docs).
   const body = scrollable ? (
     <ScrollView
+      ref={scrollRef}
+      onContentSizeChange={onContentSizeChange}
       style={styles.scrollBody}
       contentContainerStyle={styles.scrollContent(theme.spacing(gap))}
       showsVerticalScrollIndicator={false}
