@@ -2,6 +2,7 @@ import { type CalendarMonth, calendarMonthOf } from '@kiko/dates';
 
 import {
   averageOverComplete,
+  defaultTablePeriod,
   firstCompleteMonthIndex,
   monthsOfPeriod,
   relativeTablePeriodsOf,
@@ -261,6 +262,13 @@ describe('monthsOfPeriod', () => {
     months.slice(1).forEach((month, index) => {
       expect(month.start).toBe(months[index].end + 1);
     });
+  });
+});
+
+describe('defaultTablePeriod', () => {
+  it('is the year `now` is in', () => {
+    expect(defaultTablePeriod(at(2026, 10, 15))).toEqual(yearOf(2026));
+    expect(defaultTablePeriod(at(2027, 0, 1, 0))).toEqual(yearOf(2027));
   });
 });
 

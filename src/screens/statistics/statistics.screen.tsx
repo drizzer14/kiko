@@ -171,7 +171,8 @@ const StatisticsScreen: FC = () => {
   // memoization — only a return to visible advances it.
   const now = useVisibleRefreshedNow(isVisible);
 
-  const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
+  const { dateFrom, dateTo, hasCustomRange, applyDateRange, clearDateRange } =
+    useDateRangeSelection(now);
 
   // The full transaction and lot span (`spanStart`) drives the date field's default display, the
   // line's default window, and the backfill's earliest day. `isReady` gates every chart below:
@@ -738,6 +739,7 @@ const StatisticsScreen: FC = () => {
               key={`date-range-${sheetGeneration}`}
               dateFrom={dateFrom}
               dateTo={dateTo}
+              active={hasCustomRange}
               minDate={new Date(spanStart)}
               maxDate={new Date(now)}
               onApply={applyDateRange}

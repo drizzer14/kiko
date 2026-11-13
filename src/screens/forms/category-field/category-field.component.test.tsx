@@ -2,6 +2,7 @@ import { ScrollView } from 'react-native';
 import { act, fireEvent, type RenderResult, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import { emitRowLayout } from '@kiko/test-support/sheet-scroll';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 
 import CategoryField from './category-field.component';
@@ -14,26 +15,10 @@ jest.mock('@kiko/design-system/components/field-label', () =>
   ),
 );
 
-// The element type RNTL's own queries return (its bundled test-renderer
-// TestInstance), derived from the query signature so no react-test-renderer
-// dependency is imported just for the annotation.
-type QueryNode = ReturnType<RenderResult['getByRole']>;
-
 const OPTIONS = [
   { key: 'groceries', title: 'Groceries', icon: 'cart', color: '#112233' },
   { key: 'dining', title: 'Dining', icon: 'fork.knife', color: '#445566' },
 ];
-
-// Feeds a row's onLayout a synthetic vertical offset, exactly as the native
-// layout pass would once the sheet mounts (react-test-renderer never dispatches
-// a real layout event, so a test must seed the offset map itself). The handler
-// only writes to a ref (no React state), so it is invoked directly rather than
-// through fireEvent — two synthetic `fireEvent(node, 'layout')` calls in one
-// test leave React 19's concurrent act environment dirty and break the next
-// render.
-const emitRowLayout = (row: QueryNode, y: number): void => {
-  row.props.onLayout({ nativeEvent: { layout: { x: 0, y, width: 320, height: 48 } } });
-};
 
 // The mocked SFSymbolView (jest/setup.js maps react-native-nitro-sfsymbols to a
 // plain View) forwards `name` + `tintColor` as host props, so a glyph's native

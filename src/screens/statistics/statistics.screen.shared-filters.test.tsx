@@ -1,14 +1,15 @@
 import '@kiko/i18n/init';
-import { View } from 'react-native';
 import '@kiko/design-system/unistyles';
+import { StyleSheet, View } from 'react-native';
 import {
   ACCOUNT_FILTER,
   answerFilterData,
   CATEGORY_FILTER,
   pressFilterOption,
 } from '@kiko/test-support/statistics-filter-data';
-import { render, within } from '@testing-library/react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { mockUseLiveQuery } from '@kiko/test-support/mock-statistics-data-layer';
 import { resetStatisticsFilterSelection } from '@kiko/test-support/reset-statistics-filter-selection';
 
@@ -125,6 +126,59 @@ describe('shared Statistics filters across two Statistics screens', () => {
       const second = await renderBoth();
 
       expectBothShow(second, 'Categories · 1');
+    });
+  });
+
+  describe('the pills at their defaults', () => {
+    it('keeps the date range pill inactive on a fresh mount, since nothing was picked', async () => {
+      const rendered = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
+      const style = StyleSheet.flatten(rendered.getByLabelText('Date range').props.style);
+
+      expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(style.borderColor).toBe(darkTheme.colors.border);
+    });
+
+    it.each([
+      ['keeps the date range pill inactive when Apply is pressed on the unchanged default', false],
+      ['tints the date range pill once Apply is pressed on a changed range', true],
+    ] as const)('%s', async (_title, picks) => {
+      const rendered = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
+
+      await act(async () => {
+        await fireEvent.press(rendered.getByLabelText('Date range'));
+      });
+
+      if (picks) {
+        const today = new Date();
+        const calendar = rendered.getByTestId('date-range-calendar').props as {
+          onDayPress: (day: unknown) => void;
+        };
+
+        await act(async () => {
+          calendar.onDayPress({
+            year: today.getFullYear(),
+            month: today.getMonth() + 1,
+            day: today.getDate(),
+          });
+        });
+      }
+
+      await act(async () => {
+        await fireEvent.press(rendered.getByText('Apply'));
+      });
+
+      const style = StyleSheet.flatten(rendered.getByLabelText('Date range').props.style);
+      const tint = picks ? 'accentSubtle' : 'surface';
+
+      expect(style.backgroundColor).toBe(darkTheme.colors[tint]);
+    });
+
+    it('keeps the trend pill inactive while no trend filter is saved', async () => {
+      const rendered = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
+      const style = StyleSheet.flatten(rendered.getByTestId('statistics-trend-filter').props.style);
+
+      expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+      expect(style.borderColor).toBe(darkTheme.colors.border);
     });
   });
 

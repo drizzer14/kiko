@@ -223,8 +223,8 @@ export const styles = StyleSheet.create((theme) => ({
   // The default `scrollable` path in `BottomSheet` wraps `children` in a
   // `ScrollView` styled with this; the `scrollable={false}` opt-out (a sheet
   // that needs a pinned header/footer/actions row around its OWN inner
-  // ScrollView — date-range-field's Apply/Clear row, category-field's
-  // scroll-to-selected ref, icon-picker-modal's Remove/Cancel header) skips
+  // ScrollView — date-range-field's Apply/Clear row, category-field's flush
+  // (gap-less) row list, icon-picker-modal's Remove/Cancel header) skips
   // this entirely and owns its own scroll region instead.
   scrollBody: {
     flexShrink: 1,

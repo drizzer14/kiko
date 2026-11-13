@@ -3,12 +3,12 @@ import { i18n } from '@kiko/i18n/init';
 import { StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { SETTLE_DELAY_MS } from '@kiko/navigation/pane-stack';
-import { relativeTablePeriodsOf } from '@kiko/statistics/table-period';
 import { act, fireEvent, within } from '@testing-library/react-native';
 import { reportWindow, resizeWindow } from '@kiko/test-support/window-size';
 import { FILTER_DATA_CLOCK } from '@kiko/test-support/statistics-filter-data';
 import { pickTablesPeriod } from '@kiko/test-support/tables-period-selection';
 import type { HorizontalSizeClass, VerticalBarEdge } from '@kiko/display-regions';
+import { relativeTablePeriodsOf, tablePeriodKey } from '@kiko/statistics/table-period';
 
 import { renderTables, setUpTablesWorld } from './__fixtures__/tables-screen-world';
 
@@ -151,6 +151,32 @@ describe('the period field on the Tables screen', () => {
         exact: false,
       });
       expect(idsInFilterBar(rendered)).toEqual(['tables-account-filter', 'tables-category-filter']);
+    });
+  });
+
+  describe('the tint of the period pill', () => {
+    const fillOf = (rendered: Rendered) =>
+      StyleSheet.flatten(rendered.getByTestId('tables-period').props.style).backgroundColor;
+
+    it('is inactive at this year, the default', async () => {
+      const rendered = await renderTables();
+
+      expect(fillOf(rendered)).toBe(darkTheme.colors.surface);
+    });
+
+    it('turns active once This quarter is picked', async () => {
+      const rendered = await renderTables();
+
+      await act(async () => {
+        await fireEvent.press(rendered.getByTestId('tables-period'));
+      });
+      await act(async () => {
+        await fireEvent.press(
+          rendered.getByTestId(`tables-period-option-${tablePeriodKey(THIS_QUARTER)}`),
+        );
+      });
+
+      expect(fillOf(rendered)).toBe(darkTheme.colors.accentSubtle);
     });
   });
 

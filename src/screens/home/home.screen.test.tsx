@@ -1602,6 +1602,52 @@ describe('HomeScreen', () => {
     expect(mockListBetween).toHaveBeenLastCalledWith(dayStart(threeDaysAgo), dayEnd(threeDaysAgo));
   });
 
+  it('keeps the date-range field inactive on the default range until the user picks', async () => {
+    seed();
+
+    const { getByLabelText } = await renderHome();
+    const style = StyleSheet.flatten(getByLabelText('Date range').props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+    expect(style.borderColor).toBe(darkTheme.colors.border);
+  });
+
+  it.each([
+    ['keeps the field inactive when Apply is pressed on the unchanged default', false, 'surface'],
+    ['tints the field once Apply is pressed on a changed range', true, 'accentSubtle'],
+  ] as const)('%s (date range)', async (_title, picks, background) => {
+    seed();
+
+    const { getByLabelText, getByTestId, getByText } = await renderHome();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText('Date range'));
+    });
+
+    if (picks) {
+      const today = new Date();
+      const calendar = getByTestId('date-range-calendar').props as {
+        onDayPress: (day: unknown) => void;
+      };
+
+      await act(async () => {
+        calendar.onDayPress({
+          year: today.getFullYear(),
+          month: today.getMonth() + 1,
+          day: today.getDate(),
+        });
+      });
+    }
+
+    await act(async () => {
+      await fireEvent.press(getByText('Apply'));
+    });
+
+    const style = StyleSheet.flatten(getByLabelText('Date range').props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors[background]);
+  });
+
   it('keeps the date-range field’s selectable floor at the oldest transaction, though the window holds only recent rows', async () => {
     const oldest = localDaysFrom(Date.now(), -300);
     const recent = transaction({ id: 't1', time: localDaysFrom(Date.now(), -2) });

@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import {
+  defaultTablePeriod,
   relativeTablePeriodsOf,
   type TablePeriod,
   tablePeriodKey,
@@ -62,6 +63,7 @@ const TablePeriodField: FC<TablePeriodFieldProps> = ({
       labels={labels}
       placeholder={t('tables.period.label')}
       appearance="pill"
+      active={tablePeriodKey(period) !== tablePeriodKey(defaultTablePeriod(now))}
       capped
       testID={testID}
     />

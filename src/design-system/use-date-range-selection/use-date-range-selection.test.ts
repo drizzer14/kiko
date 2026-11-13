@@ -64,6 +64,49 @@ describe('useDateRangeSelection', () => {
     expect(result.current.dateTo).toEqual(range.to);
   });
 
+  describe('hasCustomRange', () => {
+    it('is false on mount, while the default range shows', async () => {
+      const { result } = await renderHook(() => useDateRangeSelection(NOW));
+
+      expect(result.current.hasCustomRange).toBe(false);
+    });
+
+    it('is true once a range is picked', async () => {
+      const { result } = await renderHook(() => useDateRangeSelection(NOW));
+
+      await act(async () => {
+        result.current.applyDateRange(new Date(2026, 0, 2), new Date(2026, 0, 9));
+      });
+
+      expect(result.current.hasCustomRange).toBe(true);
+    });
+
+    it('is true for a pick equal to the default range, since the user made it', async () => {
+      const { result } = await renderHook(() => useDateRangeSelection(NOW));
+      const range = defaultDateRange(NOW);
+
+      await act(async () => {
+        result.current.applyDateRange(range.from, range.to);
+      });
+
+      expect(result.current.dateFrom).toBe(range.from);
+      expect(result.current.hasCustomRange).toBe(true);
+    });
+
+    it('is false again after Clear', async () => {
+      const { result } = await renderHook(() => useDateRangeSelection(NOW));
+
+      await act(async () => {
+        result.current.applyDateRange(new Date(2026, 0, 2), new Date(2026, 0, 9));
+      });
+      await act(async () => {
+        result.current.clearDateRange();
+      });
+
+      expect(result.current.hasCustomRange).toBe(false);
+    });
+  });
+
   it('derives the default range fresh from a later now, but keeps a pick as given', async () => {
     const later = new Date(2026, 5, 20, 12, 0, 0).getTime();
     const { result, rerender } = await renderHook(
@@ -179,6 +222,15 @@ describe('useDateRangeSelection', () => {
       expectPick(second);
     });
 
+    it('reports a pick made in one reader as a custom range in every mounted reader', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await pickIn(first);
+
+      expect(first.result.current.hasCustomRange).toBe(true);
+      expect(second.result.current.hasCustomRange).toBe(true);
+    });
+
     it('clears the pick for every mounted reader', async () => {
       const [first, second] = await renderTwoReaders();
 
@@ -261,7 +313,10 @@ describe('useDateRangeSelection', () => {
       await first.unmount();
       await second.unmount();
 
-      expectDefault(await renderOneReader());
+      const next = await renderOneReader();
+
+      expectDefault(next);
+      expect(next.result.current.hasCustomRange).toBe(false);
     });
 
     it('forgets the clock after every reader unmounts', async () => {

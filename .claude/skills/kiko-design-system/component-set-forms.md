@@ -334,6 +334,11 @@
   onContentSizeChange, scrollTo(fieldRef, onSettled?) }`), so no screen
   re-derives the header inset or the content height: two copies of that
   geometry drift apart.
+- **Scroll a picker sheet to its selection.** `useScrollToSelected(open, selectedKey)` from
+  `@kiko/design-system/use-scroll-to-selected` (`{ scrollRef, onContentSizeChange,
+  onRowLayout(key, event) }`) scrolls once per open to the selected row's measured offset and
+  re-arms on close. `SelectField` passes `scrollRef` and `onContentSizeChange` to `BottomSheet`;
+  `CategoryField` puts them on its own `ScrollView`. A new picker sheet reuses it.
 - **`useIsMounted()`** (`src/design-system/use-is-mounted/`) returns a stable
   function that answers whether the component is still mounted. An async
   handler asks it after an await and drops its result when it is unmounted
@@ -493,7 +498,11 @@
   the date-range picker trigger + sheet. The range behind a DateRangeField
   is shared by Home and Statistics (kiko-domain 'The "no custom range = derive the default from now"
   pattern');
-  never give a screen its own range state.
+  never give a screen its own range state. The required `active` prop is
+  decided by the caller and fed by the hook's `hasCustomRange`, never by the
+  bounds (`src/design-system/components/date-range-field/date-range-field.props.d.ts`).
+  Apply with a draft equal to the opening bounds (by local day) closes
+  without calling `onApply`; the opening bounds are kept from open time.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
   shared wrap-flow chips component: a compact wrap-flow row for a short
   code/label chip, never an equal-width column grid (that is

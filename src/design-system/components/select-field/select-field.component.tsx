@@ -1,5 +1,6 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
+import { useScrollToSelected } from '@kiko/design-system/use-scroll-to-selected';
 
 import Box from '../box';
 import Text from '../text';
@@ -31,6 +32,7 @@ const SelectField = <Option extends string>({
   icons,
   placeholder,
   appearance = 'field',
+  active,
   required,
   disabled,
   capped,
@@ -40,6 +42,7 @@ const SelectField = <Option extends string>({
   testID,
 }: SelectFieldProps<Option>): ReactElement => {
   const [open, setOpen] = useState(false);
+  const { scrollRef, onContentSizeChange, onRowLayout } = useScrollToSelected(open, selected);
   const selectedOption = maybe(selected);
   // What the sheet is closing for (a pick or the empty action), held until the
   // close has finished: a sheet closed by a scrim tap leaves it empty, so
@@ -100,6 +103,7 @@ const SelectField = <Option extends string>({
           label={label}
           accessibilityLabel={label}
           value={selectedLabel}
+          active={active}
           capped={capped}
           onPress={handleOpen}
           testID={testID}
@@ -128,6 +132,8 @@ const SelectField = <Option extends string>({
         animationType={closingWithoutAnimation ? 'none' : undefined}
         testID={testID && `${testID}-sheet`}
         gap={2}
+        scrollRef={scrollRef}
+        onContentSizeChange={onContentSizeChange}
         header={<Text variant="heading">{sheetTitle}</Text>}
       >
         {options.map((option) => {
@@ -139,6 +145,7 @@ const SelectField = <Option extends string>({
               key={option}
               selected={isSelected}
               onPress={() => handleSelect(option)}
+              onLayout={(event) => onRowLayout(option, event)}
               label={labels[option]}
               icon={icons?.[option]}
               accessibilityLabel={

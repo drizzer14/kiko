@@ -1,5 +1,5 @@
 import { i18n } from '@kiko/i18n/init';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -8,6 +8,7 @@ import {
   tablePeriodKey,
   tablePeriodOptions,
 } from '@kiko/statistics/table-period';
+import { emitRowLayout, emitSheetContentSize } from '@kiko/test-support/sheet-scroll';
 
 import TablePeriodField from '.';
 
@@ -25,13 +26,13 @@ const optionOf = (key: string): TablePeriod => {
   return found;
 };
 
-const setup = async (period: TablePeriod = THIS_YEAR) => {
+const setup = async (period: TablePeriod = THIS_YEAR, now = NOW) => {
   const onSelect = jest.fn();
   const utils = await render(
     <TablePeriodField
       period={period}
       options={OPTIONS}
-      now={NOW}
+      now={now}
       onSelect={onSelect}
       testID="period"
     />,
@@ -86,6 +87,24 @@ describe('TablePeriodField', () => {
     expect(style.minHeight).toBe(darkTheme.layout.filterPillHeight);
     expect(getByTestId('period')).toHaveTextContent('Period: This year');
     expect(getByLabelText('Period').props.accessibilityValue).toEqual({ text: 'This year' });
+  });
+
+  it.each([
+    ['this year', THIS_YEAR, NOW, 'surface'],
+    ['last year', { kind: 'year', year: 2025 }, NOW, 'accentSubtle'],
+    ['a quarter', optionOf('quarter-2026-3'), NOW, 'accentSubtle'],
+    ['a half', optionOf('half-2026-1'), NOW, 'accentSubtle'],
+    [
+      'a held year that is no longer this year',
+      THIS_YEAR,
+      new Date(2027, 0, 10).getTime(),
+      'accentSubtle',
+    ],
+  ] as const)('tints the pill by whether %s is the default', async (_title, period, now, fill) => {
+    const { getByTestId } = await setup(period, now);
+    const style = StyleSheet.flatten(getByTestId('period').props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors[fill]);
   });
 
   it('shows a picked quarter by its place in time', async () => {
@@ -157,6 +176,27 @@ describe('TablePeriodField', () => {
       await fireEvent.press(getByTestId('period'));
 
       expect(getByTestId(`period-option-${key}`)).toHaveTextContent(label, { exact: false });
+    });
+  });
+
+  // LAST in the file: a mocked `scrollTo` leaves React 19's act environment dirty for the next
+  // test that opens a sheet.
+  describe('opens scrolled to the picked period', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('scrolls once to this year, a row below the first, when the sheet opens on the default', async () => {
+      const scrollToSpy = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+      const utils = await setup();
+
+      await fireEvent.press(utils.getByTestId('period'));
+      scrollToSpy.mockClear();
+      emitRowLayout(utils.getByTestId('period-option-year-2026'), 336);
+      emitSheetContentSize(utils, 'period');
+
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
+      expect(scrollToSpy).toHaveBeenCalledWith({ y: 336, animated: false });
     });
   });
 });

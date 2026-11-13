@@ -30,6 +30,8 @@ import type { DateRangeFieldProps } from './date-range-field.props';
 // color instead, matching KikoCalendar's `selectedDayTextColor` theme token.
 type PeriodMark = { color: string; startingDay?: boolean; endingDay?: boolean; selected: true };
 
+type Bounds = { from: Date | null; to: Date | null };
+
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
 // The 'YYYY-MM-DD' key react-native-calendars uses for a marked/pressed day,
@@ -40,6 +42,15 @@ const toCalendarKey = (date: Date): string =>
 // Midnight (local) of a Date, dropping any time component so day math is exact.
 const atLocalMidnight = (date: Date): Date =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+// Whether two bounds fall on the same local day, or are both open.
+const sameLocalDay = (first: Date | null, second: Date | null): boolean => {
+  if (first === null || second === null) {
+    return first === second;
+  }
+
+  return toCalendarKey(first) === toCalendarKey(second);
+};
 
 // Pull a Date back into the inclusive [floor, ceiling] selectable range, so a
 // preselected bound that would land outside the range (e.g. a future-dated
@@ -93,9 +104,9 @@ const buildPeriodMarks = (
   return marks;
 };
 
-// The field's summary text for an active range: both bounds, or one open-ended
-// bound. Every date is DD.MM.YYYY (see formatDate); an en dash joins two bounds.
-const activeRangeLabel = (from: Date | null, to: Date | null, t: TFunction): string => {
+// The field's summary text for set bounds: both, or one open-ended bound.
+// Every date is DD.MM.YYYY (see formatDate); an en dash joins two bounds.
+const boundsLabel = (from: Date | null, to: Date | null, t: TFunction): string => {
   if (from !== null && to !== null) {
     return `${formatDate(from)} – ${formatDate(to)}`;
   }
@@ -115,6 +126,7 @@ const activeRangeLabel = (from: Date | null, to: Date | null, t: TFunction): str
 const DateRangeField: FC<DateRangeFieldProps> = ({
   dateFrom,
   dateTo,
+  active,
   minDate,
   maxDate,
   onApply,
@@ -125,13 +137,14 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState<Date | null>(dateFrom);
   const [draftTo, setDraftTo] = useState<Date | null>(dateTo);
+  const [opening, setOpening] = useState<Bounds>({ from: dateFrom, to: dateTo });
 
-  const hasActiveRange = dateFrom !== null || dateTo !== null;
+  const hasBounds = dateFrom !== null || dateTo !== null;
 
-  // With no active range the field displays the full transaction span but does
-  // not filter; an active range shows its own bounds.
-  const fieldLabel = hasActiveRange
-    ? activeRangeLabel(dateFrom, dateTo, t)
+  // With no bounds the field displays the full transaction span but does not
+  // filter; bounds show themselves. The tint follows `active`, never the bounds.
+  const fieldLabel = hasBounds
+    ? boundsLabel(dateFrom, dateTo, t)
     : `${formatDate(minDate)} – ${formatDate(maxDate)}`;
 
   // The inclusive *selectable* range, distinct from the display span above: the
@@ -144,18 +157,25 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   const selectableFloor = atLocalMidnight(minDate);
   const selectableCeiling = atLocalMidnight(new Date());
 
-  // Seed the draft each time the sheet opens: from the active range if one is
-  // set, otherwise from the displayed full span so the shown selection is
-  // immediately appliable without a fresh tap.
-  const openModal = (): void => {
-    if (hasActiveRange) {
-      setDraftFrom(dateFrom);
-      setDraftTo(dateTo);
-    } else {
-      setDraftFrom(clampToRange(minDate, selectableFloor, selectableCeiling));
-      setDraftTo(clampToRange(maxDate, selectableFloor, selectableCeiling));
-    }
+  // The sheet opens on what the pill shows, and Apply compares against these opening
+  // bounds, so an unchanged Apply applies nothing: the field's own bounds if any is
+  // set, otherwise the displayed full span.
+  const openingBounds = (): Bounds =>
+    hasBounds
+      ? { from: dateFrom, to: dateTo }
+      : {
+          from: clampToRange(minDate, selectableFloor, selectableCeiling),
+          to: clampToRange(maxDate, selectableFloor, selectableCeiling),
+        };
 
+  // Seed the draft each time the sheet opens, and keep what it opened with: a day that
+  // rolls over while the sheet is open moves the displayed span, which Apply must not see.
+  const openModal = (): void => {
+    const bounds = openingBounds();
+
+    setOpening(bounds);
+    setDraftFrom(bounds.from);
+    setDraftTo(bounds.to);
     setOpen(true);
   };
 
@@ -183,10 +203,15 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
     setDraftTo(pickedIsEarlier ? draftFrom : picked);
   };
 
-  // Commit the currently-shown selection directly — a lone start becomes a
-  // same-day range so a preselected day applies without needing a second tap.
+  // Commit the edited selection — a lone start becomes a same-day range, so a day
+  // picked without a second tap applies. An Apply without an edit is not a pick: the
+  // range stays as it was, so a default that reads inactive is not turned active by
+  // opening and closing.
   const handleApply = (): void => {
-    onApply(draftFrom, draftTo ?? draftFrom);
+    if (!sameLocalDay(draftFrom, opening.from) || !sameLocalDay(draftTo, opening.to)) {
+      onApply(draftFrom, draftTo ?? draftFrom);
+    }
+
     setOpen(false);
   };
 
@@ -205,7 +230,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         label={fieldLabel}
         icon="calendar"
         accessibilityLabel={t('home.dateRangeField.label')}
-        active={hasActiveRange}
+        active={active}
         onPress={openModal}
       />
 

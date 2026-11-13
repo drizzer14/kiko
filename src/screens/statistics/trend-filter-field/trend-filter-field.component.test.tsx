@@ -73,18 +73,14 @@ describe('TrendFilterField filter pill', () => {
     expect(glyph.props.size).toBe(darkTheme.iconSizes.body);
   });
 
-  it('tints the button active on a non-default filter', async () => {
-    const { getByTestId } = await renderField({
-      filter: { mode: 'top', amount: 5, by: 'contribution' },
-    });
-    const style = StyleSheet.flatten(getByTestId(TEST_ID).props.style);
-
-    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
-    expect(style.borderColor).toBe(darkTheme.colors.accent);
-  });
-
-  it('keeps the button inactive on the default filter', async () => {
-    const { getByTestId } = await renderField();
+  it.each<[string, React.ComponentProps<typeof TrendFilterField>['filter']]>([
+    ['the top 3 by contribution', { mode: 'top', amount: 3, by: 'contribution' }],
+    ['a saved top 3 by frequency', { mode: 'top', amount: 3, by: 'frequency' }],
+    ['a saved top 5 by contribution', { mode: 'top', amount: 5, by: 'contribution' }],
+    ['a manual pick of one category', { mode: 'manual', keys: ['groceries'] }],
+    ['a manual pick of no category', { mode: 'manual', keys: [] }],
+  ])('never tints the button, on %s', async (_name, filter) => {
+    const { getByTestId } = await renderField({ filter });
     const style = StyleSheet.flatten(getByTestId(TEST_ID).props.style);
 
     expect(style.backgroundColor).toBe(darkTheme.colors.surface);
