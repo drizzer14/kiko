@@ -483,7 +483,11 @@
   the date-range picker trigger + sheet. The range behind a DateRangeField
   is shared by Home and Statistics (kiko-domain 'The "no custom range = derive the default from now"
   pattern');
-  never give a screen its own range state.
+  never give a screen its own range state. The required `active` prop is
+  decided by the caller and fed by the hook's `hasCustomRange`, never by the
+  bounds (`src/design-system/components/date-range-field/date-range-field.props.d.ts`).
+  Apply with a draft equal to the opening bounds (by local day) closes
+  without calling `onApply`; the opening bounds are kept from open time.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
   shared wrap-flow chips component: a compact wrap-flow row for a short
   code/label chip, never an equal-width column grid (that is

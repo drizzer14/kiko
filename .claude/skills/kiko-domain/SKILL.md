@@ -1863,7 +1863,11 @@ production function — and never `performance.now()`/`Date.now()` deltas.
 The hook `useDateRangeSelection(now)`
 (`src/design-system/use-date-range-selection/use-date-range-selection.ts`)
 owns the ONE date range shared by Home and Statistics and returns
-`{ dateFrom, dateTo, applyDateRange, clearDateRange }`. The pick
+`{ dateFrom, dateTo, hasCustomRange, applyDateRange, clearDateRange }`.
+A field's active tint is decided by `hasCustomRange` (true once the user
+picked, even a range equal to the default; false while the default shows),
+never by the bounds, which the default always sets (the hook's doc comment
+says why). The pick
 (`customRange`, `{ from: Date | null; to: Date | null } | null` — `null`
 means "show the default range") and the default live in ONE module store
 read with `useSyncExternalStore`, never per-screen `useState`, so a pick

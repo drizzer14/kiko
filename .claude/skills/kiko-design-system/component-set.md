@@ -119,7 +119,8 @@ new component can land between reviews of this skill:
   (`tables-filter-bar-spacer`, `filterBarSpacer` in `src/screens/tables/tables.styles.ts`), then
   the account and category filters at the trailing end. The spacer's `marginStart` is minus the
   bar gap, so the least Period-to-first-filter distance stays one gap. Period is a FilterPill
-  (`SelectField appearance="pill"`, user ruling Q1 2026-11-12) on the same centred row: beside
+  (`SelectField appearance="pill"`, user ruling Q1 2026-11-12; it tints when not this year)
+  on the same centred row: beside
   the filters Period leads and the spacer stays; on a narrow screen Period sits below the
   filters; the old with-period bar style is gone. At large type the row can wrap (known limit: the
   category filter can wrap to the start of line 2).
@@ -144,7 +145,10 @@ new component can land between reviews of this skill:
 - **FilterPill** (`src/design-system/components/filter-pill/`) — a bordered `surface` chip that
   shows a label and its value (one string, key `components.filterPill.labelValue`) and opens a
   filter sheet. Height is `theme.layout.filterPillHeight` (a minimum, so Dynamic Type grows it)
-  and `theme.layout.filterPillHitSlop` adds the rest of the 44 pt target. Active fill is
+  and `theme.layout.filterPillHitSlop` adds the rest of the 44 pt target. A pill is active only
+  off the filter's own default, and the caller decides (the `active` prop of `DateRangeField`
+  and `SelectField`): the date range once picked, Period when it is not this year
+  (`defaultTablePeriod(now)`), the trend pill never. Active fill is
   `accentSubtle`: the label stays `textPrimary` and the accent goes on the glyph and the
   border, because accent text failed AA. It has no `alignSelf`: the row aligns it. The value
   is capped at 240 pt (`selectTriggerMaxWidth`) only with `capped`. `FilterMenu`, `DateRangeField`,
@@ -512,9 +516,9 @@ new component can land between reviews of this skill:
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
   `ScrollView` so overflow scrolls instead of clipping. That default path takes an optional
-  `scrollRef` and `onContentSizeChange` (a scroll-to-selection needs no opt-out; `SelectField` and
-  `useScrollToSelected` use them). A sheet that
-  needs its own pinned header/footer or its own row layout
+  `scrollRef` and `onContentSizeChange` (a scroll-to-selection needs no opt-out;
+  `useScrollToSelected` supplies them and `SelectField` passes them on). A sheet that needs
+  its own pinned header/footer or its own row layout
   (date-range-field, category-field, icon-picker-modal) passes
   `scrollable={false}` and renders its own inner `ScrollView`, or a `FlatList` when the rows
   are unbounded (`currency-field`, `src/screens/tables/cell-rows-sheet/`; the total stays
@@ -631,13 +635,12 @@ new component can land between reviews of this skill:
   is the shared "select field" family replacing the older inline
   `ChipRow` for a picker with more than a couple of options.
   **SelectField** (`src/design-system/components/select-field/`) is the
-  GENERIC version of this shape — `label`/`sheetTitle`/`options`/
-  `selected` (nullable — see below)/`onSelect`/`labels`/optional
-  `subtitles`/optional `icons`/`placeholder`/`required`/`disabled`/
-  `error`/`testID`/optional `appearance?: 'field' | 'pill'`/optional `capped` (caps the trigger at
+  GENERIC version of this shape; read its props in
+  `src/design-system/components/select-field/select-field.props.d.ts`, not here.
+  `capped` caps the trigger at
   `theme.layout.selectTriggerMaxWidth` in `src/design-system/theme/theme.ts`:
   trigger = min(column, cap); for a short one-phrase value such as the Tables
-  period; a larger Dynamic Type size wraps inside the cap) — and is now the ONE shared
+  period; a larger Dynamic Type size wraps inside the cap. It is the ONE shared
   implementation: a
   `property` account's Type-as-category field (`PropertyTypeField`,
   replacing the generic holding-type picker for that one account
