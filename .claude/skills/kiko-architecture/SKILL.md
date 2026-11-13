@@ -1874,7 +1874,8 @@ are built with `createPaneStackNavigator`.
 - **Tables code.** `src/screens/tables/` (the screen, `category-table/`, `cash-flow-table/`,
   `net-worth-table/` under `src/screens/tables/`, `table-cells/` shared cell formatters with
   `monthColumnsOf`, `cell-rows-sheet/` the tap-a-cell sheet: `use-cell-rows-sheet` holds the
-  cell and computes the rows in render); the data in
+  cell and computes the rows in render; rows render as TransactionCard with no context menu, and
+  the amount and `amountCaption` are signed by flow); the data in
   `src/statistics/{table-period,category-by-month,cash-flow,tables-view,cell-rows}/`; the kept
   period is `src/statistics/use-tables-period-selection/` (see reminders.md "Shared UI state
   across screens"). The CSV export is `src/data-transfer/csv-export/` with its screen in
@@ -1882,8 +1883,10 @@ are built with `createPaneStackNavigator`.
   `expenseRowsOf` and `incomeRowsOf` (`src/statistics/cell-rows/`, range type `CellRange`) list
   the rows behind a month or Total cell; expense rows come from `spendingContributionsOf`
   (`category-breakdown`, the donut's per-row calculation), income rows from `incomeAmountOf`
-  (`cash-flow`, the one per-row income helper), and `rowDescriberOf` (same folder) is Home's
-  description resolver. Also
+  (`cash-flow`, the one per-row income helper), and `rowContextOf` (same folder) resolves each
+  row's account name and holding type from the holdings and accounts. `CellRow` carries the source
+  row's context (`src/statistics/cell-rows/cell-rows.ts`). The sheet builds its TransactionCard
+  props through `transactionCardPropsOf` (`src/transactions/card-props/`). Also
   `src/statistics/net-worth-by-account/` (`buildNetWorthByAccount`, `monthEndInstants`) and
   `src/statistics/net-worth-series/` (`transactionsByHolding`, shared with the Statistics
   screen). C3 reads the line's `buildHoldingValues`; its All is the line's value. A view is added by

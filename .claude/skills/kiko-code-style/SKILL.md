@@ -302,6 +302,8 @@ dependency array — not narrowing the dependency array on the merged
 effect. Split BEFORE it ships, not after a review catches the
 cross-talk.
 
+TransactionCard props come only from `transactionCardPropsOf`; never hand-build a second list.
+
 ## Style choice: functional-first, OOP for data models
 
 Default to functional or procedural code. Reach for OOP only when
