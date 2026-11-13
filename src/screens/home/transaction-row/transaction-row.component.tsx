@@ -1,14 +1,11 @@
 import { type FC, memo } from 'react';
 import { Pressable } from 'react-native';
-import { formatTime } from '@kiko/dates';
 import { Money } from '@kiko/currency/money';
 import { useTranslation } from 'react-i18next';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { removeNotice } from '@kiko/transactions/remove-notice';
-import { resolveCategoryDisplay } from '@kiko/categories/category-display';
-import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
-import { isTimeExemptHoldingType } from '@kiko/holdings/holding-descriptor';
+import { transactionCardPropsOf } from '@kiko/transactions/card-props';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
@@ -24,7 +21,6 @@ const TransactionRow: FC<TransactionRowProps> = ({
   defaultCategoryKey,
   holdingNameById,
   holdingCurrencyById,
-  categoryKeyForRow,
   onPress,
   onDuplicate,
   isOnSyncedHolding,
@@ -41,7 +37,6 @@ const TransactionRow: FC<TransactionRowProps> = ({
   const deleteMessage = async (): Promise<string | undefined> =>
     removeNotice(await transactionsRepo.removePlan(item.id), t);
 
-  const category = resolveCategoryDisplay(item.category, categoryByKey, defaultCategoryKey);
   const description = transactionRowDescription({
     transaction: item,
     holdingName: item.holdingName,
@@ -97,24 +92,14 @@ const TransactionRow: FC<TransactionRowProps> = ({
       >
         <TransactionCard
           title={description}
-          categoryIcon={category.icon}
-          // The row icon and this category's filter chip must hash on the
-          // SAME resolved key (`categoryKeyForRow`, below): hashing here on
-          // the raw lowercased slug renders one category in two hues
-          // whenever that slug is absent from the categories table, since
-          // the chip has already folded it onto the default key.
-          categoryIconColor={resolveCategoryColor(
-            category.color,
-            categoryKeyForRow(item.category),
+          {...transactionCardPropsOf(item, {
+            categoryByKey,
+            defaultCategoryKey,
             scheme,
-          )}
-          categoryAccessibilityLabel={category.title}
+            clock,
+            trailing: 'time',
+          })}
           money={Money.of(item.currency, item.amountMinorUnits)}
-          footerMeta={`${item.accountName} · ${category.title}`}
-          footerTrailing={
-            isTimeExemptHoldingType(item.holdingType) ? undefined : formatTime(item.time, clock)
-          }
-          loanLinked={item.loanHoldingId !== null}
           selected={selected}
           style={styles.rowCard}
           testID="transaction-row"

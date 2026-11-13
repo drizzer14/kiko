@@ -565,7 +565,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           defaultCategoryKey={defaultCategoryKey}
           holdingNameById={holdingNameById}
           holdingCurrencyById={holdingCurrencyById}
-          categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
           isOnSyncedHolding={syncedIds.has(item.holdingId)}
@@ -581,7 +580,6 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       holdingNameById,
       holdingCurrencyById,
       syncedIds,
-      categoryKeyForRow,
       handleRowPress,
       handleRowDuplicate,
       handleViewAccount,
