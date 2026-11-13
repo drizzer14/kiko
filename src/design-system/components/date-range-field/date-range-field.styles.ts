@@ -1,19 +1,10 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
-  // The tappable range field: a bordered, filled chip matching the Accounts /
-  // Categories dropdowns' chrome (same border, fill, radius, padding) so the
-  // three filter controls read as one consistent row. A leading calendar icon
-  // sits before the range label.
-  field: {
-    alignSelf: 'flex-start',
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.sm,
-    backgroundColor: theme.colors.surface,
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
+  // The field sits in a column (Home's filter area), where a child stretches to the column's
+  // width by default; this lets the pill hug its content like its siblings in a row do.
+  root: {
+    alignItems: 'flex-start',
   },
   // The heading + calendar's own scrollable region: `BottomSheet` renders NO
   // ScrollView of its own here (`scrollable={false}`, since the Clear/Apply

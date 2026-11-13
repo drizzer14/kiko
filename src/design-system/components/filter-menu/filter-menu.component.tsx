@@ -1,15 +1,11 @@
-import { Pressable } from 'react-native';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUnistyles } from 'react-native-unistyles';
 
-import Box from '../box';
 import Text from '../text';
-import SymbolIcon from '../symbol';
+import FilterPill from '../filter-pill';
 import BottomSheet from '../bottom-sheet';
 import SelectableRow from '../selectable-row';
 
-import { styles } from './filter-menu.styles';
 import type { FilterMenuProps, FilterOption } from './filter-menu.props';
 
 /** The default option in every filter menu — selecting it clears that dimension. */
@@ -37,7 +33,6 @@ const FilterMenu: FC<FilterMenuProps> = ({
   triggerIcon = 'line.3.horizontal.decrease.circle',
   testID,
 }) => {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
@@ -60,18 +55,13 @@ const FilterMenu: FC<FilterMenuProps> = ({
 
   return (
     <>
-      <Pressable
-        accessibilityRole="button"
+      <FilterPill
+        label={buttonLabel}
+        icon={triggerIcon}
         accessibilityLabel={label}
         onPress={() => setOpen(true)}
         testID={testID}
-      >
-        <Box direction="row" gap={2} style={styles.button}>
-          <SymbolIcon name={triggerIcon} size={theme.iconSizes.body} tone="textPrimary" />
-
-          <Text variant="body">{buttonLabel}</Text>
-        </Box>
-      </Pressable>
+      />
 
       <BottomSheet
         visible={open}

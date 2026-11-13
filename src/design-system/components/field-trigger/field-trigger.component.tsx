@@ -19,9 +19,9 @@ import type { FieldTriggerProps } from './field-trigger.props';
 // the caller's own sheet. CategoryField and HoldingSelectField rendered this
 // exact JSX (down to an identical `field` style block) independently before
 // being unified onto this one component — see each caller's own doc comment
-// for why they are meant to read as one family. A future field-plus-sheet
-// picker (DateField already has its own near-identical shape) should reach
-// for this too rather than re-copying it a third time.
+// for why they are meant to read as one family. DateField and TimeField render
+// it too, so a new field-plus-sheet picker should reach for it rather than
+// re-copying the box.
 const FieldTrigger: FC<FieldTriggerProps> = ({
   label,
   onPress,
