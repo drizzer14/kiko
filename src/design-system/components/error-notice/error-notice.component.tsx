@@ -21,7 +21,8 @@ const ErrorNotice: FC<ErrorNoticeProps> = (props) => {
   const { announce = true, testID } = props;
   const { label, content } = match(props)
     .with({ lines: P.nonNullable }, ({ lines }) => ({
-      label: lines.map((line) => line.text).join(' '),
+      // A line carries no final period, so VoiceOver would run the rows into one sentence.
+      label: lines.map((line) => line.text).join('. '),
       content: (
         <Box gap={1}>
           {lines.map((line) => (

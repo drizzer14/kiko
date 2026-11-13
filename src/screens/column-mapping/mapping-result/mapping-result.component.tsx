@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import FieldError from '@kiko/design-system/components/field-error';
+import ErrorNotice from '@kiko/design-system/components/error-notice';
 import SummaryTable from '@kiko/design-system/components/summary-table';
 import ImportBalanceLine from '@kiko/design-system/components/import-balance-line';
 import ExampleTransaction from '@kiko/design-system/components/example-transaction';
@@ -98,20 +99,21 @@ const MappingResult: FC<MappingResultProps> = ({
           )}
 
           {visibleRowErrors.length > 0 && (
-            <Box gap={1} testID="column-mapping-row-errors">
-              {visibleRowErrors.map((rowError) => (
-                <Box
-                  key={`${rowError.rowNumber}-${rowError.reason}`}
-                  testID={`column-mapping-row-error-${rowError.rowNumber}-${rowError.reason}`}
-                >
-                  <Text variant="body" tone="negative">
-                    {t(`columnMapping.rowError.${rowError.reason}`, {
-                      row: rowError.rowNumber,
-                      value: rowError.value,
-                    })}
-                  </Text>
-                </Box>
-              ))}
+            <Box gap={1}>
+              {/* Silent: the live preview recomputes these rows on every column pick, and a
+                  spoken interruption per pick is worse than reading the list. */}
+              <ErrorNotice
+                announce={false}
+                testID="column-mapping-row-errors"
+                lines={visibleRowErrors.map((rowError) => ({
+                  key: `${rowError.rowNumber}-${rowError.reason}`,
+                  testID: `column-mapping-row-error-${rowError.rowNumber}-${rowError.reason}`,
+                  text: t(`columnMapping.rowError.${rowError.reason}`, {
+                    row: rowError.rowNumber,
+                    value: rowError.value,
+                  }),
+                }))}
+              />
 
               {overflowCount > 0 && (
                 <Text variant="body" tone="textSecondary">

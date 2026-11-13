@@ -114,7 +114,7 @@ describe('ErrorNotice', () => {
     expect(AccessibilityInfo.announceForAccessibility).not.toHaveBeenCalled();
   });
 
-  it('renders every line in one block, each line carrying its own testID, labelled by the lines joined with a space', async () => {
+  it('renders every line in one block, each line carrying its own testID, labelled by the lines joined with a period and a space', async () => {
     const view = await render(
       <ErrorNotice
         lines={[
@@ -127,7 +127,7 @@ describe('ErrorNotice', () => {
     expect(view.getAllByRole('alert')).toHaveLength(1);
     expect(view.getByTestId('a')).toHaveTextContent('line 1');
     expect(view.getByTestId('b')).toHaveTextContent('line 2');
-    expect(view.getByRole('alert').props.accessibilityLabel).toBe('line 1 line 2');
+    expect(view.getByRole('alert').props.accessibilityLabel).toBe('line 1. line 2');
     expect(glyphNamesWithin(view.getByRole('alert'))).toEqual(['exclamationmark.triangle.fill']);
   });
 

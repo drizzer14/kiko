@@ -46,6 +46,7 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
 import type { CompositeScreenProps } from '@react-navigation/native';
+import ErrorNotice from '@kiko/design-system/components/error-notice';
 import { RefreshControl, ScrollView, SectionList } from 'react-native';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { openAccountsPages } from '@kiko/navigation/open-accounts-pages';
@@ -710,9 +711,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           </Card>
 
           {failures.length > 0 && (
-            <Text variant="body" tone="negative">
-              {t('home.syncFailedMessage', { accounts: failures.join(', ') })}
-            </Text>
+            <ErrorNotice message={t('home.syncFailedMessage', { accounts: failures.join(', ') })} />
           )}
 
           {/* The divider and the filter row are grouped so the header's
