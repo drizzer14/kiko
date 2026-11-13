@@ -30,6 +30,8 @@ import type { DateRangeFieldProps } from './date-range-field.props';
 // color instead, matching KikoCalendar's `selectedDayTextColor` theme token.
 type PeriodMark = { color: string; startingDay?: boolean; endingDay?: boolean; selected: true };
 
+type Bounds = { from: Date | null; to: Date | null };
+
 const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
 // The 'YYYY-MM-DD' key react-native-calendars uses for a marked/pressed day,
@@ -135,6 +137,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState<Date | null>(dateFrom);
   const [draftTo, setDraftTo] = useState<Date | null>(dateTo);
+  const [opening, setOpening] = useState<Bounds>({ from: dateFrom, to: dateTo });
 
   const hasBounds = dateFrom !== null || dateTo !== null;
 
@@ -156,8 +159,8 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
 
   // The bounds the sheet opens with: the field's own bounds if any is set,
   // otherwise the displayed full span so the shown selection is immediately
-  // shown without a fresh tap. Apply compares the draft against these.
-  const openingBounds = (): { from: Date | null; to: Date | null } =>
+  // shown without a fresh tap.
+  const openingBounds = (): Bounds =>
     hasBounds
       ? { from: dateFrom, to: dateTo }
       : {
@@ -165,12 +168,14 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
           to: clampToRange(maxDate, selectableFloor, selectableCeiling),
         };
 
-  // Seed the draft each time the sheet opens.
+  // Seed the draft each time the sheet opens, and keep what it opened with: a day that
+  // rolls over while the sheet is open moves the displayed span, which Apply must not see.
   const openModal = (): void => {
-    const { from, to } = openingBounds();
+    const bounds = openingBounds();
 
-    setDraftFrom(from);
-    setDraftTo(to);
+    setOpening(bounds);
+    setDraftFrom(bounds.from);
+    setDraftTo(bounds.to);
     setOpen(true);
   };
 
@@ -198,13 +203,11 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
     setDraftTo(pickedIsEarlier ? draftFrom : picked);
   };
 
-  // Commit the currently-shown selection directly — a lone start becomes a
-  // same-day range so a preselected day applies without needing a second tap.
-  // An Apply without an edit is not a pick: the range stays as it was, so a
-  // default that reads inactive is not turned active by opening and closing.
+  // Commit the edited selection — a lone start becomes a same-day range, so a day
+  // picked without a second tap applies. An Apply without an edit is not a pick: the
+  // range stays as it was, so a default that reads inactive is not turned active by
+  // opening and closing.
   const handleApply = (): void => {
-    const opening = openingBounds();
-
     if (!sameLocalDay(draftFrom, opening.from) || !sameLocalDay(draftTo, opening.to)) {
       onApply(draftFrom, draftTo ?? draftFrom);
     }

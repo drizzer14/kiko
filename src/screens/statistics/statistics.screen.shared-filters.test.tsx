@@ -130,14 +130,9 @@ describe('shared Statistics filters across two Statistics screens', () => {
   });
 
   describe('the pills at their defaults', () => {
-    const pillStyle = (rendered: Rendered, find: 'label' | 'id', key: string) =>
-      StyleSheet.flatten(
-        (find === 'label' ? rendered.getByLabelText(key) : rendered.getByTestId(key)).props.style,
-      );
-
     it('keeps the date range pill inactive on a fresh mount, since nothing was picked', async () => {
       const rendered = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
-      const style = pillStyle(rendered, 'label', 'Date range');
+      const style = StyleSheet.flatten(rendered.getByLabelText('Date range').props.style);
 
       expect(style.backgroundColor).toBe(darkTheme.colors.surface);
       expect(style.borderColor).toBe(darkTheme.colors.border);
@@ -172,7 +167,7 @@ describe('shared Statistics filters across two Statistics screens', () => {
         await fireEvent.press(rendered.getByText('Apply'));
       });
 
-      const style = pillStyle(rendered, 'label', 'Date range');
+      const style = StyleSheet.flatten(rendered.getByLabelText('Date range').props.style);
       const tint = picks ? 'accentSubtle' : 'surface';
 
       expect(style.backgroundColor).toBe(darkTheme.colors[tint]);
@@ -180,7 +175,7 @@ describe('shared Statistics filters across two Statistics screens', () => {
 
     it('keeps the trend pill inactive while no trend filter is saved', async () => {
       const rendered = await render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
-      const style = pillStyle(rendered, 'id', 'statistics-trend-filter');
+      const style = StyleSheet.flatten(rendered.getByTestId('statistics-trend-filter').props.style);
 
       expect(style.backgroundColor).toBe(darkTheme.colors.surface);
       expect(style.borderColor).toBe(darkTheme.colors.border);

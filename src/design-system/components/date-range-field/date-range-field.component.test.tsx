@@ -67,13 +67,7 @@ const pickRangeAndApply = async (
   maxDate: Date,
   taps: Date[],
 ): Promise<[Date, Date]> => {
-  const field = await renderField({
-    dateFrom,
-    dateTo,
-    active: dateFrom !== null,
-    minDate,
-    maxDate,
-  });
+  const field = await renderField({ dateFrom, dateTo, minDate, maxDate });
 
   await openSheet(field);
   await tapDays(field, taps);
@@ -99,22 +93,24 @@ const CUSTOM_RANGE = { dateFrom: new Date(2000, 1, 1), dateTo: new Date(2000, 3,
 type Rendered = Awaited<ReturnType<typeof render>>;
 
 // A field with no range, no pick and the 2000 span unless a test overrides it.
+const fieldElement = (props: Partial<DateRangeFieldProps>, onApply: jest.Mock) => (
+  <DateRangeField
+    dateFrom={null}
+    dateTo={null}
+    active={false}
+    minDate={SPAN_START}
+    maxDate={SPAN_END}
+    onApply={onApply}
+    onClear={jest.fn()}
+    {...props}
+  />
+);
+
 const renderField = async (
   props: Partial<DateRangeFieldProps> = {},
 ): Promise<Rendered & { onApply: jest.Mock }> => {
   const onApply = jest.fn();
-  const utils = await render(
-    <DateRangeField
-      dateFrom={null}
-      dateTo={null}
-      active={false}
-      minDate={SPAN_START}
-      maxDate={SPAN_END}
-      onApply={onApply}
-      onClear={jest.fn()}
-      {...props}
-    />,
-  );
+  const utils = await render(fieldElement(props, onApply));
 
   return { ...utils, onApply };
 };
@@ -168,7 +164,7 @@ describe('DateRangeField selectable bounds', () => {
     expect(ymd(to)).toEqual(ymd(today));
   });
 
-  it('rejects a future day, keeping the seeded range unchanged', async () => {
+  it('rejects a future day, so the applied range ends on the first tap', async () => {
     const earliest = new Date(2000, 0, 1);
     const latest = new Date(2000, 5, 15);
     const future = dayOffset(today, 30);
@@ -327,6 +323,33 @@ describe('DateRangeField Apply without an edit', () => {
     await pressApply(field);
 
     expect(field.onApply).not.toHaveBeenCalled();
+  });
+
+  describe('across midnight', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('compares against the bounds the sheet opened with, not the day it is applied on', async () => {
+      jest.useFakeTimers({ now: new Date(2026, 5, 15, 23, 59, 0) });
+      const onApply = jest.fn();
+      const field = await render(
+        fieldElement({ minDate: new Date(2026, 4, 16), maxDate: new Date(2026, 5, 15) }, onApply),
+      );
+
+      await openSheet(field);
+
+      jest.setSystemTime(new Date(2026, 5, 16, 0, 1, 0));
+      await field.rerender(
+        fieldElement({ minDate: new Date(2026, 4, 17), maxDate: new Date(2026, 5, 16) }, onApply),
+      );
+      await pressApply(field);
+
+      const style = StyleSheet.flatten(field.getByLabelText('Date range').props.style);
+
+      expect(onApply).not.toHaveBeenCalled();
+      expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+    });
   });
 });
 
