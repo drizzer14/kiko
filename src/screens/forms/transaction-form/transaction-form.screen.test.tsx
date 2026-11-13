@@ -650,8 +650,9 @@ describe('TransactionFormScreen — add mode', () => {
     await pressSave(navigation.setOptions);
 
     // A select field's error needs the same gap TextField's own `Box gap={1}`
-    // already gives its error line.
-    const errorGroup = utils.getByText('Select a category.').parent?.parent;
+    // already gives its error line. The group sits above FieldError's icon row (text box, row,
+    // animated root).
+    const errorGroup = utils.getByText('Select a category.').parent?.parent?.parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
 

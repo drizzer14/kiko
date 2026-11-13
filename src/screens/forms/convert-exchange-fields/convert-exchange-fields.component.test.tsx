@@ -135,8 +135,9 @@ describe('ConvertExchangeFields', () => {
     );
 
     // A select field's error lacked the same
-    // gap TextField's own `Box gap={1}` already gives its error line.
-    const errorGroup = getByText('Select a counterpart account.').parent?.parent;
+    // gap TextField's own `Box gap={1}` already gives its error line. The group sits above
+    // FieldError's icon row (text box, row, animated root).
+    const errorGroup = getByText('Select a counterpart account.').parent?.parent?.parent?.parent;
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
 
