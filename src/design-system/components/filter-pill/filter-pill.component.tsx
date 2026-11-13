@@ -9,27 +9,48 @@ import SymbolIcon from '../symbol';
 import { styles } from './filter-pill.styles';
 import type { FilterPillProps } from './filter-pill.props';
 
-// The trigger of a screen filter: a glyph and a label in one bordered chip. FilterMenu and
-// DateRangeField render it, so the filters of a screen read as one row.
-const FilterPill: FC<FilterPillProps> = ({ label, icon, onPress, accessibilityLabel, testID }) => {
+// The trigger of a screen filter: a glyph, a label and a trailing chevron in one bordered chip.
+// FilterMenu, DateRangeField and TrendFilterField render it, so the filters of a screen read as
+// one row.
+const FilterPill: FC<FilterPillProps> = ({
+  label,
+  icon,
+  onPress,
+  accessibilityLabel,
+  accessibilityValue,
+  active = false,
+  testID,
+}) => {
   const { theme } = useUnistyles();
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityValue={accessibilityValue}
+      hitSlop={{ top: theme.layout.filterPillHitSlop, bottom: theme.layout.filterPillHitSlop }}
       onPress={onPress}
-      style={styles.pill}
+      style={[styles.pill, active && styles.pillActive]}
       testID={testID}
     >
       <Box direction="row" gap={2} style={styles.row}>
         {icon !== undefined && (
-          <SymbolIcon name={icon} size={theme.iconSizes.body} tone="textPrimary" />
+          <SymbolIcon
+            name={icon}
+            size={theme.iconSizes.body}
+            tone={active ? 'accent' : 'textPrimary'}
+          />
         )}
 
-        <Text variant="body" tone="textPrimary">
-          {label}
-        </Text>
+        <Box style={styles.label}>
+          <Text variant="body" tone="textPrimary">
+            {label}
+          </Text>
+        </Box>
+
+        <Box accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <SymbolIcon name="chevron.down" size={theme.iconSizes.caption} tone="textSecondary" />
+        </Box>
       </Box>
     </Pressable>
   );
