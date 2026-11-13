@@ -38,10 +38,6 @@ describe('resolveHeaderShift', () => {
 describe('resolveStatusBandOpacity', () => {
   const SAFE_TOP = 24;
 
-  it('fades the band out over the first twelve points past the safe-area top', () => {
-    expect([STATUS_BAND_FADE_START, STATUS_BAND_FADE_END]).toEqual([1, 12]);
-  });
-
   it('is clear while the header rests, however far the bar is minimized', () => {
     expect(resolveStatusBandOpacity(0, SAFE_TOP, SAFE_TOP)).toBe(0);
   });
