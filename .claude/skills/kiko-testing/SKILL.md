@@ -91,6 +91,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   `expectNavBarSaveOnly`).
 - `expect-notice-under-connect-row.ts`: `expectNoticeUnderConnectRow`, a Connect field's alert
   notice sits under the Connect row, not in it.
+- `sync-section-test-support.ts`: the live-query and sync-reminders module doubles and their spies
+  (`mockUseLiveQuery`, `mockSyncReminders`), and `expectRemindersReplannedAfter`, for the bank and
+  crypto sync-section suites.
 - `account-form-test-support.ts`: `selectKind`, `selectExchange` and sync-module doubles for an
   account form test; `pick-category.ts`: picks a category from the field's bottom sheet.
 - `mockKeyPairField` (`src/screens/forms/account-form/account-form.screen.test.tsx`): mocks the
