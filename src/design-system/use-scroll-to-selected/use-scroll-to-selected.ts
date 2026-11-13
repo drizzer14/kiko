@@ -1,17 +1,17 @@
 import { type RefObject, useEffect, useRef } from 'react';
 import type { LayoutChangeEvent, ScrollViewInstance } from 'react-native';
 
-/**
- * What a picker sheet needs to open already scrolled to its selected row: a ref for the sheet's
- * ScrollView, its `onContentSizeChange`, and a per-row `onRowLayout(key, event)`. The scroll is
- * one-shot per open, so a manual scroll is never pulled back, and it re-arms when the sheet closes.
- */
 type ScrollToSelected = {
   scrollRef: RefObject<ScrollViewInstance | null>;
   onContentSizeChange: () => void;
   onRowLayout: (key: string, event: LayoutChangeEvent) => void;
 };
 
+/**
+ * What a picker sheet needs to open already scrolled to its selected row: a ref for the sheet's
+ * ScrollView, its `onContentSizeChange`, and a per-row `onRowLayout(key, event)`. The scroll is
+ * one-shot per open, so a manual scroll is never pulled back, and it re-arms when the sheet closes.
+ */
 export const useScrollToSelected = (
   open: boolean,
   selectedKey: string | null,
@@ -29,7 +29,8 @@ export const useScrollToSelected = (
   const hasScrolledToSelected = useRef(false);
 
   // Re-arm the one-shot as the sheet closes so the next open scrolls afresh.
-  // The Modal keeps this subtree mounted, so the ref must be reset explicitly.
+  // The field that owns this hook stays mounted while the sheet is closed, so nothing remounts
+  // the ref: it must be reset explicitly.
   useEffect(() => {
     if (!open) {
       hasScrolledToSelected.current = false;
