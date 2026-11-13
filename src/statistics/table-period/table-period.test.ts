@@ -2,6 +2,7 @@ import { type CalendarMonth, calendarMonthOf } from '@kiko/dates';
 
 import {
   averageOverComplete,
+  defaultTablePeriod,
   firstCompleteMonthIndex,
   monthsOfPeriod,
   relativeTablePeriodsOf,
@@ -264,6 +265,17 @@ describe('monthsOfPeriod', () => {
   });
 });
 
+describe('defaultTablePeriod', () => {
+  it('is the year `now` is in', () => {
+    expect(defaultTablePeriod(at(2026, 10, 15))).toEqual(yearOf(2026));
+    expect(defaultTablePeriod(at(2027, 0, 1, 0))).toEqual(yearOf(2027));
+  });
+
+  it('is the period a label calls this year', () => {
+    expect(defaultTablePeriod(NOW)).toEqual(relativeTablePeriodsOf(NOW).thisYear);
+  });
+});
+
 describe('resolveTablePeriod', () => {
   const IN_AUTUMN = at(2026, 10, 15);
   const IN_SPRING = at(2026, 4, 15);
@@ -273,6 +285,15 @@ describe('resolveTablePeriod', () => {
 
   it('reads no period as this year', () => {
     expect(resolveTablePeriod(undefined, autumnOptions, IN_AUTUMN)).toEqual(yearOf(2026));
+  });
+
+  it('falls back to the default period', () => {
+    expect(resolveTablePeriod(undefined, autumnOptions, IN_AUTUMN)).toEqual(
+      defaultTablePeriod(IN_AUTUMN),
+    );
+    expect(resolveTablePeriod(yearOf(2024), springOptions, IN_SPRING)).toEqual(
+      defaultTablePeriod(IN_SPRING),
+    );
   });
 
   it('keeps a held quarter, half and year that are still offered', () => {

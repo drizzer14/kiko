@@ -31,6 +31,7 @@ const SelectField = <Option extends string>({
   icons,
   placeholder,
   appearance = 'field',
+  active,
   required,
   disabled,
   capped,
@@ -100,6 +101,7 @@ const SelectField = <Option extends string>({
           label={label}
           accessibilityLabel={label}
           value={selectedLabel}
+          active={active}
           capped={capped}
           onPress={handleOpen}
           testID={testID}

@@ -25,13 +25,13 @@ const optionOf = (key: string): TablePeriod => {
   return found;
 };
 
-const setup = async (period: TablePeriod = THIS_YEAR) => {
+const setup = async (period: TablePeriod = THIS_YEAR, now = NOW) => {
   const onSelect = jest.fn();
   const utils = await render(
     <TablePeriodField
       period={period}
       options={OPTIONS}
-      now={NOW}
+      now={now}
       onSelect={onSelect}
       testID="period"
     />,
@@ -86,6 +86,24 @@ describe('TablePeriodField', () => {
     expect(style.minHeight).toBe(darkTheme.layout.filterPillHeight);
     expect(getByTestId('period')).toHaveTextContent('Period: This year');
     expect(getByLabelText('Period').props.accessibilityValue).toEqual({ text: 'This year' });
+  });
+
+  it.each([
+    ['this year', THIS_YEAR, NOW, 'surface'],
+    ['last year', { kind: 'year', year: 2025 }, NOW, 'accentSubtle'],
+    ['a quarter', optionOf('quarter-2026-3'), NOW, 'accentSubtle'],
+    ['a half', optionOf('half-2026-1'), NOW, 'accentSubtle'],
+    [
+      'a held year that is no longer this year',
+      THIS_YEAR,
+      new Date(2027, 0, 10).getTime(),
+      'accentSubtle',
+    ],
+  ] as const)('tints the pill by whether %s is the default', async (_title, period, now, fill) => {
+    const { getByTestId } = await setup(period, now);
+    const style = StyleSheet.flatten(getByTestId('period').props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors[fill]);
   });
 
   it('shows a picked quarter by its place in time', async () => {

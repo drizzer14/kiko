@@ -88,6 +88,16 @@ describe('SelectField', () => {
       expect(style.minHeight).toBe(darkTheme.layout.filterPillHeight);
     });
 
+    it.each([
+      [true, 'accentSubtle'],
+      [false, 'surface'],
+    ] as const)('draws the pill with active %s as the %s fill', async (active, fill) => {
+      const { getByTestId } = await setup({ appearance: 'pill', active });
+      const style = StyleSheet.flatten(getByTestId('kind-field').props.style);
+
+      expect(style.backgroundColor).toBe(darkTheme.colors[fill]);
+    });
+
     it('labels the pill for accessibility with the field label', async () => {
       const { getByLabelText } = await setup({ appearance: 'pill' });
       const pill = getByLabelText('Kind');

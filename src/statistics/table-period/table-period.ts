@@ -110,7 +110,11 @@ export const tablePeriodOptions = (spanStart: number, now: number): TablePeriod[
   ];
 };
 
-/** A held period that the options do not offer, or none held, reads as this year. */
+/** The period a table opens on, and the one a pill reads as inactive on: this year. */
+export const defaultTablePeriod = (now: number): TablePeriod =>
+  relativeTablePeriodsOf(now).thisYear;
+
+/** A held period that the options do not offer, or none held, reads as the default period. */
 export const resolveTablePeriod = (
   period: TablePeriod | undefined,
   options: readonly TablePeriod[],
@@ -123,7 +127,7 @@ export const resolveTablePeriod = (
     return period;
   }
 
-  return relativeTablePeriodsOf(now).thisYear;
+  return defaultTablePeriod(now);
 };
 
 /**
