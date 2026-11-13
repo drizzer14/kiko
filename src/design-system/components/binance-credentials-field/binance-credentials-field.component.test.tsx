@@ -1,6 +1,6 @@
 import { Keyboard } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { createRef, type ComponentProps, type ReactElement, type ReactNode } from 'react';
+import { createRef, type ComponentProps, type ReactElement } from 'react';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { setBinanceCooldownUntil } from '@kiko/crypto-sync/binance';
@@ -36,21 +36,12 @@ jest.mock('@react-native-clipboard/clipboard', () => ({
   getString: () => mockGetString(),
 }));
 
-// The Text primitive's tone -> color mapping lives in a react-native-unistyles
-// variant that the project's Jest mock strips before a test can inspect it.
-// Mock Text here — following the account-detail screen test precedent — so the
-// resolved `tone` the link renders with is observable via a testID, while the
-// label still renders as plain text so every getByText assertion is unaffected.
-jest.mock('@kiko/design-system/components/text', () => {
-  const { Text: RNText } = require('react-native');
-
-  return {
-    __esModule: true,
-    default: ({ tone, children }: { tone?: string; children: ReactNode }) => (
-      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
-    ),
-  };
-});
+// Text's tone -> color mapping is a unistyles variant the Jest mock strips, so the link's tone is
+// read from the shared mock's testID; the label still renders as plain text for every getByText.
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  default: jest.requireActual('@kiko/test-support/mock-text-tone').default,
+}));
 
 type View = Awaited<ReturnType<typeof render>>;
 type OnConnect = ComponentProps<typeof BinanceCredentialsField>['onConnect'];
@@ -252,46 +243,59 @@ describe('BinanceCredentialsField', () => {
     );
   });
 
+  // The cooling and the running cases render a field of a named account, fill it and press Connect.
+  const connectForAccount = async (accountId: string): Promise<View> => {
+    const view = await render(
+      <BinanceCredentialsField accountId={accountId} onConnect={onConnect} />,
+    );
+
+    await fillBoth(view.getByPlaceholderText);
+    await pressConnect(view);
+
+    return view;
+  };
+
+  const expectNothingRan = (view: View): void => {
+    expect(mockFetchAccount).not.toHaveBeenCalled();
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(view.queryByText('Binance connected')).toBeNull();
+  };
+
+  const expectWholeConnectRan = async (
+    view: View,
+    accountId: string,
+    blockedText: string,
+  ): Promise<void> => {
+    expect(await view.findByText('Binance connected')).toBeTruthy();
+    expect(view.queryByText(blockedText)).toBeNull();
+    expect(mockFetchAccount).toHaveBeenCalledTimes(1);
+    expect(mockSaveCredentials).toHaveBeenCalledWith(accountId, typedPair);
+    expect(onConnect).toHaveBeenCalledTimes(1);
+  };
+
   describe('while the account is cooling down', () => {
     const COOLING_TEXT = 'Too many requests to Binance. Try again later.';
 
-    const renderForAccount = (accountId: string): Promise<View> =>
-      render(<BinanceCredentialsField accountId={accountId} onConnect={onConnect} />);
-
     it('shows the cooling text and makes no request, write or sync', async () => {
       setBinanceCooldownUntil('cooling-field-blocked', Date.now() + 60_000);
-      const view = await renderForAccount('cooling-field-blocked');
-
-      await fillBoth(view.getByPlaceholderText);
-      await pressConnect(view);
+      const view = await connectForAccount('cooling-field-blocked');
 
       expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
-      expect(mockFetchAccount).not.toHaveBeenCalled();
-      expect(mockSaveCredentials).not.toHaveBeenCalled();
-      expect(onConnect).not.toHaveBeenCalled();
-      expect(view.queryByText('Binance connected')).toBeNull();
+      expectNothingRan(view);
     });
 
     it('runs the whole Connect once the cooldown has ended', async () => {
       setBinanceCooldownUntil('cooling-field-over', Date.now() - 1);
-      const view = await renderForAccount('cooling-field-over');
+      const view = await connectForAccount('cooling-field-over');
 
-      await fillBoth(view.getByPlaceholderText);
-      await pressConnect(view);
-
-      expect(await view.findByText('Binance connected')).toBeTruthy();
-      expect(view.queryByText(COOLING_TEXT)).toBeNull();
-      expect(mockFetchAccount).toHaveBeenCalledTimes(1);
-      expect(mockSaveCredentials).toHaveBeenCalledWith('cooling-field-over', typedPair);
-      expect(onConnect).toHaveBeenCalledTimes(1);
+      await expectWholeConnectRan(view, 'cooling-field-over', COOLING_TEXT);
     });
 
     it('keeps the typed pair, so a later press connects once the cooldown ends', async () => {
       setBinanceCooldownUntil('cooling-field-retry', Date.now() + 60_000);
-      const view = await renderForAccount('cooling-field-retry');
+      const view = await connectForAccount('cooling-field-retry');
 
-      await fillBoth(view.getByPlaceholderText);
-      await pressConnect(view);
       expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
 
       setBinanceCooldownUntil('cooling-field-retry', Date.now() - 1);
@@ -305,46 +309,28 @@ describe('BinanceCredentialsField', () => {
   describe('while a Binance sync of the account is running', () => {
     const RUNNING_TEXT = 'Kiko is still finishing the last Binance sync. Try again later.';
 
-    const renderForAccount = (accountId: string): Promise<View> =>
-      render(<BinanceCredentialsField accountId={accountId} onConnect={onConnect} />);
-
     it('shows the running text and makes no request, write or sync', async () => {
       mockIsBinanceSyncRunning.mockImplementation(
         (accountId: string) => accountId === 'run-blocked',
       );
-      const view = await renderForAccount('run-blocked');
-
-      await fillBoth(view.getByPlaceholderText);
-      await pressConnect(view);
+      const view = await connectForAccount('run-blocked');
 
       expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
-      expect(mockFetchAccount).not.toHaveBeenCalled();
-      expect(mockSaveCredentials).not.toHaveBeenCalled();
-      expect(onConnect).not.toHaveBeenCalled();
-      expect(view.queryByText('Binance connected')).toBeNull();
+      expectNothingRan(view);
     });
 
     it('runs the whole Connect when another account is the one running', async () => {
       mockIsBinanceSyncRunning.mockImplementation((accountId: string) => accountId === 'run-other');
-      const view = await renderForAccount('run-free');
+      const view = await connectForAccount('run-free');
 
-      await fillBoth(view.getByPlaceholderText);
-      await pressConnect(view);
-
-      expect(await view.findByText('Binance connected')).toBeTruthy();
-      expect(view.queryByText(RUNNING_TEXT)).toBeNull();
-      expect(mockFetchAccount).toHaveBeenCalledTimes(1);
-      expect(mockSaveCredentials).toHaveBeenCalledWith('run-free', typedPair);
-      expect(onConnect).toHaveBeenCalledTimes(1);
+      await expectWholeConnectRan(view, 'run-free', RUNNING_TEXT);
     });
 
     it('keeps the typed pair, so a later press connects once the run has ended', async () => {
       let running = true;
       mockIsBinanceSyncRunning.mockImplementation(() => running);
-      const view = await renderForAccount('run-retry');
+      const view = await connectForAccount('run-retry');
 
-      await fillBoth(view.getByPlaceholderText);
-      await pressConnect(view);
       expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
 
       running = false;

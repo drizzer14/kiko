@@ -1,5 +1,5 @@
 import { Keyboard } from 'react-native';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -33,18 +33,12 @@ jest.mock('@react-native-clipboard/clipboard', () => ({
   getString: () => mockGetString(),
 }));
 
-// The Text primitive's tone -> color mapping lives in a react-native-unistyles variant that the
-// project's Jest mock strips, so the resolved `tone` of the link is read from a testID.
-jest.mock('@kiko/design-system/components/text', () => {
-  const { Text: RNText } = require('react-native');
-
-  return {
-    __esModule: true,
-    default: ({ tone, children }: { tone?: string; children: ReactNode }) => (
-      <RNText testID={`text-tone-${tone}`}>{children}</RNText>
-    ),
-  };
-});
+// Text's tone -> color mapping is a unistyles variant the Jest mock strips, so the link's tone is
+// read from the shared mock's testID.
+jest.mock('@kiko/design-system/components/text', () => ({
+  __esModule: true,
+  default: jest.requireActual('@kiko/test-support/mock-text-tone').default,
+}));
 
 type View = Awaited<ReturnType<typeof render>>;
 type OnConnect = ComponentProps<typeof BybitCredentialsField>['onConnect'];
@@ -104,18 +98,18 @@ const pressConnect = async (view: View): Promise<void> => {
   });
 };
 
+const renderField = (
+  onConnect: OnConnect,
+  props: Partial<ComponentProps<typeof BybitCredentialsField>> = {},
+): Promise<View> =>
+  render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} {...props} />);
+
 const renderAndConnect = async (
   onConnect: OnConnect,
   accountId = 'acc-1',
   keepsBybitHoldings = false,
 ): Promise<View> => {
-  const view = await render(
-    <BybitCredentialsField
-      accountId={accountId}
-      onConnect={onConnect}
-      keepsBybitHoldings={keepsBybitHoldings}
-    />,
-  );
+  const view = await renderField(onConnect, { accountId, keepsBybitHoldings });
 
   await fillBoth(view.getByPlaceholderText);
   await pressConnect(view);
@@ -139,9 +133,7 @@ describe('BybitCredentialsField', () => {
   });
 
   it('renders two secure inputs, a Bybit link and a Connect Bybit action', async () => {
-    const { getByPlaceholderText, getByText } = await render(
-      <BybitCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByPlaceholderText, getByText } = await renderField(onConnect);
 
     expect(getByPlaceholderText('Bybit API key').props.secureTextEntry).toBe(true);
     expect(getByPlaceholderText('Bybit API secret').props.secureTextEntry).toBe(true);
@@ -151,7 +143,7 @@ describe('BybitCredentialsField', () => {
   });
 
   it('states the limits of the connection and what Kiko reads above the inputs', async () => {
-    const view = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
+    const view = await renderField(onConnect);
 
     await fireEvent.press(view.getByTestId('bybit-intro-toggle'));
 
@@ -165,9 +157,7 @@ describe('BybitCredentialsField', () => {
   });
 
   it('hides the limits and the kinds until the toggle is tapped, and again on a second tap', async () => {
-    const { getByText, getByTestId, queryByText } = await render(
-      <BybitCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByText, getByTestId, queryByText } = await renderField(onConnect);
     const limits = i18n.t('accountDetail.bybitConnectLimits');
     const kinds = i18n.t('accountDetail.bybitKinds');
 
@@ -189,24 +179,18 @@ describe('BybitCredentialsField', () => {
   });
 
   it('shows the text of a failed Connect it is given as an alert notice, and none otherwise', async () => {
-    const without = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
+    const without = await renderField(onConnect);
 
     expect(without.queryByRole('alert')).toBeNull();
 
-    const refused = await render(
-      <BybitCredentialsField
-        accountId="acc-1"
-        onConnect={onConnect}
-        connectError="Bybit refused the connection."
-      />,
-    );
+    const refused = await renderField(onConnect, { connectError: 'Bybit refused the connection.' });
 
     expect(refused.getByRole('alert', { name: 'Bybit refused the connection.' })).toBeTruthy();
     expect(refused.getByText('Bybit refused the connection.')).toBeTruthy();
   });
 
   it('shows a required error per blank field and calls no network when Connect is pressed', async () => {
-    const view = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
+    const view = await renderField(onConnect);
 
     await pressConnect(view);
 
@@ -218,7 +202,7 @@ describe('BybitCredentialsField', () => {
   // Bybit renders ExchangeKeyForm, so this is the proof that the shared handler covers it.
   it('dismisses the keyboard on every Connect press, even one a blank field blocks', async () => {
     const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
-    const view = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
+    const view = await renderField(onConnect);
 
     await pressConnect(view);
     expect(dismissSpy).toHaveBeenCalledTimes(1);
@@ -231,9 +215,7 @@ describe('BybitCredentialsField', () => {
   });
 
   it('the API management link is the exact URL of part 2, with no query string', async () => {
-    const { getByText } = await render(
-      <BybitCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByText } = await renderField(onConnect);
 
     expect(getByText('Open Bybit API management').props.testID).toBe('text-tone-accent');
 
@@ -334,13 +316,7 @@ describe('BybitCredentialsField', () => {
         }),
     );
 
-    const view = await render(
-      <BybitCredentialsField
-        accountId="acc-1"
-        onConnect={onConnect}
-        onStoredWhileUnmounted={onStoredWhileUnmounted}
-      />,
-    );
+    const view = await renderField(onConnect, { onStoredWhileUnmounted });
 
     await fillBoth(view.getByPlaceholderText);
     await pressConnect(view);
