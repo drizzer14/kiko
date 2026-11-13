@@ -277,6 +277,20 @@ Remediated on 2026-10-31 by moving the nested `ajv.fast-uri` override from `3.1.
 }
 ```
 
+`bash scripts/checks/osv.sh` also flagged `fast-xml-parser` 5.11.1 (GHSA-474x-hrwr-fgx4, low),
+fixed in 5.12.0 (published 2026-11-03, which passes the `.npmrc` 7-day minimum age from
+2026-11-10). It is dev-only (a `devOptional` lockfile entry): it comes through
+`@react-native-community/cli-platform-apple` 20.2.0 and `cli-config-android`, both with the range
+`^5.3.6`, so it never reaches the app bundle. Remediated on 2026-11-13 with a top-level
+override; the lockfile also moves its own transitive `@nodable/entities`, `is-unsafe` and
+`strnum`. Drop the override once both parents resolve 5.12.0 or later on their own:
+
+```json
+"overrides": {
+  "fast-xml-parser": "5.12.0"
+}
+```
+
 ## Standing patch: `@stryker-mutator/jest-runner` 8.7.1 (exact covering-test selection)
 
 `patches/@stryker-mutator+jest-runner+8.7.1.patch` is a standing `patch-package` patch (user
