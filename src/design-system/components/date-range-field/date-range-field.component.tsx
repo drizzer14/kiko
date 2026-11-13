@@ -104,9 +104,9 @@ const buildPeriodMarks = (
   return marks;
 };
 
-// The field's summary text for an active range: both bounds, or one open-ended
-// bound. Every date is DD.MM.YYYY (see formatDate); an en dash joins two bounds.
-const activeRangeLabel = (from: Date | null, to: Date | null, t: TFunction): string => {
+// The field's summary text for set bounds: both, or one open-ended bound.
+// Every date is DD.MM.YYYY (see formatDate); an en dash joins two bounds.
+const boundsLabel = (from: Date | null, to: Date | null, t: TFunction): string => {
   if (from !== null && to !== null) {
     return `${formatDate(from)} – ${formatDate(to)}`;
   }
@@ -144,7 +144,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   // With no bounds the field displays the full transaction span but does not
   // filter; bounds show themselves. The tint follows `active`, never the bounds.
   const fieldLabel = hasBounds
-    ? activeRangeLabel(dateFrom, dateTo, t)
+    ? boundsLabel(dateFrom, dateTo, t)
     : `${formatDate(minDate)} – ${formatDate(maxDate)}`;
 
   // The inclusive *selectable* range, distinct from the display span above: the
@@ -157,9 +157,9 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   const selectableFloor = atLocalMidnight(minDate);
   const selectableCeiling = atLocalMidnight(new Date());
 
-  // The bounds the sheet opens with: the field's own bounds if any is set,
-  // otherwise the displayed full span so the shown selection is immediately
-  // shown without a fresh tap.
+  // The sheet opens on what the pill shows, and Apply compares against these opening
+  // bounds, so an unchanged Apply applies nothing: the field's own bounds if any is
+  // set, otherwise the displayed full span.
   const openingBounds = (): Bounds =>
     hasBounds
       ? { from: dateFrom, to: dateTo }

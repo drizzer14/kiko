@@ -57,7 +57,7 @@ const ymd = (date: Date): [number, number, number] => [
 const pickAndApply = async (minDate: Date, maxDate: Date, taps: Date[]): Promise<[Date, Date]> =>
   pickRangeAndApply(null, null, minDate, maxDate, taps);
 
-// Like pickAndApply, but seeds an ACTIVE range first (dateFrom/dateTo) so the
+// Like pickAndApply, but seeds custom bounds first (dateFrom/dateTo) so the
 // reset behavior can be exercised against a known [from, to] rather than the
 // full-span default.
 const pickRangeAndApply = async (
@@ -247,7 +247,7 @@ describe('DateRangeField value tone', () => {
     expect(getByText(label).props.testID).toBe('text-tone-textPrimary');
   });
 
-  it('renders an active range span in the primary (white) tone', async () => {
+  it('renders a custom range span in the primary (white) tone', async () => {
     const { getByText } = await renderField({ ...CUSTOM_RANGE, active: true });
 
     const label = `${formatDate(CUSTOM_RANGE.dateFrom)} – ${formatDate(CUSTOM_RANGE.dateTo)}`;
@@ -395,7 +395,7 @@ describe('DateRangeField localization', () => {
 });
 
 describe('DateRangeField calendar initial month', () => {
-  it('opens the calendar on the active range end so the most recent month shows first', async () => {
+  it('opens the calendar on the custom range end so the most recent month shows first', async () => {
     const { getByText, getByTestId } = await renderField({
       dateFrom: new Date(2026, 2, 10),
       dateTo: new Date(2026, 5, 20),
