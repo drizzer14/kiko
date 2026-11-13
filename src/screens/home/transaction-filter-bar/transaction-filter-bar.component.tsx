@@ -5,6 +5,8 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import FilterMenu, { type FilterOption } from '@kiko/design-system/components/filter-menu';
 
+import { styles } from './transaction-filter-bar.styles';
+
 type TransactionFilterBarProps = {
   accounts: FilterOption[];
   categories: FilterOption[];
@@ -39,7 +41,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
 
   return (
     <Box gap={3}>
-      <Box direction="row" gap={3}>
+      <Box direction="row" gap={3} style={styles.pillRow}>
         <FilterMenu
           label={t('home.filterAccounts')}
           sheetTitle={t('home.filterAccountsSheetTitle')}

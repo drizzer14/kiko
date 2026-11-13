@@ -100,7 +100,9 @@ file the catalogue below does not list fails `__tests__/skill-text-checks.test.t
   picker; `saved-reminder.ts`: an active daily reminder row; `permission-notice-cases.ts`: the
   shared notification-permission notice cases.
 - `rendered-element.d.ts` (the element type of every RNTL query), `ancestor-with-style.ts`,
-  `layout-of.ts`, `glyphs-within.ts`, `field-suffix.ts`: readers over a rendered tree.
+  `layout-of.ts`, `glyphs-within.ts`, `field-suffix.ts`: readers over a rendered tree;
+  `to-symbol-tint-color.ts`: the tint a SymbolIcon hands to the native view, to compare with a
+  `glyphTintsWithin` entry.
 - `mock-text-tone.tsx`, `mock-text-variant-tone.tsx`, `field-label-spy.ts`: Text and FieldLabel
   mocks that hand through a unistyles variant the Jest mock strips.
 - `layout-mode-spy.ts`, `modal-animation-spy.ts`, `mock-reanimated-scroll-to-end.ts`,

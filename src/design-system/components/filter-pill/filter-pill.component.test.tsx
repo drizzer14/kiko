@@ -3,6 +3,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+import { toSymbolTintColor } from '@kiko/test-support/to-symbol-tint-color';
 
 import FilterPill from './filter-pill.component';
 
@@ -47,6 +49,14 @@ describe('FilterPill', () => {
 
     expect(inOrder.at(0)?.props.fallbackName).toBe('tray');
     expect(inOrder.at(0)?.props.size).toBe(darkTheme.iconSizes.body);
+  });
+
+  it('tints the glyph in the primary tone, as the label', async () => {
+    const { getByTestId } = await renderPill();
+
+    expect(glyphTintsWithin(getByTestId(TEST_ID))).toEqual([
+      toSymbolTintColor(darkTheme.colors.textPrimary),
+    ]);
   });
 
   it('renders no glyph when no icon is given', async () => {
