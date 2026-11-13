@@ -1,3 +1,4 @@
+import { Keyboard } from 'react-native';
 import type { ComponentProps, ReactNode } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -213,6 +214,21 @@ describe('BybitCredentialsField', () => {
     expect(await view.findByText('Enter the API key.')).toBeTruthy();
     expect(await view.findByText('Enter the secret key.')).toBeTruthy();
     expect(asked).toHaveLength(0);
+  });
+
+  // Bybit renders ExchangeKeyForm, so this is the proof that the shared handler covers it.
+  it('dismisses the keyboard on every Connect press, even one a blank field blocks', async () => {
+    const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    const view = await render(<BybitCredentialsField accountId="acc-1" onConnect={onConnect} />);
+
+    await pressConnect(view);
+    expect(dismissSpy).toHaveBeenCalledTimes(1);
+
+    await fillBoth(view.getByPlaceholderText);
+    await pressConnect(view);
+    expect(dismissSpy).toHaveBeenCalledTimes(2);
+
+    dismissSpy.mockRestore();
   });
 
   it('the API management link is the exact URL of part 2, with no query string', async () => {

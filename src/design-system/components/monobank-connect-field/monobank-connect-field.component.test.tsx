@@ -1,3 +1,4 @@
+import { Keyboard } from 'react-native';
 import { createRef, type ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -66,6 +67,23 @@ it('shows the token-required error and calls no network when Connect is pressed 
   );
   expect(mockFetchClientInfo).not.toHaveBeenCalled();
   expect(onConnect).not.toHaveBeenCalled();
+});
+
+it('dismisses the keyboard on every Connect press, even one a blank field blocks', async () => {
+  const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+  mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
+  const view = await render(
+    <MonobankConnectField accountId={ACCOUNT_ID} onConnect={jest.fn().mockResolvedValue(true)} />,
+  );
+
+  await pressConnect(view);
+  expect(dismissSpy).toHaveBeenCalledTimes(1);
+
+  await type(view, 'tok');
+  await pressConnect(view);
+  expect(dismissSpy).toHaveBeenCalledTimes(2);
+
+  dismissSpy.mockRestore();
 });
 
 it('clears the token-required error once a token is typed', async () => {

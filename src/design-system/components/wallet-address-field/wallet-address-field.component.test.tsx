@@ -1,4 +1,5 @@
 import { createRef } from 'react';
+import { Keyboard } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -68,6 +69,24 @@ describe('WalletAddressField', () => {
     });
 
     expect(getByPlaceholderText('BTC address').props.value).toBe(ADDRESS);
+  });
+
+  it('dismisses the keyboard on every Connect press, even one a blank field blocks', async () => {
+    const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    const view = await render(<WalletAddressField onConnect={onConnect} />);
+
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect wallet'));
+    });
+    expect(dismissSpy).toHaveBeenCalledTimes(1);
+
+    await fireEvent.changeText(view.getByPlaceholderText('BTC address'), ADDRESS);
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect wallet'));
+    });
+    expect(dismissSpy).toHaveBeenCalledTimes(2);
+
+    dismissSpy.mockRestore();
   });
 
   it('rejects a malformed address locally and never calls onConnect', async () => {

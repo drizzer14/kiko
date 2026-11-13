@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
 import { isValidBitcoinAddress } from '@kiko/crypto-sync/btc-wallet';
@@ -55,6 +55,8 @@ const WalletAddressField: FC<WalletAddressFieldProps> = ({ onConnect, reminder }
   };
 
   const handleConnect = (): void => {
+    // Connect submits like Return, and a notice under the row can sit under the keyboard.
+    Keyboard.dismiss();
     reminder?.onConnectPress();
 
     const trimmed = address.trim();

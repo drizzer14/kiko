@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
 import { fetchClientInfo } from '@kiko/monobank/client';
@@ -64,6 +64,8 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({
   };
 
   const handleConnect = (): void => {
+    // Connect submits like Return, and a notice under the row can sit under the keyboard.
+    Keyboard.dismiss();
     reminder?.onConnectPress();
 
     const trimmed = token.trim();

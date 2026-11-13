@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, View } from 'react-native';
+import { Keyboard, Linking, Pressable, View } from 'react-native';
 import { useIsMounted } from '@kiko/design-system/use-is-mounted';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
@@ -174,6 +174,8 @@ const ExchangeKeyForm: FC<ExchangeKeyFormProps> = ({
   };
 
   const handleConnect = (): void => {
+    // Connect submits like Return, and a notice under the row can sit under the keyboard.
+    Keyboard.dismiss();
     reminder?.onConnectPress();
 
     if (apiKey.trim() === '' || secret.trim() === '') {

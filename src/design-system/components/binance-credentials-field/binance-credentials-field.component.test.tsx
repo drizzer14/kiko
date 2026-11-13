@@ -1,3 +1,4 @@
+import { Keyboard } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { createRef, type ComponentProps, type ReactElement, type ReactNode } from 'react';
 import '@kiko/design-system/unistyles';
@@ -151,6 +152,20 @@ describe('BinanceCredentialsField', () => {
     expect(view.queryByText('Enter the API key.')).toBeNull();
     expect(await view.findByText('Enter the secret key.')).toBeTruthy();
     expect(mockFetchAccount).not.toHaveBeenCalled();
+  });
+
+  it('dismisses the keyboard on every Connect press, even one a blank field blocks', async () => {
+    const dismissSpy = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    const view = await renderField(onConnect);
+
+    await pressConnect(view);
+    expect(dismissSpy).toHaveBeenCalledTimes(1);
+
+    await fillBoth(view.getByPlaceholderText);
+    await pressConnect(view);
+    expect(dismissSpy).toHaveBeenCalledTimes(2);
+
+    dismissSpy.mockRestore();
   });
 
   it('renders the Binance link through the shared Text primitive with the accent tone', async () => {
