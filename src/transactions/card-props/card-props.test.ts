@@ -82,6 +82,21 @@ describe('transactionCardPropsOf', () => {
     expect(props.footerMeta).toBe('Monobank · Food');
   });
 
+  it('reads the footer as the category alone when the row has no account name', () => {
+    const props = transactionCardPropsOf(sourceOf({ accountName: '' }), contextOf());
+
+    expect(props.footerMeta).toBe('Food');
+  });
+
+  it('reads the footer as the loan part alone when the row has no account name', () => {
+    const props = transactionCardPropsOf(
+      sourceOf({ accountName: '' }),
+      contextOf({ loanPartLabel: 'Loan interest' }),
+    );
+
+    expect(props.footerMeta).toBe('Loan interest');
+  });
+
   it('names the loan part in place of the category title when one is given', () => {
     const props = transactionCardPropsOf(
       sourceOf({ accountName: 'Monobank' }),

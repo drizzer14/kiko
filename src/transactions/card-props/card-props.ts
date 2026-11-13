@@ -74,7 +74,9 @@ export const transactionCardPropsOf = (
     categoryIcon: category.icon,
     categoryIconColor: resolveCategoryColor(category.color, key, scheme),
     categoryAccessibilityLabel: category.title,
-    footerMeta: `${source.accountName} · ${loanPartLabel ?? category.title}`,
+    footerMeta: [source.accountName, loanPartLabel ?? category.title]
+      .filter((part) => part !== '')
+      .join(' · '),
     footerTrailing: trailingOf(source, context),
     loanLinked: source.loanHoldingId !== null,
   };

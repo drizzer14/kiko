@@ -9,7 +9,9 @@ import {
 import { formatDate, formatDateTime } from '@kiko/dates';
 import type { CellRow } from '@kiko/statistics/cell-rows';
 import { markColor } from '@kiko/design-system/entity-tint';
+import { glyphNamesWithin } from '@kiko/test-support/glyphs-within';
 import type { CategoryDisplay } from '@kiko/categories/category-display';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 
 import CellRowsSheet from '.';
@@ -187,11 +189,21 @@ describe('CellRowsSheet', () => {
     }
   });
 
-  it("shows the loan-link marker on a linked payment's entries", async () => {
-    const hasMarker = async (row: CellRow) => {
-      const { toJSON } = await shown([row]);
+  it('reads the footer as the category alone on a row with no account name', async () => {
+    const { getByTestId } = await shown([UNKNOWN_HOLDING]);
+    const row = within(getByTestId('cell-row-unknown-holding'));
 
-      return JSON.stringify(toJSON()).includes('"name":"link"');
+    expect(row.getByText('Groceries')).toBeTruthy();
+    expect(row.queryByText(/·/)).toBeNull();
+  });
+
+  it("shows the loan-link marker on a linked payment's entries", async () => {
+    // The marker is the glyph beside the footer text; the category glyph is outside that box.
+    const hasMarker = async (row: CellRow) => {
+      const { getByTestId } = await shown([row]);
+      const footerText = within(getByTestId(`cell-row-${row.id}`)).getByText(/Monobank/);
+
+      return glyphNamesWithin(ancestorWithStyle(footerText, 'flex')).includes('link');
     };
 
     expect(await hasMarker(INTEREST)).toBe(true);
