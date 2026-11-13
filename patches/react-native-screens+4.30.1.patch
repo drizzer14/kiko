@@ -17,7 +17,7 @@ index 9ae11c3..f16c51b 100644
  
  @interface RNSScreenStackView : RNSReactBaseView <RNSScreenContainerDelegate>
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
-index c233036..1cee57e 100644
+index 5da1196..87e3096 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
 @@ -3,6 +3,7 @@
@@ -28,11 +28,10 @@ index c233036..1cee57e 100644
  #import <React/RCTSurfaceTouchHandler.h>
  #import <React/RCTSurfaceView.h>
  #import <React/UIView+React.h>
-@@ -38,7 +39,208 @@ namespace react = facebook::react;
+@@ -39,6 +40,99 @@ namespace react = facebook::react;
  
  @end
  
--@implementation RNSNavigationController
 +// A view's `directionalLayoutMargins` getter adds the safe area insets to the stored margins while
 +// `insetsLayoutMarginsFromSafeArea` is YES (a controller's root view does), so writing the
 +// getter's value back would add the insets again at every layout pass. This is the stored
@@ -126,11 +125,22 @@ index c233036..1cee57e 100644
 +#endif
 +}
 +
-+@implementation RNSNavigationController {
+ #if RNS_IPHONE_OS_VERSION_AVAILABLE(26_0) && !TARGET_OS_TV
+ @interface RNSNavigationController () <RNSNavigationBarLayoutDelegate>
+ @end
+@@ -48,6 +142,8 @@ namespace react = facebook::react;
+ #if RNS_IPHONE_OS_VERSION_AVAILABLE(26_0) && !TARGET_OS_TV
+   CGRect _lastNavigationBarFrame;
+ #endif // RNS_IPHONE_OS_VERSION_AVAILABLE(26_0) && !TARGET_OS_TV
 +  NSDirectionalEdgeInsets _viewMarginsBeforeFixedContentMargin;
 +  NSDirectionalEdgeInsets _barMarginsBeforeFixedContentMargin;
-+}
-+
+ }
+ 
+ - (instancetype)init
+@@ -63,6 +159,111 @@ namespace react = facebook::react;
+   return self;
+ }
+ 
 +// UIKit insets a large title by the navigation bar's layout margin, which it derives from the
 +// stack's distance to the window's edge (20 pt at the window's leading edge, 0 elsewhere), so a
 +// stack that is one pane of a split window would not line up with its content. With a fixed
@@ -235,20 +245,21 @@ index c233036..1cee57e 100644
 +  objc_setAssociatedObject(
 +      parent, &RNSParentSafeAreaTopInsetWrittenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +}
- 
++
  #if !TARGET_OS_TV
  - (UIViewController *)childViewControllerForStatusBarStyle
-@@ -59,6 +261,9 @@ namespace react = facebook::react;
+ {
+@@ -82,6 +283,9 @@ namespace react = facebook::react;
  - (void)viewDidLayoutSubviews
  {
    [super viewDidLayoutSubviews];
 +  [self applyFixedContentMargin];
 +  [self syncParentSafeAreaTopInset];
 +  RNSInlineStackedPaneLargeTitle(self);
-   if ([self.topViewController isKindOfClass:[RNSScreen class]]) {
-     RNSScreen *screenController = (RNSScreen *)self.topViewController;
-     BOOL isNotDismissingModal = screenController.presentedViewController == nil ||
-@@ -121,6 +326,9 @@ namespace react = facebook::react;
+ 
+ #if RNS_IPHONE_OS_VERSION_AVAILABLE(26_0)
+   if (@available(iOS 26.0, *)) {
+@@ -207,6 +411,9 @@ namespace react = facebook::react;
  - (void)willMoveToParentViewController:(UIViewController *)parent
  {
    [super willMoveToParentViewController:parent];
@@ -258,7 +269,7 @@ index c233036..1cee57e 100644
    if ([self.parentViewController isKindOfClass:RNSTabsScreenViewController.class]) {
      RNSTabsScreenViewController *previousParentTabsScreenVC =
          static_cast<RNSTabsScreenViewController *>(self.parentViewController);
-@@ -1279,6 +1487,9 @@ RNS_IGNORE_SUPER_CALL_END
+@@ -1365,6 +1572,9 @@ RNS_IGNORE_SUPER_CALL_END
      _controller.view.backgroundColor = _nativeContainerBackgroundColor;
    }
  

@@ -248,10 +248,13 @@ export const useScrollToTopOnTabPress = (
   // baseline — @react-navigation/native-stack feeds it from the native
   // `onHeaderHeightChange` event (and debounces it precisely because it changes
   // constantly on a large-title screen), and react-native-screens computes it as
-  // `navigationBar.frame.size.height + origin.y`, re-emitted on every layout
-  // pass. Adding a hardcoded 52pt band to it double-counted the band whenever
-  // the large title was ALREADY expanded — i.e. whenever the user was already at
-  // the top — and scrolled 52pt PAST the real top. Nothing clamped that:
+  // `navigationBar.frame.size.height + origin.y` below iOS 27, and on iOS 27 with
+  // `calculateMinimizationAwareHeaderHeightInNavigationController:` as the visible
+  // bar bottom, so a minimized bar reports a SMALLER height (the status bar
+  // inset). It is re-emitted on every layout pass. Adding a hardcoded 52pt band
+  // to it double-counted the band whenever the large title was ALREADY expanded
+  // — i.e. whenever the user was already at the top — and scrolled 52pt PAST
+  // the real top. Nothing clamped that:
   // `Screen` sets `scrollToOverflowEnabled` (exactly the branch RN skips its
   // bounds clamp on) and UIKit does not rubber-band an animated programmatic
   // `setContentOffset`, so the content parked in a black void and stayed there.

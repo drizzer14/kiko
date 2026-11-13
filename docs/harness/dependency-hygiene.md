@@ -329,9 +329,9 @@ versions in the pin test and the patch file name. Re-prove it: the covering-test
 Stryker's `fullName`, and the patch applies exactly to the pristine files of
 `npm pack @stryker-mutator/jest-runner@<version>`. Only then change the expected versions.
 
-## Standing patch: `react-native-screens` 4.27.0 (a pane's fixed content margin)
+## Standing patch: `react-native-screens` 4.30.1 (a pane's fixed content margin)
 
-`patches/react-native-screens+4.27.0.patch` is a `patch-package` patch that `postinstall` applies
+`patches/react-native-screens+4.30.1.patch` is a `patch-package` patch that `postinstall` applies
 on every `npm ci`. Why, what, and the scope are in `docs/harness/documented-exceptions.md`
 ("patch-package patches"); in short: it makes a pane's native large title keep the content's side
 margin, and only for the stacks to which `PaneStackView` gives a value above 0 in
@@ -400,16 +400,23 @@ bottom) reaches it too; an iPad window keeps its tab bar at the top, so no resiz
 there.
 
 How it is pinned: `__tests__/react-native-patch.test.ts` fails unless `react-native-screens` is
-exactly `4.27.0` in `package.json`, the patch touches only `node_modules/react-native-screens/`
+exactly `4.30.1` in `package.json`, the patch touches only `node_modules/react-native-screens/`
 (the native stack among them), and the INSTALLED files carry the patch (native stack, header,
 codegen spec, context, `ScreenStack`, `index`, and the `lib/commonjs` and `lib/typescript` copies),
-so a failed or missing apply fails Jest (`patch-package` exits 0 on a failed apply locally).
+so a failed or missing apply fails Jest (`patch-package` exits 0 on a failed apply locally). Two
+more pins read upstream's `.mm` text: `navigationBarDidLayoutSubviews:` in `RNSScreenStack.mm`
+still calls `notifyHeaderHeightChangeToScreen:`, and `RNSScreen.mm` still has
+`calculateMinimizationAwareHeaderHeightInNavigationController:` (the minimized bar's height that
+the Tables column header follows).
 After merging or branching across this commit run `npx patch-package` before the pin test.
 
 Upgrade rule: a `react-native-screens` bump fails the pin until the patch is re-derived. Re-derive
 it: `npm pack react-native-screens@<version>` and unpack it; re-apply the same edits to the
 installed files (the files the pin test lists; the iOS side changed `RNSNavigationController`
-and `RNSScreenStackView updateProps`); check that the library still
+and `RNSScreenStackView updateProps`; since 4.30.1 the class has upstream's own
+`RNSNavigationBarLayoutDelegate` extension, instance variable block, `init` and
+`viewDidLayoutSubviews` frame check, so the patch's helpers, instance variables and methods sit
+beside them and its three `viewDidLayoutSubviews` calls come first); check that the library still
 provides the layout (a new `RNSScreenStack.mm` that sets layout margins itself, or an upstream
 prop for a stack's content margin, makes the patch removable); diff the pristine tree against the
 patched one into `patches/react-native-screens+<version>.patch` (or `npx patch-package

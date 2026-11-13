@@ -37,7 +37,7 @@ describe('the React Native ScrollView keyboard patch', () => {
   });
 });
 
-const SCREENS_PATCH_FILE = 'patches/react-native-screens+4.27.0.patch';
+const SCREENS_PATCH_FILE = 'patches/react-native-screens+4.30.1.patch';
 const SCREENS_DIRECTORY = 'node_modules/react-native-screens';
 
 // The patch gives a pane's native stack the content's fixed side margin, so its large title lines
@@ -61,7 +61,7 @@ describe('the react-native-screens fixed content margin patch', () => {
   it('pins react-native-screens to exactly the version the patch was written for', () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 
-    expect(manifest.dependencies['react-native-screens']).toBe('4.27.0');
+    expect(manifest.dependencies['react-native-screens']).toBe('4.30.1');
   });
 
   it('is applied to the native stack, which touches the margins only while the prop is above 0', () => {
@@ -217,6 +217,37 @@ describe('the react-native-screens fixed content margin patch', () => {
       expect(patch).not.toContain('NSLog');
       expect(patch).not.toContain('F2');
       expect(patch).not.toContain('dispatch_after');
+    });
+  });
+
+  // The Tables column header follows the minimized iOS 27 navigation bar through the header height
+  // that react-native-screens reports: upstream notifies it from the bar's own layout pass and
+  // reads it from the bar's visible subviews, so these pins fail if a later release drops either.
+  describe('upstream header height that follows the minimized bar', () => {
+    it('notifies the screen of a new header height from the navigation bar layout pass', () => {
+      const layoutPass = methodCode(
+        read('ios/RNSScreenStack.mm'),
+        '- (void)navigationBarDidLayoutSubviews:',
+      );
+
+      expect(layoutPass).toContain('notifyHeaderHeightChangeToScreen:');
+    });
+
+    it('measures the header height from the bar subviews that are still visible', () => {
+      expect(read('ios/RNSScreen.mm')).toContain(
+        '- (CGFloat)calculateMinimizationAwareHeaderHeightInNavigationController:',
+      );
+    });
+
+    it('reports that minimization-aware height as the screen’s header height', () => {
+      const headerHeight = methodCode(
+        read('ios/RNSScreen.mm'),
+        '- (CGFloat)calculateHeaderHeightIsModal:',
+      );
+
+      expect(headerHeight).toContain(
+        '[self calculateMinimizationAwareHeaderHeightInNavigationController:navctr]',
+      );
     });
   });
 
