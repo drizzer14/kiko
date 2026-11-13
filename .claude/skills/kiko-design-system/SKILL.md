@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, ConvertedCaption, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, DataTable, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, ErrorNotice, FieldLabel, FieldTrigger, CurrencyBreakdown, ConvertedCaption, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, DataTable, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -36,9 +36,9 @@ file before you edit the component it describes.
   the exchange history footer, `ReminderOfferCard`, `EmptyState`, `NotificationPreAlertSheet`,
   `CardContextMenu`, `ImportBalanceLine`, `HoldingCard`, `CloseHoldingSheet`, `SymbolIcon`,
   `EntityIconTile`, the section heading disclosure row, `Divider`, `Switch`, `TextField`,
-  `FieldError`, `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`, `SummaryTable`, `EntryCard`,
-  `EntryDateHeader`, `PairedFieldsRow`, the field and filter helpers (`deriveFieldTestID`,
-  `toggleFilterValue`),
+  `FieldError`, `ErrorNotice`, `useIsMounted`, `FieldTrigger`, `CurrencyBreakdown`,
+  `SyncStatusLine`, `SummaryTable`, `EntryCard`, `EntryDateHeader`, `PairedFieldsRow`, the field
+  and filter helpers (`deriveFieldTestID`, `toggleFilterValue`),
   `ExpandToggle`, `CurrencyField`, `DateRangeField`, `ChipRow`, `AppearanceSwitch`,
   `DayOfMonthGrid`,
   `SegmentedControl` with the tabs-vs-chips rule, the chart components (`BarChart`, `PieChart`,
@@ -499,7 +499,9 @@ The established patterns grouped under this heading:
   `src/screens/forms/holding-form/holding-form.screen.tsx`.
 - Content that APPEARS in response to a press (a banner, a confirmation) is silent to
   VoiceOver: pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the same
-  i18n string as the visible text.
+  i18n string as the visible text. An error block is the exception: use `ErrorNotice`, which
+  announces itself (`useEffect` on the text), never a hand-rolled announce. A list that
+  recomputes live passes `announce={false}` (`src/screens/column-mapping/mapping-result/`).
 - A filter never hides an active selection: a checkable filter's
   option list is scoped to the current data (e.g. the statistics
   category filter is scoped to the active date range), but a value
@@ -677,7 +679,8 @@ The established patterns grouped under this heading:
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
-  under that field's Connect button and scrolls into view. It is not a
+  below that field's Connect row, and below any `ErrorNotice` the row shows (order: row, error
+  notice, reminder), and scrolls into view. It is not a
   validation error, so it is the informational hint style (caption,
   `textSecondary`, no error tone) with an `info.circle` icon, rendered by the
   shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,
