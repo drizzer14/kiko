@@ -297,9 +297,9 @@ Which categories the chart draws is decided by the saved trend filter
 resolved in `statistics.screen.tsx`, not this component's concern —
 `CategoryTrendLine` only renders whatever `series` array it is given. The
 screen owns a `TrendFilterField`
-(`src/screens/statistics/trend-filter-field/`) — a FilterPill (active
-through `isTrendFilterActive`) opening a `BottomSheet` — and feeds the result through the SAME
-`excludedCategories` path the builder already had. Manual mode passes explicit
+(`src/screens/statistics/trend-filter-field/`) — a FilterPill (never
+tinted: the trend pill has no active rule) opening a `BottomSheet` — and feeds the result
+through the SAME `excludedCategories` path the builder already had. Manual mode passes explicit
 keys; Top mode ranks the categories live over the screen's chosen range
 (`statistics.screen.tsx` passes `range { from: rangeFrom, to: rangeTo }`) with
 `buildCategoryMeasures` + `selectTopCategories`
