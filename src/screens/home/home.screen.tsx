@@ -161,7 +161,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // the range's bounds, so this block sits above the reads.
   const now = Date.now();
 
-  const { dateFrom, dateTo, applyDateRange, clearDateRange } = useDateRangeSelection(now);
+  const { dateFrom, dateTo, hasCustomRange, applyDateRange, clearDateRange } =
+    useDateRangeSelection(now);
   // Computed every render (cheap — two Date constructions, not the filter
   // below), but its VALUES are what the ledger read and `filteredTransactions`
   // key on: `bounds.from`/`bounds.to` are day-aligned numbers
@@ -732,6 +733,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
                 onToggleCategory={(value) => setSelectedCategories(toggleFilterValue(value))}
                 dateFrom={dateFrom}
                 dateTo={dateTo}
+                dateRangeActive={hasCustomRange}
                 minDate={new Date(spanStart)}
                 maxDate={new Date(spanEnd)}
                 onApplyDates={applyDateRange}

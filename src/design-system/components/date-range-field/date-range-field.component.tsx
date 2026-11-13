@@ -41,6 +41,15 @@ const toCalendarKey = (date: Date): string =>
 const atLocalMidnight = (date: Date): Date =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
+// Whether two bounds fall on the same local day, or are both open.
+const sameLocalDay = (first: Date | null, second: Date | null): boolean => {
+  if (first === null || second === null) {
+    return first === second;
+  }
+
+  return toCalendarKey(first) === toCalendarKey(second);
+};
+
 // Pull a Date back into the inclusive [floor, ceiling] selectable range, so a
 // preselected bound that would land outside the range (e.g. a future-dated
 // latest transaction) snaps to the nearest selectable day instead.
@@ -115,6 +124,7 @@ const activeRangeLabel = (from: Date | null, to: Date | null, t: TFunction): str
 const DateRangeField: FC<DateRangeFieldProps> = ({
   dateFrom,
   dateTo,
+  active,
   minDate,
   maxDate,
   onApply,
@@ -126,11 +136,11 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   const [draftFrom, setDraftFrom] = useState<Date | null>(dateFrom);
   const [draftTo, setDraftTo] = useState<Date | null>(dateTo);
 
-  const hasActiveRange = dateFrom !== null || dateTo !== null;
+  const hasBounds = dateFrom !== null || dateTo !== null;
 
-  // With no active range the field displays the full transaction span but does
-  // not filter; an active range shows its own bounds.
-  const fieldLabel = hasActiveRange
+  // With no bounds the field displays the full transaction span but does not
+  // filter; bounds show themselves. The tint follows `active`, never the bounds.
+  const fieldLabel = hasBounds
     ? activeRangeLabel(dateFrom, dateTo, t)
     : `${formatDate(minDate)} – ${formatDate(maxDate)}`;
 
@@ -144,18 +154,23 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
   const selectableFloor = atLocalMidnight(minDate);
   const selectableCeiling = atLocalMidnight(new Date());
 
-  // Seed the draft each time the sheet opens: from the active range if one is
-  // set, otherwise from the displayed full span so the shown selection is
-  // immediately appliable without a fresh tap.
-  const openModal = (): void => {
-    if (hasActiveRange) {
-      setDraftFrom(dateFrom);
-      setDraftTo(dateTo);
-    } else {
-      setDraftFrom(clampToRange(minDate, selectableFloor, selectableCeiling));
-      setDraftTo(clampToRange(maxDate, selectableFloor, selectableCeiling));
-    }
+  // The bounds the sheet opens with: the field's own bounds if any is set,
+  // otherwise the displayed full span so the shown selection is immediately
+  // shown without a fresh tap. Apply compares the draft against these.
+  const openingBounds = (): { from: Date | null; to: Date | null } =>
+    hasBounds
+      ? { from: dateFrom, to: dateTo }
+      : {
+          from: clampToRange(minDate, selectableFloor, selectableCeiling),
+          to: clampToRange(maxDate, selectableFloor, selectableCeiling),
+        };
 
+  // Seed the draft each time the sheet opens.
+  const openModal = (): void => {
+    const { from, to } = openingBounds();
+
+    setDraftFrom(from);
+    setDraftTo(to);
     setOpen(true);
   };
 
@@ -185,8 +200,15 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
 
   // Commit the currently-shown selection directly — a lone start becomes a
   // same-day range so a preselected day applies without needing a second tap.
+  // An Apply without an edit is not a pick: the range stays as it was, so a
+  // default that reads inactive is not turned active by opening and closing.
   const handleApply = (): void => {
-    onApply(draftFrom, draftTo ?? draftFrom);
+    const opening = openingBounds();
+
+    if (!sameLocalDay(draftFrom, opening.from) || !sameLocalDay(draftTo, opening.to)) {
+      onApply(draftFrom, draftTo ?? draftFrom);
+    }
+
     setOpen(false);
   };
 
@@ -205,7 +227,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         label={fieldLabel}
         icon="calendar"
         accessibilityLabel={t('home.dateRangeField.label')}
-        active={hasActiveRange}
+        active={active}
         onPress={openModal}
       />
 

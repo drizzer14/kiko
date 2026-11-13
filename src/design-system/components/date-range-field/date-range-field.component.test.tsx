@@ -8,6 +8,7 @@ import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 
 import DateRangeField from './date-range-field.component';
+import type { DateRangeFieldProps } from './date-range-field.props';
 
 // The Text primitive's tone -> color mapping lives inside a react-native-unistyles
 // variant, which the project's Jest mock (react-native-unistyles/mocks) strips
@@ -53,81 +54,34 @@ const ymd = (date: Date): [number, number, number] => [
 
 // Open the sheet, tap each of the given days in order, then press Apply, and
 // return the [from, to] pair the field committed through onApply.
-const pickAndApply = async (minDate: Date, maxDate: Date, taps: Date[]): Promise<[Date, Date]> => {
-  const onApply = jest.fn();
-  const { getByLabelText, getByText, getByTestId } = await render(
-    <DateRangeField
-      dateFrom={null}
-      dateTo={null}
-      minDate={minDate}
-      maxDate={maxDate}
-      onApply={onApply}
-      onClear={jest.fn()}
-    />,
-  );
-
-  await act(async () => {
-    await fireEvent.press(getByLabelText('Date range'));
-  });
-
-  const calendar = getByTestId('date-range-calendar');
-
-  for (const tap of taps) {
-    await act(async () => {
-      (calendar.props as ReactTestInstanceProps).onDayPress(dayData(tap));
-    });
-  }
-
-  await act(async () => {
-    await fireEvent.press(getByText('Apply'));
-  });
-
-  expect(onApply).toHaveBeenCalledTimes(1);
-
-  return onApply.mock.calls[0] as [Date, Date];
-};
+const pickAndApply = async (minDate: Date, maxDate: Date, taps: Date[]): Promise<[Date, Date]> =>
+  pickRangeAndApply(null, null, minDate, maxDate, taps);
 
 // Like pickAndApply, but seeds an ACTIVE range first (dateFrom/dateTo) so the
 // reset behavior can be exercised against a known [from, to] rather than the
 // full-span default.
 const pickRangeAndApply = async (
-  dateFrom: Date,
-  dateTo: Date,
+  dateFrom: Date | null,
+  dateTo: Date | null,
   minDate: Date,
   maxDate: Date,
   taps: Date[],
 ): Promise<[Date, Date]> => {
-  const onApply = jest.fn();
-  const { getByLabelText, getByText, getByTestId } = await render(
-    <DateRangeField
-      dateFrom={dateFrom}
-      dateTo={dateTo}
-      minDate={minDate}
-      maxDate={maxDate}
-      onApply={onApply}
-      onClear={jest.fn()}
-    />,
-  );
-
-  await act(async () => {
-    await fireEvent.press(getByLabelText('Date range'));
+  const field = await renderField({
+    dateFrom,
+    dateTo,
+    active: dateFrom !== null,
+    minDate,
+    maxDate,
   });
 
-  const calendar = getByTestId('date-range-calendar');
+  await openSheet(field);
+  await tapDays(field, taps);
+  await pressApply(field);
 
-  for (const tap of taps) {
-    await act(async () => {
-      (calendar.props as ReactTestInstanceProps).onDayPress(dayData(tap));
-    });
-  }
+  expect(field.onApply).toHaveBeenCalledTimes(1);
 
-  await act(async () => {
-    await fireEvent.press(getByText('Apply'));
-  });
-
-  expect(onApply).toHaveBeenCalledTimes(1);
-
-  return onApply.mock.calls[0] as [Date, Date];
+  return field.onApply.mock.calls[0] as [Date, Date];
 };
 
 // A day at local midnight, offset from `base` by whole days.
@@ -136,6 +90,55 @@ const dayOffset = (base: Date, days: number): Date => {
   shifted.setDate(shifted.getDate() + days);
 
   return shifted;
+};
+
+const SPAN_START = new Date(2000, 0, 1);
+const SPAN_END = new Date(2000, 5, 15);
+const CUSTOM_RANGE = { dateFrom: new Date(2000, 1, 1), dateTo: new Date(2000, 3, 1) };
+
+type Rendered = Awaited<ReturnType<typeof render>>;
+
+// A field with no range, no pick and the 2000 span unless a test overrides it.
+const renderField = async (
+  props: Partial<DateRangeFieldProps> = {},
+): Promise<Rendered & { onApply: jest.Mock }> => {
+  const onApply = jest.fn();
+  const utils = await render(
+    <DateRangeField
+      dateFrom={null}
+      dateTo={null}
+      active={false}
+      minDate={SPAN_START}
+      maxDate={SPAN_END}
+      onApply={onApply}
+      onClear={jest.fn()}
+      {...props}
+    />,
+  );
+
+  return { ...utils, onApply };
+};
+
+const openSheet = async (utils: Rendered): Promise<void> => {
+  await act(async () => {
+    await fireEvent.press(utils.getByLabelText('Date range'));
+  });
+};
+
+const tapDays = async (utils: Rendered, taps: Date[]): Promise<void> => {
+  const calendar = utils.getByTestId('date-range-calendar');
+
+  for (const tap of taps) {
+    await act(async () => {
+      (calendar.props as ReactTestInstanceProps).onDayPress(dayData(tap));
+    });
+  }
+};
+
+const pressApply = async (utils: Rendered): Promise<void> => {
+  await act(async () => {
+    await fireEvent.press(utils.getByText('Apply'));
+  });
 };
 
 describe('DateRangeField selectable bounds', () => {
@@ -170,12 +173,12 @@ describe('DateRangeField selectable bounds', () => {
     const latest = new Date(2000, 5, 15);
     const future = dayOffset(today, 30);
 
-    // A future tap is ignored, so the seeded full span applies unchanged. Were
-    // it honoured it would have reset the range to the future day, so the
-    // applied `to` staying on `latest` proves rejection.
-    const [, to] = await pickAndApply(earliest, latest, [future]);
+    // A future tap is ignored, so the draft stays the earlier lone start. Were
+    // it honoured it would have become the other bound, so the applied `to`
+    // staying on the first tap proves rejection.
+    const [, to] = await pickAndApply(earliest, latest, [earliest, future]);
 
-    expect(ymd(to)).toEqual(ymd(latest));
+    expect(ymd(to)).toEqual(ymd(earliest));
   });
 
   it('rejects a day earlier than the earliest data (a no-data past day)', async () => {
@@ -183,12 +186,12 @@ describe('DateRangeField selectable bounds', () => {
     const latest = new Date(2005, 7, 1);
     const tooEarly = new Date(2000, 0, 1);
 
-    // A pre-earliest tap is ignored, so the seeded full span applies unchanged.
-    // Were it honoured it would have reset the range to 2000, so the applied
-    // `from` staying on `earliest` proves rejection.
-    const [from] = await pickAndApply(earliest, latest, [tooEarly]);
+    // A pre-earliest tap is ignored, so the draft stays the earlier lone start.
+    // Were it honoured it would have become the lower bound, so the applied
+    // `from` staying on the first tap proves rejection.
+    const [from] = await pickAndApply(earliest, latest, [latest, tooEarly]);
 
-    expect(ymd(from)).toEqual(ymd(earliest));
+    expect(ymd(from)).toEqual(ymd(latest));
   });
 });
 
@@ -241,101 +244,100 @@ describe('DateRangeField reset picking', () => {
 
 describe('DateRangeField value tone', () => {
   it('renders the shown date span in the primary (white) tone', async () => {
-    const earliest = new Date(2000, 0, 1);
-    const latest = new Date(2000, 5, 15);
-    const { getByText } = await render(
-      <DateRangeField
-        dateFrom={null}
-        dateTo={null}
-        minDate={earliest}
-        maxDate={latest}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+    const { getByText } = await renderField();
 
-    const label = `${formatDate(earliest)} – ${formatDate(latest)}`;
+    const label = `${formatDate(SPAN_START)} – ${formatDate(SPAN_END)}`;
 
     expect(getByText(label).props.testID).toBe('text-tone-textPrimary');
   });
 
   it('renders an active range span in the primary (white) tone', async () => {
-    const from = new Date(2000, 1, 1);
-    const to = new Date(2000, 3, 1);
-    const { getByText } = await render(
-      <DateRangeField
-        dateFrom={from}
-        dateTo={to}
-        minDate={new Date(2000, 0, 1)}
-        maxDate={new Date(2000, 5, 15)}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+    const { getByText } = await renderField({ ...CUSTOM_RANGE, active: true });
 
-    const label = `${formatDate(from)} – ${formatDate(to)}`;
+    const label = `${formatDate(CUSTOM_RANGE.dateFrom)} – ${formatDate(CUSTOM_RANGE.dateTo)}`;
 
     expect(getByText(label).props.testID).toBe('text-tone-textPrimary');
   });
 });
 
 describe('DateRangeField active state', () => {
-  it('tints the field active while a range is set', async () => {
-    const { getByLabelText } = await render(
-      <DateRangeField
-        dateFrom={new Date(2000, 1, 1)}
-        dateTo={new Date(2000, 3, 1)}
-        minDate={new Date(2000, 0, 1)}
-        maxDate={new Date(2000, 5, 15)}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+  it.each([
+    ['tints the field active while a range is set', CUSTOM_RANGE, true, 'accentSubtle', 'accent'],
+    ['keeps the field inactive on the whole-span default', {}, false, 'surface', 'border'],
+    [
+      'keeps the field inactive when the bounds are set but the caller says no pick was made',
+      CUSTOM_RANGE,
+      false,
+      'surface',
+      'border',
+    ],
+  ] as const)('%s', async (_title, bounds, active, background, border) => {
+    const { getByLabelText } = await renderField({ ...bounds, active });
     const style = StyleSheet.flatten(getByLabelText('Date range').props.style);
 
-    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
-    expect(style.borderColor).toBe(darkTheme.colors.accent);
+    expect(style.backgroundColor).toBe(darkTheme.colors[background]);
+    expect(style.borderColor).toBe(darkTheme.colors[border]);
+  });
+});
+
+describe('DateRangeField Apply without an edit', () => {
+  const OPENING = { dateFrom: new Date(2000, 1, 1), dateTo: new Date(2000, 3, 1) };
+  const earlier = new Date(2000, 0, 10);
+
+  it('keeps the default as it was: no apply call, the pill stays inactive', async () => {
+    const field = await renderField();
+
+    await openSheet(field);
+    await pressApply(field);
+
+    const style = StyleSheet.flatten(field.getByLabelText('Date range').props.style);
+
+    expect(field.onApply).not.toHaveBeenCalled();
+    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
   });
 
-  it('keeps the field inactive on the whole-span default', async () => {
-    const { getByLabelText } = await render(
-      <DateRangeField
-        dateFrom={null}
-        dateTo={null}
-        minDate={new Date(2000, 0, 1)}
-        maxDate={new Date(2000, 5, 15)}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
-    const style = StyleSheet.flatten(getByLabelText('Date range').props.style);
+  it('applies when the start changes on the default', async () => {
+    const field = await renderField();
 
-    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
-    expect(style.borderColor).toBe(darkTheme.colors.border);
+    await openSheet(field);
+    await tapDays(field, [earlier]);
+    await pressApply(field);
+
+    expect(field.onApply).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an existing custom range as it is: no apply call, the pill stays active', async () => {
+    const field = await renderField({ ...OPENING, active: true });
+
+    await openSheet(field);
+    await pressApply(field);
+
+    const style = StyleSheet.flatten(field.getByLabelText('Date range').props.style);
+
+    expect(field.onApply).not.toHaveBeenCalled();
+    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
+  });
+
+  it('does not apply a change that lands back on the opening bounds', async () => {
+    const field = await renderField({ ...OPENING, active: true });
+
+    await openSheet(field);
+    await tapDays(field, [earlier, new Date(2000, 2, 1)]);
+    await tapDays(field, [OPENING.dateFrom, OPENING.dateTo]);
+    await pressApply(field);
+
+    expect(field.onApply).not.toHaveBeenCalled();
   });
 });
 
 describe('DateRangeField safe area', () => {
   it('pads the sheet clear of the home indicator (bottom safe-area inset)', async () => {
-    const earliest = new Date(2000, 0, 1);
-    const latest = new Date(2000, 5, 15);
-    const { getByLabelText, getByTestId } = await render(
-      <DateRangeField
-        dateFrom={null}
-        dateTo={null}
-        minDate={earliest}
-        maxDate={latest}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+    const field = await renderField();
 
-    await act(async () => {
-      await fireEvent.press(getByLabelText('Date range'));
-    });
+    await openSheet(field);
 
     // Walk up from the calendar itself to the sheet Box that wraps it.
-    const node = ancestorWithStyle(getByTestId('date-range-calendar'), 'paddingBottom');
+    const node = ancestorWithStyle(field.getByTestId('date-range-calendar'), 'paddingBottom');
 
     // The safe-area mock reports a 0 bottom inset by default, so the padding
     // collapses to the sheet's own base spacing(4) = 16 — this only proves the
@@ -357,16 +359,7 @@ describe('DateRangeField localization', () => {
     });
 
     const from = new Date(2000, 1, 1);
-    const { getByLabelText, getByText } = await render(
-      <DateRangeField
-        dateFrom={from}
-        dateTo={null}
-        minDate={new Date(2000, 0, 1)}
-        maxDate={new Date(2000, 5, 15)}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+    const { getByLabelText, getByText } = await renderField({ dateFrom: from, active: true });
 
     expect(getByText(`Від ${formatDate(from)}`)).toBeTruthy();
 
@@ -380,16 +373,13 @@ describe('DateRangeField localization', () => {
 
 describe('DateRangeField calendar initial month', () => {
   it('opens the calendar on the active range end so the most recent month shows first', async () => {
-    const { getByText, getByTestId } = await render(
-      <DateRangeField
-        dateFrom={new Date(2026, 2, 10)}
-        dateTo={new Date(2026, 5, 20)}
-        minDate={new Date(2025, 0, 1)}
-        maxDate={new Date(2026, 8, 7)}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+    const { getByText, getByTestId } = await renderField({
+      dateFrom: new Date(2026, 2, 10),
+      dateTo: new Date(2026, 5, 20),
+      active: true,
+      minDate: new Date(2025, 0, 1),
+      maxDate: new Date(2026, 8, 7),
+    });
 
     await act(async () => {
       await fireEvent.press(getByText(/10\.03\.2026/));
@@ -401,70 +391,38 @@ describe('DateRangeField calendar initial month', () => {
   });
 
   it('falls back to a defined month when no range is set', async () => {
-    const { getByTestId, getByLabelText } = await render(
-      <DateRangeField
-        dateFrom={null}
-        dateTo={null}
-        minDate={new Date(2025, 0, 1)}
-        maxDate={new Date(2026, 8, 7)}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
-
-    await act(async () => {
-      await fireEvent.press(getByLabelText('Date range'));
+    const field = await renderField({
+      minDate: new Date(2025, 0, 1),
+      maxDate: new Date(2026, 8, 7),
     });
 
-    expect(getByTestId('date-range-calendar').props.initialDate).toBeDefined();
+    await openSheet(field);
+
+    expect(field.getByTestId('date-range-calendar').props.initialDate).toBeDefined();
   });
 });
 
 describe('DateRangeField calendar bounds', () => {
   it('forwards the selectable floor and ceiling to the calendar as ISO minDate/maxDate', async () => {
-    const earliest = new Date(2000, 0, 1);
-    const latest = new Date(2000, 5, 15);
     const today = new Date();
-    const { getByLabelText, getByTestId } = await render(
-      <DateRangeField
-        dateFrom={null}
-        dateTo={null}
-        minDate={earliest}
-        maxDate={latest}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+    const field = await renderField();
 
-    await act(async () => {
-      await fireEvent.press(getByLabelText('Date range'));
-    });
+    await openSheet(field);
 
-    const calendar = getByTestId('date-range-calendar');
+    const calendar = field.getByTestId('date-range-calendar');
 
     // The floor is the earliest-data day; the ceiling is today (future days are
     // never selectable). Both are 'YYYY-MM-DD', not the DD.MM.YYYY display form.
-    expect(calendar.props.minDate).toBe(iso(earliest));
+    expect(calendar.props.minDate).toBe(iso(SPAN_START));
     expect(calendar.props.maxDate).toBe(iso(today));
   });
 });
 
 describe('DateRangeField action sizes', () => {
   const open = async (): Promise<ReturnType<typeof render>> => {
-    const utils = await render(
-      <DateRangeField
-        dateFrom={null}
-        dateTo={null}
-        minDate={new Date(2000, 0, 1)}
-        maxDate={new Date(2000, 5, 15)}
-        onApply={jest.fn()}
-        onClear={jest.fn()}
-      />,
-    );
+    const utils = await renderField();
 
-    await act(async () => {
-      await fireEvent.press(utils.getByLabelText('Date range'));
-    });
+    await openSheet(utils);
 
     return utils;
   };

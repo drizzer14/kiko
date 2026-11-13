@@ -124,6 +124,18 @@ describe('FilterMenu', () => {
     expect(getByTestId(TEST_ID).props.accessibilityValue).toEqual({ text: '2' });
   });
 
+  it('keeps the trigger active with every option selected', async () => {
+    const { getByTestId, getByText } = await renderMenu({
+      selected: new Set(['Monobank', 'PrivatBank']),
+    });
+    const style = StyleSheet.flatten(getByTestId(TEST_ID).props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
+    expect(style.borderColor).toBe(darkTheme.colors.accent);
+    expect(getByText('Accounts · 2')).toBeTruthy();
+    expect(getByTestId(TEST_ID).props.accessibilityValue).toEqual({ text: '2' });
+  });
+
   it('renders an option icon tinted with its color when provided', async () => {
     const utils = await renderMenu();
 

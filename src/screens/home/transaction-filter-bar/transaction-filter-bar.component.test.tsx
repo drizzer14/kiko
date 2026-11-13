@@ -3,6 +3,7 @@ import { formatDate } from '@kiko/dates';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 import { FILTER_ALL } from '@kiko/design-system/components/filter-menu';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
@@ -15,6 +16,7 @@ type BarProps = {
   onToggleCategory?: (value: string) => void;
   dateFrom?: Date | null;
   dateTo?: Date | null;
+  dateRangeActive?: boolean;
   minDate?: Date;
   maxDate?: Date;
   onApplyDates?: (from: Date | null, to: Date | null) => void;
@@ -41,6 +43,7 @@ const renderBar = (props: BarProps = {}): ReturnType<typeof render> =>
       onToggleCategory={props.onToggleCategory ?? jest.fn()}
       dateFrom={props.dateFrom ?? null}
       dateTo={props.dateTo ?? null}
+      dateRangeActive={props.dateRangeActive ?? false}
       minDate={props.minDate ?? SPAN_START}
       maxDate={props.maxDate ?? SPAN_END}
       onApplyDates={props.onApplyDates ?? jest.fn()}
@@ -232,6 +235,21 @@ describe('TransactionFilterBar', () => {
       expect(getByText(`${formatDate(from)} – ${formatDate(to)}`)).toBeTruthy();
     });
 
+    it('tints the field only when the caller says a range was picked', async () => {
+      const bounds = { dateFrom: new Date(2026, 0, 5), dateTo: new Date(2026, 0, 20) };
+      const picked = await renderBar({ ...bounds, dateRangeActive: true });
+      const pickedStyle = StyleSheet.flatten(picked.getByLabelText('Date range').props.style);
+
+      expect(pickedStyle.backgroundColor).toBe(darkTheme.colors.accentSubtle);
+
+      await picked.unmount();
+
+      const unpicked = await renderBar({ ...bounds, dateRangeActive: false });
+      const unpickedStyle = StyleSheet.flatten(unpicked.getByLabelText('Date range').props.style);
+
+      expect(unpickedStyle.backgroundColor).toBe(darkTheme.colors.surface);
+    });
+
     it('keeps the calendar sheet closed until the field is pressed', async () => {
       const { queryByText } = await renderBar();
 
@@ -250,18 +268,21 @@ describe('TransactionFilterBar', () => {
       expect(getByText('Clear')).toBeTruthy();
     });
 
-    it('applies the preselected span directly when Apply is pressed without a fresh tap', async () => {
+    it.each([
+      ['the preselected span', {}],
+      ['an open-ended start', { dateFrom: new Date(2026, 0, 7), dateTo: null }],
+    ])('does not apply %s on an Apply without an edit', async (_title, bounds) => {
       const onApplyDates = jest.fn();
-      const { getByText, getByLabelText } = await renderBar({ onApplyDates });
+      const queries = await renderBar({ ...bounds, onApplyDates });
 
       await act(async () => {
-        await fireEvent.press(getByLabelText('Date range'));
+        await fireEvent.press(queries.getByLabelText('Date range'));
       });
       await act(async () => {
-        await fireEvent.press(getByText('Apply'));
+        await fireEvent.press(queries.getByText('Apply'));
       });
 
-      expect(onApplyDates).toHaveBeenCalledWith(SPAN_START, SPAN_END);
+      expect(onApplyDates).not.toHaveBeenCalled();
     });
 
     it('resets to a fresh single-date selection when a pick lands on a complete range', async () => {
@@ -308,26 +329,6 @@ describe('TransactionFilterBar', () => {
       });
 
       expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 8), new Date(2026, 0, 12));
-    });
-
-    it('applies an open-ended start as a same-day range when Apply is pressed', async () => {
-      const onApplyDates = jest.fn();
-      // An open-ended range (only `from` set) commits as a same-day range so a
-      // lone bound still applies without a second tap.
-      const queries = await renderBar({
-        dateFrom: new Date(2026, 0, 7),
-        dateTo: null,
-        onApplyDates,
-      });
-
-      await act(async () => {
-        await fireEvent.press(queries.getByLabelText('Date range'));
-      });
-      await act(async () => {
-        await fireEvent.press(queries.getByText('Apply'));
-      });
-
-      expect(onApplyDates).toHaveBeenCalledWith(new Date(2026, 0, 7), new Date(2026, 0, 7));
     });
 
     it('clears the range when Clear is pressed', async () => {

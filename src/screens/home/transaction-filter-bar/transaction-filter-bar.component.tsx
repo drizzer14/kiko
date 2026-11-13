@@ -16,6 +16,7 @@ type TransactionFilterBarProps = {
   onToggleCategory: (value: string) => void;
   dateFrom: Date | null;
   dateTo: Date | null;
+  dateRangeActive: boolean;
   minDate: Date;
   maxDate: Date;
   onApplyDates: (from: Date | null, to: Date | null) => void;
@@ -32,6 +33,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
   onToggleCategory,
   dateFrom,
   dateTo,
+  dateRangeActive,
   minDate,
   maxDate,
   onApplyDates,
@@ -66,6 +68,7 @@ const TransactionFilterBar: FC<TransactionFilterBarProps> = ({
       <DateRangeField
         dateFrom={dateFrom}
         dateTo={dateTo}
+        active={dateRangeActive}
         minDate={minDate}
         maxDate={maxDate}
         onApply={onApplyDates}

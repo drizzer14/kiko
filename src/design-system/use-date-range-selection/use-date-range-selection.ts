@@ -8,6 +8,7 @@ type DefaultRange = ReturnType<typeof defaultDateRange>;
 type DateRangeSelection = {
   dateFrom: Date | null;
   dateTo: Date | null;
+  hasCustomRange: boolean;
   applyDateRange: (from: Date | null, to: Date | null) => void;
   clearDateRange: () => void;
 };
@@ -102,7 +103,10 @@ const getSnapshot = (): Snapshot => snapshot;
  * would stop including today once a calendar day passes. A reader falls back
  * to its own `now` until a new day is published, and never shows a shared
  * default older than its own day. A user pick still stays exactly as given,
- * even one side left null (open-ended) via the date-range field. The pick and
+ * even one side left null (open-ended) via the date-range field. `hasCustomRange`
+ * is true once the user made a pick, even one equal to the default range, and
+ * false while the default shows: a field is tinted active by it, never by the
+ * bounds, which the default always sets. The pick and
  * the clock reset only when no reader is mounted after the commit, so the range
  * starts on the default at every launch while a fold/unfold that replaces both
  * panes keeps the pick. Known limit: a device clock set back by hand before any
@@ -140,6 +144,7 @@ export const useDateRangeSelection = (now: number): DateRangeSelection => {
   return {
     dateFrom: range.from,
     dateTo: range.to,
+    hasCustomRange: shared.customRange !== null,
     applyDateRange,
     clearDateRange,
   };
