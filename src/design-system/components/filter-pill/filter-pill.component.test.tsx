@@ -4,7 +4,7 @@ import { StyleSheet as UnistylesStyleSheet } from 'react-native-unistyles';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
-import { toSymbolTintColor } from '@kiko/test-support/to-symbol-tint-color';
+import { toSFSymbolTintColor } from '@kiko/design-system/components/symbol';
 
 import FilterPill from './filter-pill.component';
 
@@ -55,7 +55,7 @@ describe('FilterPill', () => {
     const { getByTestId } = await renderPill();
 
     expect(glyphTintsWithin(getByTestId(TEST_ID))).toEqual([
-      toSymbolTintColor(darkTheme.colors.textPrimary),
+      toSFSymbolTintColor(darkTheme.colors.textPrimary),
     ]);
   });
 

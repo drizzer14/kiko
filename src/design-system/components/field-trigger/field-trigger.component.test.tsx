@@ -10,7 +10,7 @@ import { markColor } from '@kiko/design-system/entity-tint';
 import { darkTheme, lightTheme } from '@kiko/design-system/theme';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
-import { toSymbolTintColor } from '@kiko/test-support/to-symbol-tint-color';
+import { toSFSymbolTintColor } from '@kiko/design-system/components/symbol';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 
 import FieldTrigger from '.';
@@ -157,7 +157,7 @@ describe('FieldTrigger', () => {
       expect(darkTheme.colors.entityColors.yellow).not.toBe(yellowTile);
       expect(await iconTintsOf()).toEqual([
         yellowTile,
-        toSymbolTintColor(darkTheme.colors.textSecondary),
+        toSFSymbolTintColor(darkTheme.colors.textSecondary),
       ]);
     });
 
@@ -174,7 +174,7 @@ describe('FieldTrigger', () => {
         expect(markColor(yellowTile, 'light')).not.toBe(yellowTile);
         expect(await iconTintsOf()).toEqual([
           markColor(yellowTile, 'light'),
-          toSymbolTintColor(lightTheme.colors.textSecondary),
+          toSFSymbolTintColor(lightTheme.colors.textSecondary),
         ]);
       });
     });
@@ -203,7 +203,7 @@ describe('FieldTrigger', () => {
 
       expect(glyphs).toEqual(['cart.fill', 'chevron.down']);
       expect(chevron.props.size).toBe(darkTheme.iconSizes.caption);
-      expect(chevron.props.tintColor).toBe(toSymbolTintColor(darkTheme.colors.textSecondary));
+      expect(chevron.props.tintColor).toBe(toSFSymbolTintColor(darkTheme.colors.textSecondary));
     });
 
     it('hides the chevron from accessibility', async () => {

@@ -39,7 +39,7 @@ import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
-import { toSymbolTintColor } from '@kiko/test-support/to-symbol-tint-color';
+import { toSFSymbolTintColor } from '@kiko/design-system/components/symbol';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
@@ -2941,7 +2941,7 @@ describe('HoldingFormScreen loan', () => {
     expect(glyphNamesWithin(customTrigger)).toEqual(['star', 'chevron.down']);
     expect(glyphTintsWithin(customTrigger)).toEqual([
       '#ABCDEF',
-      toSymbolTintColor(darkTheme.colors.textSecondary),
+      toSFSymbolTintColor(darkTheme.colors.textSecondary),
     ]);
 
     await fireEvent.press(customTrigger);
@@ -2962,7 +2962,7 @@ describe('HoldingFormScreen loan', () => {
     ]);
     expect(glyphTintsWithin(defaultTrigger)).toEqual([
       defaultHoldingColor.card,
-      toSymbolTintColor(darkTheme.colors.textSecondary),
+      toSFSymbolTintColor(darkTheme.colors.textSecondary),
     ]);
 
     await fireEvent.press(defaultTrigger);

@@ -24,12 +24,9 @@ export const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   // A capped trigger is the column's width up to the shared cap, whatever its label, so a long
-  // value wraps inside the cap (`valueCapped` lets the text shrink to it), not widening the field.
+  // value wraps inside the cap, not widening the field.
   fieldCapped: {
     maxWidth: theme.layout.selectTriggerMaxWidth,
-  },
-  valueCapped: {
-    flexShrink: 1,
   },
   // A read-only trigger: the SAME shared treatment as the disabled TextField
   // (`disabledFieldStyle` — border darkens to `surfaceHigh`, fills

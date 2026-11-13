@@ -100,6 +100,13 @@ describe('HoldingSelectField', () => {
     expect(StyleSheet.flatten(wrapper.props.style).marginLeft).toBe('auto');
   });
 
+  it('lets the account caption shrink so a long account name cannot push the chevron out', async () => {
+    const { getByText } = await renderHoldingSelectField({ selectedId: 'h2' });
+    const wrapper = ancestorWithStyle(getByText('Personal'), 'marginLeft');
+
+    expect(StyleSheet.flatten(wrapper.props.style).flexShrink).toBe(1);
+  });
+
   it('keeps the account caption right-aligned before the chevron', async () => {
     const { getByLabelText, getByText } = await renderHoldingSelectField({ selectedId: 'h2' });
     const inOrder = getByLabelText('To').queryAll(

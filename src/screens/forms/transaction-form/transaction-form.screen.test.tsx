@@ -27,7 +27,7 @@ import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
-import { toSymbolTintColor } from '@kiko/test-support/to-symbol-tint-color';
+import { toSFSymbolTintColor } from '@kiko/design-system/components/symbol';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { emitLayoutMode, resetLayoutMode } from '@kiko/test-support/layout-mode-spy';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
@@ -2852,7 +2852,7 @@ describe('TransactionFormScreen — loan payment field', () => {
     expect(glyphNamesWithin(trigger)).toEqual(['star', 'chevron.down']);
     expect(glyphTintsWithin(trigger)).toEqual([
       '#ABCDEF',
-      toSymbolTintColor(darkTheme.colors.textSecondary),
+      toSFSymbolTintColor(darkTheme.colors.textSecondary),
     ]);
 
     await fireEvent.press(trigger);
@@ -2877,7 +2877,7 @@ describe('TransactionFormScreen — loan payment field', () => {
     ]);
     expect(glyphTintsWithin(trigger)).toEqual([
       defaultHoldingColor.loan,
-      toSymbolTintColor(darkTheme.colors.textSecondary),
+      toSFSymbolTintColor(darkTheme.colors.textSecondary),
     ]);
 
     await fireEvent.press(trigger);

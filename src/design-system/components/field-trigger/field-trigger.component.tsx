@@ -46,7 +46,7 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   // A wrapper Box carries the flex, because Text's `style` admits typography keys only. It grows
   // to push the trailing content and chevron to the end and shrinks so a long value wraps.
   const valueText = (
-    <Box style={[styles.value, capped && styles.valueCapped]}>
+    <Box style={styles.value}>
       <Text variant="body" tone={valueTone}>
         {value}
       </Text>
