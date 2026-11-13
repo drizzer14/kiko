@@ -1,11 +1,11 @@
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { createRef, type ComponentProps, type ReactElement, type ReactNode } from 'react';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { setBinanceCooldownUntil } from '@kiko/crypto-sync/binance';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
-import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
+import { expectNoticeUnderConnectRow } from '@kiko/test-support/expect-notice-under-connect-row';
 
 import BinanceCredentialsField from '.';
 
@@ -229,25 +229,12 @@ describe('BinanceCredentialsField', () => {
   it('shows a failed Connect as an alert notice under the Connect row, not beside it', async () => {
     onConnect.mockResolvedValue(false);
     const view = await renderAndConnect(onConnect);
-    const message = i18n.t('accountDetail.couldNotConnectBinance');
 
-    expect(await view.findByRole('alert', { name: message })).toBeTruthy();
-
-    // The Button's own Pressable is a row too, so the walk starts at the button's parent: the
-    // nearest row from there is the Connect row, and the notice must sit outside it.
-    const button = view.getByRole('button', { name: 'Connect Binance' });
-    const buttonParent = button.parent;
-
-    if (buttonParent === null) {
-      throw new Error('Connect button has no parent');
-    }
-
-    const row = ancestorWithStyle(buttonParent, 'flexDirection');
-
-    expect(row).not.toBe(button);
-    expect(within(row).getByRole('button', { name: 'Connect Binance' })).toBe(button);
-    expect(within(row).queryByRole('alert')).toBeNull();
-    expect(within(row).queryByText(message)).toBeNull();
+    await expectNoticeUnderConnectRow(
+      view,
+      'Connect Binance',
+      i18n.t('accountDetail.couldNotConnectBinance'),
+    );
   });
 
   describe('while the account is cooling down', () => {
