@@ -23,15 +23,12 @@ export type TrendFilter =
 const MIN_TOP_AMOUNT = 1;
 const MAX_TOP_AMOUNT = 5;
 
-/** The default "top" filter: the top 3 by contribution. */
-export const DEFAULT_TOP_TREND_FILTER: Extract<TrendFilter, { mode: 'top' }> = {
+/** The fallback filter when nothing is saved: the top 3 by contribution. */
+export const DEFAULT_TREND_FILTER: Extract<TrendFilter, { mode: 'top' }> = {
   mode: 'top',
   amount: 3,
   by: 'contribution',
 };
-
-/** The fallback filter when nothing is saved. */
-export const DEFAULT_TREND_FILTER: TrendFilter = { ...DEFAULT_TOP_TREND_FILTER };
 
 /**
  * Whether a resolved filter narrows the chart: a manual pick of at least one category, or a top
@@ -43,8 +40,8 @@ export const isTrendFilterActive = (filter: TrendFilter): boolean =>
     .with(
       { mode: 'top' },
       (topFilter) =>
-        topFilter.amount !== DEFAULT_TOP_TREND_FILTER.amount ||
-        topFilter.by !== DEFAULT_TOP_TREND_FILTER.by,
+        topFilter.amount !== DEFAULT_TREND_FILTER.amount ||
+        topFilter.by !== DEFAULT_TREND_FILTER.by,
     )
     .exhaustive();
 

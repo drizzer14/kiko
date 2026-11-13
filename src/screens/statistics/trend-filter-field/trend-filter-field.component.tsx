@@ -1,6 +1,6 @@
 import { match } from 'ts-pattern';
 import {
-  DEFAULT_TOP_TREND_FILTER,
+  DEFAULT_TREND_FILTER,
   isTrendFilterActive,
   type TrendFilter,
   type TrendMeasure,
@@ -45,8 +45,8 @@ const seedDraft = (filter: TrendFilter): Draft => {
   const derived: { manualKeys: Set<string>; amount: number; by: TrendMeasure } = match(filter)
     .with({ mode: 'manual' }, (manualFilter) => ({
       manualKeys: new Set(manualFilter.keys),
-      amount: DEFAULT_TOP_TREND_FILTER.amount,
-      by: DEFAULT_TOP_TREND_FILTER.by,
+      amount: DEFAULT_TREND_FILTER.amount,
+      by: DEFAULT_TREND_FILTER.by,
     }))
     .with({ mode: 'top' }, (topFilter) => ({
       manualKeys: new Set<string>(),
