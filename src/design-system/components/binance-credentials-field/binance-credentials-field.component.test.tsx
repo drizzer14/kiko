@@ -220,7 +220,7 @@ describe('BinanceCredentialsField', () => {
     );
     const { findByText } = await renderAndConnect(onConnect);
 
-    expect(await findByText('Invalid API key or secret')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.invalidApiKeyOrSecret'))).toBeTruthy();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
     expect(onConnect).not.toHaveBeenCalled();
   });
@@ -229,8 +229,8 @@ describe('BinanceCredentialsField', () => {
     mockSaveCredentials.mockRejectedValue(new Error('Keychain write failed'));
     const { findByText, queryByText } = await renderAndConnect(onConnect);
 
-    expect(await findByText('Could not save credentials')).toBeTruthy();
-    expect(queryByText('Invalid API key or secret')).toBeNull();
+    expect(await findByText(i18n.t('accountDetail.couldNotSaveCredentials'))).toBeTruthy();
+    expect(queryByText(i18n.t('accountDetail.invalidApiKeyOrSecret'))).toBeNull();
     expect(onConnect).not.toHaveBeenCalled();
   });
 
@@ -238,7 +238,7 @@ describe('BinanceCredentialsField', () => {
     onConnect.mockResolvedValue(false);
     const { findByText } = await renderAndConnect(onConnect);
 
-    expect(await findByText('Could not connect Binance')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.couldNotConnectBinance'))).toBeTruthy();
   });
 
   it('shows a failed Connect as an alert notice under the Connect row, not beside it', async () => {
@@ -463,10 +463,10 @@ describe('BinanceCredentialsField', () => {
     mockFetchAccount.mockRejectedValue(new Error('Binance request failed: 401'));
     const { getByPlaceholderText, findByText, queryByText } = await renderAndConnect(onConnect);
 
-    expect(await findByText('Invalid API key or secret')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.invalidApiKeyOrSecret'))).toBeTruthy();
 
     await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture-2');
-    expect(queryByText('Invalid API key or secret')).toBeNull();
+    expect(queryByText(i18n.t('accountDetail.invalidApiKeyOrSecret'))).toBeNull();
   });
 });
 

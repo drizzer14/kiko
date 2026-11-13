@@ -7,7 +7,8 @@
 //   progress/status text, "Label: {{value}}" strings.
 //   Final "." always (or "?" when the body is a question) — option
 //   descriptions/subtitles, captions/hints, errors, toast/alert bodies, even
-//   for a fragment.
+//   for a fragment. That includes the `SyncStatus` error texts shown in an
+//   `ErrorNotice` (`SYNC_STATUS_ERROR_KEYS`): they are errors, not status text.
 //
 // Reuses `TITLE_KEYS` (`./title-keys.ts`, shared with
 // `en.casing-by-role.test.ts`) for the no-final-"." side: a title/heading/
@@ -64,6 +65,20 @@ const LABEL_VALUE_ALLOWLIST = new Set([
   'accountDetail.bybitLogLeftOut',
 ]);
 
+// Named, never a prefix: they carry no `*Error` suffix, so no name pattern finds them.
+const SYNC_STATUS_ERROR_KEYS: ReadonlySet<string> = new Set([
+  'accountDetail.couldNotConnectBinance',
+  'accountDetail.couldNotConnectBybit',
+  'accountDetail.couldNotConnectMonobank',
+  'accountDetail.couldNotConnectWallet',
+  'accountDetail.couldNotSaveCredentials',
+  'accountDetail.invalidToken',
+  'accountDetail.invalidBTCAddress',
+  'accountDetail.invalidApiKeyOrSecret',
+]);
+
+const isSyncStatusError = (path: string): boolean => SYNC_STATUS_ERROR_KEYS.has(path);
+
 const leafName = (path: string): string => path.split('.').at(-1) ?? path;
 
 const isPlaceholderPath = (path: string): boolean =>
@@ -114,6 +129,13 @@ describe.each([
       .filter(({ value }) => !endsWithFinalStop(value));
 
     expect(offenders).toEqual([]);
+  });
+
+  it('always ends a Connect or credential error shown in an ErrorNotice with "."', () => {
+    const errors = leaves.filter(({ path }) => isSyncStatusError(path));
+
+    expect(errors).toHaveLength(SYNC_STATUS_ERROR_KEYS.size);
+    expect(errors.filter(({ value }) => !endsWithFinalPeriod(value))).toEqual([]);
   });
 
   it('never ends a *Placeholder value with a final "."', () => {

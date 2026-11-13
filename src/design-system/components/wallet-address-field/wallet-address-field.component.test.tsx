@@ -99,7 +99,7 @@ describe('WalletAddressField', () => {
       await fireEvent.press(getByText('Connect wallet'));
     });
 
-    expect(await findByText('Invalid BTC address')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeTruthy();
     expect(onConnect).not.toHaveBeenCalled();
   });
 
@@ -128,8 +128,8 @@ describe('WalletAddressField', () => {
       await fireEvent.press(getByText('Connect wallet'));
     });
 
-    expect(await findByText('Could not connect wallet')).toBeTruthy();
-    expect(queryByText('Invalid BTC address')).toBeNull();
+    expect(await findByText(i18n.t('accountDetail.couldNotConnectWallet'))).toBeTruthy();
+    expect(queryByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeNull();
     expect(queryByText('Wallet connected')).toBeNull();
   });
 
@@ -224,10 +224,10 @@ describe('WalletAddressField', () => {
     await act(async () => {
       await fireEvent.press(getByText('Connect wallet'));
     });
-    expect(await findByText('Invalid BTC address')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeTruthy();
 
     await fireEvent.changeText(input, ADDRESS);
-    expect(queryByText('Invalid BTC address')).toBeNull();
+    expect(queryByText(i18n.t('accountDetail.invalidBTCAddress'))).toBeNull();
   });
 });
 

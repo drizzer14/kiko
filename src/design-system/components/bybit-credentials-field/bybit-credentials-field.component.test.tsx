@@ -311,7 +311,7 @@ describe('BybitCredentialsField', () => {
 
     const { findByText } = await renderAndConnect(onConnect);
 
-    expect(await findByText('Could not save credentials')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.couldNotSaveCredentials'))).toBeTruthy();
     expect(onConnect).not.toHaveBeenCalled();
   });
 
@@ -320,7 +320,7 @@ describe('BybitCredentialsField', () => {
 
     const { findByText } = await renderAndConnect(onConnect);
 
-    expect(await findByText('Could not connect Bybit')).toBeTruthy();
+    expect(await findByText(i18n.t('accountDetail.couldNotConnectBybit'))).toBeTruthy();
   });
 
   it('reports the token of the write instead of connecting when the field unmounted during it', async () => {
