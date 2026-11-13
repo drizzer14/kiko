@@ -26,8 +26,8 @@ the long per-component detail that is read only when the task touches a componen
 file before you edit the component it describes.
 
 - [component-set.md](component-set.md) — "Component set", part 1: the shared layout, text,
-  action and surface components (`TwoPaneLayout`, `Screen`, `LoadingState`, `Box`, `Text`,
-  `MoneyText`, `ConvertedCaption`, `Button` with its pinned treatments and sizes, `Card`,
+  action and surface components (`TwoPaneLayout`, `Screen`, `FilterPill`, `LoadingState`, `Box`,
+  `Text`, `MoneyText`, `ConvertedCaption`, `Button` with its pinned treatments and sizes, `Card`,
   `GlassSurface`, `BottomSheet`, `SelectableRow`, `SelectField` and
   `DataTable`). Read it before you build or change any of them. The set continues in
   component-set-forms.md under "Component set (continued)".
@@ -139,6 +139,10 @@ The token categories, defined once in a single theme module (read
   text, secondary text, accent(s), positive-money, negative-money, and `fieldBackground`,
   the input fill (`transparent` in dark, `#FFFFFF` in light; read it in
   `src/design-system/theme/theme.ts`). Every text-like input uses it, not `surface`.
+  `accentSubtle` is the active FilterPill fill; `layout.filterPillHeight` and
+  `layout.filterPillHitSlop` size the pill. The trend filter is "active" when
+  `isTrendFilterActive` (`src/statistics/trend-filter/trend-filter.ts`) says it differs from
+  the single `DEFAULT_TREND_FILTER`.
 - **spacing** — a scale used for all padding/margin/gap; components
   never hardcode a pixel value for spacing.
 - **typography** — font sizes/weights/line-heights for the type
@@ -453,7 +457,8 @@ every one of them, so scan this list rather than the reference files for what is
   inline secondary rule. The chevron is removed (user: "Remove it (Recommended)"): `icon` only.
   It is the first child of the untagged `Box`, above the filter bar. Its press state is backlog.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
-  for now"). There is no tip card, tip hook, or subtle-accent token; do not bring back a
+  for now"). There is no tip card or tip hook, and `accentSubtle` exists for the ACTIVE
+  FilterPill only, with no other use; do not bring back a
   first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
   asking the user first. `InfoHint` stays allowed.
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
@@ -949,7 +954,8 @@ a fully invisible glyph, easy to mistake for a layout bug. Convert any
 (`symbol/symbol.color.ts`) before it reaches `tintColor` — `SymbolIcon`
 already does this for both its `tone` and its explicit `color` prop;
 a caller building a raw `SFSymbolView` outside `SymbolIcon` must do
-the same conversion itself.
+the same conversion itself. It is exported from the symbol barrel; tests import it from the
+barrel, never through `jest.requireActual`.
 
 ## SF Symbol availability
 
