@@ -102,6 +102,28 @@ describe('FilterMenu', () => {
     ).toBe(0);
   });
 
+  it('tints the trigger active once an option is selected', async () => {
+    const { getByTestId } = await renderMenu({ selected: new Set(['Monobank']) });
+    const style = StyleSheet.flatten(getByTestId(TEST_ID).props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
+    expect(style.borderColor).toBe(darkTheme.colors.accent);
+  });
+
+  it('keeps the trigger inactive with nothing selected', async () => {
+    const { getByTestId } = await renderMenu();
+    const style = StyleSheet.flatten(getByTestId(TEST_ID).props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+    expect(style.borderColor).toBe(darkTheme.colors.border);
+  });
+
+  it('reports the count as the accessibility value', async () => {
+    const { getByTestId } = await renderMenu({ selected: new Set(['Monobank', 'PrivatBank']) });
+
+    expect(getByTestId(TEST_ID).props.accessibilityValue).toEqual({ text: '2' });
+  });
+
   it('renders an option icon tinted with its color when provided', async () => {
     const utils = await renderMenu();
 

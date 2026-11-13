@@ -205,6 +205,7 @@ const DateRangeField: FC<DateRangeFieldProps> = ({
         label={fieldLabel}
         icon="calendar"
         accessibilityLabel={t('home.dateRangeField.label')}
+        active={hasActiveRange}
         onPress={openModal}
       />
 

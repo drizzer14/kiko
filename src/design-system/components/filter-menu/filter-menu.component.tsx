@@ -36,7 +36,8 @@ const FilterMenu: FC<FilterMenuProps> = ({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
-  const buttonLabel = selected.size > 0 ? `${label} · ${selected.size}` : label;
+  const active = selected.size > 0;
+  const buttonLabel = active ? `${label} · ${selected.size}` : label;
   // Prepend the synthetic "All" row (no icon) to the real options. Every row is
   // a FilterOption so the render path is uniform; matching still keys on `value`.
   const rows: FilterOption[] = [{ value: FILTER_ALL }, ...options];
@@ -59,6 +60,8 @@ const FilterMenu: FC<FilterMenuProps> = ({
         label={buttonLabel}
         icon={triggerIcon}
         accessibilityLabel={label}
+        accessibilityValue={active ? { text: String(selected.size) } : undefined}
+        active={active}
         onPress={() => setOpen(true)}
         testID={testID}
       />

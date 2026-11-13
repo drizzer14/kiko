@@ -5,6 +5,7 @@ import { StyleSheet } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import '@kiko/design-system/unistyles';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import DateRangeField from './date-range-field.component';
 
@@ -275,6 +276,42 @@ describe('DateRangeField value tone', () => {
     const label = `${formatDate(from)} – ${formatDate(to)}`;
 
     expect(getByText(label).props.testID).toBe('text-tone-textPrimary');
+  });
+});
+
+describe('DateRangeField active state', () => {
+  it('tints the field active while a range is set', async () => {
+    const { getByLabelText } = await render(
+      <DateRangeField
+        dateFrom={new Date(2000, 1, 1)}
+        dateTo={new Date(2000, 3, 1)}
+        minDate={new Date(2000, 0, 1)}
+        maxDate={new Date(2000, 5, 15)}
+        onApply={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+    const style = StyleSheet.flatten(getByLabelText('Date range').props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.accentSubtle);
+    expect(style.borderColor).toBe(darkTheme.colors.accent);
+  });
+
+  it('keeps the field inactive on the whole-span default', async () => {
+    const { getByLabelText } = await render(
+      <DateRangeField
+        dateFrom={null}
+        dateTo={null}
+        minDate={new Date(2000, 0, 1)}
+        maxDate={new Date(2000, 5, 15)}
+        onApply={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+    const style = StyleSheet.flatten(getByLabelText('Date range').props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+    expect(style.borderColor).toBe(darkTheme.colors.border);
   });
 });
 
