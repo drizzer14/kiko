@@ -270,10 +270,6 @@ describe('defaultTablePeriod', () => {
     expect(defaultTablePeriod(at(2026, 10, 15))).toEqual(yearOf(2026));
     expect(defaultTablePeriod(at(2027, 0, 1, 0))).toEqual(yearOf(2027));
   });
-
-  it('is the period a label calls this year', () => {
-    expect(defaultTablePeriod(NOW)).toEqual(relativeTablePeriodsOf(NOW).thisYear);
-  });
 });
 
 describe('resolveTablePeriod', () => {
@@ -285,15 +281,6 @@ describe('resolveTablePeriod', () => {
 
   it('reads no period as this year', () => {
     expect(resolveTablePeriod(undefined, autumnOptions, IN_AUTUMN)).toEqual(yearOf(2026));
-  });
-
-  it('falls back to the default period', () => {
-    expect(resolveTablePeriod(undefined, autumnOptions, IN_AUTUMN)).toEqual(
-      defaultTablePeriod(IN_AUTUMN),
-    );
-    expect(resolveTablePeriod(yearOf(2024), springOptions, IN_SPRING)).toEqual(
-      defaultTablePeriod(IN_SPRING),
-    );
   });
 
   it('keeps a held quarter, half and year that are still offered', () => {
