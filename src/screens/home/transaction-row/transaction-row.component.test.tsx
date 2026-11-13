@@ -73,7 +73,6 @@ const renderRow = (
       defaultCategoryKey="other"
       holdingNameById={new Map()}
       holdingCurrencyById={new Map()}
-      categoryKeyForRow={(raw) => raw ?? 'other'}
       onPress={onPress}
       onDuplicate={onDuplicate}
       onViewAccount={onViewAccount}

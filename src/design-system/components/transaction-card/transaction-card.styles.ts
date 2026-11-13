@@ -18,8 +18,10 @@ export const styles = StyleSheet.create((theme) => ({
   rowDescription: {
     flex: 1,
   },
+  // `alignItems` right-flushes the amount and its caption in one column.
   rowAmount: {
     flexShrink: 0,
+    alignItems: 'flex-end',
   },
   // The secondary line: the left caption grows to fill the space left of the
   // right one, which stays pinned to the last baseline.

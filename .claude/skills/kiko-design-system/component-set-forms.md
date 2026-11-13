@@ -699,6 +699,8 @@
   `color-picker.styles.ts` and the palette for the current count.
 - **TransactionCard** (`src/design-system/components/transaction-card/`) — `selected` sets the
   `Card` selected surface, and a category glyph with no colour of its own then takes `onAccent`.
+  The optional `amountCaption` is a second amount line (the Tables cell sheet passes a
+  flow-signed caption); its props come from `transactionCardPropsOf`.
   Home marks a `TransactionRow` selected through `useDetailPaneRoute` and `detailParamOf`
   (`kiko-architecture`, "Row marking").
 - **Form header** (`useFormHeaderItems`, `src/screens/forms/use-form-header-items/`) — see

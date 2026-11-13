@@ -4,20 +4,22 @@ import { calendarMonthsBetween } from '@kiko/dates';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import {
+  accountRow,
   BASE_TIME,
   CARD,
   CASH,
   COUNTED,
   EXCLUDED_BY_ONE_RULE_EACH,
+  holdingRow,
   LOAN_PAYMENT,
   MINUTE,
   transactionRow,
   worldInput,
 } from '@kiko/statistics/spending-ledger/__fixtures__/spending-ledger-world';
 
-import { buildSpendingLedger } from '../spending-ledger';
+import { buildSpendingLedger, type LedgerRow } from '../spending-ledger';
 
-import { expenseRowsOf, incomeRowsOf, rowDescriberOf } from '.';
+import { expenseRowsOf, incomeRowsOf, rowContextOf } from '.';
 
 const DISPLAY = buildCategoryDisplayMap([
   { key: 'groceries', title: 'Groceries', icon: 'cart' },
@@ -37,8 +39,8 @@ const ledgerOf = (
   shownHoldings: readonly HoldingRow[] = worldInput().shownHoldings,
 ) => buildSpendingLedger(worldInput({ transactions, shownHoldings }));
 
-// The language is read when a row is described, so a test that switches it needs no new describer.
-const DESCRIBE = rowDescriberOf(worldInput().holdings, i18n.t);
+// The language is read when a row is described, so a test that switches it needs no new context.
+const CONTEXT = rowContextOf(worldInput().holdings, worldInput().accounts, i18n.t);
 
 const expenseRows = (
   transactions: readonly TransactionRow[],
@@ -51,14 +53,14 @@ const expenseRows = (
     rateTable,
     baseCurrency: 'UAH',
     defaultCategoryKey: 'other',
-    describe: DESCRIBE,
+    context: CONTEXT,
   });
 
 const incomeRows = (
   transactions: readonly TransactionRow[],
   range = JANUARY,
   rateTable: Parameters<typeof incomeRowsOf>[2] = RATE_TABLE,
-) => incomeRowsOf(ledgerOf(transactions), range, rateTable, 'UAH', DESCRIBE);
+) => incomeRowsOf(ledgerOf(transactions), range, rateTable, 'UAH', CONTEXT);
 
 const rowOf = (id: string, amountMinorUnits: number, overrides: Partial<TransactionRow> = {}) =>
   transactionRow({ id, holdingId: 'card', amountMinorUnits, time: BASE_TIME, ...overrides });
@@ -90,7 +92,56 @@ describe('expenseRowsOf', () => {
       description: 'Coffee',
       native: Money.of('UAH', 1_500),
       base: Money.of('UAH', 1_500),
+      category: 'groceries',
+      accountName: 'bank',
+      holdingType: 'card',
+      loanHoldingId: null,
+      flow: 'expense',
     });
+  });
+
+  it("carries each row's category, account name, holding type and loan link, and marks it an expense", () => {
+    const rows = expenseRows([
+      rowOf('card-row', -1_000, { category: 'groceries' }),
+      rowOf('cash-row', -2_000, { holdingId: 'cash', category: null, time: BASE_TIME + MINUTE }),
+      rowOf('coin-row', -TWO_AND_A_HALF_USDT, { holdingId: 'coin', time: BASE_TIME + 2 * MINUTE }),
+    ]);
+
+    expect(
+      rows.map(({ id, category, accountName, holdingType, loanHoldingId, flow }) => ({
+        id,
+        category,
+        accountName,
+        holdingType,
+        loanHoldingId,
+        flow,
+      })),
+    ).toEqual([
+      {
+        id: 'coin-row',
+        category: null,
+        accountName: 'crypto',
+        holdingType: 'crypto_asset',
+        loanHoldingId: null,
+        flow: 'expense',
+      },
+      {
+        id: 'cash-row',
+        category: null,
+        accountName: 'bank',
+        holdingType: 'cash',
+        loanHoldingId: null,
+        flow: 'expense',
+      },
+      {
+        id: 'card-row',
+        category: 'groceries',
+        accountName: 'bank',
+        holdingType: 'card',
+        loanHoldingId: null,
+        flow: 'expense',
+      },
+    ]);
   });
 
   it('names the row itself as the transaction of a plain expense row', () => {
@@ -133,8 +184,70 @@ describe('expenseRowsOf', () => {
           native: Money.of('UAH', 9_000),
           base: Money.of('UAH', 9_000),
           loanPart: 'interest',
+          category: 'loan_interest',
+          accountName: 'bank',
+          holdingType: 'card',
+          loanHoldingId: 'loan',
+          flow: 'expense',
         },
       ]);
+    });
+
+    it("gives a derived loan entry its own category and the payment's account, holding type and loan link", () => {
+      const withFee = { ...payment, amountMinorUnits: -(909_000 + 300) };
+      const rows = expenseRows([withFee]);
+
+      expect(
+        rows.map(({ id, category, accountName, holdingType, loanHoldingId }) => ({
+          id,
+          category,
+          accountName,
+          holdingType,
+          loanHoldingId,
+        })),
+      ).toEqual([
+        {
+          id: 'loan-excess:loan-payment',
+          category: 'utilities',
+          accountName: 'bank',
+          holdingType: 'card',
+          loanHoldingId: 'loan',
+        },
+        {
+          id: 'loan-interest:loan-payment',
+          category: 'loan_interest',
+          accountName: 'bank',
+          holdingType: 'card',
+          loanHoldingId: 'loan',
+        },
+      ]);
+    });
+
+    it('gives a derived loan entry whose payment is not shown no account, no holding type and no loan link', () => {
+      // `buildSpendingLedger` derives its loan entries from the shown rows, so a payment that is
+      // not shown is a ledger built by hand.
+      const ledger = { ...ledgerOf([payment]), shownRows: [] };
+      const [row] = expenseRowsOf(
+        ledger,
+        JANUARY,
+        {},
+        {
+          categoryDisplay: DISPLAY,
+          rateTable: RATE_TABLE,
+          baseCurrency: 'UAH',
+          defaultCategoryKey: 'other',
+          context: CONTEXT,
+        },
+      );
+
+      expect(row).toMatchObject({
+        id: 'loan-interest:loan-payment',
+        category: 'loan_interest',
+        accountName: '',
+        holdingType: null,
+        loanHoldingId: null,
+        flow: 'expense',
+      });
     });
 
     it('never shows the raw payment, whose principal is no spending', () => {
@@ -326,6 +439,11 @@ describe('incomeRowsOf', () => {
         description: i18n.t('transactions.defaultDescriptionIncome', { name: CARD.name }),
         native: Money.of('UAH', 2_000),
         base: Money.of('UAH', 2_000),
+        category: null,
+        accountName: 'bank',
+        holdingType: 'card',
+        loanHoldingId: null,
+        flow: 'income',
       },
       {
         id: 'salary',
@@ -334,6 +452,50 @@ describe('incomeRowsOf', () => {
         description: 'Salary',
         native: Money.of('UAH', 50_000),
         base: Money.of('UAH', 50_000),
+        category: null,
+        accountName: 'bank',
+        holdingType: 'card',
+        loanHoldingId: null,
+        flow: 'income',
+      },
+    ]);
+  });
+
+  it("carries each row's category, account name, holding type and loan link, and marks it income", () => {
+    const rows = incomeRows([
+      rowOf('salary', 50_000, { category: 'salary' }),
+      rowOf('coin-in', TWO_AND_A_HALF_USDT, {
+        holdingId: 'coin',
+        loanHoldingId: 'loan',
+        time: BASE_TIME + MINUTE,
+      }),
+    ]);
+
+    expect(
+      rows.map(({ id, category, accountName, holdingType, loanHoldingId, flow }) => ({
+        id,
+        category,
+        accountName,
+        holdingType,
+        loanHoldingId,
+        flow,
+      })),
+    ).toEqual([
+      {
+        id: 'coin-in',
+        category: null,
+        accountName: 'crypto',
+        holdingType: 'crypto_asset',
+        loanHoldingId: 'loan',
+        flow: 'income',
+      },
+      {
+        id: 'salary',
+        category: 'salary',
+        accountName: 'bank',
+        holdingType: 'card',
+        loanHoldingId: null,
+        flow: 'income',
       },
     ]);
   });
@@ -397,9 +559,60 @@ describe('incomeRowsOf', () => {
       JANUARY,
       RATE_TABLE,
       'UAH',
-      DESCRIBE,
+      CONTEXT,
     );
 
     expect(idsOf(rows)).toEqual(['salary']);
+  });
+});
+
+describe('rowContextOf', () => {
+  const ledgerRowOf = (holdingId: string): LedgerRow => ({
+    ...transactionRow({ id: 'row', holdingId, description: 'Coffee' }),
+    currency: 'UAH',
+  });
+
+  it("reads the holding's type and the name of the account it is under", () => {
+    expect(CONTEXT(ledgerRowOf('card'))).toEqual({
+      description: 'Coffee',
+      accountName: 'bank',
+      holdingType: 'card',
+    });
+    expect(CONTEXT(ledgerRowOf('coin'))).toEqual({
+      description: 'Coffee',
+      accountName: 'crypto',
+      holdingType: 'crypto_asset',
+    });
+  });
+
+  it('reads no account and no holding type for a holding that is not there', () => {
+    expect(CONTEXT(ledgerRowOf('gone'))).toEqual({
+      description: 'Coffee',
+      accountName: '',
+      holdingType: null,
+    });
+  });
+
+  describe('an implicit account in Ukrainian', () => {
+    const context = rowContextOf(
+      [holdingRow({ id: 'flat', accountId: 'properties', type: 'property_item' })],
+      [accountRow({ id: 'properties', kind: 'property', name: 'Properties' })],
+      i18n.t,
+    );
+
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it('names an implicit account by its kind in Ukrainian, not by its English sentinel', () => {
+      const { accountName } = context(ledgerRowOf('flat'));
+
+      expect(accountName).toBe(i18n.t('accounts.implicitName.property', { lng: 'uk' }));
+      expect(accountName).not.toBe('Properties');
+    });
   });
 });

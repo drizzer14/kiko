@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
 import {
@@ -85,6 +85,41 @@ describe('TransactionCard', () => {
 
     expect(getByText('Monobank · Dining')).toBeTruthy();
     expect(getByText('14:32')).toBeTruthy();
+  });
+
+  it('shows the amount caption under the amount', async () => {
+    const { getByText } = await render(
+      <TransactionCard
+        title="Coin purchase"
+        categoryIcon="bitcoinsign"
+        categoryIconColor="#8E44AD"
+        categoryAccessibilityLabel="Shopping"
+        money={Money.of('UAH', -10_000)}
+        amountCaption="-₮2.50"
+      />,
+    );
+
+    // The amount column is the shrink-proof box beside the title.
+    const column = ancestorWithStyle(getByText('-₮2.50'), 'flexShrink');
+
+    expect(within(column).getByTestId('money-context-transaction-sign--1')).toBeTruthy();
+    expect(StyleSheet.flatten(column.props.style)).toMatchObject({ alignItems: 'flex-end' });
+  });
+
+  it('renders no amount caption when none is given', async () => {
+    const { getByTestId } = await render(
+      <TransactionCard
+        title="Coffee"
+        categoryIcon="cup.and.saucer"
+        categoryIconColor="#8E44AD"
+        categoryAccessibilityLabel="Dining"
+        money={Money.of('UAH', -1_000)}
+      />,
+    );
+
+    const amountColumn = within(ancestorWithStyle(getByTestId(/^money-context-/), 'flexShrink'));
+
+    expect(amountColumn.getAllByText(/.+/)).toHaveLength(1);
   });
 
   it('shows a loan-link marker glyph in the footer when loanLinked is true', async () => {

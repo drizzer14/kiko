@@ -27,6 +27,7 @@ const TransactionCard: FC<TransactionCardProps> = ({
   categoryIconColor,
   categoryAccessibilityLabel,
   money,
+  amountCaption,
   footerMeta,
   footerTrailing,
   loanLinked,
@@ -62,8 +63,14 @@ const TransactionCard: FC<TransactionCardProps> = ({
             </Box>
           </Box>
           {money !== undefined && (
-            <Box style={styles.rowAmount}>
+            <Box gap={1} style={styles.rowAmount}>
               <MoneyText money={money} context="transaction" />
+
+              {amountCaption !== undefined && (
+                <Text variant="caption" tone="textSecondary">
+                  {amountCaption}
+                </Text>
+              )}
             </Box>
           )}
         </Box>

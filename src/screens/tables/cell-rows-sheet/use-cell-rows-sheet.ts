@@ -82,7 +82,9 @@ export const useCellRowsSheet = <Selector>(
 
   const rows = liveRows ?? shownRows;
 
-  const sheet = useMemo<Omit<CellRowsSheetProps, 'baseCurrency'> | undefined>(
+  const sheet = useMemo<
+    Omit<CellRowsSheetProps, 'baseCurrency' | 'categoryDisplay' | 'defaultCategoryKey'> | undefined
+  >(
     () =>
       foldMap(maybe(opened), ({ title }) => ({
         visible,

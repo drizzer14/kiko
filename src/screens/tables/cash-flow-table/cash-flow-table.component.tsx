@@ -118,7 +118,7 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
   rateTable,
   baseCurrency,
   defaultCategoryKey,
-  describeRow,
+  rowContext,
   sheetGeneration,
   onOpenTransaction,
   topContent,
@@ -132,17 +132,17 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
   const rowsOf = useCallback(
     (selector: CellSelector, range: CellRange) =>
       match(selector)
-        .with('income', () => incomeRowsOf(ledger, range, rateTable, baseCurrency, describeRow))
+        .with('income', () => incomeRowsOf(ledger, range, rateTable, baseCurrency, rowContext))
         .with('expenses', () =>
           expenseRowsOf(
             ledger,
             range,
             {},
-            { categoryDisplay, rateTable, baseCurrency, defaultCategoryKey, describe: describeRow },
+            { categoryDisplay, rateTable, baseCurrency, defaultCategoryKey, context: rowContext },
           ),
         )
         .exhaustive(),
-    [ledger, rateTable, baseCurrency, categoryDisplay, defaultCategoryKey, describeRow],
+    [ledger, rateTable, baseCurrency, categoryDisplay, defaultCategoryKey, rowContext],
   );
   const { open, sheet } = useCellRowsSheet(sheetGeneration, rowsOf, onOpenTransaction);
   const currentIsPartial = (months.at(-1)?.end ?? 0) >= now;
@@ -250,6 +250,8 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
           key={`cell-rows-${sheetGeneration}`}
           {...sheet}
           baseCurrency={baseCurrency}
+          categoryDisplay={categoryDisplay}
+          defaultCategoryKey={defaultCategoryKey}
         />
       )}
     </>

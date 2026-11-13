@@ -1016,7 +1016,8 @@ or unknown-to-the-categories-table slug folding onto the **default**
 key (`settings.defaultCategoryKey`, read at the call site — never a
 separate "uncategorized" bucket). One fold, one place: the spending
 breakdown's `groupKey`, the spending TREND's own `groupKey`
-(`src/statistics/category-trend/`), Home's `categoryKeyForRow`, and
+(`src/statistics/category-trend/`), the shared `transactionCardPropsOf` builder
+(`src/transactions/card-props/`), and
 every color lookup all go through it, so a category can never render
 under two keys — and therefore two hues — at once. The trend's
 `groupKey` used to fold with a bare `category?.toLowerCase() ||
