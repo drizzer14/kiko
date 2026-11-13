@@ -17,6 +17,12 @@ export const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing(3),
     paddingHorizontal: theme.spacing(3),
   },
+  // The value's box: it grows so the trailing content and the chevron sit at the end of the row,
+  // and shrinks so a long value wraps beside them instead of pushing the chevron out of the field.
+  value: {
+    flexGrow: 1,
+    flexShrink: 1,
+  },
   // A capped trigger is the column's width up to the shared cap, whatever its label, so a long
   // value wraps inside the cap (`valueCapped` lets the text shrink to it), not widening the field.
   fieldCapped: {

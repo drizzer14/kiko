@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { StyleSheet, Text as RNText } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import {
@@ -7,7 +8,10 @@ import {
 } from '@kiko/test-support/light-theme-registered';
 import { markColor } from '@kiko/design-system/entity-tint';
 import { darkTheme, lightTheme } from '@kiko/design-system/theme';
-import { glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import { toSymbolTintColor } from '@kiko/test-support/to-symbol-tint-color';
+import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
 
 import FieldTrigger from '.';
 
@@ -151,7 +155,10 @@ describe('FieldTrigger', () => {
 
     it('keeps the tile on the icon in the dark world', async () => {
       expect(darkTheme.colors.entityColors.yellow).not.toBe(yellowTile);
-      expect(await iconTintsOf()).toEqual([yellowTile]);
+      expect(await iconTintsOf()).toEqual([
+        yellowTile,
+        toSymbolTintColor(darkTheme.colors.textSecondary),
+      ]);
     });
 
     describe('in the light world', () => {
@@ -165,8 +172,103 @@ describe('FieldTrigger', () => {
 
       it('paints the light mark of the tile, not the tile', async () => {
         expect(markColor(yellowTile, 'light')).not.toBe(yellowTile);
-        expect(await iconTintsOf()).toEqual([markColor(yellowTile, 'light')]);
+        expect(await iconTintsOf()).toEqual([
+          markColor(yellowTile, 'light'),
+          toSymbolTintColor(lightTheme.colors.textSecondary),
+        ]);
       });
+    });
+  });
+
+  describe('chevron', () => {
+    const renderTrigger = (overrides: Partial<Parameters<typeof FieldTrigger>[0]> = {}) =>
+      render(
+        <FieldTrigger
+          label="Category"
+          onPress={jest.fn()}
+          value="Groceries"
+          valueTone="textPrimary"
+          icon="cart.fill"
+          testID="trigger"
+          {...overrides}
+        />,
+      );
+    const chevronsWithin = (root: RenderedElement) =>
+      root.queryAll((node) => node.props.fallbackName === 'chevron.down');
+
+    it('ends the field with a chevron.down at the caption icon size in the secondary tone', async () => {
+      const { getByTestId } = await renderTrigger();
+      const glyphs = glyphNamesWithin(getByTestId('trigger'));
+      const [chevron] = chevronsWithin(getByTestId('trigger'));
+
+      expect(glyphs).toEqual(['cart.fill', 'chevron.down']);
+      expect(chevron.props.size).toBe(darkTheme.iconSizes.caption);
+      expect(chevron.props.tintColor).toBe(toSymbolTintColor(darkTheme.colors.textSecondary));
+    });
+
+    it('hides the chevron from accessibility', async () => {
+      const { getByTestId } = await renderTrigger();
+      const [chevron] = chevronsWithin(getByTestId('trigger'));
+
+      expect(chevron.parent?.props.accessibilityElementsHidden).toBe(true);
+      expect(chevron.parent?.props.importantForAccessibility).toBe('no-hide-descendants');
+    });
+
+    it('renders the chevron after the trailing content', async () => {
+      const { getByTestId } = await renderTrigger({
+        trailing: <RNText testID="trailing-caption">Savings</RNText>,
+      });
+      const inOrder = getByTestId('trigger').queryAll(
+        (node) =>
+          node.props.testID === 'trailing-caption' || node.props.fallbackName === 'chevron.down',
+      );
+
+      expect(inOrder.map((node) => node.props.testID ?? node.props.fallbackName)).toEqual([
+        'trailing-caption',
+        'chevron.down',
+      ]);
+    });
+
+    it('dims the chevron with a disabled field', async () => {
+      const { getByTestId } = await renderTrigger({ disabled: true });
+      const [chevron] = chevronsWithin(getByTestId('trigger'));
+
+      expect(StyleSheet.flatten(ancestorWithStyle(chevron, 'opacity').props.style).opacity).toBe(
+        0.5,
+      );
+    });
+
+    it('keeps the transparent fieldBackground fill in dark with the chevron', async () => {
+      const { getByTestId } = await renderTrigger();
+      const [chevron] = chevronsWithin(getByTestId('trigger'));
+      const fill = StyleSheet.flatten(ancestorWithStyle(chevron, 'backgroundColor').props.style);
+
+      expect(fill.backgroundColor).toBe(darkTheme.colors.fieldBackground);
+      expect(fill.backgroundColor).toBe('transparent');
+    });
+
+    it('lets a long value wrap: the value box grows and shrinks, the Text sets no numberOfLines', async () => {
+      const { getByText } = await renderTrigger({
+        value: 'A very long category name that wraps at accessibility text sizes',
+      });
+      const text = getByText('A very long category name that wraps at accessibility text sizes');
+
+      expect(text.props.numberOfLines).toBeUndefined();
+      expect(StyleSheet.flatten(text.parent?.props.style)).toMatchObject({
+        flexGrow: 1,
+        flexShrink: 1,
+      });
+    });
+
+    it('ends a capped field with the chevron too', async () => {
+      const { getByTestId, getByText } = await renderTrigger({ capped: true });
+      const glyphs = glyphNamesWithin(getByTestId('trigger'));
+
+      expect(glyphs).toEqual(['cart.fill', 'chevron.down']);
+      expect(StyleSheet.flatten(getByText('Groceries').parent?.props.style).flexShrink).toBe(1);
+      expect(StyleSheet.flatten(getByTestId('trigger').props.style).maxWidth).toBe(
+        darkTheme.layout.selectTriggerMaxWidth,
+      );
     });
   });
 });

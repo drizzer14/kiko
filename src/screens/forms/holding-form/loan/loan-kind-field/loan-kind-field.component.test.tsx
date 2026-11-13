@@ -43,7 +43,7 @@ describe('LoanKindField', () => {
       <LoanKindField selected="consumer_loan" onSelect={jest.fn()} testID="loan-kind" />,
     );
 
-    expect(glyphNamesWithin(getByTestId('loan-kind'))).toEqual(['cart.fill']);
+    expect(glyphNamesWithin(getByTestId('loan-kind'))).toEqual(['cart.fill', 'chevron.down']);
 
     await fireEvent.press(getByTestId('loan-kind'));
 

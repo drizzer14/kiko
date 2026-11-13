@@ -43,10 +43,14 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
   // A defined, non-empty `error` IS the invalid signal — same contract as
   // TextField's own `hasError` (see text-field.component.tsx).
   const hasError = error !== undefined && error !== '';
+  // A wrapper Box carries the flex, because Text's `style` admits typography keys only. It grows
+  // to push the trailing content and chevron to the end and shrinks so a long value wraps.
   const valueText = (
-    <Text variant="body" tone={valueTone}>
-      {value}
-    </Text>
+    <Box style={[styles.value, capped && styles.valueCapped]}>
+      <Text variant="body" tone={valueTone}>
+        {value}
+      </Text>
+    </Box>
   );
 
   return (
@@ -83,9 +87,13 @@ const FieldTrigger: FC<FieldTriggerProps> = ({
             </Text>
           )}
 
-          {capped ? <Box style={styles.valueCapped}>{valueText}</Box> : valueText}
+          {valueText}
 
           {trailing}
+
+          <Box accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <SymbolIcon name="chevron.down" size={theme.iconSizes.caption} tone="textSecondary" />
+          </Box>
         </Box>
       </Pressable>
 
