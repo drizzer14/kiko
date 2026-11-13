@@ -37,7 +37,7 @@ const labelOf = (period: TablePeriod, now: number, t: TFunction): string => {
 };
 
 // The period is a pick among several named spans, so it is a select that opens a sheet, not a row
-// of chips.
+// of chips. It draws as a filter pill ("Period: This year"), so it sits with the other filters.
 const TablePeriodField: FC<TablePeriodFieldProps> = ({
   period,
   options,
@@ -61,6 +61,7 @@ const TablePeriodField: FC<TablePeriodFieldProps> = ({
       }
       labels={labels}
       placeholder={t('tables.period.label')}
+      appearance="pill"
       capped
       testID={testID}
     />

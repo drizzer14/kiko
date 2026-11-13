@@ -268,12 +268,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
         testID="tables-view"
       />
 
-      <Box
-        direction="row"
-        gap={3}
-        style={[styles.filterBar, isPeriodBesideFilters && styles.filterBarWithPeriod]}
-        testID="tables-filter-bar"
-      >
+      <Box direction="row" gap={3} style={styles.filterBar} testID="tables-filter-bar">
         {isPeriodBesideFilters && periodField}
 
         {isPeriodBesideFilters && (

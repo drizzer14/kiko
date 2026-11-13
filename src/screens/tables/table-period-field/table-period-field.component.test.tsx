@@ -75,7 +75,17 @@ describe('TablePeriodField', () => {
     const { getByTestId, getByText } = await setup();
 
     expect(getByTestId('period')).toHaveTextContent('This year', { exact: false });
-    expect(getByText('Period')).toBeTruthy();
+    expect(getByText('Period: This year')).toBeTruthy();
+  });
+
+  it('shows the period as a pill reading "Period: This year"', async () => {
+    const { getByTestId, getByLabelText } = await setup();
+    const style = StyleSheet.flatten(getByTestId('period').props.style);
+
+    expect(style.backgroundColor).toBe(darkTheme.colors.surface);
+    expect(style.minHeight).toBe(darkTheme.layout.filterPillHeight);
+    expect(getByTestId('period')).toHaveTextContent('Period: This year');
+    expect(getByLabelText('Period').props.accessibilityValue).toEqual({ text: 'This year' });
   });
 
   it('shows a picked quarter by its place in time', async () => {
@@ -138,7 +148,7 @@ describe('TablePeriodField', () => {
       const { getByTestId, getByText } = await setup();
 
       expect(getByTestId('period')).toHaveTextContent('Цей рік', { exact: false });
-      expect(getByText('Період')).toBeTruthy();
+      expect(getByText('Період: Цей рік')).toBeTruthy();
     });
 
     it.each(LABELS_IN_UKRAINIAN)('names the option %s as "%s"', async (key, label) => {
