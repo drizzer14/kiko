@@ -28,7 +28,7 @@ export type CellRow = {
   base: Money;
   /** Set on an entry derived from a loan payment: which part of the payment it is. */
   loanPart?: LoanEntryPart;
-  /** A derived loan entry's own category (`loan_interest` for interest), not its payment's. */
+  /** `loan_interest` for an interest entry, the payment's category for an excess entry. */
   category: string | null;
   /** As Home names the account; empty when the row's payment is not among the shown rows. */
   accountName: string;
