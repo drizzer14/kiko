@@ -64,9 +64,10 @@ const fieldElement = (
   onConnect: OnConnect,
   reminder?: ConnectReminder,
   onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+  accountId = 'acc-1',
 ): ReactElement => (
   <BinanceCredentialsField
-    accountId="acc-1"
+    accountId={accountId}
     onConnect={onConnect}
     reminder={reminder}
     onStoredWhileUnmounted={onStoredWhileUnmounted}
@@ -77,7 +78,8 @@ const renderField = (
   onConnect: OnConnect,
   reminder?: ConnectReminder,
   onStoredWhileUnmounted?: OnStoredWhileUnmounted,
-): Promise<View> => render(fieldElement(onConnect, reminder, onStoredWhileUnmounted));
+  accountId?: string,
+): Promise<View> => render(fieldElement(onConnect, reminder, onStoredWhileUnmounted, accountId));
 
 const pressConnect = async (view: View): Promise<void> => {
   await act(async () => {
@@ -88,8 +90,9 @@ const pressConnect = async (view: View): Promise<void> => {
 const renderAndConnect = async (
   onConnect: OnConnect,
   onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+  accountId?: string,
 ): Promise<View> => {
-  const view = await renderField(onConnect, undefined, onStoredWhileUnmounted);
+  const view = await renderField(onConnect, undefined, onStoredWhileUnmounted, accountId);
 
   await fillBoth(view.getByPlaceholderText);
   await pressConnect(view);
@@ -243,18 +246,6 @@ describe('BinanceCredentialsField', () => {
     );
   });
 
-  // The cooling and the running cases render a field of a named account, fill it and press Connect.
-  const connectForAccount = async (accountId: string): Promise<View> => {
-    const view = await render(
-      <BinanceCredentialsField accountId={accountId} onConnect={onConnect} />,
-    );
-
-    await fillBoth(view.getByPlaceholderText);
-    await pressConnect(view);
-
-    return view;
-  };
-
   const expectNothingRan = (view: View): void => {
     expect(mockFetchAccount).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
@@ -279,7 +270,7 @@ describe('BinanceCredentialsField', () => {
 
     it('shows the cooling text and makes no request, write or sync', async () => {
       setBinanceCooldownUntil('cooling-field-blocked', Date.now() + 60_000);
-      const view = await connectForAccount('cooling-field-blocked');
+      const view = await renderAndConnect(onConnect, undefined, 'cooling-field-blocked');
 
       expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
       expectNothingRan(view);
@@ -287,14 +278,14 @@ describe('BinanceCredentialsField', () => {
 
     it('runs the whole Connect once the cooldown has ended', async () => {
       setBinanceCooldownUntil('cooling-field-over', Date.now() - 1);
-      const view = await connectForAccount('cooling-field-over');
+      const view = await renderAndConnect(onConnect, undefined, 'cooling-field-over');
 
       await expectWholeConnectRan(view, 'cooling-field-over', COOLING_TEXT);
     });
 
     it('keeps the typed pair, so a later press connects once the cooldown ends', async () => {
       setBinanceCooldownUntil('cooling-field-retry', Date.now() + 60_000);
-      const view = await connectForAccount('cooling-field-retry');
+      const view = await renderAndConnect(onConnect, undefined, 'cooling-field-retry');
 
       expect(await view.findByText(COOLING_TEXT)).toBeTruthy();
 
@@ -313,7 +304,7 @@ describe('BinanceCredentialsField', () => {
       mockIsBinanceSyncRunning.mockImplementation(
         (accountId: string) => accountId === 'run-blocked',
       );
-      const view = await connectForAccount('run-blocked');
+      const view = await renderAndConnect(onConnect, undefined, 'run-blocked');
 
       expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
       expectNothingRan(view);
@@ -321,7 +312,7 @@ describe('BinanceCredentialsField', () => {
 
     it('runs the whole Connect when another account is the one running', async () => {
       mockIsBinanceSyncRunning.mockImplementation((accountId: string) => accountId === 'run-other');
-      const view = await connectForAccount('run-free');
+      const view = await renderAndConnect(onConnect, undefined, 'run-free');
 
       await expectWholeConnectRan(view, 'run-free', RUNNING_TEXT);
     });
@@ -329,7 +320,7 @@ describe('BinanceCredentialsField', () => {
     it('keeps the typed pair, so a later press connects once the run has ended', async () => {
       let running = true;
       mockIsBinanceSyncRunning.mockImplementation(() => running);
-      const view = await connectForAccount('run-retry');
+      const view = await renderAndConnect(onConnect, undefined, 'run-retry');
 
       expect(await view.findByText(RUNNING_TEXT)).toBeTruthy();
 

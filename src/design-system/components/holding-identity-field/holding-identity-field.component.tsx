@@ -104,8 +104,8 @@ const HoldingIdentityField: FC<HoldingIdentityFieldProps> = ({
         (uncaptioned) row and a valid captioned row both take no extra space.
         Only rendered when captioned — a dense list row never validates. The
         `nameFieldError` offset shifts the message right by the icon chip's
-        width + gap, so it aligns under the
-        name input rather than flush-left under the icon. */}
+        width + gap, so the message's leading triangle starts at the
+        name input's left edge rather than flush-left under the icon. */}
       {captioned && hasError && (
         <Box style={styles.nameFieldError}>
           <FieldError message={error} testID={deriveFieldTestID(testID, 'error')} />
