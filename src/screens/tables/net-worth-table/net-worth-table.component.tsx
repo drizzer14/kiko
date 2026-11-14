@@ -56,6 +56,7 @@ const NetWorthTable: FC<NetWorthTableProps> = ({
   backfillState,
   topContent,
   barInset,
+  barMinimization,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
@@ -147,6 +148,7 @@ const NetWorthTable: FC<NetWorthTableProps> = ({
       emptyContent={emptyContent}
       initialColumnIndex={openingColumnIndexOf(months)}
       barInset={barInset}
+      barMinimization={barMinimization}
       testID="net-worth-table"
     />
   );
