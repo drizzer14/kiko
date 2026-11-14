@@ -3,10 +3,11 @@ import { Animated, StyleSheet, View } from 'react-native';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import DataTable from '.';
-import { resolveHeaderShift } from './data-table.layout';
 import type { DataTableProps } from './data-table.props';
+import { resolveHeaderShift, resolveStatusBandOpacity } from './data-table.layout';
 
 const SIDE_MARGIN = 16;
 
@@ -196,6 +197,108 @@ describe('DataTable with a bar inset', () => {
       expect(
         rendered.queryByTestId(`${PREFIX}-header-shift`, { includeHiddenElements: true }),
       ).toBeNull();
+    });
+  });
+
+  describe('the status band', () => {
+    type Rendered = Awaited<ReturnType<typeof render>>;
+
+    const bandOf = (rendered: Rendered) =>
+      rendered.getByTestId(`${PREFIX}-status-band`, { includeHiddenElements: true });
+
+    const bandIn = (rendered: Rendered) =>
+      rendered.queryByTestId(`${PREFIX}-status-band`, { includeHiddenElements: true });
+
+    const tableUnder = (safeTop: number, props: Partial<DataTableProps>) => (
+      <SafeAreaInsetsContext.Provider value={{ top: safeTop, right: 0, bottom: 0, left: 0 }}>
+        <DataTable {...baseProps} {...props} />
+      </SafeAreaInsetsContext.Provider>
+    );
+
+    it('is a hidden surface block above the header, inside the shifted header, full scroll width', async () => {
+      const rendered = await render(tableUnder(24, { barInset: new Animated.Value(24) }));
+      const shifted = rendered.getByTestId(`${PREFIX}-header-shift`, {
+        includeHiddenElements: true,
+      });
+      const band = within(shifted).getByTestId(`${PREFIX}-status-band`, {
+        includeHiddenElements: true,
+      });
+      const headerRow = within(shifted).getByTestId(`${PREFIX}-header-row`, {
+        includeHiddenElements: true,
+      });
+
+      expect(flat(band)).toMatchObject({
+        position: 'absolute',
+        top: -24,
+        height: 24,
+        left: -SIDE_MARGIN,
+        right: -SIDE_MARGIN,
+        backgroundColor: flat(headerRow).backgroundColor,
+      });
+      expect(flat(band).backgroundColor).toBe(darkTheme.colors.surface);
+      expect(band.props.pointerEvents).toBe('none');
+      expect(band.props.accessibilityElementsHidden).toBe(true);
+    });
+
+    it('is as tall as the safe-area top, not a fixed height', async () => {
+      const rendered = await render(tableUnder(62, { barInset: new Animated.Value(62) }));
+      expect(flat(bandOf(rendered))).toMatchObject({ top: -62, height: 62 });
+    });
+
+    it('is not drawn without a bar inset', async () => {
+      const rendered = await render(tableUnder(24, {}));
+
+      expect(bandIn(rendered)).toBeNull();
+    });
+
+    it('is not drawn when the safe-area top is zero', async () => {
+      const rendered = await render(tableUnder(0, { barInset: new Animated.Value(82) }));
+
+      expect(bandIn(rendered)).toBeNull();
+    });
+
+    describe('opacity', () => {
+      const SCROLLED_HEADER_Y = 300;
+
+      const opacityOf = async (safeTop: number, inset: number, shift: number) => {
+        const barInset = new Animated.Value(inset);
+        const eventSpy = jest.spyOn(Animated, 'event');
+        const rendered = await render(tableUnder(safeTop, { barInset }));
+        const mapping = eventSpy.mock.calls[0][0] as unknown as {
+          nativeEvent: { contentOffset: { y: Animated.Value } };
+        }[];
+        await fireEvent(
+          rendered.getByTestId(`${PREFIX}-header-shift`, { includeHiddenElements: true }),
+          'layout',
+          layoutEvent(300, SCROLLED_HEADER_Y),
+        );
+        await act(async () =>
+          mapping[0].nativeEvent.contentOffset.y.setValue(shift + SCROLLED_HEADER_Y - inset),
+        );
+        await rendered.rerender(tableUnder(safeTop, { barInset }));
+
+        return flat(bandOf(rendered)).opacity;
+      };
+
+      it.each([
+        ['at rest, bar minimized', 24, 24, 0, 0],
+        ['half-way onto the stick point', 24, 24, 0.5, 0.5],
+        ['at the stick point', 24, 24, 1, 1],
+        ['stuck, bar minimized', 24, 24, 60, 1],
+        ['stuck, bar one point past the minimized pose', 24, 25, 60, 1],
+        ['stuck, bar in the middle of the ramp', 24, 30.5, 60, 0.5],
+        ['stuck, bar at the end of the ramp', 24, 36, 60, 0],
+        ['stuck, bar at full height', 24, 82, 60, 0],
+        ['half stuck, bar in the middle of the ramp', 24, 30.5, 0.5, 0.25],
+        ['stuck, a bar with no minimized pose (iOS 26.5)', 62, 103, 60, 0],
+        ['stuck, minimized bar on an iPhone', 62, 62, 60, 1],
+        ['stuck, bar inset below the safe-area top', 59, 54, 60, 1],
+      ])('follows the rule and its table: %s', async (_name, safeTop, inset, shift, expected) => {
+        const opacity = await opacityOf(safeTop, inset, shift);
+
+        expect(opacity).toBeCloseTo(resolveStatusBandOpacity(shift, inset, safeTop), 10);
+        expect(opacity).toBeCloseTo(expected, 10);
+      });
     });
   });
 

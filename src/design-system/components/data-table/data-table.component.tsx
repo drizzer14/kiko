@@ -17,6 +17,7 @@ import {
   useContentMargin,
 } from '@kiko/design-system/components/screen';
 import { useUnistyles } from 'react-native-unistyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type FC, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -28,6 +29,8 @@ import {
   resolveFixedWidth,
   resolveInitialOffset,
   resolveRowHeights,
+  STATUS_BAND_FADE_END,
+  STATUS_BAND_FADE_START,
 } from './data-table.layout';
 import { styles } from './data-table.styles';
 import type { DataTableProps, DataTableRow } from './data-table.props';
@@ -71,6 +74,7 @@ const DataTable: FC<DataTableProps> = ({
   const { theme } = useUnistyles();
   const hasBarInset = barInset !== undefined;
   const sideMargin = useContentMargin();
+  const { top: safeTop } = useSafeAreaInsets();
   const bottomClearance = useAutomaticScrollClearance();
   const scrollOffsetY = useRef(new NativeAnimated.Value(0)).current;
   const [headerY, setHeaderY] = useState(0);
@@ -86,6 +90,30 @@ const DataTable: FC<DataTableProps> = ({
         }),
       ),
     [barInset, scrollOffsetY, headerY],
+  );
+  // `resolveStatusBandOpacity` as one native-driven expression, so the band follows the header's
+  // shift and the bar's height without a render. It is not built where no band is drawn.
+  const statusBandOpacity = useMemo(
+    () =>
+      safeTop > 0
+        ? foldMap(maybe(barInset), (inset) =>
+            foldMap(maybe(headerShift), (shift) =>
+              NativeAnimated.multiply(
+                shift.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                  extrapolate: 'clamp',
+                }),
+                NativeAnimated.subtract(safeTop + STATUS_BAND_FADE_END, inset).interpolate({
+                  inputRange: [0, STATUS_BAND_FADE_END - STATUS_BAND_FADE_START],
+                  outputRange: [0, 1],
+                  extrapolate: 'clamp',
+                }),
+              ),
+            ),
+          )
+        : undefined,
+    [barInset, headerShift, safeTop],
   );
   const onScroll = useMemo(
     () =>
@@ -248,6 +276,20 @@ const DataTable: FC<DataTableProps> = ({
     </View>
   );
 
+  // The bar minimized to the status zone leaves nothing drawn there, so the rows would scroll
+  // through it; the band is as tall as that zone and covers them while the header is stuck.
+  const statusBand = foldMap(maybe(statusBandOpacity), (opacity) => (
+    <NativeAnimated.View
+      style={[
+        styles.statusBand,
+        { top: -safeTop, height: safeTop, left: -sideMargin, right: -sideMargin, opacity },
+      ]}
+      pointerEvents="none"
+      testID={`${testID}-status-band`}
+      {...HIDDEN_FROM_ACCESSIBILITY}
+    />
+  ));
+
   // The scroll view's own sticky handling reads the raw offset and would stick the row behind the
   // bar, so with a bar inset the row is shifted here instead.
   const headerBlock =
@@ -258,6 +300,8 @@ const DataTable: FC<DataTableProps> = ({
         testID={`${testID}-header-shift`}
       >
         {headerNode}
+
+        {statusBand}
       </NativeAnimated.View>
     )) ?? headerNode;
 

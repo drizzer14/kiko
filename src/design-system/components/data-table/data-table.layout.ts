@@ -76,6 +76,25 @@ export const resolveRowHeights = (
 export const resolveHeaderShift = (scrollOffset: number, barInset: number, headerOffset: number) =>
   Math.max(0, scrollOffset + barInset - headerOffset);
 
+// The bar's height past the safe-area top over which the band fades out as the bar returns from its
+// minimized pose: the component's interpolate ranges read the same two points.
+export const STATUS_BAND_FADE_START = 1;
+export const STATUS_BAND_FADE_END = 12;
+
+const FADE_SPAN = STATUS_BAND_FADE_END - STATUS_BAND_FADE_START;
+
+// How much of the band above the stuck header shows: all of it while the header is stuck and the
+// bar is minimized to the status zone, none at rest, none as the bar returns, so the band never
+// stacks on the bar's own background. The component draws this as one native `Animated`
+// expression; this is the same rule in plain numbers.
+export const resolveStatusBandOpacity = (shift: number, barInset: number, safeTop: number) => {
+  const stuck = Math.min(1, Math.max(0, shift));
+  const ramp = (safeTop + STATUS_BAND_FADE_END - barInset) / FADE_SPAN;
+  const minimized = Math.min(1, Math.max(0, ramp));
+
+  return stuck * minimized;
+};
+
 // The offset that puts the column's left edge at the fixed column, never past the content's end.
 export const resolveInitialOffset = (
   columnWidths: number[],

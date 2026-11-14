@@ -181,7 +181,16 @@ new component can land between reviews of this skill:
   the bar by an `Animated` transform (`zIndex` 1) that follows the bar's height, which on iOS 27
   shrinks as the bar minimizes (the value is native-driven), instead of a sticky index; the
   content does not grow to the scroll's height; the raw scroll width is kept and the side margin
-  subtracted at render. The measure layer is the scroll's last child.
+  subtracted at render. The measure layer is the scroll's last child. With `barInset` the shifted
+  header also holds a status band (no prop): an absolute child at `top: -safeTop`, as tall as
+  `useSafeAreaInsets().top`, over the full scroll width (`-sideMargin` each side), in `surface`
+  (the header's own ground; no blur, no hairline, no `expo-blur`), `pointerEvents="none"` and
+  hidden from VoiceOver. Its opacity is stuck x minimized as one native-driven expression (twin
+  `resolveStatusBandOpacity` in `data-table.layout.ts`, ramp `STATUS_BAND_FADE_START` /
+  `STATUS_BAND_FADE_END`), so it fills the status zone only while the header is stuck and the
+  bar is minimized, and is gone as the bar returns. It is not rendered at a safe-area top of 0
+  or without `barInset`. The 0 to 1 step as the header sticks pops the surface over the
+  caption's bottom edge, as the user ruling asks.
   `stickyHeaderIndices` moves the sticky child's own style to a wrapper, so that child must be a
   plain `View` that holds the row. `emptyContent` replaces the header and the body: no sticky
   index, `topContent` stays mounted (a filter sheet in it stays open), the measuring layer is

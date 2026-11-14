@@ -15,6 +15,13 @@ export const styles = StyleSheet.create((theme) => ({
   shiftedHeader: {
     zIndex: 1,
   },
+  // The header's own ground, so band and header read as one piece. It fills the status zone above
+  // the stuck header while the bar is minimized and nothing else is drawn there; the caller sets
+  // `top`, `height`, `left`, `right` and `opacity`.
+  statusBand: {
+    position: 'absolute',
+    backgroundColor: theme.colors.surface,
+  },
   top: {
     gap: theme.spacing(3),
   },
