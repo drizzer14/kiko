@@ -3,10 +3,14 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { usePaneContext } from '@kiko/design-system/pane-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  FOOTER_GAP_STEP,
+  SIDE_BAR_PLATTER_INSET,
+  UNOWNED_BOTTOM_PADDING_STEP,
+} from './screen.styles';
 import type { TabBarPlacement } from './tab-bar-placement';
 import { useTabBarPlacement } from './use-tab-bar-placement';
 import { floatingFooterBottom } from './floating-footer-bottom';
-import { FOOTER_GAP_STEP, SIDE_BAR_PLATTER_INSET } from './screen.styles';
 import { resolveAutomaticScrollClearance, resolveBottomClearance } from './bottom-clearance';
 
 const useClearanceOf = (
@@ -67,6 +71,23 @@ export const useBottomSafeAreaReservation = (): number => {
   const isBottomInsetPadded = useIsBottomInsetPadded();
 
   return isAwayFromWindowBottom || isBottomInsetPadded ? 0 : insets.bottom;
+};
+
+/**
+ * The bottom padding the screen's content container keeps under a `bleedBottom` child beside a
+ * bottom tab bar, in a pane at the window's bottom or outside one. A control anchored to the
+ * bottom of that child sits this far above the line a floating footer's button is on, so it
+ * subtracts it to be level. Zero beside a side bar (the container pads nothing there), and zero
+ * under a top bar and in a pane away from the window's bottom, where the control stays where it is.
+ */
+export const useBottomBarContentPadding = (): number => {
+  const { theme } = useUnistyles();
+  const placement = useTabBarPlacement();
+  const isAwayFromWindowBottom = usePaneContext()?.edges.bottom === false;
+
+  return placement === 'bottom' && !isAwayFromWindowBottom
+    ? theme.spacing(UNOWNED_BOTTOM_PADDING_STEP)
+    : 0;
 };
 
 /**

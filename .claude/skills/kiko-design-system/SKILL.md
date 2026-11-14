@@ -1009,10 +1009,14 @@ side. Read the file for the current map (R33).
 
 Its bottom is one number Home computes in `home.screen.tsx` from `useFloatingFooterBottom`
 (`@kiko/design-system/components/screen`), the line a form's floating footer button sits on,
-minus what Home's own SafeAreaView already reserves. Beside a side bar, in a pane at the window's
+minus what Home's own container reserves below it. Beside a side bar, in a pane at the window's
 bottom, that line is `SIDE_BAR_PLATTER_INSET`, level with the bottom of the bar's platter; in a
-pane not at the window's bottom it is the ordinary 16 pt lift. The FAB takes it as its one `bottom`
-prop and the list's end space (`styles.listContent`) adds the button's footprint to the same number.
+pane not at the window's bottom it is the ordinary 16 pt lift. Under a bottom tab bar (outside a
+pane or in a pane at the window's bottom) the (+) ends level with the footer button: what Home
+reserves there is the SafeAreaView's inset plus the content container's own 16 pt bottom padding
+(`useBottomBarContentPadding`), and only that term is dropped, never from the footer's own line.
+Under a top bar the (+) is unchanged. The FAB takes the number as its one `bottom` prop and the
+list's end space (`styles.listContent`) adds the button's footprint to the same number.
 
 ## GlassSurface `isLiquidGlassSupported` branch
 

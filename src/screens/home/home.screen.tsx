@@ -24,6 +24,7 @@ import Screen, {
   useSideBarPlatterInset,
   useScrollIndicatorProps,
   useFloatingFooterBottom,
+  useBottomBarContentPadding,
   useBottomSafeAreaReservation,
 } from '@kiko/design-system/components/screen';
 import { useTranslation } from 'react-i18next';
@@ -134,12 +135,14 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // is the floating footer's line (`useFloatingFooterBottom`), the one a form's bottom button
   // sits on: the platter's inset beside a side bar, else the safe-area inset, the gap and the
   // tab-bar clearance. That line is measured from the window's bottom, while this screen's
-  // `SafeAreaView` already reserves `homeBottomOffset` of it around the content the button sits
-  // in, so the button's own `bottom` subtracts it (counting it twice left dead space under the
-  // last row). Home passes `bleedBottom`, so the list owns the true bottom edge and the same
-  // number sets its end space.
+  // `SafeAreaView` already reserves part of it around the content the button sits in
+  // (`homeBottomOffset`), so the button's own `bottom` subtracts it: counting it twice would leave
+  // dead space under the last row. Under a bottom tab bar the content container also keeps its own
+  // bottom padding beneath the button (`useBottomBarContentPadding`), and that counts as reserved
+  // too, or the button would sit that much above the footer's line. Home passes `bleedBottom`, so
+  // the list owns the true bottom edge and the same number sets its end space.
   const sideBarInset = useSideBarPlatterInset();
-  const homeBottomOffset = useBottomSafeAreaReservation();
+  const homeBottomOffset = useBottomSafeAreaReservation() + useBottomBarContentPadding();
   const fabBottom = useFloatingFooterBottom(sideBarInset) - homeBottomOffset;
   // In a pane the list takes the whole pane, so its scroll indicator stays at the pane edge, and
   // only what sits in it is capped and centred (except in a pane under a top tab bar): the fixed

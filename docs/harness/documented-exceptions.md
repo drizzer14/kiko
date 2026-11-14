@@ -1085,7 +1085,8 @@ verified usage, not dead weight:
   instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
   imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder
   exclude is right here because every file in it is part of the sink; the rule
-  still reaches every consumer (Home, HoldingDetail).
+  still reaches every consumer (HoldingDetail directly; Home through `useFloatingFooterBottom`,
+  which builds on `useBottomClearance()`).
 
 - **`src/design-system/components/screen/**` and
   `src/design-system/components/two-pane-layout/**` — the two folders

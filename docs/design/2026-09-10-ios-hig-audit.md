@@ -183,5 +183,6 @@ Dynamic Type.
   Symbols at system-controlled sizes, which already follow HIG. No
   finding.
 - **Floating add button (FAB)** — a 56 pt touch target; beside a side bar its bottom edge is 24 pt
-  from the window's bottom, inside the home-indicator band like the footer and the bar's platter.
-  No finding.
+  from the window's bottom, inside the home-indicator band like the footer and the bar's platter;
+  under a bottom tab bar its bottom edge is level with a form's floating footer button. No
+  finding.

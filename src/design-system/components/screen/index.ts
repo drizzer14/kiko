@@ -8,6 +8,7 @@ export { useContentCap, usePaneContentWidth, useScrollIndicatorProps } from './u
 export { useBottomClearance } from './use-bottom-clearance';
 export {
   useAutomaticScrollClearance,
+  useBottomBarContentPadding,
   useBottomSafeAreaReservation,
   useFloatingFooterBottom,
   useSideBarPlatterInset,

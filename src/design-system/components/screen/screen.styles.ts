@@ -15,6 +15,11 @@ import { floatingFooterBottom } from './floating-footer-bottom';
 // above it, kept equal to the room above the button.
 export const FOOTER_GAP_STEP = 4;
 
+// The bottom padding of the plain content container when a `bleedBottom` child owns the clearance
+// but not the true bottom edge. It lifts that child's own content, so a control the child
+// anchors to its bottom reads it too (`useBottomBarContentPadding`).
+export const UNOWNED_BOTTOM_PADDING_STEP = 4;
+
 // Beside a side tab bar the floating footer's lowest button ends this far above the window's
 // bottom, level with the bottom of the side bar's platter. Pixel-measured on the Duo, iOS 27.2
 // (IMG_7263 and IMG_7264, 2026-10-30): the visible platter is 48 x 212 pt, and its bottom gap
@@ -68,7 +73,7 @@ export const styles = StyleSheet.create((theme) => ({
     isBottomEdgeBled: boolean,
     floatingFooterHeight: number | undefined,
   ) => {
-    const unownedBottomPadding = isBottomEdgeBled ? 0 : theme.spacing(4);
+    const unownedBottomPadding = isBottomEdgeBled ? 0 : theme.spacing(UNOWNED_BOTTOM_PADDING_STEP);
 
     return {
       flex: 1,

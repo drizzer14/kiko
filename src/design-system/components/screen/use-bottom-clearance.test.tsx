@@ -6,6 +6,7 @@ import '@kiko/design-system/unistyles';
 
 import {
   useBottomClearance,
+  useBottomBarContentPadding,
   useBottomSafeAreaReservation,
   useFloatingFooterBottom,
   useSideBarPlatterInset,
@@ -228,6 +229,63 @@ describe('useBottomSafeAreaReservation', () => {
     const { result } = await renderHook(() => useBottomSafeAreaReservation());
 
     expect(result.current).toBe(MOCK_BOTTOM_INSET);
+  });
+});
+
+describe('useBottomBarContentPadding', () => {
+  beforeEach(() => {
+    mockUseTabBarEdge.mockReturnValue('none');
+    mockUseVerticalBarEdge.mockReturnValue('none');
+    mockTabBarHeight = MOCK_TAB_BAR_HEIGHT;
+    mockBottomInset = MOCK_BOTTOM_INSET;
+    mockWindowHeight = 844;
+  });
+
+  it.each(['bottom', 'none'] as const)(
+    'is spacing(4) under a bottom tab bar (native edge %s), outside a pane',
+    async (edge) => {
+      mockUseTabBarEdge.mockReturnValue(edge);
+
+      const { result } = await renderHook(() => useBottomBarContentPadding());
+
+      expect(result.current).toBe(16);
+    },
+  );
+
+  it('is spacing(4) in a pane at the window bottom under a bottom tab bar', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+
+    const { result } = await renderHook(() => useBottomBarContentPadding(), {
+      wrapper: inPane('rows', 'primary'),
+    });
+
+    expect(result.current).toBe(16);
+  });
+
+  it('is zero in a pane that is not at the window bottom', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+
+    const { result } = await renderHook(() => useBottomBarContentPadding(), {
+      wrapper: inPane('rows', 'companion'),
+    });
+
+    expect(result.current).toBe(0);
+  });
+
+  it.each(['leading', 'trailing'] as const)('is zero beside a %s side bar', async (edge) => {
+    mockUseTabBarEdge.mockReturnValue(edge);
+
+    const { result } = await renderHook(() => useBottomBarContentPadding());
+
+    expect(result.current).toBe(0);
+  });
+
+  it('is zero under a top tab bar', async () => {
+    mockUseTabBarEdge.mockReturnValue('top');
+
+    const { result } = await renderHook(() => useBottomBarContentPadding());
+
+    expect(result.current).toBe(0);
   });
 });
 

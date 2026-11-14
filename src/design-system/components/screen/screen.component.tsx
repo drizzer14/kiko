@@ -126,9 +126,9 @@ const Screen: FC<ScreenProps> = ({
   // the pane touches the window's bottom). Adding the FULL tab-bar height
   // again on top of that reservation double-counts the inset. See
   // `bottom-clearance.ts` for the shared arithmetic and `use-bottom-clearance.ts`
-  // for the hook every `bleedBottom` child, e.g. Home's transaction list, uses
-  // too: it also gives a pane that is not at the window's bottom no clearance,
-  // since no tab bar is over it.
+  // for the hook every `bleedBottom` child uses too (HoldingDetail directly, Home through
+  // `useFloatingFooterBottom`): it also gives a pane that is not at the window's bottom no
+  // clearance, since no tab bar is over it.
   const bottomClearance = useBottomClearance();
   // What the SafeAreaView reserves at its bottom, which the footer's padding leaves out.
   const safeAreaBottom = useBottomSafeAreaReservation();
@@ -291,8 +291,8 @@ const Screen: FC<ScreenProps> = ({
   // owns ALL of its own padding — top (via `contentInsetAdjustmentBehavior`
   // "automatic" + its own content-container top padding), horizontal, AND the
   // floating tab-bar bottom clearance (the same `bleedBottom` contract Home's
-  // list follows, via `useBottomClearance()`). The top safe-area edge is
-  // dropped here for the same reason the scroll branch drops it: the large-title
+  // list follows, via `useFloatingFooterBottom`, built on `useBottomClearance()`). The top
+  // safe-area edge is dropped here for the same reason the scroll branch drops it: the large-title
   // header owns the top inset. A `footer` still sits pinned below the child as a
   // sibling, with its own clearance, exactly as in the other two branches.
   if (bleedTop) {
