@@ -1,3 +1,102 @@
+diff --git a/node_modules/react-native-screens/ios/RNSScreen.h b/node_modules/react-native-screens/ios/RNSScreen.h
+index fd9ecff..2688ffc 100644
+--- a/node_modules/react-native-screens/ios/RNSScreen.h
++++ b/node_modules/react-native-screens/ios/RNSScreen.h
+@@ -138,7 +138,7 @@ NS_ASSUME_NONNULL_BEGIN
+ @property (nonatomic) BOOL snapshotAfterUpdates;
+ 
+ - (void)notifyFinishTransitioning;
+-- (void)notifyHeaderHeightChange:(double)height;
++- (void)notifyHeaderHeightChange:(double)height minimizedFraction:(double)minimizedFraction;
+ 
+ - (void)notifyWillAppear;
+ - (void)notifyWillDisappear;
+diff --git a/node_modules/react-native-screens/ios/RNSScreen.mm b/node_modules/react-native-screens/ios/RNSScreen.mm
+index 049fd22..af30850 100644
+--- a/node_modules/react-native-screens/ios/RNSScreen.mm
++++ b/node_modules/react-native-screens/ios/RNSScreen.mm
+@@ -595,17 +595,19 @@ RNS_IGNORE_SUPER_CALL_END
+   }
+ }
+ 
+-- (void)notifyHeaderHeightChange:(double)headerHeight
++- (void)notifyHeaderHeightChange:(double)headerHeight minimizedFraction:(double)minimizedFraction
+ {
+   if (_eventEmitter != nullptr) {
+     std::dynamic_pointer_cast<const react::RNSScreenEventEmitter>(_eventEmitter)
+-        ->onHeaderHeightChange(react::RNSScreenEventEmitter::OnHeaderHeightChange{.headerHeight = headerHeight});
++        ->onHeaderHeightChange(react::RNSScreenEventEmitter::OnHeaderHeightChange{
++            .headerHeight = headerHeight, .minimizedFraction = minimizedFraction});
+   }
+ 
+   RNSHeaderHeightChangeEvent *event =
+       [[RNSHeaderHeightChangeEvent alloc] initWithEventName:@"onHeaderHeightChange"
+                                                    reactTag:[NSNumber numberWithInteger:self.tag]
+-                                               headerHeight:headerHeight];
++                                               headerHeight:headerHeight
++                                          minimizedFraction:minimizedFraction];
+   [self postNotificationForEventDispatcherObserversWithEvent:event];
+ }
+ 
+@@ -1704,12 +1706,57 @@ Class<RCTComponentViewProtocol> RNSScreenCls(void)
+ 
+   return MIN(maxY, navbarMaxY);
+ }
++
++// Kiko patch: the bar fades its background out as it minimizes, so one minus that alpha is how far it has
++// minimized, read on the same layout pass as the header height. It reports 0 (not minimized) unless exactly
++// one visible subview is the bar background, so it never guesses.
++- (CGFloat)calculateMinimizedFractionInNavigationController:(UINavigationController *)navctr
++    API_AVAILABLE(ios(27.0))
++{
++  UIView *background = nil;
++
++  for (UIView *subview in navctr.navigationBar.subviews) {
++    if (subview.isHidden || ![NSStringFromClass(subview.class) isEqualToString:@"_UIBarBackground"]) {
++      continue;
++    }
++    if (background != nil) {
++      return 0;
++    }
++    background = subview;
++  }
++
++  if (background == nil) {
++    return 0;
++  }
++
++  return 1 - MIN(1, MAX(0, background.alpha));
++}
+ #endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
+ 
++// Kiko patch: 0 wherever the header height has no minimization to follow: no navigation controller, a hidden bar
++// or below iOS 27.
++- (CGFloat)calculateMinimizedFractionIsModal:(BOOL)isModal
++{
++  UINavigationController *navctr = [self getVisibleNavigationControllerIsModal:isModal];
++
++  if (navctr == nil || navctr.isNavigationBarHidden) {
++    return 0;
++  }
++
++#if RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
++  if (@available(iOS 27.0, *)) {
++    return [self calculateMinimizedFractionInNavigationController:navctr];
++  }
++#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
++
++  return 0;
++}
++
+ - (void)calculateAndNotifyHeaderHeightChangeIsModal:(BOOL)isModal
+ {
+   CGFloat totalHeight = [self calculateHeaderHeightIsModal:isModal];
+-  [self.screenView notifyHeaderHeightChange:totalHeight];
++  CGFloat minimizedFraction = [self calculateMinimizedFractionIsModal:isModal];
++  [self.screenView notifyHeaderHeightChange:totalHeight minimizedFraction:minimizedFraction];
+ }
+ 
+ - (void)notifyFinishTransitioning
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.h b/node_modules/react-native-screens/ios/RNSScreenStack.h
 index 9ae11c3..f16c51b 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStack.h
@@ -279,6 +378,59 @@ index 5da1196..87e3096 100644
    [super updateProps:props oldProps:oldProps];
  }
  
+diff --git a/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.h b/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.h
+index ad024ac..39fdfd8 100644
+--- a/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.h
++++ b/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.h
+@@ -9,6 +9,9 @@
+                                         <RCTEvent>
+ #endif // defined(__cplusplus)
+ 
+-- (instancetype)initWithEventName:(NSString *)eventName reactTag:(NSNumber *)reactTag headerHeight:(double)headerHeight;
++- (instancetype)initWithEventName:(NSString *)eventName
++                         reactTag:(NSNumber *)reactTag
++                     headerHeight:(double)headerHeight
++                minimizedFraction:(double)minimizedFraction;
+ 
+ @end
+diff --git a/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.mm b/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.mm
+index fbda1f8..cf4fe22 100644
+--- a/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.mm
++++ b/node_modules/react-native-screens/ios/events/RNSHeaderHeightChangeEvent.mm
+@@ -3,12 +3,16 @@
+ 
+ @implementation RNSHeaderHeightChangeEvent {
+   double _headerHeight;
++  double _minimizedFraction;
+ }
+ 
+ @synthesize viewTag = _viewTag;
+ @synthesize eventName = _eventName;
+ 
+-- (instancetype)initWithEventName:(NSString *)eventName reactTag:(NSNumber *)reactTag headerHeight:(double)headerHeight
++- (instancetype)initWithEventName:(NSString *)eventName
++                         reactTag:(NSNumber *)reactTag
++                     headerHeight:(double)headerHeight
++                minimizedFraction:(double)minimizedFraction
+ {
+   RCTAssertParam(reactTag);
+ 
+@@ -16,6 +20,7 @@
+     _eventName = [eventName copy];
+     _viewTag = reactTag;
+     _headerHeight = headerHeight;
++    _minimizedFraction = minimizedFraction;
+   }
+   return self;
+ }
+@@ -26,6 +31,7 @@ RCT_NOT_IMPLEMENTED(-(instancetype)init)
+ {
+   NSDictionary *body = @{
+     @"headerHeight" : @(_headerHeight),
++    @"minimizedFraction" : @(_minimizedFraction),
+   };
+ 
+   return body;
 diff --git a/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js b/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
 index 93efd74..c75f231 100644
 --- a/node_modules/react-native-screens/lib/commonjs/components/ScreenStack.js
@@ -363,6 +515,18 @@ index 6781448..ab82dd7 100644
 +export declare const FixedContentMarginContext: React.Context<number>;
  //# sourceMappingURL=contexts.d.ts.map
 \ No newline at end of file
+diff --git a/node_modules/react-native-screens/lib/typescript/fabric/ScreenNativeComponent.d.ts b/node_modules/react-native-screens/lib/typescript/fabric/ScreenNativeComponent.d.ts
+index 4b08c51..a033fc0 100644
+--- a/node_modules/react-native-screens/lib/typescript/fabric/ScreenNativeComponent.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/fabric/ScreenNativeComponent.d.ts
+@@ -10,6 +10,7 @@ type TransitionProgressEvent = Readonly<{
+ }>;
+ type HeaderHeightChangeEvent = Readonly<{
+     headerHeight: CT.Double;
++    minimizedFraction: CT.Double;
+ }>;
+ type SheetDetentChangedEvent = Readonly<{
+     index: CT.Int32;
 diff --git a/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts b/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
 index b314d17..1382540 100644
 --- a/node_modules/react-native-screens/lib/typescript/fabric/ScreenStackNativeComponent.d.ts
@@ -387,6 +551,18 @@ index e9e7af6..3a6cf8c 100644
  export { default as ScreenStackItem } from './components/ScreenStackItem';
  export { default as FullWindowOverlay } from './components/FullWindowOverlay';
  export { default as ScreenFooter } from './components/ScreenFooter';
+diff --git a/node_modules/react-native-screens/lib/typescript/types.d.ts b/node_modules/react-native-screens/lib/typescript/types.d.ts
+index e0d2524..80f39df 100644
+--- a/node_modules/react-native-screens/lib/typescript/types.d.ts
++++ b/node_modules/react-native-screens/lib/typescript/types.d.ts
+@@ -28,6 +28,7 @@ export type ScreenOrientationTypes = 'default' | 'all' | 'portrait' | 'portrait_
+ export type HeaderSubviewTypes = 'back' | 'right' | 'left' | 'center' | 'searchBar';
+ export type HeaderHeightChangeEventType = {
+     headerHeight: number;
++    minimizedFraction?: number;
+ };
+ export type TransitionProgressEventType = {
+     progress: number;
 diff --git a/node_modules/react-native-screens/src/components/ScreenStack.tsx b/node_modules/react-native-screens/src/components/ScreenStack.tsx
 index f43254c..ed9c03c 100644
 --- a/node_modules/react-native-screens/src/components/ScreenStack.tsx
@@ -432,6 +608,19 @@ index 9dfa106..b547f61 100644
 +// Kiko patch: the side margin, in points, that every stack below keeps for its navigation bar and
 +// large title wherever it sits in the window; 0 leaves UIKit's margins alone.
 +export const FixedContentMarginContext = React.createContext(0);
+diff --git a/node_modules/react-native-screens/src/fabric/ScreenNativeComponent.ts b/node_modules/react-native-screens/src/fabric/ScreenNativeComponent.ts
+index 0d0085c..6d2d84e 100644
+--- a/node_modules/react-native-screens/src/fabric/ScreenNativeComponent.ts
++++ b/node_modules/react-native-screens/src/fabric/ScreenNativeComponent.ts
+@@ -23,6 +23,8 @@ type TransitionProgressEvent = Readonly<{
+ 
+ type HeaderHeightChangeEvent = Readonly<{
+   headerHeight: CT.Double;
++  // Kiko patch: iOS only; 0 (not minimized) to 1 (fully minimized), always 0 below iOS 27.
++  minimizedFraction: CT.Double;
+ }>;
+ 
+ type SheetDetentChangedEvent = Readonly<{
 diff --git a/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts b/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
 index a09fa8c..538d415 100644
 --- a/node_modules/react-native-screens/src/fabric/ScreenStackNativeComponent.ts
@@ -459,3 +648,16 @@ index e40cffb..732c4e0 100644
  export { default as ScreenStackItem } from './components/ScreenStackItem';
  export { default as FullWindowOverlay } from './components/FullWindowOverlay';
  export { default as ScreenFooter } from './components/ScreenFooter';
+diff --git a/node_modules/react-native-screens/src/types.tsx b/node_modules/react-native-screens/src/types.tsx
+index 3ec38fa..1c0fb78 100644
+--- a/node_modules/react-native-screens/src/types.tsx
++++ b/node_modules/react-native-screens/src/types.tsx
+@@ -77,6 +77,8 @@ export type HeaderSubviewTypes =
+ 
+ export type HeaderHeightChangeEventType = {
+   headerHeight: number;
++  // Kiko patch: sent on iOS only; 0 (not minimized) to 1 (fully minimized), always 0 below iOS 27.
++  minimizedFraction?: number;
+ };
+ 
+ export type TransitionProgressEventType = {

@@ -251,6 +251,141 @@ describe('the react-native-screens fixed content margin patch', () => {
     });
   });
 
+  // The header height event also carries how far the iOS 27 bar has minimized, read from its
+  // background's alpha on the same layout pass, so the Tables status band follows the bar with no
+  // JS in between. These pins hold the shipped text: that the iOS 27 bar really behaves so is shown
+  // on a device, not by Jest.
+  describe('minimized fraction of the bar', () => {
+    const fractionMethod = (source: string) =>
+      methodCode(source, '- (CGFloat)calculateMinimizedFractionIsModal:');
+
+    it('adds the field to the codegen spec and its typed copy, after the header height', () => {
+      expect(read('src/fabric/ScreenNativeComponent.ts')).toMatch(
+        /headerHeight: CT\.Double;\s*(?:\/\/[^\n]*\s*)*minimizedFraction: CT\.Double;/,
+      );
+      expect(read('lib/typescript/fabric/ScreenNativeComponent.d.ts')).toMatch(
+        /headerHeight: CT\.Double;\s*minimizedFraction: CT\.Double;/,
+      );
+    });
+
+    it('leaves the modal screen spec as it is, and no native file uses its event emitter', () => {
+      expect(read('src/fabric/ModalScreenNativeComponent.ts')).not.toContain('minimizedFraction');
+      expect(read('ios/RNSScreen.mm')).not.toContain('RNSModalScreenEventEmitter');
+      expect(read('ios/RNSScreenStack.mm')).not.toContain('RNSModalScreenEventEmitter');
+    });
+
+    it('types the field as an optional number, for iOS only', () => {
+      expect(read('src/types.tsx')).toMatch(
+        /HeaderHeightChangeEventType = \{\s*headerHeight: number;\s*(?:\/\/[^\n]*\s*)*minimizedFraction\?: number;\s*\};/,
+      );
+      expect(read('lib/typescript/types.d.ts')).toMatch(
+        /HeaderHeightChangeEventType = \{\s*headerHeight: number;\s*minimizedFraction\?: number;\s*\};/,
+      );
+    });
+
+    it('hands the fraction to the Fabric emit and to the event the native driver reads', () => {
+      const notify = methodCode(read('ios/RNSScreen.mm'), '- (void)notifyHeaderHeightChange:');
+
+      expect(read('ios/RNSScreen.h')).toContain(
+        '- (void)notifyHeaderHeightChange:(double)height minimizedFraction:(double)minimizedFraction;',
+      );
+      expect(notify).toContain(
+        'OnHeaderHeightChange{ .headerHeight = headerHeight, .minimizedFraction = minimizedFraction}',
+      );
+      expect(notify).toContain('headerHeight:headerHeight minimizedFraction:minimizedFraction];');
+    });
+
+    it('puts the fraction in the body of the event, and leaves its coalescing key alone', () => {
+      const header = read('ios/events/RNSHeaderHeightChangeEvent.h');
+      const source = read('ios/events/RNSHeaderHeightChangeEvent.mm');
+
+      expect(header).toContain('headerHeight:(double)headerHeight');
+      expect(header).toContain('minimizedFraction:(double)minimizedFraction;');
+      expect(source).toContain('_minimizedFraction = minimizedFraction;');
+      expect(source).toContain('@"minimizedFraction" : @(_minimizedFraction),');
+      expect(source).toContain('return _headerHeight;');
+    });
+
+    it('sends the fraction from the same pass that sends the header height', () => {
+      const notified = methodCode(
+        read('ios/RNSScreen.mm'),
+        '- (void)calculateAndNotifyHeaderHeightChangeIsModal:',
+      );
+
+      expect(notified).toContain('[self calculateMinimizedFractionIsModal:isModal]');
+      expect(notified).toContain(
+        '[self.screenView notifyHeaderHeightChange:totalHeight minimizedFraction:minimizedFraction];',
+      );
+    });
+
+    it('is 0 without a navigation controller or with the bar hidden, as the height is', () => {
+      const fraction = fractionMethod(read('ios/RNSScreen.mm'));
+
+      expect(fraction).toContain(
+        'UINavigationController *navctr = [self getVisibleNavigationControllerIsModal:isModal];',
+      );
+      expect(fraction).toContain(
+        'if (navctr == nil || navctr.isNavigationBarHidden) { return 0; }',
+      );
+    });
+
+    it('reads the bar only on iOS 27 and returns the literal 0 outside that block', () => {
+      const source = read('ios/RNSScreen.mm');
+      const fraction = fractionMethod(source);
+      const guarded = fraction.indexOf('@available(iOS 27.0, *)');
+      const closed = fraction.indexOf('#endif');
+
+      expect(fraction).toContain('#if RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV');
+      expect(guarded).toBeGreaterThan(-1);
+      expect(
+        fraction.indexOf('[self calculateMinimizedFractionInNavigationController:navctr]'),
+      ).toBeGreaterThan(guarded);
+      expect(fraction.slice(closed).trim()).toBe(
+        '#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV return 0; }',
+      );
+    });
+
+    it('walks the bar inside the same iOS 27 block as the minimization-aware height', () => {
+      const source = read('ios/RNSScreen.mm');
+      const walker = source.indexOf('- (CGFloat)calculateMinimizedFractionInNavigationController:');
+      const block = source.lastIndexOf('#if RNS_IPHONE_OS_VERSION_AVAILABLE(27_0)', walker);
+      const closed = source.indexOf('#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0)', walker);
+      const heightWalker = source.indexOf(
+        '- (CGFloat)calculateMinimizationAwareHeaderHeightInNavigationController:',
+      );
+
+      expect(heightWalker).toBeGreaterThan(block);
+      expect(heightWalker).toBeLessThan(walker);
+      expect(closed).toBeLessThan(source.indexOf('- (CGFloat)calculateMinimizedFractionIsModal:'));
+      expect(
+        methodCode(source, '- (CGFloat)calculateMinimizedFractionInNavigationController:'),
+      ).toContain('API_AVAILABLE(ios(27.0))');
+    });
+
+    it('is the opposite of the alpha of the one visible bar background, clamped', () => {
+      const walker = methodCode(
+        read('ios/RNSScreen.mm'),
+        '- (CGFloat)calculateMinimizedFractionInNavigationController:',
+      );
+
+      expect(walker).toContain('for (UIView *subview in navctr.navigationBar.subviews) {');
+      expect(walker).toContain(
+        '[NSStringFromClass(subview.class) isEqualToString:@"_UIBarBackground"]',
+      );
+      expect(walker).toContain('subview.isHidden');
+      expect(walker).toContain('if (background != nil) { return 0; }');
+      expect(walker).toContain('if (background == nil) { return 0; }');
+      expect(walker).toContain('return 1 - MIN(1, MAX(0, background.alpha));');
+    });
+
+    it('touches the event files besides the screen files', () => {
+      const patch = readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8');
+
+      expect(patch).toContain(`${SCREENS_DIRECTORY}/ios/events/RNSHeaderHeightChangeEvent.mm`);
+      expect(patch).toContain(`${SCREENS_DIRECTORY}/ios/RNSScreen.mm`);
+    });
+  });
+
   // In a split view with a top tab bar the per-tab hosting controller that parents the stack keeps
   // a safe top of 96 on a revisit (32 on the first visit), which drops the navigation bar 10 pt.
   // UIKit ignores a negative additional inset on the stack itself and honors one on the parent.

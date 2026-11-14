@@ -1305,6 +1305,38 @@ verified usage, not dead weight:
     window, a title view over 0.5 pt tall and at least 0.5 pt below the bar's top, mode Always),
     so it shares the bar row as in 27.1; it is inert otherwise, and the drop rule is in
     `docs/harness/dependency-hygiene.md`.
+    Minimized fraction of the bar (the Tables status band, `DataTable` `barMinimization`): the
+    `onHeaderHeightChange` event carries a second field, `minimizedFraction` (a `CT.Double` after
+    `headerHeight` in `ScreenNativeComponent.ts` and its `lib/typescript` copy, an optional
+    `number` in `HeaderHeightChangeEventType` of `types.tsx` and its copy; the iOS 27 bar
+    minimizes to the status zone and the Tables header then needs a band behind it, but the
+    header height alone cannot tell a minimized bar from an inline one on a Duo whose safe top is
+    0). `notifyHeaderHeightChange:minimizedFraction:` in `RNSScreen.mm` and `.h` hands it to both
+    the Fabric emit (`.headerHeight = ..., .minimizedFraction = ...`, in the codegen's
+    declaration order) and `RNSHeaderHeightChangeEvent` (`ios/events`, a new init parameter, a new
+    `body` key, the coalescing key unchanged), and the native `Animated` driver reads the body of
+    that event. `calculateMinimizedFractionIsModal:` mirrors `calculateHeaderHeightIsModal:` (the
+    same controller, 0 for no navigation controller or a hidden bar) and calls
+    `calculateMinimizedFractionInNavigationController:` only under `@available(iOS 27.0, *)`,
+    inside the same `RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV` block as
+    `calculateMinimizationAwareHeaderHeightInNavigationController:`; outside that block the
+    literal `return 0;` ends the method, so iOS 26.5, 18.6 and tvOS send 0. The walk takes the
+    navigation bar's visible subviews whose class name is exactly `_UIBarBackground` (proven by the
+    header-band task 0 probe on Tables: one per layout pass) and returns 1 minus its alpha clamped
+    to 0 to 1; none, or more than one, returns 0. The diff comment, verbatim: "Kiko patch: the bar
+    fades its background out as it minimizes, so one minus that alpha is how far it has minimized,
+    read on the same layout pass as the header height. It reports 0 (not minimized) unless exactly
+    one visible subview is the bar background, so it never guesses." and, on the wrapper, "Kiko
+    patch: 0 wherever the header height has no minimization to follow: no navigation controller, a
+    hidden bar or below iOS 27." The modal screen spec `ModalScreenNativeComponent.ts` is not
+    touched (no native file uses `RNSModalScreenEventEmitter`). Files added to this patch:
+    `RNSScreen.h`, `RNSScreen.mm`, `RNSHeaderHeightChangeEvent.h` and `.mm` (the package's own
+    `ios` and `ios/events`), `ScreenNativeComponent.ts` and `types.tsx` of its `src`, and their
+    `lib/typescript` copies (`ScreenNativeComponent.d.ts` and `types.d.ts`). Pinned by
+    the "minimized fraction of the bar" describe of `__tests__/react-native-patch.test.ts` (the
+    spec and type text, the emit and event text, the 0 paths, the iOS 27 block, the class name
+    and the clamp). That the iOS 27 bar really fades `_UIBarBackground` over its minimization,
+    and that the event reaches the native driver, are shown by the device build, not by Jest.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or

@@ -406,6 +406,19 @@ next layout pass applies Inline once more. Drop it once iOS stops stacking the t
 on a 27.2 or later split left pane with the lever removed, and if the large title shares the bar
 row, delete the function, its call and the pin.
 
+The minimized fraction of the bar: the `onHeaderHeightChange` event carries `minimizedFraction`
+(one minus the alpha of the one visible `_UIBarBackground` subview of the navigation bar, read on
+the same layout pass as the header height; 0 for no such subview, more than one, a hidden bar, no
+navigation controller, and always below iOS 27, where the walk sits behind
+`@available(iOS 27.0, *)` and the literal `return 0;` follows its `#endif`). The Tables status
+band reads it through the `useHeaderMinimization` hook of the same patch (see the JS side in
+`docs/harness/documented-exceptions.md`). A re-derived patch must keep the field in the codegen
+spec, the event body, the Fabric emit and the wrapper. Drop it once upstream exposes a
+minimization state of the bar (a field of the header height event or a public bar state): move
+the band to that and delete the field, the walk and the pins; re-measure on a 27.x device that
+the class name still matches exactly one subview, since a renamed private class would silently
+give 0 and no band.
+
 The 20 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
 side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 20
