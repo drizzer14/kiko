@@ -363,20 +363,68 @@ describe('the react-native-screens fixed content margin patch', () => {
       ).toContain('API_AVAILABLE(ios(27.0))');
     });
 
-    it('is the opposite of the alpha of the one visible bar background, clamped', () => {
+    // The bar's background is told apart from its content view, its empty pointer-effect view and
+    // a transition container by its shape: it is as wide as the bar and taller than the bar's
+    // bounds (it reaches behind the status strip), at rest and slid away. The others are exactly
+    // the bar's height or empty.
+    it('is the opposite of the alpha of the one visible bar-wide view taller than the bar', () => {
       const walker = methodCode(
         read('ios/RNSScreen.mm'),
         '- (CGFloat)calculateMinimizedFractionInNavigationController:',
       );
 
-      expect(walker).toContain('for (UIView *subview in navctr.navigationBar.subviews) {');
+      expect(walker).toContain('UINavigationBar *navbar = navctr.navigationBar;');
+      expect(walker).toContain('for (UIView *subview in navbar.subviews) {');
       expect(walker).toContain(
-        '[NSStringFromClass(subview.class) isEqualToString:@"_UIBarBackground"]',
+        'if (subview.isHidden || CGRectIsEmpty(subview.frame)) { continue; }',
       );
-      expect(walker).toContain('subview.isHidden');
+      expect(walker).toContain(
+        'if (fabs(CGRectGetWidth(subview.frame) - CGRectGetWidth(navbar.bounds)) > 0.5) {',
+      );
+      expect(walker).toContain(
+        'if (CGRectGetHeight(subview.frame) <= CGRectGetHeight(navbar.bounds) + 0.5) {',
+      );
       expect(walker).toContain('if (background != nil) { return 0; }');
       expect(walker).toContain('if (background == nil) { return 0; }');
       expect(walker).toContain('return 1 - MIN(1, MAX(0, background.alpha));');
+    });
+
+    it('does not filter the background on its alpha, which is the signal itself', () => {
+      const walker = methodCode(
+        read('ios/RNSScreen.mm'),
+        '- (CGFloat)calculateMinimizedFractionInNavigationController:',
+      );
+
+      expect(walker.slice(0, walker.indexOf('return 1 - MIN'))).not.toContain('.alpha');
+    });
+
+    // Apple's 2.5.1 scan matches private-symbol strings, so the bar background is found by shape:
+    // no private class name and no runtime lookup in what the patch adds (kiko-compliance, "2.5.1
+    // - public APIs only").
+    describe('adds no private class name and no private API call', () => {
+      const addedLines = () =>
+        readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8')
+          .split('\n')
+          .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+          .join('\n');
+
+      it('has no _UIBarBackground, no NSStringFromClass and no _UI string literal', () => {
+        const added = addedLines();
+
+        expect(added).not.toContain('_UIBarBackground');
+        expect(added).not.toContain('NSStringFromClass');
+        expect(added).not.toMatch(/@?"_UI/);
+      });
+
+      it.each([
+        'performSelector',
+        'valueForKey',
+        'setValue:forKey',
+        'NSClassFromString',
+        'NSSelectorFromString',
+      ])('adds no %s', (token) => {
+        expect(addedLines()).not.toContain(token);
+      });
     });
 
     it('touches the event files besides the screen files', () => {

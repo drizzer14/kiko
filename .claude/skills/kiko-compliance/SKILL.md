@@ -325,11 +325,19 @@ loads remote code, so this stays a reviewer question backed by
 
 A native patch reads a view only through public API. The react-native-screens patch
 (`patches/react-native-screens+4.30.1.patch`) finds the navigation bar's background subview by
-comparing the public `class` name to the string `_UIBarBackground` and reads its public `alpha`;
-it calls no private selector, ivar or KVC key. Never add `valueForKey:`, `performSelector:` with
-a private name, `NSClassFromString` on a private class, or private ivars to any patch. If the
-name compare breaks, the walk returns 0 (no minimization, no band): it fails safe. Inventory:
-`docs/harness/documented-exceptions.md`, the "Minimized fraction of the bar" entry.
+its shape and reads its public `alpha`: the one visible subview as wide as the bar and taller
+than the bar's bounds (it reaches behind the status strip; the content view is exactly the bar's
+height and the pointer view is empty), measured from the public `frame` and `bounds`. No private
+class-name string ships in that walk (no `_UIBarBackground`, no `_UI` literal, no
+`NSStringFromClass` compare; user ruling 2026-11-14), and the patch calls no private selector,
+ivar or KVC key. Never add `valueForKey:`, `setValue:forKey:`, `performSelector:`,
+`NSClassFromString`, `NSSelectorFromString` or private ivars to any patch;
+`__tests__/react-native-patch.test.ts` fails a patch line that adds one of them or a `_UI`
+literal. If the shape stops matching exactly one subview, the walk returns 0 (no minimization, no
+band): it fails safe. Inventory: `docs/harness/documented-exceptions.md`, the "Minimized fraction
+of the bar" entry. The iOS 27.2 pane-title lever still matches the substring "LargeTitle" in a
+view's class name (`object_getClassName`; `docs/harness/dependency-hygiene.md`): it is not part
+of the band walk and is not changed by this rule.
 
 ## Licences of bundled data
 

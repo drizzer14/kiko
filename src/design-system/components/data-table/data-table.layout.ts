@@ -79,6 +79,10 @@ export const resolveHeaderShift = (scrollOffset: number, barInset: number, heade
 // The band is taller than any bar height at which the native stack still reports a minimized
 // fraction above 0 (82 on a Surface Duo pane, 116 on an iPhone 18 Pro in portrait), so it covers
 // the whole minimized bar frame; the part above the window's top is clipped by the scroll frame.
+// The text size does not make it too short: the band shows only while the bar is minimized, and
+// then the strip it covers is the minimized inset (24 on the Duo at the sizes measured), the
+// status zone, which does not grow with the text. A bar made tall by a large text size is not
+// minimized (fraction 0), so no band is drawn over it.
 export const STATUS_BAND_HEIGHT = 200;
 
 // How much of the band above the stuck header shows: all of it while the header is stuck and the

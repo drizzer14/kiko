@@ -12,7 +12,7 @@ index fd9ecff..2688ffc 100644
  - (void)notifyWillAppear;
  - (void)notifyWillDisappear;
 diff --git a/node_modules/react-native-screens/ios/RNSScreen.mm b/node_modules/react-native-screens/ios/RNSScreen.mm
-index 049fd22..af30850 100644
+index 049fd22..d5f4f2a 100644
 --- a/node_modules/react-native-screens/ios/RNSScreen.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreen.mm
 @@ -595,17 +595,19 @@ RNS_IGNORE_SUPER_CALL_END
@@ -38,21 +38,30 @@ index 049fd22..af30850 100644
    [self postNotificationForEventDispatcherObserversWithEvent:event];
  }
  
-@@ -1704,12 +1706,57 @@ Class<RCTComponentViewProtocol> RNSScreenCls(void)
+@@ -1704,12 +1706,66 @@ Class<RCTComponentViewProtocol> RNSScreenCls(void)
  
    return MIN(maxY, navbarMaxY);
  }
 +
 +// Kiko patch: the bar fades its background out as it minimizes, so one minus that alpha is how far it has
-+// minimized, read on the same layout pass as the header height. It reports 0 (not minimized) unless exactly
-+// one visible subview is the bar background, so it never guesses.
++// minimized, read on the same layout pass as the header height. The background is found by its shape, never
++// by a class name: the one visible subview as wide as the bar and taller than its bounds, because it reaches
++// behind the status strip while the content view is exactly the bar's height and the pointer view is empty.
++// It reports 0 (not minimized) unless exactly one subview has that shape, so it never guesses.
 +- (CGFloat)calculateMinimizedFractionInNavigationController:(UINavigationController *)navctr
 +    API_AVAILABLE(ios(27.0))
 +{
++  UINavigationBar *navbar = navctr.navigationBar;
 +  UIView *background = nil;
 +
-+  for (UIView *subview in navctr.navigationBar.subviews) {
-+    if (subview.isHidden || ![NSStringFromClass(subview.class) isEqualToString:@"_UIBarBackground"]) {
++  for (UIView *subview in navbar.subviews) {
++    if (subview.isHidden || CGRectIsEmpty(subview.frame)) {
++      continue;
++    }
++    if (fabs(CGRectGetWidth(subview.frame) - CGRectGetWidth(navbar.bounds)) > 0.5) {
++      continue;
++    }
++    if (CGRectGetHeight(subview.frame) <= CGRectGetHeight(navbar.bounds) + 0.5) {
 +      continue;
 +    }
 +    if (background != nil) {
@@ -67,8 +76,8 @@ index 049fd22..af30850 100644
 +
 +  return 1 - MIN(1, MAX(0, background.alpha));
 +}
- #endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
- 
++#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
++
 +// Kiko patch: 0 wherever the header height has no minimization to follow: no navigation controller, a hidden bar
 +// or below iOS 27.
 +- (CGFloat)calculateMinimizedFractionIsModal:(BOOL)isModal
@@ -83,8 +92,8 @@ index 049fd22..af30850 100644
 +  if (@available(iOS 27.0, *)) {
 +    return [self calculateMinimizedFractionInNavigationController:navctr];
 +  }
-+#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
-+
+ #endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
+ 
 +  return 0;
 +}
 +

@@ -1334,22 +1334,34 @@ verified usage, not dead weight:
     inside the same `RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV` block as
     `calculateMinimizationAwareHeaderHeightInNavigationController:`; outside that block the
     literal `return 0;` ends the method, so iOS 26.5, 18.6 and tvOS send 0. The walk takes the
-    navigation bar's visible subviews whose class name is exactly `_UIBarBackground` (proven by the
-    header-band task 0 probe on Tables: one per layout pass) and returns 1 minus its alpha clamped
-    to 0 to 1; none, or more than one, returns 0. The diff comment, verbatim: "Kiko patch: the bar
-    fades its background out as it minimizes, so one minus that alpha is how far it has minimized,
-    read on the same layout pass as the header height. It reports 0 (not minimized) unless exactly
-    one visible subview is the bar background, so it never guesses." and, on the wrapper, "Kiko
-    patch: 0 wherever the header height has no minimization to follow: no navigation controller, a
-    hidden bar or below iOS 27." The modal screen spec `ModalScreenNativeComponent.ts` is not
-    touched (no native file uses `RNSModalScreenEventEmitter`). Files added to this patch:
+    navigation bar's subviews for the one bar background by its shape, never by a class name (user
+    ruling 2026-11-14: no private class-name string in the binary, so no `_UIBarBackground`, no
+    `NSStringFromClass`, no `_UI` literal): a subview that is not hidden, not empty, as wide as the
+    bar's bounds (0.5 pt) and taller than them by more than 0.5 pt, because it reaches behind the
+    status strip (68 or 82 against 58 on the Duo, at rest and slid away) while the bar's content
+    view is exactly the bar's height and the pointer-effect view is empty
+    (`probe-rns430-maxy.md`). It returns 1 minus that subview's alpha clamped to 0 to 1; none, or
+    more than one, returns 0 (alpha is not part of the shape: 0 is the signal). The diff comment,
+    verbatim: "Kiko patch: the bar fades its background out as it minimizes, so one minus that
+    alpha is how far it has minimized, read on the same layout pass as the header height. The
+    background is found by its shape, never by a class name: the one visible subview as wide as
+    the bar and taller than its bounds, because it reaches behind the status strip while the
+    content view is exactly the bar's height and the pointer view is empty. It reports 0 (not
+    minimized) unless exactly one subview has that shape, so it never guesses." and, on the
+    wrapper, "Kiko patch: 0 wherever the header height has no minimization to follow: no
+    navigation controller, a hidden bar or below iOS 27." The modal screen spec
+    `ModalScreenNativeComponent.ts` is not touched (no native file uses
+    `RNSModalScreenEventEmitter`). Files added to this patch:
     `RNSScreen.h`, `RNSScreen.mm`, `RNSHeaderHeightChangeEvent.h` and `.mm` (the package's own
     `ios` and `ios/events`), `ScreenNativeComponent.ts` and `types.tsx` of its `src`, and their
     `lib/typescript` copies (`ScreenNativeComponent.d.ts` and `types.d.ts`). Pinned by
     the "minimized fraction of the bar" describe of `__tests__/react-native-patch.test.ts` (the
-    spec and type text, the emit and event text, the 0 paths, the iOS 27 block, the class name
-    and the clamp). That the iOS 27 bar really fades `_UIBarBackground` over its minimization,
-    and that the event reaches the native driver, are shown by the device build, not by Jest.
+    spec and type text, the emit and event text, the 0 paths, the iOS 27 block, the shape rule,
+    the clamp, and that the patch's added lines hold no `_UIBarBackground`, `NSStringFromClass`,
+    `_UI` literal, `performSelector`, `valueForKey`, `setValue:forKey`, `NSClassFromString` or
+    `NSSelectorFromString`). That the iOS 27 bar really fades its background over its
+    minimization, that exactly one subview has the shape on iOS 27.0, 27.1 and 27.2, and that the
+    event reaches the native driver, are shown by the device build, not by Jest.
     The spec and type comments, verbatim: "Kiko patch: iOS only; 0 (not minimized) to 1 (fully
     minimized), always 0 below iOS 27." (the codegen spec) and "Kiko patch: sent on iOS only; 0
     (not minimized) to 1 (fully minimized), always 0 below iOS 27." (the event type).
