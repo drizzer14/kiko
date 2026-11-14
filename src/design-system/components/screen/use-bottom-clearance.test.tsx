@@ -4,7 +4,12 @@ import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
 
 import '@kiko/design-system/unistyles';
 
-import { useBottomClearance } from './use-bottom-clearance';
+import {
+  useBottomClearance,
+  useBottomSafeAreaReservation,
+  useFloatingFooterBottom,
+  useSideBarPlatterInset,
+} from './use-bottom-clearance';
 
 const MOCK_TAB_BAR_HEIGHT = 80;
 const MOCK_BOTTOM_INSET = 34;
@@ -138,5 +143,116 @@ describe('useBottomClearance', () => {
     });
 
     expect(result.current).toBe(0);
+  });
+});
+
+describe('useSideBarPlatterInset', () => {
+  beforeEach(() => {
+    mockUseTabBarEdge.mockReturnValue('none');
+    mockUseVerticalBarEdge.mockReturnValue('none');
+    mockTabBarHeight = MOCK_TAB_BAR_HEIGHT;
+    mockBottomInset = MOCK_BOTTOM_INSET;
+    mockWindowHeight = 844;
+  });
+
+  it.each(['leading', 'trailing'] as const)(
+    'is the platter inset beside a %s side bar, in a pane at the window bottom',
+    async (edge) => {
+      mockUseTabBarEdge.mockReturnValue(edge);
+
+      const { result } = await renderHook(() => useSideBarPlatterInset(), {
+        wrapper: inPane('columns', 'primary'),
+      });
+
+      expect(result.current).toBe(24);
+    },
+  );
+
+  it('is undefined beside a side bar in a pane that is not at the window bottom', async () => {
+    mockUseTabBarEdge.mockReturnValue('leading');
+
+    const { result } = await renderHook(() => useSideBarPlatterInset(), {
+      wrapper: inPane('rows', 'companion'),
+    });
+
+    expect(result.current).toBeUndefined();
+  });
+
+  it.each(['bottom', 'top'] as const)('is undefined under a %s tab bar', async (edge) => {
+    mockUseTabBarEdge.mockReturnValue(edge);
+
+    const { result } = await renderHook(() => useSideBarPlatterInset());
+
+    expect(result.current).toBeUndefined();
+  });
+});
+
+describe('useBottomSafeAreaReservation', () => {
+  beforeEach(() => {
+    mockUseTabBarEdge.mockReturnValue('none');
+    mockUseVerticalBarEdge.mockReturnValue('none');
+    mockTabBarHeight = MOCK_TAB_BAR_HEIGHT;
+    mockBottomInset = MOCK_BOTTOM_INSET;
+    mockWindowHeight = 844;
+  });
+
+  it('is the bottom inset under a bottom tab bar outside a pane', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+
+    const { result } = await renderHook(() => useBottomSafeAreaReservation());
+
+    expect(result.current).toBe(MOCK_BOTTOM_INSET);
+  });
+
+  it('is zero beside a side bar, where the content pads the inset itself', async () => {
+    mockUseTabBarEdge.mockReturnValue('leading');
+
+    const { result } = await renderHook(() => useBottomSafeAreaReservation());
+
+    expect(result.current).toBe(0);
+  });
+
+  it('is zero in a pane that is not at the window bottom', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+
+    const { result } = await renderHook(() => useBottomSafeAreaReservation(), {
+      wrapper: inPane('rows', 'companion'),
+    });
+
+    expect(result.current).toBe(0);
+  });
+
+  it('is the bottom inset under a top tab bar', async () => {
+    mockUseTabBarEdge.mockReturnValue('top');
+
+    const { result } = await renderHook(() => useBottomSafeAreaReservation());
+
+    expect(result.current).toBe(MOCK_BOTTOM_INSET);
+  });
+});
+
+describe('useFloatingFooterBottom', () => {
+  beforeEach(() => {
+    mockUseTabBarEdge.mockReturnValue('none');
+    mockUseVerticalBarEdge.mockReturnValue('none');
+    mockTabBarHeight = MOCK_TAB_BAR_HEIGHT;
+    mockBottomInset = MOCK_BOTTOM_INSET;
+    mockWindowHeight = 844;
+  });
+
+  it('is the inset, the gap and the bar clearance under a bottom tab bar', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+
+    const { result } = await renderHook(() => useFloatingFooterBottom(undefined));
+
+    expect(result.current).toBe(MOCK_BOTTOM_INSET + 16 + (MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET));
+  });
+
+  it('is the side bar inset it is given beside a side bar', async () => {
+    mockUseTabBarEdge.mockReturnValue('leading');
+
+    const { result } = await renderHook(() => useFloatingFooterBottom(useSideBarPlatterInset()));
+
+    expect(result.current).toBe(24);
   });
 });

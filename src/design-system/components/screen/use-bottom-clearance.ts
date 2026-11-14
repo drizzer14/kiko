@@ -1,9 +1,12 @@
+import { useUnistyles } from 'react-native-unistyles';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { usePaneContext } from '@kiko/design-system/pane-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { TabBarPlacement } from './tab-bar-placement';
 import { useTabBarPlacement } from './use-tab-bar-placement';
+import { floatingFooterBottom } from './floating-footer-bottom';
+import { FOOTER_GAP_STEP, SIDE_BAR_PLATTER_INSET } from './screen.styles';
 import { resolveAutomaticScrollClearance, resolveBottomClearance } from './bottom-clearance';
 
 const useClearanceOf = (
@@ -43,4 +46,41 @@ export const useIsBottomInsetPadded = (): boolean => {
   const isAwayFromWindowBottom = usePaneContext()?.edges.bottom === false;
 
   return placement === 'side' && !isAwayFromWindowBottom;
+};
+
+/**
+ * Where a floating footer's lowest button edge sits above the window's bottom beside a side bar:
+ * level with the bottom of the bar's platter. Undefined everywhere else, where the footer clears
+ * the tab bar instead.
+ */
+export const useSideBarPlatterInset = (): number | undefined =>
+  useIsBottomInsetPadded() ? SIDE_BAR_PLATTER_INSET : undefined;
+
+/**
+ * What the screen's SafeAreaView reserves at its bottom: the inset while its edges keep the bottom
+ * one, nothing beside a side bar (`useIsBottomInsetPadded`) and nothing in a pane that is not at
+ * the window's bottom.
+ */
+export const useBottomSafeAreaReservation = (): number => {
+  const insets = useSafeAreaInsets();
+  const isAwayFromWindowBottom = usePaneContext()?.edges.bottom === false;
+  const isBottomInsetPadded = useIsBottomInsetPadded();
+
+  return isAwayFromWindowBottom || isBottomInsetPadded ? 0 : insets.bottom;
+};
+
+/**
+ * The floating footer's lowest button edge above the window's bottom (`floatingFooterBottom`),
+ * from this screen's own clearance and safe-area reservation. A control that sits level with the
+ * footer's buttons reads it here, never recomputes it.
+ */
+export const useFloatingFooterBottom = (sideBarInset: number | undefined): number => {
+  const { theme } = useUnistyles();
+
+  return floatingFooterBottom({
+    bottomClearance: useBottomClearance(),
+    safeAreaBottom: useBottomSafeAreaReservation(),
+    sideBarInset,
+    footerGap: theme.spacing(FOOTER_GAP_STEP),
+  });
 };
