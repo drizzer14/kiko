@@ -78,6 +78,9 @@ const fundingOf = (exchange: FundingLedgerRow): Funding | undefined => {
   );
 };
 
+// A pair forms only inside one bucket. The caption's read of the ledger relies on it:
+// `transactionsRepo.fundingMatchCandidatesQuery` holds every row of one bucket (a superset), so a
+// change here that pairs across buckets (an amount tolerance, a fee) must change that query too.
 const bucketKey = (fiat: string, totalMinorUnits: number): string => `${fiat}:${totalMinorUnits}`;
 
 // A holding of an account not yet in the list, so not in the map, counts as not crypto: only a

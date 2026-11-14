@@ -43,7 +43,7 @@ export type SpendingLedger = {
  * Every exclusion rule's ids. A key is required for each rule, so a rule added here is a compile
  * error in every caller that builds the parts, never a set only one of them knows about.
  */
-type ExclusionParts = {
+export type ExclusionParts = {
   internalTransferIds: ReadonlySet<string>;
   mccExcludedIds: ReadonlySet<string>;
   descriptionExcludedIds: ReadonlySet<string>;

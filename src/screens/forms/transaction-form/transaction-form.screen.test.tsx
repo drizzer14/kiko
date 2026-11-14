@@ -119,7 +119,7 @@ jest.mock('@kiko/transactions/repo', () => ({
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
-    listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    fundingMatchCandidatesQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     // Tagged so the `useLiveQuery` mock can tell this `['transactions']`-keyed
     // subscription apart from the by-id one and serve the past-description
     // suggestion list to it.

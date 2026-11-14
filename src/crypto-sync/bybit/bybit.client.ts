@@ -1,5 +1,6 @@
 import { match, P } from 'ts-pattern';
 import { BYBIT_API_ENDPOINT } from '@env';
+import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import either, { bifoldr } from 'fnts/either';
 import { signQuery } from '@kiko/crypto-sync/exchange/signing';
@@ -217,6 +218,7 @@ const resultOf = async (
  * window and the query, in that order, under the API secret; it travels in a header with the key,
  * the timestamp and the window, so the URL holds nothing secret. Only GET exists here, on a path of
  * the closed list. `no-store` keeps the key header and the signed URL out of NSURLCache's Cache.db.
+ * A `cursor` goes in verbatim, signed as sent: Bybit returns it encoded and pybit sends it raw.
  * Returns the `result` of an answer with code 0, and throws `BybitRateLimitError` or
  * `BybitRefusalError` for every other answer.
  */
@@ -229,7 +231,13 @@ export const signedBybitGet = async (
 ): Promise<unknown> => {
   const { fetchImpl = fetch, now: clock = Date.now } = options;
   const now = clock();
-  const query = new URLSearchParams(params).toString();
+  const { cursor, ...otherParams } = params;
+  const query = [
+    new URLSearchParams(otherParams).toString(),
+    foldMap(maybe(cursor), (token) => `cursor=${token}`),
+  ]
+    .filter((part) => part !== undefined && part !== '')
+    .join('&');
   const signature = signQuery(secret, String(now).concat(apiKey, String(RECV_WINDOW_MS), query));
   const response = await fetchImpl(
     `${BYBIT_API_ENDPOINT}${path}${query === '' ? '' : `?${query}`}`,

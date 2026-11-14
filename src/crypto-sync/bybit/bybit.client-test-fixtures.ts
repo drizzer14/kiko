@@ -1,6 +1,12 @@
+import { createHmac } from 'node:crypto';
+
 export const NOW = 1_704_326_400_000;
 export const API_KEY = 'api-key-fixture';
 export const SECRET = 'secret-fixture';
+
+// HMAC-SHA256 by Node's own implementation, so the expectation does not share code with the client.
+export const signatureOf = (text: string): string =>
+  createHmac('sha256', SECRET).update(text).digest('hex');
 
 // The text field of a Bybit answer. Kiko never reads it, so a test fills it and looks for the text
 // in what the client gives back.

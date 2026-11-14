@@ -1,5 +1,3 @@
-import { createHmac } from 'node:crypto';
-
 import {
   BybitRateLimitError,
   BybitRefusalError,
@@ -15,16 +13,13 @@ import {
   SERVER_TEXT,
   answerWith,
   envelopeOf,
+  signatureOf,
 } from './bybit.client-test-fixtures';
 import { isBybitCoolingDown } from './bybit.cooldown';
 
 const RESET_HEADER = 'X-Bapi-Limit-Reset-Timestamp';
 const TEN_MINUTES_MS = 600_000;
 const ONE_MINUTE_MS = 60_000;
-
-// HMAC-SHA256 by Node's own implementation, so the expectation does not share code with the client.
-const signatureOf = (text: string): string =>
-  createHmac('sha256', SECRET).update(text).digest('hex');
 
 const readWith = (answer: Parameters<typeof answerWith>[0], options: BybitReadOptions = {}) => {
   const { fetchImpl, sent } = answerWith(answer);

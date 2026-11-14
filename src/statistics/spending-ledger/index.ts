@@ -8,6 +8,7 @@ export {
   ownIbansOf,
   spendingRowsIn,
   accountKindByHoldingIdOf,
+  type ExclusionParts,
   type LedgerRow,
   type SpendingLedger,
 } from './spending-ledger';

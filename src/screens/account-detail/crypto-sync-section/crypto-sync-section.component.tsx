@@ -207,17 +207,8 @@ const logKindCopyKeys: Record<LeftOutLogKind, ParseKeys> = {
   other: 'accountDetail.bybitLogKind.other',
 };
 
-// The order of the closed list.
-const LOG_KIND_ORDER: readonly LeftOutLogKind[] = [
-  'derivatives',
-  'convertEntries',
-  'interestAndLoans',
-  'bonuses',
-  'earn',
-  'stocks',
-  'custody',
-  'other',
-];
+// The order of the line is the order of the keys above, so a kind added there reaches the line.
+const LOG_KIND_ORDER = Object.keys(logKindCopyKeys) as LeftOutLogKind[];
 
 // The entries of the transaction log the last reads met and did not import. Split out like
 // `CoinLines`.

@@ -1065,7 +1065,10 @@ one Bybit section: extend it, never add a second.
 
 - Client: `signedBybitGet` (`bybit.client.ts`) sends GET only, over the closed
   `BYBIT_SIGNED_PATHS` (`bybit.endpoints.ts`; pins in `bybit.endpoints.test.ts`), with
-  `Cache-Control: no-store`. Each refusal has a `BybitRefusalClass` (`bybit.client.ts`). A
+  `Cache-Control: no-store`. A page `cursor` goes into the query verbatim (Bybit returns it
+  already encoded; never re-encode it), and the one query string is both signed and sent
+  (`signedBybitGet`, `bybit.client.ts`; pin: `bybit.history-client.cursor-query.test.ts`).
+  Each refusal has a `BybitRefusalClass` (`bybit.client.ts`). A
   rate refusal or an HTTP 403 is a `BybitRateLimitError` with a wait (`DEFAULT_COOLDOWN_MS`,
   `FORBIDDEN_COOLDOWN_MS` there). `bybit.failure-text.ts` gives each class its text; a refusal
   with no code gets `bybitRequestFailedNoCode`.
