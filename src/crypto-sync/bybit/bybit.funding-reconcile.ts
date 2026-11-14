@@ -222,7 +222,10 @@ export const reconcileBybitFundingLedger = async (
     pruneBefore: floor - 2 * FUNDING_MATCH_WINDOW_MS,
   });
 
-  const held = [...verdicts].filter(([key, verdict]) => live.has(key) && verdict === 'held').length;
+  // A held row that is written stays in the list, like a waiting one, so it is no move left out.
+  const held = [...verdicts].filter(
+    ([key, verdict]) => live.has(key) && verdict === 'held' && !written.has(key),
+  ).length;
 
   if (held !== heldCount) {
     await deps.patchExchangeState(accountId, [{ kind: 'fundingHeld', count: held }]);
