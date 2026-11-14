@@ -23,14 +23,18 @@ const mockFetch = jest.fn(async () => ({
   json: async () => ({ retCode: 0, result: {} }),
 }));
 const originalFetch = globalThis.fetch;
+// The holdings of the pending account, which a first Connect writes.
+let mockHoldings: unknown[] = [];
 
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (query: { table: string }) => ({
-    data:
-      query.table === 'accounts'
-        ? [{ id: 'bybit-owner-pending', name: 'My Bybit', kind: 'crypto', bankId: 'bybit' }]
-        : [],
-  }),
+  useLiveQuery: (query: { table: string }) => {
+    const rowsByTable: Record<string, unknown[]> = {
+      accounts: [{ id: 'bybit-owner-pending', name: 'My Bybit', kind: 'crypto', bankId: 'bybit' }],
+      holdings: mockHoldings,
+    };
+
+    return { data: rowsByTable[query.table] ?? [] };
+  },
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ table: 'settings' }) },
@@ -45,7 +49,10 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
-  holdingsRepo: { listByAccountQuery: async () => [], upsertExchangeMany: async () => undefined },
+  holdingsRepo: {
+    listByAccountQuery: () => ({ table: 'holdings' }),
+    upsertExchangeMany: async () => undefined,
+  },
 }));
 // The stored state of the pending account, which the check of a key of another owner reads.
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
@@ -133,6 +140,7 @@ beforeEach(() => {
   globalThis.fetch = mockFetch as unknown as typeof fetch;
   mockSaveBybitCredentials.mockResolvedValue(Symbol('saved'));
   storedOwnerOf(FIRST_USER_ID);
+  mockHoldings = [{ id: 'first-holding', metadata: { bybitAsset: 'BTC:unified', syncedAt: 1 } }];
 });
 
 afterEach(() => {
@@ -140,7 +148,7 @@ afterEach(() => {
 });
 
 // The state stores the owner of the key connected first. The first Connect of the form left it
-// there, and the form holds no holdings to tell, so the check always runs.
+// there, with the Bybit holding it wrote; the check runs only while the account keeps one.
 describe('the crypto create form, a second Bybit key after the first one connected', () => {
   it('refuses the key of another Bybit account, with no read and no Keychain write', async () => {
     mockFetchKeyInfo.mockResolvedValue({ readOnly: 1, isMaster: true, userId: SECOND_USER_ID });
@@ -158,6 +166,16 @@ describe('the crypto create form, a second Bybit key after the first one connect
   ])('goes on to read the routes for %s', async (_case, userId, seedState) => {
     seedState();
     mockFetchKeyInfo.mockResolvedValue({ readOnly: 1, isMaster: true, userId });
+
+    const view = await connectOnBybitForm();
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(view.queryByText(i18n.t('accountDetail.bybitKeyOtherAccount'))).toBeNull();
+  });
+
+  it('goes on to read the routes when the first key stored an owner and wrote no holding', async () => {
+    mockHoldings = [];
+    mockFetchKeyInfo.mockResolvedValue({ readOnly: 1, isMaster: true, userId: SECOND_USER_ID });
 
     const view = await connectOnBybitForm();
 
