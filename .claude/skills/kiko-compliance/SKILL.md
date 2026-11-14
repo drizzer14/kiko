@@ -321,6 +321,16 @@ dependency first becomes visible — but it does not judge whether a dep
 loads remote code, so this stays a reviewer question backed by
 `check:deps` visibility, not a mechanized gate.
 
+## 2.5.1 — public APIs only
+
+A native patch reads a view only through public API. The react-native-screens patch
+(`patches/react-native-screens+4.30.1.patch`) finds the navigation bar's background subview by
+comparing the public `class` name to the string `_UIBarBackground` and reads its public `alpha`;
+it calls no private selector, ivar or KVC key. Never add `valueForKey:`, `performSelector:` with
+a private name, `NSClassFromString` on a private class, or private ivars to any patch. If the
+name compare breaks, the walk returns 0 (no minimization, no band): it fails safe. Inventory:
+`docs/harness/documented-exceptions.md`, the "Minimized fraction of the bar" entry.
+
 ## Licences of bundled data
 
 Bundled third-party data whose licence requires a notice (MIT) ships the full text of that notice
