@@ -59,6 +59,7 @@ describe('property sweep sites', () => {
       'src/statistics/cash-flow/cash-flow.property.test.ts',
       'src/statistics/category-by-month/category-by-month.property.test.ts',
       'src/statistics/cell-rows/cell-rows.property.test.ts',
+      'src/statistics/exchange-funding-match/use-exchange-funding-caption/use-exchange-funding-caption.properties.test.ts',
       'src/statistics/internal-transfers/internal-transfers.test.ts',
       'src/transactions/merchant-name/merchant-name.test.ts',
     ]);

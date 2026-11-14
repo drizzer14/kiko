@@ -1,12 +1,24 @@
 import { renderHook } from '@testing-library/react-native';
 
 const mockUseLiveQuery = jest.fn();
+const mockListAllQuery = jest.fn();
+const mockCandidatesQuery = jest.fn();
+const mockExchangeFundingMatches = jest.fn();
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
+// The bucket-only read does not exist in the repository yet: the factory names it now, and the
+// hook reads it by name once the fix lands.
 jest.mock('@kiko/transactions/repo', () => ({
-  transactionsRepo: { listAllQuery: () => ({ __table: 'transactions' }) },
+  transactionsRepo: {
+    listAllQuery: () => mockListAllQuery(),
+    fundingMatchCandidatesQuery: (amountMinorUnits: number) =>
+      mockCandidatesQuery(amountMinorUnits),
+  },
+}));
+jest.mock('../exchange-funding-match', () => ({
+  exchangeFundingMatches: (...args: unknown[]) => mockExchangeFundingMatches(...args),
 }));
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: { allQuery: () => ({ __table: 'holdings' }) },
@@ -91,6 +103,50 @@ const serve = (ledger: LedgerRow[]): Read[] => {
   return reads;
 };
 
+const matcher = jest.requireActual(
+  '../exchange-funding-match',
+) as typeof import('../exchange-funding-match');
+
+const LEDGER_SIZE = 400;
+const DEBIT_AMOUNT = -415_000;
+
+// The whole ledger holds LEDGER_SIZE rows of other amounts besides the bucket rows, so a read of
+// it and a read of the bucket differ in length.
+const otherRows = (): LedgerRow[] =>
+  Array.from({ length: LEDGER_SIZE }, (_unused, index) =>
+    ledgerRow({
+      id: `other-${index}`,
+      holdingId: 'card',
+      amountMinorUnits: -(1_000 + index),
+      time: T - index * MINUTE,
+    }),
+  );
+
+type Served = { ledger: LedgerRow[]; candidates: LedgerRow[] };
+
+// Serves the whole ledger to a read of `all` and the bucket rows to a read of `candidates`, each
+// from the `served` object, so a test swaps one list to fire that read alone.
+const serveBoth = (served: Served): void => {
+  const dataByTable: Record<string, unknown[]> = { holdings: HOLDINGS, accounts: ACCOUNTS };
+
+  mockUseLiveQuery.mockImplementation(
+    (query: { __table: string; read?: string }, _tables: string[], enabled?: boolean) => {
+      const rows = query.read === 'candidates' ? served.candidates : served.ledger;
+
+      return {
+        data: enabled === false ? [] : (dataByTable[query.__table] ?? rows),
+        isLoading: false,
+      };
+    },
+  );
+};
+
+const bucketRows = (): LedgerRow[] => [
+  purchase('p2p:UAH:4150.00'),
+  ledgerRow({ id: 'debit', holdingId: 'card', time: T - 20 * MINUTE }),
+  ledgerRow({ id: 'twin', holdingId: 'card', time: T - 40 * MINUTE }),
+];
+
 const captionOf = async (row: LedgerRow | undefined): Promise<string | undefined> => {
   const { result } = await renderHook(() => useExchangeFundingCaption(row));
 
@@ -100,6 +156,9 @@ const captionOf = async (row: LedgerRow | undefined): Promise<string | undefined
 describe('useExchangeFundingCaption', () => {
   beforeEach(() => {
     mockUseLiveQuery.mockReset();
+    mockListAllQuery.mockImplementation(() => ({ __table: 'transactions', read: 'all' }));
+    mockCandidatesQuery.mockImplementation(() => ({ __table: 'transactions', read: 'candidates' }));
+    mockExchangeFundingMatches.mockImplementation(matcher.exchangeFundingMatches);
   });
 
   it.each([
@@ -220,5 +279,63 @@ describe('useExchangeFundingCaption', () => {
     await captionOf(debit);
 
     expect(reads.filter(isEnabledRead('transactions'))).toEqual([]);
+  });
+
+  describe('counted work', () => {
+    it('gives the caption without ever reading the whole ledger', async () => {
+      const [, debit] = bucketRows();
+
+      mockListAllQuery.mockImplementation(() => {
+        throw new Error('listAllQuery read the whole ledger');
+      });
+      serveBoth({ ledger: otherRows(), candidates: bucketRows() });
+
+      expect(await captionOf(debit)).toBe('transactions.matchedP2pPurchase');
+    });
+
+    it.each([{ amount: DEBIT_AMOUNT }, { amount: -260_000 }])(
+      'asks the candidates read for the row amount $amount',
+      async ({ amount }) => {
+        const debit = ledgerRow({ id: 'debit', holdingId: 'card', amountMinorUnits: amount });
+
+        serveBoth({ ledger: otherRows(), candidates: [debit] });
+        await captionOf(debit);
+
+        expect(mockCandidatesQuery).toHaveBeenCalledWith(amount);
+      },
+    );
+
+    it('runs the matcher once over the candidate rows, never over the ledger', async () => {
+      const candidates = bucketRows();
+      const [, debit] = bucketRows();
+
+      serveBoth({ ledger: [...otherRows(), ...candidates], candidates });
+      await captionOf(debit);
+
+      expect(mockExchangeFundingMatches).toHaveBeenCalledTimes(1);
+      expect(mockExchangeFundingMatches.mock.calls[0][0]).toHaveLength(candidates.length);
+    });
+
+    it('runs the matcher once more per ledger fire and none for a render of the same rows', async () => {
+      const served: Served = { ledger: otherRows(), candidates: bucketRows() };
+      const [, debit] = bucketRows();
+
+      serveBoth(served);
+
+      const { rerender } = await renderHook((row: LedgerRow) => useExchangeFundingCaption(row), {
+        initialProps: debit,
+      });
+
+      await rerender(debit);
+      await rerender(debit);
+
+      expect(mockExchangeFundingMatches).toHaveBeenCalledTimes(1);
+
+      served.candidates = [...served.candidates, ledgerRow({ id: 'late', holdingId: 'card' })];
+      await rerender(debit);
+
+      expect(mockExchangeFundingMatches).toHaveBeenCalledTimes(2);
+      expect(mockExchangeFundingMatches.mock.calls[1][0]).toHaveLength(served.candidates.length);
+    });
   });
 });
