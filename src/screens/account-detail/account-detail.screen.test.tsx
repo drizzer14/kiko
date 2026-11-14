@@ -221,12 +221,14 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
 // The crypto section is tested on its own; here it collapses to a marker view
 // so the screen's kind-gating is what is under test.
 jest.mock('./crypto-sync-section', () => {
-  const { View } = require('react-native');
+  const { Text, View } = require('react-native');
 
   return {
     __esModule: true,
-    default: ({ account }: { account: { id: string } }) => (
-      <View testID="crypto-sync-section" accessibilityLabel={`crypto-sync ${account.id}`} />
+    default: ({ account, holdings }: { account: { id: string }; holdings: { id: string }[] }) => (
+      <View testID="crypto-sync-section" accessibilityLabel={`crypto-sync ${account.id}`}>
+        <Text testID="crypto-sync-holdings">{holdings.map(({ id }) => id).join(',')}</Text>
+      </View>
     ),
   };
 });
@@ -1011,6 +1013,36 @@ describe('AccountDetailScreen', () => {
     expect(getByLabelText('crypto-sync a')).toBeTruthy();
     // no Monobank controls on a crypto account
     expect(queryByPlaceholderText('Monobank token')).toBeNull();
+  });
+
+  // The connect refusals (a key of another Bybit account, another exchange's holdings) read the
+  // closed holdings too, since a disconnect keeps their keys; the list still shows the open ones.
+  it('hands the crypto sync section every holding, closed ones too, and lists only the open ones', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'crypto' })],
+      holdings: [
+        { id: 'h1', name: 'Open coin', currency: 'BTC', balanceMinorUnits: 1, closedAt: null },
+        { id: 'h2', name: 'Closed coin', currency: 'ETH', balanceMinorUnits: 0, closedAt: 1 },
+      ],
+    });
+    const { getByTestId, getByText, queryByText } = await renderScreen();
+
+    expect(getByTestId('crypto-sync-holdings').props.children).toBe('h1,h2');
+    expect(getByText('Open coin')).toBeTruthy();
+    expect(queryByText('Closed coin')).toBeNull();
+  });
+
+  it('hands the crypto sync section the closed holdings when every holding is closed', async () => {
+    setLiveData({
+      accounts: [account({ kind: 'crypto' })],
+      holdings: [
+        { id: 'h1', name: 'Closed coin', currency: 'BTC', balanceMinorUnits: 0, closedAt: 1 },
+      ],
+    });
+    const { getByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('crypto-sync-holdings').props.children).toBe('h1');
+    expect(queryByText('Closed coin')).toBeNull();
   });
 
   it.each([

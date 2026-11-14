@@ -284,6 +284,7 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
     it.each([
       ['Binance', holdingKeyedBy('binanceAsset')],
       ['a Bitcoin wallet', holdingKeyedBy('walletAddress')],
+      ['closed Binance', { ...holdingKeyedBy('binanceAsset'), closedAt: 1 } as HoldingRow],
     ])('shows the refusal in place of the Bybit field over %s holdings', async (_name, holding) => {
       const { getByText, queryByLabelText } = await renderSection({ bankId: 'bybit' }, [holding]);
 
@@ -345,6 +346,11 @@ describe('CryptoSyncSection — connecting a crypto account', () => {
   describe('the owner check of the Bybit field', () => {
     it.each([
       ['keeps a Bybit holding', [holdingKeyedBy('bybitAsset')], 'bybit true'],
+      [
+        'keeps only a closed Bybit holding',
+        [{ ...holdingKeyedBy('bybitAsset'), closedAt: 1 } as HoldingRow],
+        'bybit true',
+      ],
       ['holds a manual holding', [{ id: 'manual', metadata: null } as HoldingRow], 'bybit false'],
       ['holds nothing', [], 'bybit false'],
     ])('tells the Bybit field the account %s', async (_state, holdings, marker) => {

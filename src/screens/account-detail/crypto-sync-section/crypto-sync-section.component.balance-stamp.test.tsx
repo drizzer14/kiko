@@ -50,12 +50,13 @@ const binanceAccount = {
   createdAt: 0,
 } as unknown as AccountRow;
 
-const holdingSyncedAt = (syncedAt: number): HoldingRow =>
+const holdingSyncedAt = (syncedAt: number, closedAt: number | null = null): HoldingRow =>
   ({
     id: 'h1',
     accountId: 'a',
     type: 'crypto_asset',
     currency: 'BTC',
+    closedAt,
     metadata: { binanceAsset: 'BTC', syncedAt },
   }) as unknown as HoldingRow;
 
@@ -108,6 +109,18 @@ describe('CryptoSyncSection: the balance sync stamp of the account state', () =>
     ]);
 
     expect(getByText(timeAs(HOLDING_SYNCED_AT))).toBeTruthy();
+  });
+
+  // The screen hands the section every holding so the connect refusals see the closed ones; the
+  // stamp is of the open ones, as a closed holding takes no sync.
+  it('leaves a closed holding out of the last sync time', async () => {
+    const { getByText, queryByText } = await renderWith({}, [
+      holdingSyncedAt(HOLDING_SYNCED_AT),
+      holdingSyncedAt(STAMP_MS, STAMP_MS),
+    ]);
+
+    expect(getByText(timeAs(HOLDING_SYNCED_AT))).toBeTruthy();
+    expect(queryByText(timeAs(STAMP_MS))).toBeNull();
   });
 
   it('shows Never when neither a stamp nor a synced holding exists', async () => {
