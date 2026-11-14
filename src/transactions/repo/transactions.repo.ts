@@ -2227,13 +2227,13 @@ export const transactionsRepo = {
         source: transactions.source,
       })
       .from(transactions),
-  // The rows of one funding bucket, in the columns the funding matcher reads, for the caption of
+  // A superset of one funding bucket, in the columns the funding matcher reads, for the caption of
   // a bank debit of `amountMinorUnits`. A pair forms only inside one bucket, which the matcher
   // keys `bucketKey(fiat, total)` (`exchange-funding-match.ts`; keep the two in step): the bank
-  // debits of that exact amount, and the positive rows whose stored code starts with a kind the
-  // matcher's `fundingOf` takes (`p2p:`, `card:` or `bank:`). A superset is enough, since the
+  // debits of that exact amount in every currency, and every positive row whose stored code
+  // starts with a kind the matcher's `fundingOf` takes (`p2p:`, `card:` or `bank:`). The
   // currency stays a filter in the caller and the matcher drops the rest.
-  // No `orderBy` and no index: the matcher sorts for itself, and the scan returns a few rows.
+  // No `orderBy` and no index: the matcher sorts for itself, and the scan reads the table once.
   fundingMatchCandidatesQuery: (amountMinorUnits: number) =>
     database
       .select({

@@ -248,19 +248,6 @@ const insertWorld = (rows: readonly WorldRow[]): void => {
   }
 };
 
-type CandidatesRead = (amountMinorUnits: number) => PromiseLike<unknown[]>;
-
-// The query does not exist yet in the red commit: a runtime lookup keeps the file type-checking.
-const candidatesRead = (): CandidatesRead => {
-  const read = (transactionsRepo as Record<string, unknown>).fundingMatchCandidatesQuery;
-
-  if (typeof read !== 'function') {
-    throw new Error('transactionsRepo.fundingMatchCandidatesQuery is not a function');
-  }
-
-  return read as CandidatesRead;
-};
-
 type Matcher = typeof exchangeFundingMatches;
 
 const ACCOUNT_KIND_BY_HOLDING_ID = new Map(
@@ -387,7 +374,7 @@ const hookVerdicts = async (): Promise<Verdicts> => {
       if (!mockServed.candidatesByAmount.has(debit.amountMinorUnits)) {
         mockServed.candidatesByAmount.set(
           debit.amountMinorUnits,
-          await candidatesRead()(debit.amountMinorUnits),
+          await transactionsRepo.fundingMatchCandidatesQuery(debit.amountMinorUnits),
         );
       }
 

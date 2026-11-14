@@ -8,8 +8,6 @@ const mockExchangeFundingMatches = jest.fn();
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
 }));
-// The bucket-only read does not exist in the repository yet: the factory names it now, and the
-// hook reads it by name once the fix lands.
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     listAllQuery: () => mockListAllQuery(),

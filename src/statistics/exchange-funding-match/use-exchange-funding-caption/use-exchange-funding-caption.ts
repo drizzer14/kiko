@@ -21,21 +21,14 @@ const captionKeyOf = (kind: FundingKind): FundingCaptionKey =>
     .with('bank', () => 'transactions.matchedExchangeDeposit')
     .exhaustive();
 
+type FundingCandidateRow = Awaited<
+  ReturnType<typeof transactionsRepo.fundingMatchCandidatesQuery>
+>[number];
+
 // The same join the statistics screen feeds the matcher: a transaction row carries no currency of
 // its own, so each row takes its holding's, and a row whose holding is gone is left out.
 const fundingLedgerOf = (
-  transactions: readonly Pick<
-    TransactionRow,
-    | 'id'
-    | 'holdingId'
-    | 'time'
-    | 'amountMinorUnits'
-    | 'untrackedCounterpart'
-    | 'description'
-    | 'mcc'
-    | 'categorySetByHand'
-    | 'setsBalance'
-  >[],
+  transactions: readonly FundingCandidateRow[],
   holdings: readonly HoldingRow[],
 ) => {
   const currencyByHoldingId = new Map(holdings.map(({ id, currency }) => [id, currency]));
@@ -67,11 +60,12 @@ const accountKindByHoldingIdOf = (
 /**
  * The copy key of the caption a bank debit shows when the funding matcher pairs it with an
  * exchange purchase and the statistics screen therefore leaves it out of spending, or `undefined`
- * for any other row. It runs the matcher over the rows of the debit's own bucket only, not the
- * whole ledger the screen reads, and the two never disagree: a pair forms only between a debit and
- * a purchase of one (fiat, total) bucket, and the matcher's order and augmenting paths never leave
- * a bucket, so a row's match is the same over the bucket as over the whole ledger. A debit the user
- * categorized by hand stays in spending and gets no caption.
+ * for any other row. It runs the matcher over a superset of the debit's own (fiat, total) bucket
+ * (the same-amount rows in every currency, and every coded purchase), not the whole ledger the
+ * screen reads, and the two never disagree: a pair forms only between a debit and a purchase of
+ * one bucket, and the matcher's order and augmenting paths never leave a bucket, so a row's match
+ * is the same over that superset as over the whole ledger. A debit the user categorized by hand
+ * stays in spending and gets no caption.
  *
  * Nothing is read for a credit. The holdings and accounts come first because only they say whether
  * the row sits on a crypto account, and a crypto row never reads the ledger.

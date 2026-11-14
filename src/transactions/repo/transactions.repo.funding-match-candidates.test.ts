@@ -20,19 +20,6 @@ const TARGET_AMOUNT = -415_000;
 const FIRST_TIME = Date.UTC(2026, 8, 1, 10);
 const OTHER_DEBIT_COUNT = 5_000;
 
-type FundingMatchCandidates = (amountMinorUnits: number) => PromiseLike<Record<string, unknown>[]>;
-
-// The query does not exist yet in the red commit: a runtime lookup keeps the file type-checking.
-const candidatesRead = (): FundingMatchCandidates => {
-  const read = (transactionsRepo as Record<string, unknown>).fundingMatchCandidatesQuery;
-
-  if (typeof read !== 'function') {
-    throw new Error('transactionsRepo.fundingMatchCandidatesQuery is not a function');
-  }
-
-  return read as FundingMatchCandidates;
-};
-
 // id, holding id, amount in minor units, stored code.
 type SeedRow = readonly [string, string, number, string | null];
 
@@ -108,7 +95,7 @@ describe('transactionsRepo.fundingMatchCandidatesQuery', () => {
   it('reads exactly the rows of the amount bucket in a world of thousands of other debits', async () => {
     seedWorld();
 
-    const rows = await candidatesRead()(TARGET_AMOUNT);
+    const rows = await transactionsRepo.fundingMatchCandidatesQuery(TARGET_AMOUNT);
 
     expect(idsOf(rows)).toEqual(BUCKET_ROWS.map(([id]) => id).sort());
   });
@@ -117,7 +104,7 @@ describe('transactionsRepo.fundingMatchCandidatesQuery', () => {
     seedWorld();
     insertStatement().run(...rowOf('debit-other-amount', -260_000));
 
-    const rows = await candidatesRead()(-260_000);
+    const rows = await transactionsRepo.fundingMatchCandidatesQuery(-260_000);
 
     expect(idsOf(rows)).toEqual(
       [
@@ -131,7 +118,7 @@ describe('transactionsRepo.fundingMatchCandidatesQuery', () => {
     seedWorld();
     insertStatement().run(...rowOf('full', TARGET_AMOUNT, 'Binance', 1, 4829, 1));
 
-    const rows = await candidatesRead()(TARGET_AMOUNT);
+    const rows = await transactionsRepo.fundingMatchCandidatesQuery(TARGET_AMOUNT);
 
     expect(rows.find(({ id }) => id === 'full')).toEqual({
       id: 'full',
