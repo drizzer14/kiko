@@ -370,18 +370,18 @@ const seedWorldIntoDatabase = async (world: readonly WorldRow[]): Promise<void> 
   mockServed.candidatesByAmount.clear();
 };
 
-type Verdicts = { disagreements: string[]; widestRead: number; ledgerSize: number };
+type Verdicts = { disagreements: string[]; notNarrower: string[] };
 
 // Every debit of every world through the hook, on rows read by the repository from a real database.
 const hookVerdicts = async (): Promise<Verdicts> => {
-  const verdicts: Verdicts = { disagreements: [], widestRead: 0, ledgerSize: Infinity };
+  const verdicts: Verdicts = { disagreements: [], notNarrower: [] };
 
   for (const seed of SEEDS) {
     const world = worldOf(seed);
     const ledger = ledgerOf(world);
+    let widestRead = 0;
 
     await seedWorldIntoDatabase(world);
-    verdicts.ledgerSize = Math.min(verdicts.ledgerSize, world.length);
 
     for (const debit of world.filter(({ amountMinorUnits }) => amountMinorUnits < 0)) {
       if (!mockServed.candidatesByAmount.has(debit.amountMinorUnits)) {
@@ -394,14 +394,18 @@ const hookVerdicts = async (): Promise<Verdicts> => {
       const expected = captionFrom(ledger, debit.id);
       const actual = await hookCaptionOf(debit);
 
-      verdicts.widestRead = Math.max(
-        verdicts.widestRead,
+      widestRead = Math.max(
+        widestRead,
         mockServed.candidatesByAmount.get(debit.amountMinorUnits)?.length ?? 0,
       );
 
       if (actual !== expected) {
         verdicts.disagreements.push(`${seed} ${debit.id}: ${actual} against ${expected}`);
       }
+    }
+
+    if (widestRead >= world.length) {
+      verdicts.notNarrower.push(`${seed}: read ${widestRead} rows of a ${world.length}-row world`);
     }
   }
 
@@ -413,7 +417,7 @@ describe('useExchangeFundingCaption parity with the whole-ledger matcher', () =>
     const verdicts = await hookVerdicts();
 
     expect(verdicts.disagreements).toEqual([]);
-    expect(verdicts.widestRead).toBeLessThan(verdicts.ledgerSize);
+    expect(verdicts.notNarrower).toEqual([]);
   });
 
   it('draws a different world for every seed', () => {
