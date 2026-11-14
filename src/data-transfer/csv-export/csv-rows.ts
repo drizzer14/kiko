@@ -69,7 +69,16 @@ const byTimeThenId = (
   second: Pick<TransactionRow, 'id' | 'time'>,
 ): number => first.time - second.time || (first.id > second.id ? 1 : -1);
 
-type ExclusionCsvType = Exclude<CsvTransactionType, 'expense' | 'income'>;
+// The strongest first: the first type whose rules catch a row names it. The part map below takes
+// its types from this list, so a type mapped from a part but left out of the list fails to compile.
+const EXCLUSION_TYPES = [
+  'balance',
+  'loan',
+  'exchange',
+  'transfer',
+] as const satisfies readonly Exclude<CsvTransactionType, 'expense' | 'income'>[];
+
+type ExclusionCsvType = (typeof EXCLUSION_TYPES)[number];
 
 // Keyed by every exclusion part, so a rule added to `ExclusionParts` fails the type check here
 // instead of reading "income" or "expense" in the CSV for a row Tables leaves out.
@@ -85,9 +94,6 @@ const EXCLUSION_TYPE_OF_PART: Record<keyof ExclusionParts, ExclusionCsvType> = {
 };
 
 const EXCLUSION_PARTS = Object.keys(EXCLUSION_TYPE_OF_PART) as (keyof ExclusionParts)[];
-
-// The strongest first: the first type whose rules catch a row names it.
-const EXCLUSION_TYPES: readonly ExclusionCsvType[] = ['balance', 'loan', 'exchange', 'transfer'];
 
 /**
  * What a row is, as a label over the rules Statistics already applies, over the WHOLE ledger so a
