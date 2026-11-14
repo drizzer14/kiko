@@ -1190,14 +1190,18 @@ names): the spending charts always draw every row of the holdings
 under the KEPT accounts, open or closed, so a closed card keeps its past spending.
 The internal-transfer matcher runs over the unfiltered ledger (every
 holding, whatever the account filter or `closedAt`). The funding matcher
-(`exchangeFundingMatches`) reads the same unfiltered ledger plus an
+(`exchangeFundingMatches`) reads the unfiltered ledger plus an
 account-kind-by-holding map (a holding with no account counts as a bank side), so the
 account filter never brings a funding debit back. The nearest-first pass alone can strand an
 exchange row, so the matcher adds an augmenting-path pass (`addAugmentingPairs` in
 `exchange-funding-match.ts`) and its test file holds a maximum-matching floor test
-(`maximumMatchingSize`): a change to the matcher keeps both. The transaction form reads its
-`excludedIds` through `useExchangeFundingCaption`
-(`src/statistics/exchange-funding-match/use-exchange-funding-caption/`). The loan-payment
+(`maximumMatchingSize`): a change to the matcher keeps both, and keeps every pair inside one
+`bucketKey` (`exchange-funding-match.ts`) bucket, or the caption's read no longer equals the
+full-ledger read (parity pinned in `use-exchange-funding-caption.properties.test.ts`). The
+transaction form's caption (`useExchangeFundingCaption`,
+`src/statistics/exchange-funding-match/use-exchange-funding-caption/`) reads not the ledger but
+`transactionsRepo.fundingMatchCandidatesQuery(amount)` (`transactions.repo.ts`), a bucket
+superset: same-amount rows plus positive rows with a `p2p:`/`card:`/`bank:` code. The loan-payment
 exclusion runs over the account-filtered rows. `spendingContributionsOf`
 (`src/statistics/category-breakdown/category-breakdown.ts`) is the shared per-row spending
 calculation of the donut and the cell rows (`expenseRowsOf`); keep the exclusion pipeline there,

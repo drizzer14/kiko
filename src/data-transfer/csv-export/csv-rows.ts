@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import {
   accountKindByHoldingIdOf,
   balanceSetIdsOf,
+  type ExclusionParts,
   ledgerRowsOf,
   loanHoldingsOf,
   ownIbansOf,
@@ -68,6 +69,32 @@ const byTimeThenId = (
   second: Pick<TransactionRow, 'id' | 'time'>,
 ): number => first.time - second.time || (first.id > second.id ? 1 : -1);
 
+// The strongest first: the first type whose rules catch a row names it. The part map below takes
+// its types from this list, so a type mapped from a part but left out of the list fails to compile.
+const EXCLUSION_TYPES = [
+  'balance',
+  'loan',
+  'exchange',
+  'transfer',
+] as const satisfies readonly Exclude<CsvTransactionType, 'expense' | 'income'>[];
+
+type ExclusionCsvType = (typeof EXCLUSION_TYPES)[number];
+
+// Keyed by every exclusion part, so a rule added to `ExclusionParts` fails the type check here
+// instead of reading "income" or "expense" in the CSV for a row Tables leaves out.
+const EXCLUSION_TYPE_OF_PART: Record<keyof ExclusionParts, ExclusionCsvType> = {
+  balanceSetIds: 'balance',
+  loanPaymentExcludedIds: 'loan',
+  exchangeExcludedIds: 'exchange',
+  sameCurrencyMoveIds: 'exchange',
+  exchangeFundingExcludedIds: 'exchange',
+  internalTransferIds: 'transfer',
+  mccExcludedIds: 'transfer',
+  descriptionExcludedIds: 'transfer',
+};
+
+const EXCLUSION_PARTS = Object.keys(EXCLUSION_TYPE_OF_PART) as (keyof ExclusionParts)[];
+
 /**
  * What a row is, as a label over the rules Statistics already applies, over the WHOLE ledger so a
  * partner under an archived account still counts. The strongest rule wins: a stored balance mark
@@ -85,26 +112,26 @@ export const csvTransactionType = ({
   accounts,
 }: LedgerFacts): ((row: Pick<TransactionRow, 'id' | 'amountMinorUnits'>) => CsvTransactionType) => {
   const ledger = ledgerRowsOf(transactions, holdings);
-  const rules: readonly (readonly [CsvTransactionType, ReadonlySet<string>])[] = [
-    ['balance', balanceSetIdsOf(ledger)],
-    ['loan', loanPaymentExcludedTransactionIds(ledger, loanHoldingsOf(holdings))],
-    [
-      'exchange',
-      union(
-        exchangeExcludedTransactionIds(ledger),
-        sameCurrencyMoveTransactionIds(ledger),
-        exchangeFundingMatches(ledger, accountKindByHoldingIdOf(accounts, holdings)).excludedIds,
-      ),
-    ],
-    [
-      'transfer',
-      union(
-        internalTransferTransactionIds(rowsForTransferMatch(ledger)),
-        mccExcludedTransferTransactionIds(ledger, ownIbansOf(holdings)),
-        descriptionExcludedTransferTransactionIds(ledger),
-      ),
-    ],
-  ];
+  const parts: ExclusionParts = {
+    balanceSetIds: balanceSetIdsOf(ledger),
+    loanPaymentExcludedIds: loanPaymentExcludedTransactionIds(ledger, loanHoldingsOf(holdings)),
+    exchangeExcludedIds: exchangeExcludedTransactionIds(ledger),
+    sameCurrencyMoveIds: sameCurrencyMoveTransactionIds(ledger),
+    exchangeFundingExcludedIds: exchangeFundingMatches(
+      ledger,
+      accountKindByHoldingIdOf(accounts, holdings),
+    ).excludedIds,
+    internalTransferIds: internalTransferTransactionIds(rowsForTransferMatch(ledger)),
+    mccExcludedIds: mccExcludedTransferTransactionIds(ledger, ownIbansOf(holdings)),
+    descriptionExcludedIds: descriptionExcludedTransferTransactionIds(ledger),
+  };
+  const rules = EXCLUSION_TYPES.map((type) => {
+    const sets = EXCLUSION_PARTS.filter((part) => EXCLUSION_TYPE_OF_PART[part] === type).map(
+      (part) => parts[part],
+    );
+
+    return [type, union(...sets)] as const;
+  });
 
   return (row) =>
     foldMap(maybe(rules.find(([, ids]) => ids.has(row.id))), ([type]) => type) ??
