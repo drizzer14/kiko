@@ -37,6 +37,10 @@ import type { ParseKeys, TFunction } from 'i18next';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
+import {
+  conflictingExchangeHoldings,
+  keepsBybitHoldings,
+} from '@kiko/crypto-sync/conflicting-exchange-holdings';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import Button from '@kiko/design-system/components/button';
 import SymbolIcon from '@kiko/design-system/components/symbol';
@@ -69,7 +73,6 @@ import {
   p2pReadFailed,
   walkCursorsOf,
 } from './binance-history-status';
-import { conflictingExchangeHoldings, keepsBybitHoldings } from './conflicting-exchange-holdings';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;

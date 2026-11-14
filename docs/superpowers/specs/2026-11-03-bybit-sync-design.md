@@ -1833,7 +1833,7 @@ bare names live in `src/crypto-sync/bybit/`. A row here is the acceptance floor;
 | A25 | Point past the floor | `bybit.transfer-history.walk.test.ts`: "the rolling floor drops owed ground it passes" |
 | A26 | Disconnect, reconnect | `bybit.run-arm.real-sqlite.test.ts`: "a disconnect resets the walks and the stored key date and keeps holding keys" |
 | A27 | Empty-plan guard, clock back | `bybit.capital-history.test.ts`: "owed ground is read when forward and re-scan are empty" |
-| A28 | Same-account switch | `src/screens/account-detail/crypto-sync-section/conflicting-exchange-holdings.test.ts`: "refuses a pick that conflicts with a stored holding" |
+| A28 | Same-account switch | `src/crypto-sync/conflicting-exchange-holdings/conflicting-exchange-holdings.test.ts`: "refuses a pick that conflicts with a stored holding" |
 | A29 | Older build file | `src/data-transfer/secrets/restore-secrets.test.ts` (edit): "restores a Bybit pair to its own account" |
 | A30 | Sentinel email in `address` | `bybit.capital-history.test.ts`: "a counterparty field reaches no row, mark or log" |
 | A31 | query-api sentinel `userID` | `bybit.provider.test.ts`: "no identity field of the key reaches the state" |

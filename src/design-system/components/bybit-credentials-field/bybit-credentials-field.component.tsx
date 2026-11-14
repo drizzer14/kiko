@@ -37,7 +37,7 @@ type BybitCredentialsFieldProps = {
   onStoredWhileUnmounted?: (stored: WriteToken) => Promise<void>;
   /**
    * Whether the account keeps a holding of a Bybit account: Connect then refuses a key of another
-   * Bybit account. A create form has no holding, so it leaves this off.
+   * Bybit account. A create form reads the holdings its first Connect wrote and passes this too.
    */
   keepsBybitHoldings?: boolean;
   /**
