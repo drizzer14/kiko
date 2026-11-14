@@ -77,8 +77,8 @@ export const resolveHeaderShift = (scrollOffset: number, barInset: number, heade
   Math.max(0, scrollOffset + barInset - headerOffset);
 
 // The band is taller than any bar height at which the native stack still reports a minimized
-// fraction above 0 (82 on a Surface Duo pane, about 103 on a phone in portrait), so it covers the
-// whole minimized bar frame; the part above the window's top is clipped by the scroll frame.
+// fraction above 0 (82 on a Surface Duo pane, 116 on an iPhone 18 Pro in portrait), so it covers
+// the whole minimized bar frame; the part above the window's top is clipped by the scroll frame.
 export const STATUS_BAND_HEIGHT = 200;
 
 // How much of the band above the stuck header shows: all of it while the header is stuck and the

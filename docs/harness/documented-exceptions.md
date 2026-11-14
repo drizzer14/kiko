@@ -1377,14 +1377,35 @@ verified usage, not dead weight:
     from here and the native driver keeps both mappings. It attaches again when the rendered
     native component changes (a modal presentation renders another one, so the view is another);
     the ref callback is a new function on every render and so cannot be the attach point."
+    A value drops its native node when its last child unmounts (React Native's `__removeChild`
+    to no children, then `__detach`, which clears the node's native tag), while
+    `Animated.attachNativeEvent` takes the tag once; the band is the value's only child, and it
+    unmounts when the table goes empty or a view switch renders an empty table first, so it
+    would return bound to a new node while the screen's event still wrote the old one, and stay
+    frozen for the screen's life. So a native stack `Screen` renders, inside the providers and
+    after `{children}`, one empty `Animated.View` that is the consumer that never unmounts: 0 by
+    0, `position: 'absolute'`, `opacity: headerMinimization`, `pointerEvents="none"`,
+    `collapsable={false}` (Fabric keeps the view the native driver connects to) and hidden from
+    accessibility. It is last because the large title looks for its scroll view in the first
+    subview. The cost is one native view per native stack screen and one native opacity update
+    on it while the fraction changes. The consumer side was not chosen: the Tables screen that
+    reads the hook and `DataTable` stay mounted through an empty table and a view switch, only
+    the band comes and goes, so a count of the hook's callers would never fire again. The diff
+    comment, verbatim, in `Screen.tsx` (a JSX comment) and `lib/commonjs` (a line comment):
+    "Kiko patch: a value drops its native node when its last consumer unmounts, and the attached
+    event goes on writing the dropped node, so a consumer that comes back stays frozen. This view
+    is the consumer that never unmounts; it is last so the first subview, where the large title
+    looks, stays the content." `lib/typescript` is unchanged by it.
     Files added to the patch: `contexts.tsx`, `index.tsx` (already patched), `Screen.tsx`,
     `useHeaderMinimization.tsx` (new), and their `lib/commonjs` and `lib/typescript` copies. Pinned
     by the "the bar minimized fraction context" describe of
-    `__tests__/react-native-patch.test.ts` (the text of every copy, the effect and its deps, and a
-    mounted `Screen`: one attach with the value the children read, detach on unmount, a second
-    attach with the same value when the presentation changes, none outside a native stack, and
-    the hook returning `undefined` outside a screen). That the native driver receives the second
-    mapping is shown by the device build, not by Jest.
+    `__tests__/react-native-patch.test.ts` (the text of every copy, the effect and its deps, the
+    view after the children in `Screen.tsx` and `lib/commonjs`, and a mounted `Screen`: one attach
+    with the value the children read, detach on unmount, a second attach with the same value when
+    the presentation changes, a listener on the value that survives the unmount and return of
+    the only view that reads it, none outside a native stack, and the hook returning `undefined`
+    outside a screen). That the native driver receives the second mapping, and that a table that
+    went empty and came back still follows the bar, are shown by the device build, not by Jest.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or

@@ -319,14 +319,12 @@ describe('DataTable with a bar inset', () => {
       };
 
       it.each([
-        ['a Duo pane, bar minimized, header stuck', 1, 60, 1],
-        ['an iPhone in portrait, bar minimized, header stuck', 1, 60, 1],
+        ['bar minimized, header stuck', 1, 60, 1],
         ['at rest, bar minimized', 1, 0, 0],
         ['half-way onto the stick point, bar minimized', 1, 0.5, 0.5],
         ['stuck, bar half revealed', 0.5, 60, 0.5],
         ['half stuck, bar half revealed', 0.5, 0.5, 0.25],
-        ['stuck before the bar has minimized', 0, 60, 0],
-        ['stuck while an inline bar is revealed', 0, 60, 0],
+        ['stuck while the native stack reports the bar as not minimized', 0, 60, 0],
         ['stretched past the top, bar minimized', 1, -5, 0],
         ['a shift of exactly one, bar fully minimized', 1, 1, 1],
         ['a fraction above one, stuck', 1.2, 60, 1],

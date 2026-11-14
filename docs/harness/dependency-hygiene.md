@@ -416,11 +416,14 @@ one `Animated.Value` to its own header height event with `Animated.attachNativeE
 native-stack's own `Animated.event` on that event, detached on cleanup, attached again when the
 rendered native component changes) and provides it as `HeaderMinimizationContext`; the hook
 returns `undefined` outside a native stack screen (details and the pins in
-`docs/harness/documented-exceptions.md`). A re-derived patch must keep the field in the codegen
-spec, the event body, the Fabric emit and the wrapper, and the context, the hook, the attach
-and their `lib/commonjs` and `lib/typescript` copies. Drop it once upstream exposes a
+`docs/harness/documented-exceptions.md`). The screen also renders one empty 0 by 0
+`Animated.View` of that value after its children, so the value keeps its native node when the
+band unmounts (an empty table) and returns. A re-derived patch must keep the field in the codegen
+spec, the event body, the Fabric emit and the wrapper, and the context, the hook, the attach,
+that view and their `lib/commonjs` and `lib/typescript` copies. Drop it once upstream exposes a
 minimization state of the bar (a field of the header height event or a public bar state): move
-the band to that and delete the field, the walk, the context, the hook, the attach and the pins;
+the band to that and delete the field, the walk, the context, the hook, the attach, the view and
+the pins;
 re-measure on a 27.x device that the class name still matches exactly one subview, since a
 renamed private class would silently give 0 and no band, and that the second mapping reaches the
 native driver (the band fades with the bar and does not jump).

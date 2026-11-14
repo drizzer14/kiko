@@ -53,6 +53,6 @@ export type DataTableProps = {
   barInset?: Animated.Value | Animated.AnimatedInterpolation<number>;
   // The native stack's minimized fraction of that bar, 0 (not minimized) to 1 (fully minimized);
   // with `barInset` it draws the status band above the stuck header. Absent, no band is drawn.
-  barMinimization?: Animated.Value | Animated.AnimatedInterpolation<number>;
+  barMinimization?: Animated.Value;
   testID?: string;
 };

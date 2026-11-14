@@ -102,9 +102,7 @@ const DataTable: FC<DataTableProps> = ({
               outputRange: [0, 1],
               extrapolate: 'clamp',
             }),
-            // The two types the prop allows have incompatible `interpolate` signatures; a sum is
-            // one type that has it.
-            NativeAnimated.add(minimization, 0).interpolate({
+            minimization.interpolate({
               inputRange: [0, 1],
               outputRange: [0, 1],
               extrapolate: 'clamp',

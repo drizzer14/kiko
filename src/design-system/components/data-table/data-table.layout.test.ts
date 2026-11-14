@@ -36,19 +36,16 @@ describe('resolveHeaderShift', () => {
 
 describe('resolveStatusBandOpacity', () => {
   it.each([
-    ['a Duo pane with the bar minimized and the header stuck', 60, 1, 1],
-    ['an iPhone in portrait with the bar minimized and the header stuck', 60, 1, 1],
+    ['the bar minimized and the header stuck', 60, 1, 1],
     ['the header at rest under a minimized bar', 0, 1, 0],
     ['half-way onto the stick point under a minimized bar', 0.5, 1, 0.5],
     ['the header stuck with the bar half revealed', 60, 0.5, 0.5],
     ['the header half stuck with the bar half revealed', 0.5, 0.5, 0.25],
-    ['the first stick before the bar has minimized', 60, 0, 0],
-    ['an inline bar revealed while the header is stuck', 60, 0, 0],
+    ['the header stuck while the native stack reports the bar as not minimized', 60, 0, 0],
     ['a stretch past the top under a minimized bar', -5, 1, 0],
     ['a shift of exactly one under a fully minimized bar', 1, 1, 1],
     ['a fraction above one', 60, 1.2, 1],
     ['a fraction below zero', 60, -0.1, 0],
-    ['a bar that never minimizes, on iOS 26.5 and 18.6', 60, 0, 0],
   ])('is as the rule has it for %s', (_name, shift, minimizedFraction, expected) => {
     expect(resolveStatusBandOpacity(shift, minimizedFraction)).toBeCloseTo(expected, 10);
   });
@@ -56,6 +53,6 @@ describe('resolveStatusBandOpacity', () => {
 
 describe('STATUS_BAND_HEIGHT', () => {
   it('reaches at least the height of an inline bar on a phone in portrait', () => {
-    expect(STATUS_BAND_HEIGHT).toBeGreaterThanOrEqual(103);
+    expect(STATUS_BAND_HEIGHT).toBeGreaterThanOrEqual(116);
   });
 });

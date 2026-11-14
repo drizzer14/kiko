@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { Animated } from 'react-native';
 import { createElement, useContext } from 'react';
 import { readFileSync, readdirSync } from 'node:fs';
-import { render, renderHook } from '@testing-library/react-native';
+import { act, render, renderHook } from '@testing-library/react-native';
 
 const ROOT = join(__dirname, '..');
 const SCROLL_VIEW_FILE =
@@ -459,6 +459,26 @@ describe('the react-native-screens fixed content margin patch', () => {
       },
     );
 
+    // A value drops its native node when its last consumer unmounts, and the screen's attached
+    // event goes on writing the dropped node. The view that never unmounts is last in the screen,
+    // after the children: RNS and UIKit look for the large title's scroll view in the first
+    // subview, so it must not be that.
+    it.each([
+      [
+        'src/components/Screen.tsx',
+        /\{children\}\s*\{\/\*[\s\S]*?\*\/\}\s*<Animated\.View\s+pointerEvents="none"\s+collapsable=\{false\}\s+accessibilityElementsHidden\s+importantForAccessibility="no-hide-descendants"\s+style=\{\{\s*position: 'absolute',\s*width: 0,\s*height: 0,\s*opacity: headerMinimization,\s*\}\}\s*\/>\s*<\/HeaderMinimizationContext\.Provider>/,
+      ],
+      [
+        'lib/commonjs/components/Screen.js',
+        /\}, children,(?:\s*\/\/[^\n]*)+\s*(?:\/\*#__PURE__\*\/)?_react\.default\.createElement\(_reactNative\.Animated\.View, \{\s*pointerEvents: "none",\s*collapsable: false,\s*accessibilityElementsHidden: true,\s*importantForAccessibility: "no-hide-descendants",\s*style: \{\s*position: 'absolute',\s*width: 0,\s*height: 0,\s*opacity: headerMinimization\s*\}\s*\}\)\)\)\)\);/,
+      ],
+    ])('keeps a view of the value after the children, hidden and empty, in %s', (path, pattern) => {
+      const source = read(path);
+
+      expect(source).toMatch(pattern);
+      expect(source).toContain('Kiko patch: a value drops its native node when its last consumer');
+    });
+
     it('reads undefined outside a screen and does not throw', async () => {
       const { useHeaderMinimization } = require('react-native-screens');
       const { result } = await renderHook(() => useHeaderMinimization());
@@ -467,7 +487,7 @@ describe('the react-native-screens fixed content margin patch', () => {
     });
 
     describe('on a mounted screen', () => {
-      const mount = async (props: Record<string, unknown> = {}) => {
+      const mount = async (props: Record<string, unknown> = {}, isBandShown?: boolean) => {
         const { Screen, useHeaderMinimization } = require('react-native-screens');
         const seen: unknown[] = [];
         const handles: { detach: jest.Mock }[] = [];
@@ -481,13 +501,26 @@ describe('the react-native-screens fixed content margin patch', () => {
 
           return null;
         };
-        const element = (extra: Record<string, unknown>) =>
+        // Reads the value in the component that stays mounted and draws a view of it only while
+        // shown, as the DataTable band does under the Tables screen.
+        const Band = ({ isShown }: { isShown: boolean }) => {
+          const minimization = useHeaderMinimization();
+
+          seen.push(minimization);
+
+          return isShown
+            ? createElement(Animated.View, { style: { opacity: minimization } })
+            : null;
+        };
+        const element = (extra: Record<string, unknown>, isBandShown?: boolean) =>
           createElement(
             Screen,
             { isNativeStack: true, activityState: 2, ...props, ...extra },
-            createElement(Reader),
+            isBandShown === undefined
+              ? createElement(Reader)
+              : createElement(Band, { isShown: isBandShown }),
           );
-        const rendered = await render(element({}));
+        const rendered = await render(element({}, isBandShown));
 
         return { attach, handles, seen, rendered, element };
       };
@@ -531,6 +564,22 @@ describe('the react-native-screens fixed content margin patch', () => {
         expect(handles[0].detach).toHaveBeenCalledTimes(1);
         expect(attach.mock.calls[1][2]).toEqual([{ nativeEvent: { minimizedFraction: seen[0] } }]);
         expect(seen[seen.length - 1]).toBe(seen[0]);
+      });
+
+      // A value whose last consumer unmounts drops its native node and the one attachment made
+      // for the screen keeps writing the dropped one, so a consumer that comes back would sit
+      // frozen. The listener is what the drop clears, in this JS-only environment too.
+      it('keeps the value alive when its only view unmounts and comes back', async () => {
+        const { attach, seen, rendered, element } = await mount({}, true);
+        const listener = jest.fn();
+
+        (seen[0] as Animated.Value).addListener(listener);
+        await rendered.rerender(element({}, false));
+        await rendered.rerender(element({}, true));
+        await act(async () => (seen[0] as Animated.Value).setValue(0.5));
+
+        expect(listener).toHaveBeenCalledWith({ value: 0.5 });
+        expect(attach).toHaveBeenCalledTimes(1);
       });
 
       it('gives no value and attaches nothing outside a native stack', async () => {

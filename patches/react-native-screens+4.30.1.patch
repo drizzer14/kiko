@@ -432,7 +432,7 @@ index fbda1f8..cf4fe22 100644
  
    return body;
 diff --git a/node_modules/react-native-screens/lib/commonjs/components/Screen.js b/node_modules/react-native-screens/lib/commonjs/components/Screen.js
-index 44c7f55..d0bc366 100644
+index 44c7f55..1fc7b39 100644
 --- a/node_modules/react-native-screens/lib/commonjs/components/Screen.js
 +++ b/node_modules/react-native-screens/lib/commonjs/components/Screen.js
 @@ -8,6 +8,7 @@ exports.default = exports.ScreenContext = exports.InnerScreen = void 0;
@@ -500,14 +500,30 @@ index 44c7f55..d0bc366 100644
      let {
        // Filter out active prop in this case because it is unused and
        // can cause problems depending on react-native version:
-@@ -197,7 +219,9 @@ const InnerScreen = exports.InnerScreen = /*#__PURE__*/_react.default.forwardRef
+@@ -197,7 +219,25 @@ const InnerScreen = exports.InnerScreen = /*#__PURE__*/_react.default.forwardRef
          closing,
          goingForward
        }
 -    }, children)));
 +    }, /*#__PURE__*/_react.default.createElement(_contexts.HeaderMinimizationContext.Provider, {
 +      value: headerMinimization
-+    }, children))));
++    }, children,
++    // Kiko patch: a value drops its native node when its last consumer unmounts, and
++    // the attached event goes on writing the dropped node, so a consumer that comes
++    // back stays frozen. This view is the consumer that never unmounts; it is last so
++    // the first subview, where the large title looks, stays the content.
++    /*#__PURE__*/_react.default.createElement(_reactNative.Animated.View, {
++      pointerEvents: "none",
++      collapsable: false,
++      accessibilityElementsHidden: true,
++      importantForAccessibility: "no-hide-descendants",
++      style: {
++        position: 'absolute',
++        width: 0,
++        height: 0,
++        opacity: headerMinimization
++      }
++    })))));
    } else {
      // same reason as above
      let {
@@ -725,7 +741,7 @@ index 0000000..82afcf6
 +import type { Animated } from 'react-native';
 +export default function useHeaderMinimization(): Animated.Value | undefined;
 diff --git a/node_modules/react-native-screens/src/components/Screen.tsx b/node_modules/react-native-screens/src/components/Screen.tsx
-index be75a7d..1879518 100644
+index be75a7d..3b23635 100644
 --- a/node_modules/react-native-screens/src/components/Screen.tsx
 +++ b/node_modules/react-native-screens/src/components/Screen.tsx
 @@ -4,6 +4,7 @@ import React from 'react';
@@ -816,13 +832,31 @@ index be75a7d..1879518 100644
        let {
          // Filter out active prop in this case because it is unused and
          // can cause problems depending on react-native version:
-@@ -295,7 +321,9 @@ export const InnerScreen = React.forwardRef<ScreenInstance, ScreenProps>(
+@@ -295,7 +321,27 @@ export const InnerScreen = React.forwardRef<ScreenInstance, ScreenProps>(
                    closing,
                    goingForward,
                  }}>
 -                {children}
 +                <HeaderMinimizationContext.Provider value={headerMinimization}>
 +                  {children}
++                  {/*
++                    Kiko patch: a value drops its native node when its last consumer unmounts, and
++                    the attached event goes on writing the dropped node, so a consumer that comes
++                    back stays frozen. This view is the consumer that never unmounts; it is last so
++                    the first subview, where the large title looks, stays the content.
++                  */}
++                  <Animated.View
++                    pointerEvents="none"
++                    collapsable={false}
++                    accessibilityElementsHidden
++                    importantForAccessibility="no-hide-descendants"
++                    style={{
++                      position: 'absolute',
++                      width: 0,
++                      height: 0,
++                      opacity: headerMinimization,
++                    }}
++                  />
 +                </HeaderMinimizationContext.Provider>
                </TransitionProgressContext.Provider>
              )}
