@@ -2227,6 +2227,39 @@ export const transactionsRepo = {
         source: transactions.source,
       })
       .from(transactions),
+  // The rows of one funding bucket, in the columns the funding matcher reads, for the caption of
+  // a bank debit of `amountMinorUnits`. A pair forms only inside one bucket, which the matcher
+  // keys `bucketKey(fiat, total)` (`exchange-funding-match.ts`; keep the two in step): the bank
+  // debits of that exact amount, and the positive rows whose stored code starts with a kind the
+  // matcher's `fundingOf` takes (`p2p:`, `card:` or `bank:`). A superset is enough, since the
+  // currency stays a filter in the caller and the matcher drops the rest.
+  // No `orderBy` and no index: the matcher sorts for itself, and the scan returns a few rows.
+  fundingMatchCandidatesQuery: (amountMinorUnits: number) =>
+    database
+      .select({
+        id: transactions.id,
+        holdingId: transactions.holdingId,
+        time: transactions.time,
+        amountMinorUnits: transactions.amountMinorUnits,
+        untrackedCounterpart: transactions.untrackedCounterpart,
+        description: transactions.description,
+        mcc: transactions.mcc,
+        categorySetByHand: transactions.categorySetByHand,
+        setsBalance: transactions.setsBalance,
+      })
+      .from(transactions)
+      .where(
+        or(
+          eq(transactions.amountMinorUnits, amountMinorUnits),
+          and(
+            gt(transactions.amountMinorUnits, 0),
+            or(
+              eq(sql`substr(${transactions.untrackedCounterpart}, 1, 4)`, 'p2p:'),
+              inArray(sql`substr(${transactions.untrackedCounterpart}, 1, 5)`, ['card:', 'bank:']),
+            ),
+          ),
+        ),
+      ),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
   /**

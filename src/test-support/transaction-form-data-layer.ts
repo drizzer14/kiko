@@ -12,6 +12,7 @@ export const transactionFormDataLayer = {
       recordManual: jest.fn().mockResolvedValue(undefined),
       getByIdQuery: query,
       listAllQuery: query,
+      fundingMatchCandidatesQuery: query,
       distinctDescriptionsQuery: query,
       latestManualHoldingQuery: query,
       recurringLedgerQuery: query,

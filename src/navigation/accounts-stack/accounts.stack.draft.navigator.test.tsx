@@ -51,6 +51,7 @@ jest.mock('@kiko/transactions/repo', () => ({
     recordManual: jest.fn().mockResolvedValue(undefined),
     getByIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     listAllQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    fundingMatchCandidatesQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     distinctDescriptionsQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     latestManualHoldingQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },

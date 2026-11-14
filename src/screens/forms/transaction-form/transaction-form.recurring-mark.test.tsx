@@ -68,7 +68,7 @@ jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     ...mockDataLayer.transactionsRepo.transactionsRepo,
     getByIdQuery: (transactionId: string) => mockTaggedQuery('byId', { transactionId }),
-    listAllQuery: () => mockTaggedQuery('ledger'),
+    fundingMatchCandidatesQuery: () => mockTaggedQuery('ledger'),
     distinctDescriptionsQuery: () => mockTaggedQuery('distinctDescriptions'),
     latestManualHoldingQuery: () => mockTaggedQuery('latestManualHolding'),
     recurringLedgerQuery: () => mockTaggedQuery('recurringLedger'),
