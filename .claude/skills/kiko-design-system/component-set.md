@@ -53,7 +53,8 @@ new component can land between reviews of this skill:
   `src/design-system/floating-footer/floating-footer.ts` and the side-bar clause of
   `src/design-system/components/screen/bottom-clearance.ts`. A `bleedBottom` child that
   owns the screen's true bottom edge itself (e.g. a scrollable list)
-  must take that same clearance from `useBottomClearance()`
+  must take that same clearance from `useBottomClearance()`, or, for a floating control like
+  Home's (+), from `useFloatingFooterBottom` (which builds on it)
   (`src/design-system/components/screen/use-bottom-clearance.ts`, built
   on `resolveBottomClearance` in `bottom-clearance.ts`; read its
   thresholds there) — never re-derive it inline, or it double-counts

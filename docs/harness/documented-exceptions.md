@@ -378,6 +378,18 @@ verified usage, not dead weight:
   in `ignore` above, so Knip never walks into it and reports it as an
   unused file. It is reached exactly as far as those checkers are, and
   exercised through their tests.
+- **Knip `@public` tag (no `knip.json` change)**: `useBottomClearance` in
+  `src/design-system/components/screen/index.ts`. It is the pane-aware hook that
+  `rules/semgrep-prewrite.yml`'s `kiko-no-pane-blind-bottom-clearance` (line 1177) names in its
+  message and `fix` text ("use `const clearance = useBottomClearance();` from
+  `@kiko/design-system/components/screen`"). Since Home reads its end space from
+  `useFloatingFooterBottom` its only importer is the rule's good fixture
+  `rules/fixtures/kiko-no-pane-blind-bottom-clearance.good.ts`, and `knip.json` `ignore` lists
+  `rules/fixtures/**`, so Knip sees no consumer and would report an unused export. The JSDoc
+  `@public` tag on that one export line is not a suppression comment (`check:overrides` matches
+  only `biome-ignore`, `nosemgrep`, `kiko-override:` and `Stryker disable`). Remove the tag and the
+  export together when the rule's fix text names another hook; `npm run check:knip` and
+  `npm run check:typecheck` (the fixture's import) fail if one goes without the other.
 - **`knip.json` `ignore`**: `scripts/checks/mutation-rerun.js` — run by path as
   `node "$DIR/mutation-rerun.js"` in `scripts/checks/mutation.sh` (the TIMEOUT-HEAVY rerun),
   never a static import, so Knip sees no importer.
@@ -1073,7 +1085,8 @@ verified usage, not dead weight:
   instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
   imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder
   exclude is right here because every file in it is part of the sink; the rule
-  still reaches every consumer (Home, HoldingDetail).
+  still reaches every consumer (HoldingDetail directly; Home through `useFloatingFooterBottom`,
+  which builds on `useBottomClearance()`).
 
 - **`src/design-system/components/screen/**` and
   `src/design-system/components/two-pane-layout/**` — the two folders

@@ -1,2 +1,2 @@
 export { default } from './add-transaction-fab.component';
-export { FAB_FOOTPRINT_STEP, FAB_GAP_STEP } from './fab-footprint';
+export { FAB_FOOTPRINT_STEP } from './fab-footprint';

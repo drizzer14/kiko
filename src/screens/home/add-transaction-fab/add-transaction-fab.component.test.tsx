@@ -25,7 +25,7 @@ describe('AddTransactionFab', () => {
 
   it('renders a labeled floating action button', async () => {
     const { getByLabelText } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      <AddTransactionFab onPress={() => undefined} bottom={0} />,
     );
 
     expect(getByLabelText('Add transaction')).toBeTruthy();
@@ -44,7 +44,7 @@ describe('AddTransactionFab', () => {
     const { getByLabelText } = await render(
       <AddTransactionFab
         onPress={() => navigationProp.navigate('TransactionForm', {})}
-        bottomOffset={0}
+        bottom={0}
       />,
     );
 
@@ -53,12 +53,11 @@ describe('AddTransactionFab', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('TransactionForm', {});
   });
 
-  it('lifts itself above the given bottom clearance', async () => {
-    // The FAB sits OUTSIDE the scrolling list content and must clear the
-    // floating tab bar, so its bottom offset is driven by the list's own
-    // clearance plus the standard screen inset — never overlapping the tab bar.
+  it('sits at the given bottom', async () => {
+    // Home computes the one bottom the list and the button share, so the button applies it as it
+    // is: an added gap would move it off the line Home chose.
     const { getByLabelText } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={100} />,
+      <AddTransactionFab onPress={() => undefined} bottom={100} />,
     );
 
     const fab = getByLabelText('Add transaction');
@@ -66,9 +65,7 @@ describe('AddTransactionFab', () => {
       ? Object.assign({}, ...fab.props.style)
       : fab.props.style;
 
-    // The offset is the clearance plus a positive gap, so the button floats
-    // clear of the tab bar rather than resting on it.
-    expect(flattened.bottom).toBeGreaterThan(100);
+    expect(flattened.bottom).toBe(100);
   });
 
   it('paints its background with the shared translucent GlassSurface, not a flat accent fill', async () => {
@@ -79,7 +76,7 @@ describe('AddTransactionFab', () => {
     // test file) — its presence is proof the real component tree renders,
     // not just a plain colored View standing in for it.
     const { getByLabelText, getByTestId } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      <AddTransactionFab onPress={() => undefined} bottom={0} />,
     );
 
     expect(getByTestId('add-transaction-fab-glass')).toBeTruthy();
@@ -103,7 +100,7 @@ describe('AddTransactionFab', () => {
     // value that proves the FAB requests the translucent variant rather than
     // an opaque one.
     const { getByTestId } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      <AddTransactionFab onPress={() => undefined} bottom={0} />,
     );
 
     const base = StyleSheet.flatten(getByTestId('add-transaction-fab-glass-base').props.style);
@@ -117,7 +114,7 @@ describe('AddTransactionFab', () => {
     // safe-area inset itself (the Duo sidebar case included), so the FAB
     // never needs its own extra right offset — see `screen.component.tsx`.
     const { getByLabelText } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      <AddTransactionFab onPress={() => undefined} bottom={0} />,
     );
 
     const fab = getByLabelText('Add transaction');
@@ -128,17 +125,17 @@ describe('AddTransactionFab', () => {
 
   it('follows a new bottom clearance on re-render', async () => {
     const { getByLabelText, rerender } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={100} />,
+      <AddTransactionFab onPress={() => undefined} bottom={100} />,
     );
 
-    await rerender(<AddTransactionFab onPress={() => undefined} bottomOffset={200} />);
+    await rerender(<AddTransactionFab onPress={() => undefined} bottom={200} />);
 
-    expect(StyleSheet.flatten(getByLabelText('Add transaction').props.style).bottom).toBe(216);
+    expect(StyleSheet.flatten(getByLabelText('Add transaction').props.style).bottom).toBe(200);
   });
 
   it('does not dim while at rest', async () => {
     const { getByLabelText } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      <AddTransactionFab onPress={() => undefined} bottom={0} />,
     );
 
     expect(
@@ -148,7 +145,7 @@ describe('AddTransactionFab', () => {
 
   it('dims while pressed in', async () => {
     const { getByLabelText } = await render(
-      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      <AddTransactionFab onPress={() => undefined} bottom={0} />,
     );
 
     await fireEvent(getByLabelText('Add transaction'), 'responderGrant', {
@@ -160,9 +157,9 @@ describe('AddTransactionFab', () => {
   });
 
   describe('follows the edge the system puts a vertical tab bar on', () => {
-    const flattenedFab = async (bottomOffset: number) => {
+    const flattenedFab = async (bottom: number) => {
       const { getByLabelText } = await render(
-        <AddTransactionFab onPress={() => undefined} bottomOffset={bottomOffset} />,
+        <AddTransactionFab onPress={() => undefined} bottom={bottom} />,
       );
 
       return StyleSheet.flatten(getByLabelText('Add transaction').props.style);
@@ -175,7 +172,7 @@ describe('AddTransactionFab', () => {
 
       expect(flattened.right).toBe(16);
       expect(flattened.left).toBeUndefined();
-      expect(flattened.bottom).toBe(16);
+      expect(flattened.bottom).toBe(0);
     });
 
     it('sits bottom-left beside a bar on the leading edge', async () => {
@@ -185,18 +182,18 @@ describe('AddTransactionFab', () => {
 
       expect(flattened.left).toBe(16);
       expect(flattened.right).toBeUndefined();
-      expect(flattened.bottom).toBe(16);
+      expect(flattened.bottom).toBe(0);
     });
 
     it('moves to the other side when the bar edge changes on re-render', async () => {
       mockUseVerticalBarEdge.mockReturnValue('leading');
 
       const { getByLabelText, rerender } = await render(
-        <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+        <AddTransactionFab onPress={() => undefined} bottom={0} />,
       );
 
       mockUseVerticalBarEdge.mockReturnValue('trailing');
-      await rerender(<AddTransactionFab onPress={() => undefined} bottomOffset={0} />);
+      await rerender(<AddTransactionFab onPress={() => undefined} bottom={0} />);
 
       const flattened = StyleSheet.flatten(getByLabelText('Add transaction').props.style);
 
@@ -204,12 +201,12 @@ describe('AddTransactionFab', () => {
       expect(flattened.left).toBeUndefined();
     });
 
-    it('sits bottom-right with the clearance when there is no vertical bar', async () => {
+    it('sits bottom-right at the given bottom when there is no vertical bar', async () => {
       const flattened = await flattenedFab(100);
 
       expect(flattened.right).toBe(16);
       expect(flattened.left).toBeUndefined();
-      expect(flattened.bottom).toBe(116);
+      expect(flattened.bottom).toBe(100);
     });
   });
 });
