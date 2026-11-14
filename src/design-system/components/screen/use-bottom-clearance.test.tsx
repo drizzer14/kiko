@@ -262,8 +262,28 @@ describe('useBottomBarContentPadding', () => {
     expect(result.current).toBe(16);
   });
 
+  it('is spacing(4) in the side-by-side companion pane, which is at the window bottom', async () => {
+    mockUseTabBarEdge.mockReturnValue('bottom');
+
+    const { result } = await renderHook(() => useBottomBarContentPadding(), {
+      wrapper: inPane('columns', 'companion'),
+    });
+
+    expect(result.current).toBe(16);
+  });
+
   it('is zero in a pane that is not at the window bottom', async () => {
     mockUseTabBarEdge.mockReturnValue('bottom');
+
+    const { result } = await renderHook(() => useBottomBarContentPadding(), {
+      wrapper: inPane('rows', 'companion'),
+    });
+
+    expect(result.current).toBe(0);
+  });
+
+  it('is zero under a top tab bar in a pane that is not at the window bottom', async () => {
+    mockUseTabBarEdge.mockReturnValue('top');
 
     const { result } = await renderHook(() => useBottomBarContentPadding(), {
       wrapper: inPane('rows', 'companion'),

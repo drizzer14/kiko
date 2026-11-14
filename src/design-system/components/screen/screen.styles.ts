@@ -15,9 +15,10 @@ import { floatingFooterBottom } from './floating-footer-bottom';
 // above it, kept equal to the room above the button.
 export const FOOTER_GAP_STEP = 4;
 
-// The bottom padding of the plain content container when a `bleedBottom` child owns the clearance
-// but not the true bottom edge. It lifts that child's own content, so a control the child
-// anchors to its bottom reads it too (`useBottomBarContentPadding`).
+// The bottom padding of the plain content container when it does not own the clearance: a
+// `bleedBottom` child owns it, or a pinned non-floating footer does (`hasPinnedFooter`). It lifts
+// that child's own content, so a control the child anchors to its bottom reads it too
+// (`useBottomBarContentPadding`).
 export const UNOWNED_BOTTOM_PADDING_STEP = 4;
 
 // Beside a side tab bar the floating footer's lowest button ends this far above the window's

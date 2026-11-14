@@ -74,11 +74,12 @@ export const useBottomSafeAreaReservation = (): number => {
 };
 
 /**
- * The bottom padding the screen's content container keeps under a `bleedBottom` child beside a
- * bottom tab bar, in a pane at the window's bottom or outside one. A control anchored to the
- * bottom of that child sits this far above the line a floating footer's button is on, so it
- * subtracts it to be level. Zero beside a side bar (the container pads nothing there), and zero
- * under a top bar and in a pane away from the window's bottom, where the control stays where it is.
+ * The part of the content container's bottom padding under a `bleedBottom` child that a control
+ * anchored to the bottom of that child drops to be level with the line a floating footer's button
+ * is on: the padding under a bottom tab bar, in a pane at the window's bottom or outside one.
+ * Zero beside a side bar (the container pads nothing there), and zero under a top bar and in a
+ * pane away from the window's bottom, although the container keeps its padding there: the control
+ * stays where it is.
  */
 export const useBottomBarContentPadding = (): number => {
   const { theme } = useUnistyles();

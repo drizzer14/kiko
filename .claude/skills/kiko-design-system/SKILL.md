@@ -1015,8 +1015,10 @@ pane not at the window's bottom it is the ordinary 16 pt lift. Under a bottom ta
 pane or in a pane at the window's bottom) the (+) ends level with the footer button: what Home
 reserves there is the SafeAreaView's inset plus the content container's own 16 pt bottom padding
 (`useBottomBarContentPadding`), and only that term is dropped, never from the footer's own line.
-Under a top bar the (+) is unchanged. The FAB takes the number as its one `bottom` prop and the
-list's end space (`styles.listContent`) adds the button's footprint to the same number.
+Under a top bar, and in a pane away from the window's bottom, the (+) sits 16 pt (the content
+padding) above the footer line: a known gap, in the backlog. The FAB takes the number as its one
+`bottom` prop and the list's end space (`styles.listContent`) adds the button's footprint to the
+same number.
 
 ## GlassSurface `isLiquidGlassSupported` branch
 
