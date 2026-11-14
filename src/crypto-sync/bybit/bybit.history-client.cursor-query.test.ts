@@ -55,9 +55,7 @@ describe.each(ROUTES)('the page cursor of %s', (_title, fetchPage, field) => {
       const { request, query } = await sentWith(fetchPage, field, token);
 
       expect(query.split('&')).toContain(`cursor=${token}`);
-      expect(request.init.headers['X-BAPI-SIGN']).toBe(
-        signatureOf(`${NOW}${API_KEY}5000${query}`),
-      );
+      expect(request.init.headers['X-BAPI-SIGN']).toBe(signatureOf(`${NOW}${API_KEY}5000${query}`));
     },
   );
 
