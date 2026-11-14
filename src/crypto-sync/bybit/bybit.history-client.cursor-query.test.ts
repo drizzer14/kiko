@@ -1,5 +1,3 @@
-import { createHmac } from 'node:crypto';
-
 import {
   fetchDepositPage,
   fetchFundingLedgerPage,
@@ -8,8 +6,8 @@ import {
   fetchTransferPage,
   fetchWithdrawalPage,
 } from './bybit.history-client';
-import { API_KEY, NOW, SECRET } from './bybit.client-test-fixtures';
 import { SPAN, optionsOf, pageAnswer } from './bybit.history-test-fixtures';
+import { API_KEY, NOW, SECRET, signatureOf } from './bybit.client-test-fixtures';
 
 const ROUTES = [
   ['the Unified transaction log', fetchLogPage, 'list'],
@@ -25,10 +23,6 @@ const CURSORS = [
   ['a base64 token ending in =', 'eyJhIjoxfQ=='],
   ['a base64 token holding + and /', 'ab+c/d='],
 ] as const;
-
-// HMAC-SHA256 by Node's own implementation, so the expectation does not share code with the client.
-const signatureOf = (text: string): string =>
-  createHmac('sha256', SECRET).update(text).digest('hex');
 
 const sentWith = async (
   fetchPage: (typeof ROUTES)[number][1],

@@ -231,9 +231,9 @@ export const signedBybitGet = async (
 ): Promise<unknown> => {
   const { fetchImpl = fetch, now: clock = Date.now } = options;
   const now = clock();
-  const { cursor, ...encodedParams } = params;
+  const { cursor, ...otherParams } = params;
   const query = [
-    new URLSearchParams(encodedParams).toString(),
+    new URLSearchParams(otherParams).toString(),
     foldMap(maybe(cursor), (token) => `cursor=${token}`),
   ]
     .filter((part) => part !== undefined && part !== '')
