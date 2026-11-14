@@ -1337,6 +1337,41 @@ verified usage, not dead weight:
     spec and type text, the emit and event text, the 0 paths, the iOS 27 block, the class name
     and the clamp). That the iOS 27 bar really fades `_UIBarBackground` over its minimization,
     and that the event reaches the native driver, are shown by the device build, not by Jest.
+    The spec and type comments, verbatim: "Kiko patch: iOS only; 0 (not minimized) to 1 (fully
+    minimized), always 0 below iOS 27." (the codegen spec) and "Kiko patch: sent on iOS only; 0
+    (not minimized) to 1 (fully minimized), always 0 below iOS 27." (the event type).
+    The JS side (the `DataTable` `barMinimization` prop reads it through `useHeaderMinimization`):
+    `InnerScreen` of `Screen.tsx` holds one `Animated.Value(0)` in a ref and, in an effect, calls
+    `Animated.attachNativeEvent(innerRef.current, 'onHeaderHeightChange', [{ nativeEvent: {
+    minimizedFraction } }])`, detaching on cleanup, beside native-stack's own `Animated.event`
+    on the same event (the native animated driver keeps several drivers per view and event name,
+    so both mappings run; the app never holds the native view or that prop, which native-stack
+    owns, so no app-side route exists and no sixth patched package is needed). The attach runs
+    only for a native stack screen with screens enabled on a native platform, and its effect
+    depends on the rendered native component (`AnimatedScreen`, now chosen above the branch it
+    was chosen in) so a modal presentation, which renders `AnimatedNativeModalScreen`, attaches
+    to its own view again; the ref callback is not the attach point because it is a new function
+    on every render. `HeaderMinimizationContext` (`contexts.tsx`, default `undefined`) wraps the
+    children beside `TransitionProgressContext.Provider`, in the native-stack branch only, and
+    `useHeaderMinimization` (its own file beside `useTransitionProgress`, no throw) reads it, so
+    outside a native stack screen it returns `undefined`; both are exported from `index.tsx`.
+    The same edits are in the `lib/commonjs` and `lib/typescript` copies. The context diff
+    comment, verbatim: "Kiko patch: how far the screen's iOS 27 navigation bar has minimized, 0
+    to 1, as one value the native driver writes from the screen's header height event; undefined
+    outside a native stack screen, so a reader never throws." The attach diff comment, verbatim:
+    "Kiko patch: native-stack owns this screen's `onHeaderHeightChange` prop for its own header
+    height mapping, so the minimized fraction of the same event is attached to the native view
+    from here and the native driver keeps both mappings. It attaches again when the rendered
+    native component changes (a modal presentation renders another one, so the view is another);
+    the ref callback is a new function on every render and so cannot be the attach point."
+    Files added to the patch: `contexts.tsx`, `index.tsx` (already patched), `Screen.tsx`,
+    `useHeaderMinimization.tsx` (new), and their `lib/commonjs` and `lib/typescript` copies. Pinned
+    by the "the bar minimized fraction context" describe of
+    `__tests__/react-native-patch.test.ts` (the text of every copy, the effect and its deps, and a
+    mounted `Screen`: one attach with the value the children read, detach on unmount, a second
+    attach with the same value when the presentation changes, none outside a native stack, and
+    the hook returning `undefined` outside a screen). That the native driver receives the second
+    mapping is shown by the device build, not by Jest.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or

@@ -1,7 +1,8 @@
 import { join } from 'node:path';
+import { Animated } from 'react-native';
 import { createElement, useContext } from 'react';
 import { readFileSync, readdirSync } from 'node:fs';
-import { render } from '@testing-library/react-native';
+import { render, renderHook } from '@testing-library/react-native';
 
 const ROOT = join(__dirname, '..');
 const SCROLL_VIEW_FILE =
@@ -383,6 +384,161 @@ describe('the react-native-screens fixed content margin patch', () => {
 
       expect(patch).toContain(`${SCREENS_DIRECTORY}/ios/events/RNSHeaderHeightChangeEvent.mm`);
       expect(patch).toContain(`${SCREENS_DIRECTORY}/ios/RNSScreen.mm`);
+    });
+  });
+
+  // The minimized fraction reaches the JS side as one native-driven value: the screen attaches it
+  // to its own header height event beside the native stack's mapping and hands it down like the
+  // transition progress. The text pins hold the three copies Metro, Jest and tsc load; that the
+  // native driver really receives the second mapping is shown on a device, not by Jest.
+  describe('the bar minimized fraction context', () => {
+    const SCREEN_COPIES = ['src/components/Screen.tsx', 'lib/commonjs/components/Screen.js'];
+
+    it('defines the context with no value outside a screen, in every copy', () => {
+      expect(read('src/contexts.tsx')).toMatch(
+        /HeaderMinimizationContext = React\.createContext<\s*Animated\.Value \| undefined\s*>\(\s*undefined,?\s*\)/,
+      );
+      expect(read('lib/commonjs/contexts.js')).toMatch(
+        /HeaderMinimizationContext = exports\.HeaderMinimizationContext = (?:\/\*#__PURE__\*\/)?[\w.]*createContext\(undefined\)/,
+      );
+      expect(read('lib/typescript/contexts.d.ts')).toContain(
+        'HeaderMinimizationContext: React.Context<Animated.Value | undefined>',
+      );
+    });
+
+    it('keeps the hook in a file of its own, beside useTransitionProgress, in every copy', () => {
+      expect(read('src/useHeaderMinimization.tsx')).toContain(
+        'export default function useHeaderMinimization()',
+      );
+      expect(read('src/useHeaderMinimization.tsx')).not.toContain('throw');
+      expect(read('lib/commonjs/useHeaderMinimization.js')).toContain(
+        'exports.default = useHeaderMinimization;',
+      );
+      expect(read('lib/commonjs/useHeaderMinimization.js')).not.toContain('throw');
+      expect(read('lib/typescript/useHeaderMinimization.d.ts')).toContain(
+        'export default function useHeaderMinimization(): Animated.Value | undefined;',
+      );
+    });
+
+    it('exports the context and the hook from the package index, in every copy', () => {
+      for (const path of ['src/index.tsx', 'lib/commonjs/index.js', 'lib/typescript/index.d.ts']) {
+        expect(read(path)).toContain('HeaderMinimizationContext');
+        expect(read(path)).toContain('useHeaderMinimization');
+      }
+    });
+
+    it.each(SCREEN_COPIES)(
+      'attaches one value to the header height event and provides it to the children, in %s',
+      (path) => {
+        const source = read(path);
+
+        expect(source.match(/Animated\.Value\(0\)/g)).toHaveLength(4);
+        expect(source).toMatch(
+          /Animated\.attachNativeEvent\(\s*innerRef\.current,\s*'onHeaderHeightChange',\s*\[\s*\{\s*nativeEvent: \{\s*minimizedFraction: headerMinimization\s*\}\s*\}\s*\]/,
+        );
+        expect(source).toMatch(/return \(\) => \{?\s*attached\.detach\(\);?/);
+        expect(source).toMatch(
+          /HeaderMinimizationContext\.Provider[\s\S]{0,40}value(?:=\{|: )headerMinimization/,
+        );
+      },
+    );
+
+    // The ref callback is a new function on every render, so attaching from it would detach and
+    // attach again at each render; the effect depends on the rendered native component instead.
+    it.each(SCREEN_COPIES)(
+      'attaches again when the rendered native component changes, not on every render, in %s',
+      (path) => {
+        const source = read(path);
+
+        expect(source.indexOf('const AnimatedScreen =')).toBeLessThan(
+          source.indexOf('attachNativeEvent'),
+        );
+        expect(source).toMatch(
+          /\[\s*AnimatedScreen,\s*attachesHeaderMinimization,\s*headerMinimization\s*\]/,
+        );
+      },
+    );
+
+    it('reads undefined outside a screen and does not throw', async () => {
+      const { useHeaderMinimization } = require('react-native-screens');
+      const { result } = await renderHook(() => useHeaderMinimization());
+
+      expect(result.current).toBeUndefined();
+    });
+
+    describe('on a mounted screen', () => {
+      const mount = async (props: Record<string, unknown> = {}) => {
+        const { Screen, useHeaderMinimization } = require('react-native-screens');
+        const seen: unknown[] = [];
+        const handles: { detach: jest.Mock }[] = [];
+        const attach = jest.spyOn(Animated, 'attachNativeEvent').mockImplementation(() => {
+          handles.push({ detach: jest.fn() });
+
+          return handles[handles.length - 1];
+        });
+        const Reader = () => {
+          seen.push(useHeaderMinimization());
+
+          return null;
+        };
+        const element = (extra: Record<string, unknown>) =>
+          createElement(
+            Screen,
+            { isNativeStack: true, activityState: 2, ...props, ...extra },
+            createElement(Reader),
+          );
+        const rendered = await render(element({}));
+
+        return { attach, handles, seen, rendered, element };
+      };
+
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      it('attaches the value the children read to onHeaderHeightChange of the native view', async () => {
+        const { attach, seen } = await mount();
+
+        expect(seen[0]).toBeInstanceOf(Animated.Value);
+        expect(attach).toHaveBeenCalledTimes(1);
+        expect(attach).toHaveBeenCalledWith(expect.anything(), 'onHeaderHeightChange', [
+          { nativeEvent: { minimizedFraction: seen[0] } },
+        ]);
+      });
+
+      it('detaches when the screen unmounts', async () => {
+        const { handles, rendered } = await mount();
+
+        await rendered.unmount();
+
+        expect(handles.map((handle) => handle.detach.mock.calls.length)).toEqual([1]);
+      });
+
+      it('keeps one attachment across renders of the same native component', async () => {
+        const { attach, rendered, element } = await mount();
+
+        await rendered.rerender(element({ activityState: 2 }));
+
+        expect(attach).toHaveBeenCalledTimes(1);
+      });
+
+      it('attaches the same value again when the presentation switches the native component', async () => {
+        const { attach, handles, seen, rendered, element } = await mount();
+
+        await rendered.rerender(element({ stackPresentation: 'modal' }));
+
+        expect(attach).toHaveBeenCalledTimes(2);
+        expect(handles[0].detach).toHaveBeenCalledTimes(1);
+        expect(attach.mock.calls[1][2]).toEqual([{ nativeEvent: { minimizedFraction: seen[0] } }]);
+        expect(seen[seen.length - 1]).toBe(seen[0]);
+      });
+
+      it('gives no value and attaches nothing outside a native stack', async () => {
+        const { attach, seen } = await mount({ isNativeStack: false });
+
+        expect(attach).not.toHaveBeenCalled();
+        expect(seen[0]).toBeUndefined();
+      });
     });
   });
 

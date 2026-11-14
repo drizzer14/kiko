@@ -411,13 +411,19 @@ The minimized fraction of the bar: the `onHeaderHeightChange` event carries `min
 the same layout pass as the header height; 0 for no such subview, more than one, a hidden bar, no
 navigation controller, and always below iOS 27, where the walk sits behind
 `@available(iOS 27.0, *)` and the literal `return 0;` follows its `#endif`). The Tables status
-band reads it through the `useHeaderMinimization` hook of the same patch (see the JS side in
+band reads it through the `useHeaderMinimization` hook of the same patch: `InnerScreen` attaches
+one `Animated.Value` to its own header height event with `Animated.attachNativeEvent` (beside
+native-stack's own `Animated.event` on that event, detached on cleanup, attached again when the
+rendered native component changes) and provides it as `HeaderMinimizationContext`; the hook
+returns `undefined` outside a native stack screen (details and the pins in
 `docs/harness/documented-exceptions.md`). A re-derived patch must keep the field in the codegen
-spec, the event body, the Fabric emit and the wrapper. Drop it once upstream exposes a
+spec, the event body, the Fabric emit and the wrapper, and the context, the hook, the attach
+and their `lib/commonjs` and `lib/typescript` copies. Drop it once upstream exposes a
 minimization state of the bar (a field of the header height event or a public bar state): move
-the band to that and delete the field, the walk and the pins; re-measure on a 27.x device that
-the class name still matches exactly one subview, since a renamed private class would silently
-give 0 and no band.
+the band to that and delete the field, the walk, the context, the hook, the attach and the pins;
+re-measure on a 27.x device that the class name still matches exactly one subview, since a
+renamed private class would silently give 0 and no band, and that the second mapping reaches the
+native driver (the band fades with the bar and does not jump).
 
 The 20 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
