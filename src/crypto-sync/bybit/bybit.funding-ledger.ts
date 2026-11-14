@@ -102,10 +102,11 @@ const LEDGER_FORWARD_OWES: readonly string[] = [
 ];
 
 /**
- * An amount is a plain unsigned decimal. A comma would read "1,000" as 1, a sign would turn an Out
- * row into a credit, and neither is a form this route is known to send.
+ * An amount is a decimal with an optional sign, and its digits are the magnitude. No page shows an
+ * Out row, so it may come as "-12.5": the direction is `ioDirection`'s, never the sign's. A comma
+ * would read "1,000" as 1, and neither it nor an exponent is a form this route is known to send.
  */
-const PLAIN_AMOUNT = /^[0-9]+(\.[0-9]+)?$/;
+const SIGNED_AMOUNT = /^[+-]?([0-9]+(\.[0-9]+)?)$/;
 
 type LedgerItem = Awaited<ReturnType<typeof fetchFundingLedgerPage>>['rows'][number];
 
@@ -142,20 +143,20 @@ const range = (code: string): Reading => ({ kind: 'range', code });
 const recordKeyOf = (accountId: string, currcCursor: string, coin: string): string =>
   `${accountId}:funding:${currcCursor}:${coin}`;
 
-/** A row that reads well, as the record it stores: the amount is the page's text, never signed. */
+/** A row that reads well, as the record it stores: the amount is the page's digits, unsigned. */
 const readingOf = (accountId: string, item: LedgerItem): Reading =>
   match(item)
     .returnType<Reading>()
     .with({ kind: 'unreadable' }, () => range(FUNDING_ROW_UNREADABLE))
     .with({ kind: 'untracked' }, () => ({ kind: 'counted' }))
     .with({ kind: 'row' }, ({ row }) => {
-      const amount = PLAIN_AMOUNT.test(row.amount) ? row.amount : null;
+      const amount = SIGNED_AMOUNT.exec(row.amount)?.[1];
 
       if (row.time === undefined) {
         return range(FUNDING_TIME_MISSING);
       }
 
-      if (amount === null || compareDecimal(amount, '0') <= 0) {
+      if (amount === undefined || compareDecimal(amount, '0') <= 0) {
         return range(FUNDING_AMOUNT_INVALID);
       }
 
