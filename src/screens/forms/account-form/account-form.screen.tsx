@@ -1097,6 +1097,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
                 onBinanceStoredWhileUnmounted={clearBinancePairIfRowMissing}
                 onBybitStoredWhileUnmounted={clearBybitPairIfRowMissing}
                 bybitConnectError={bybitConnectError}
+                // The form lists no holdings, but a first Connect writes them, so the next key is
+                // always compared; with no stored owner the check passes.
+                keepsBybitHoldings
               />
             ))}
           </Box>

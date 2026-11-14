@@ -73,6 +73,8 @@ import { conflictingExchangeHoldings, keepsBybitHoldings } from './conflicting-e
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
+  // Every holding of the account, closed ones too: a disconnect keeps the keys of a closed holding,
+  // so the connect refusals read them. The sync stamp reads the open ones only.
   holdings: HoldingRow[];
 };
 
@@ -545,7 +547,10 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     const coinLinesShown = !syncStateLoading && exchangeHistory;
     // An account with no tracked holding has no holding stamp, so the state's stamp is its sync
     // time; a wallet's state holds none, so it reads its holdings alone.
-    const lastBalanceSyncAt = latestBalanceSyncAt(holdings, balanceSyncedAtOf(walkState));
+    const lastBalanceSyncAt = latestBalanceSyncAt(
+      holdings.filter((holding) => holding.closedAt == null),
+      balanceSyncedAtOf(walkState),
+    );
     const historyBehind =
       !isSyncing &&
       !syncStateLoading &&
