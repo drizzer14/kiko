@@ -1007,6 +1007,19 @@ The add-transaction FAB sits on the window's vertical-bar side: `FAB_SIDE` in
 (`leading` to left, `trailing` to right, `none` to right). In a companion pane the side is the fold
 side. Read the file for the current map (R33).
 
+Its bottom is one number Home computes in `home.screen.tsx` from `useFloatingFooterBottom`
+(`@kiko/design-system/components/screen`), the line a form's floating footer button sits on,
+minus what Home's own container reserves below it. Beside a side bar, in a pane at the window's
+bottom, that line is `SIDE_BAR_PLATTER_INSET`, level with the bottom of the bar's platter; in a
+pane not at the window's bottom it is the ordinary 16 pt lift. Under a bottom tab bar (outside a
+pane or in a pane at the window's bottom) the (+) ends level with the footer button: what Home
+reserves there is the SafeAreaView's inset plus the content container's own 16 pt bottom padding
+(`useBottomBarContentPadding`), and only that term is dropped, never from the footer's own line.
+Under a top bar, and in a pane away from the window's bottom, the (+) sits 16 pt (the content
+padding) above the footer line: a known gap, in the backlog. The FAB takes the number as its one
+`bottom` prop and the list's end space (`styles.listContent`) adds the button's footprint to the
+same number.
+
 ## GlassSurface `isLiquidGlassSupported` branch
 
 This section documents `GlassSurface` itself — now a NAV-LAYER-only

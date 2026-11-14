@@ -49,12 +49,12 @@ export type ScreenProps = {
   // both Screen's `content` and the child's list padding would reserve the
   // clearance and the gap below the last row would be counted twice. The child
   // takes the amount from `useBottomClearance()`, which gives a pane that is
-  // not at the window's bottom none. Only meaningful in the plain (non-scroll)
-  // branch when there is no `footer` (which already claims the bottom edge on
-  // its own); ignored in `scroll` mode. In a pane, except a pane under a top tab bar, the child
-  // also caps and centres its own content with `useContentCap()` (the root is left the whole
-  // pane so the list's scroll indicator stays at the pane edge); a `footer` is capped by Screen
-  // itself.
+  // not at the window's bottom none (Home reads `useFloatingFooterBottom`, which builds on it).
+  // Only meaningful in the plain (non-scroll) branch when there is no `footer` (which already
+  // claims the bottom edge on its own); ignored in `scroll` mode. In a pane, except a pane under
+  // a top tab bar, the child also caps and centres its own content with `useContentCap()` (the
+  // root is left the whole pane so the list's scroll indicator stays at the pane edge); a
+  // `footer` is capped by Screen itself.
   bleedBottom?: boolean;
   // The plain-branch counterpart of `scroll` for a large-title screen whose
   // child is ITSELF the scrollable surface (a virtualized FlatList/SectionList

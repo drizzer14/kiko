@@ -4,6 +4,7 @@ import type { LayoutChangeEvent } from 'react-native';
 import { REGULAR_BUTTON_HEIGHT } from '@kiko/design-system/regular-button-height';
 
 import { FOOTER_GAP_STEP } from './screen.styles';
+import { floatingFooterBottom } from './floating-footer-bottom';
 
 type FloatingFooterHeight = {
   height: number;
@@ -19,6 +20,7 @@ type FloatingFooterHeight = {
 export const useFloatingFooterHeight = (
   bottomClearance: number,
   sideBarInset: number | undefined,
+  safeAreaBottom: number,
 ): FloatingFooterHeight => {
   const { theme } = useUnistyles();
   const [measuredHeight, setMeasuredHeight] = useState<number | undefined>(undefined);
@@ -29,7 +31,13 @@ export const useFloatingFooterHeight = (
   const estimatedHeight =
     theme.spacing(4) +
     REGULAR_BUTTON_HEIGHT +
-    (sideBarInset ?? theme.spacing(FOOTER_GAP_STEP) + bottomClearance);
+    (floatingFooterBottom({
+      bottomClearance,
+      safeAreaBottom,
+      sideBarInset,
+      footerGap: theme.spacing(FOOTER_GAP_STEP),
+    }) -
+      safeAreaBottom);
 
   return { height: measuredHeight ?? estimatedHeight, onLayout };
 };

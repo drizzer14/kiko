@@ -98,6 +98,15 @@ const MOCK_BOTTOM_INSET = 34;
 // At full scroll the last row ends 16 above the "+" button: the list pads its end by the button's
 // 16 lift, its 56 size and that 16 gap, on top of the tab-bar clearance.
 const FAB_END_SPACE = 16 + 56 + 16;
+// Beside a side bar the "+" sits level with the bottom of the bar's platter, so its bottom edge is
+// that inset and the list ends one footprint (its size and the gap above it) over it.
+const SIDE_BAR_PLATTER_INSET = 24;
+const FAB_SIZE = 56;
+const GAP = 16;
+// Under a bottom tab bar the content sits `spacing(4)` above the safe-area inset (the padding
+// Screen gives a `bleedBottom` child, `unownedBottomPadding`), so the "+" drops by it to end level
+// with a form's bottom button.
+const UNOWNED_BOTTOM_PADDING = 16;
 // A plain arrow-returning factory can't be overridden per test, so this is a
 // mutable `jest.fn()` wrapper instead — its default return value is exactly
 // what every existing test in this file expects (a bottom-tab-bar iPhone,
@@ -2392,7 +2401,9 @@ describe('HomeScreen', () => {
     // clearance on top of the bottom inset Screen's SafeAreaView already
     // reserves (see `home.screen.tsx`), which would leave 130pt of dead space
     // under the last row on top of the button's own end space.
-    expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + FAB_END_SPACE);
+    expect(listPadding).toBe(
+      MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + FAB_END_SPACE - UNOWNED_BOTTOM_PADDING,
+    );
   });
 
   describe('in one of two panes', () => {
@@ -2413,16 +2424,55 @@ describe('HomeScreen', () => {
     const listPaddingOf = (view: Awaited<ReturnType<typeof render>>): number =>
       listContentOf(view).paddingBottom;
 
+    const fabBottomOf = (view: Awaited<ReturnType<typeof render>>): number =>
+      StyleSheet.flatten(view.getByLabelText('Add transaction').props.style).bottom;
+
+    // The drop by the content padding is for a pane at the window's bottom: the pane above the
+    // other one keeps the padding and has no footer line to level with.
     it('gives the list no tab-bar clearance in a pane above the other one, only the button end space', async () => {
-      expect(listPaddingOf(await renderInPane('rows', 'companion'))).toBe(FAB_END_SPACE);
+      const view = await renderInPane('rows', 'companion');
+
+      expect(listPaddingOf(view)).toBe(FAB_END_SPACE);
+      expect(fabBottomOf(view)).toBe(GAP);
     });
 
     it('clears the tab bar in the left pane too, since both panes of columns reach the bottom', async () => {
-      expect(listPaddingOf(await renderInPane('columns', 'companion'))).toBe(46 + FAB_END_SPACE);
+      expect(listPaddingOf(await renderInPane('columns', 'companion'))).toBe(
+        46 + FAB_END_SPACE - UNOWNED_BOTTOM_PADDING,
+      );
     });
 
     it('clears the tab bar in the pane at the bottom of the window', async () => {
-      expect(listPaddingOf(await renderInPane('rows', 'primary'))).toBe(46 + FAB_END_SPACE);
+      expect(listPaddingOf(await renderInPane('rows', 'primary'))).toBe(
+        46 + FAB_END_SPACE - UNOWNED_BOTTOM_PADDING,
+      );
+    });
+
+    describe('beside a side bar', () => {
+      beforeEach(() => {
+        mockUseTabBarEdge.mockReturnValue('leading');
+      });
+
+      afterEach(() => {
+        mockUseTabBarEdge.mockReturnValue('none');
+      });
+
+      it('keeps the ordinary lift in a pane above the other one, with no platter inset', async () => {
+        const view = await renderInPane('rows', 'companion');
+
+        expect(fabBottomOf(view)).toBe(GAP);
+        expect(listPaddingOf(view)).toBe(FAB_END_SPACE);
+      });
+
+      it.each(['companion', 'primary'] as const)(
+        'lifts the (+) to the platter bottom in the %s pane of columns, both at the window bottom',
+        async (pane) => {
+          const view = await renderInPane('columns', pane);
+
+          expect(fabBottomOf(view)).toBe(SIDE_BAR_PLATTER_INSET);
+          expect(listPaddingOf(view)).toBe(SIDE_BAR_PLATTER_INSET + FAB_SIZE + GAP);
+        },
+      );
     });
 
     // The list is its own scroll view, so it takes the whole pane and its content is capped and
@@ -2607,17 +2657,26 @@ describe('HomeScreen', () => {
       mockUseTabBarEdge.mockReturnValue('none');
     });
 
+    // The `bottom` row is the wrong-reservation pin: a `homeBottomOffset` of 0 gives a button
+    // bottom of `MOCK_TAB_BAR_HEIGHT + GAP`, a doubled inset gives
+    // `MOCK_TAB_BAR_HEIGHT - 2 * MOCK_BOTTOM_INSET + GAP`, one without the content padding gives
+    // `MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + GAP`. The `top` row keeps the content padding
+    // out of the offset: the drop is for a bottom bar only.
     it.each([
-      ['bottom', MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET],
-      ['leading', MOCK_BOTTOM_INSET],
-      ['trailing', MOCK_BOTTOM_INSET],
-      ['top', 0],
+      [
+        'bottom',
+        MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + FAB_END_SPACE - UNOWNED_BOTTOM_PADDING,
+        MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + GAP - UNOWNED_BOTTOM_PADDING,
+      ],
+      ['leading', SIDE_BAR_PLATTER_INSET + FAB_SIZE + GAP, SIDE_BAR_PLATTER_INSET],
+      ['trailing', SIDE_BAR_PLATTER_INSET + FAB_SIZE + GAP, SIDE_BAR_PLATTER_INSET],
+      ['top', FAB_END_SPACE, GAP],
     ] as const)(
-      'adds the button footprint to the clearance of a %s bar',
-      async (edge, clearance) => {
+      'ends the list one footprint above the (+) under a %s bar',
+      async (edge, expectedPadding, expectedFabBottom) => {
         mockUseTabBarEdge.mockReturnValue(edge);
 
-        const { getByTestId } = await render(
+        const { getByTestId, getByLabelText } = await render(
           <HomeScreen
             navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
             route={asRouteProp<HomeProps['route']>('Home')}
@@ -2628,7 +2687,10 @@ describe('HomeScreen', () => {
         expect(
           StyleSheet.flatten(getByTestId('home-transactions').props.contentContainerStyle)
             .paddingBottom,
-        ).toBe(clearance + FAB_END_SPACE);
+        ).toBe(expectedPadding);
+        expect(StyleSheet.flatten(getByLabelText('Add transaction').props.style).bottom).toBe(
+          expectedFabBottom,
+        );
       },
     );
   });
@@ -2650,7 +2712,8 @@ describe('HomeScreen', () => {
       });
     });
 
-    it('ignores the poisoned tab-bar height, clears only the home-indicator inset, and leaves the FAB anchor unchanged — the exact measured Duo primary-panel geometry', async () => {
+    // Also the Duo Closed pin: the folded Duo's whole-window side bar is this same geometry.
+    it('ignores the poisoned tab-bar height and lifts the FAB to the platter bottom — the exact measured Duo primary-panel geometry', async () => {
       mockUseBottomTabBarHeight.mockReturnValue(DUO_TAB_BAR_HEIGHT);
       mockUseVerticalBarEdge.mockReturnValue('trailing');
       mockUseSafeAreaInsets.mockReturnValue(DUO_INSETS);
@@ -2662,11 +2725,14 @@ describe('HomeScreen', () => {
       ).paddingBottom;
 
       // Not 678 - 34 = 644 (the bug) — a vertical bar distrusts the tab-bar
-      // height entirely; the content runs to the window's bottom, so the inset is the clearance.
-      expect(listPadding).toBe(DUO_INSETS.bottom + FAB_END_SPACE);
+      // height entirely; the content runs to the window's bottom, so the list ends one footprint
+      // above the button, which sits at the platter's bottom.
+      expect(listPadding).toBe(SIDE_BAR_PLATTER_INSET + FAB_SIZE + GAP);
 
       const fab = getByLabelText('Add transaction');
       const flattened = StyleSheet.flatten(fab.props.style);
+
+      expect(flattened.bottom).toBe(SIDE_BAR_PLATTER_INSET);
 
       // The enclosing Screen's SafeAreaView already reserves the 84pt right
       // inset itself, so the FAB's own container sits clear of the
@@ -2676,7 +2742,7 @@ describe('HomeScreen', () => {
       expect(flattened.right).toBe(16);
     });
 
-    it('keeps the ordinary bottom-tab-bar clearance and FAB anchor unchanged when there is no vertical bar', async () => {
+    it('ends the (+) on the form footer line under the ordinary bottom tab bar when there is no vertical bar', async () => {
       mockUseBottomTabBarHeight.mockReturnValue(MOCK_TAB_BAR_HEIGHT);
       mockUseSafeAreaInsets.mockReturnValue({
         top: 0,
@@ -2690,10 +2756,17 @@ describe('HomeScreen', () => {
       const listPadding = StyleSheet.flatten(
         getByTestId('home-transactions').props.contentContainerStyle,
       ).paddingBottom;
-      expect(listPadding).toBe(MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + FAB_END_SPACE);
+      expect(listPadding).toBe(
+        MOCK_TAB_BAR_HEIGHT - MOCK_BOTTOM_INSET + FAB_END_SPACE - UNOWNED_BOTTOM_PADDING,
+      );
 
       const fab = getByLabelText('Add transaction');
       const flattened = StyleSheet.flatten(fab.props.style);
+      // The footer line (`MOCK_TAB_BAR_HEIGHT + GAP`) less what the screen reserves around the
+      // content: the inset and the content padding.
+      expect(flattened.bottom).toBe(
+        MOCK_TAB_BAR_HEIGHT + GAP - MOCK_BOTTOM_INSET - UNOWNED_BOTTOM_PADDING,
+      );
       expect(flattened.right).toBe(16);
     });
   });

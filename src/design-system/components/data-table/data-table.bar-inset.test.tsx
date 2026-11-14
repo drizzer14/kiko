@@ -15,13 +15,12 @@ import type { DataTableProps } from './data-table.props';
 
 const SIDE_MARGIN = 16;
 
-const mockClearance = { automatic: 37, plain: 99 };
+const mockClearance = { automatic: 37 };
 const mockMargin = { value: SIDE_MARGIN };
 
 jest.mock('@kiko/design-system/components/screen', () => ({
   ...jest.requireActual('@kiko/design-system/components/screen'),
   useAutomaticScrollClearance: () => mockClearance.automatic,
-  useBottomClearance: () => mockClearance.plain,
   useContentMargin: () => mockMargin.value,
 }));
 

@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 
+import { floatingFooterBottom } from './floating-footer-bottom';
+
 // The breathing-room gap kept above `bottomClearance` (the call site's
 // tab-bar clearance, on top of what the enclosing `SafeAreaView` already
 // reserves for the bottom safe-area inset — see `screen.component.tsx`),
@@ -12,6 +14,12 @@ import { StyleSheet } from 'react-native-unistyles';
 // always clears the bar via `bottomClearance`; this is purely the extra room
 // above it, kept equal to the room above the button.
 export const FOOTER_GAP_STEP = 4;
+
+// The bottom padding of the plain content container when it does not own the clearance: a
+// `bleedBottom` child owns it, or a pinned non-floating footer does (`hasPinnedFooter`). It lifts
+// that child's own content, so a control the child anchors to its bottom reads it too
+// (`useBottomBarContentPadding`).
+export const UNOWNED_BOTTOM_PADDING_STEP = 4;
 
 // Beside a side tab bar the floating footer's lowest button ends this far above the window's
 // bottom, level with the bottom of the side bar's platter. Pixel-measured on the Duo, iOS 27.2
@@ -66,7 +74,7 @@ export const styles = StyleSheet.create((theme) => ({
     isBottomEdgeBled: boolean,
     floatingFooterHeight: number | undefined,
   ) => {
-    const unownedBottomPadding = isBottomEdgeBled ? 0 : theme.spacing(4);
+    const unownedBottomPadding = isBottomEdgeBled ? 0 : theme.spacing(UNOWNED_BOTTOM_PADDING_STEP);
 
     return {
       flex: 1,
@@ -132,10 +140,23 @@ export const styles = StyleSheet.create((theme) => ({
   //
   // A floating footer beside a side bar (`sideBarInset` set) ends exactly that far above the
   // window's bottom instead, in place of the gap and the clearance (the home-indicator inset).
-  footer: (bottomClearance: number, contentMargin: number, sideBarInset: number | undefined) => ({
+  // The padding is the footer line (`floatingFooterBottom`, measured from the window's bottom)
+  // less what the SafeAreaView already reserves (`safeAreaBottom`).
+  footer: (
+    bottomClearance: number,
+    contentMargin: number,
+    sideBarInset: number | undefined,
+    safeAreaBottom: number,
+  ) => ({
     paddingTop: theme.spacing(4),
     paddingHorizontal: contentMargin,
-    paddingBottom: sideBarInset ?? theme.spacing(FOOTER_GAP_STEP) + bottomClearance,
+    paddingBottom:
+      floatingFooterBottom({
+        bottomClearance,
+        safeAreaBottom,
+        sideBarInset,
+        footerGap: theme.spacing(FOOTER_GAP_STEP),
+      }) - safeAreaBottom,
   }),
   // A floating footer (`floatingFooter`): the zero-height anchor takes the place of the pinned
   // footer in the flex column, so it ends where the pinned footer would have ended and the

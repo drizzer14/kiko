@@ -14,17 +14,20 @@ import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
 import {
   useAutomaticScrollClearance,
   useBottomClearance,
+  useSideBarPlatterInset,
   useIsBottomInsetPadded,
+  useBottomSafeAreaReservation,
 } from './use-bottom-clearance';
+import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
 import { useTopClearance } from './use-top-clearance';
 import { useContentMargin } from './use-content-margin';
-import { SIDE_BAR_PLATTER_INSET, styles } from './screen.styles';
 import { useFloatingFooterHeight } from './use-floating-footer-height';
 import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
 type FooterSlotProps = Pick<ScreenProps, 'footer' | 'floatingFooter'> & {
   bottomClearance: number;
+  safeAreaBottom: number;
   sideBarInset: number | undefined;
   contentMargin: number;
   capStyle: ReturnType<typeof useContentCap>;
@@ -40,6 +43,7 @@ const FooterSlot: FC<FooterSlotProps> = ({
   footer,
   floatingFooter = false,
   bottomClearance,
+  safeAreaBottom,
   sideBarInset,
   contentMargin,
   capStyle,
@@ -60,7 +64,7 @@ const FooterSlot: FC<FooterSlotProps> = ({
       pointerEvents={floatingFooter ? 'box-none' : undefined}
       onLayout={floatingFooter ? onFloatingLayout : undefined}
       style={[
-        styles.footer(bottomClearance, contentMargin, sideBarInset),
+        styles.footer(bottomClearance, contentMargin, sideBarInset, safeAreaBottom),
         capStyle,
         isButtonWidthCapped ? styles.floatingFooterCap(contentMargin) : undefined,
       ]}
@@ -122,10 +126,12 @@ const Screen: FC<ScreenProps> = ({
   // the pane touches the window's bottom). Adding the FULL tab-bar height
   // again on top of that reservation double-counts the inset. See
   // `bottom-clearance.ts` for the shared arithmetic and `use-bottom-clearance.ts`
-  // for the hook every `bleedBottom` child, e.g. Home's transaction list, uses
-  // too: it also gives a pane that is not at the window's bottom no clearance,
-  // since no tab bar is over it.
+  // for the hook every `bleedBottom` child uses too (HoldingDetail directly, Home through
+  // `useFloatingFooterBottom`): it also gives a pane that is not at the window's bottom no
+  // clearance, since no tab bar is over it.
   const bottomClearance = useBottomClearance();
+  // What the SafeAreaView reserves at its bottom, which the footer's padding leaves out.
+  const safeAreaBottom = useBottomSafeAreaReservation();
   // Beside a side bar the SafeAreaView drops its bottom edge so the scroll views run to the
   // window's bottom, and the inset comes back as padding. The scroll branch's ScrollView adjusts
   // itself (`automatic`), so it asks `useAutomaticScrollClearance` what UIKit leaves to the JS.
@@ -140,9 +146,9 @@ const Screen: FC<ScreenProps> = ({
   // Beside a side bar a floating footer ends level with the bottom of the bar's platter, in place
   // of the gap and the clearance, in a pane that touches the window's bottom. Every other
   // placement, and the pinned footer, keep their own bottom.
-  const sideBarInset =
-    hasFloatingFooter && isBottomInsetPadded ? SIDE_BAR_PLATTER_INSET : undefined;
-  const footerSlot = useFloatingFooterHeight(bottomClearance, sideBarInset);
+  const platterInset = useSideBarPlatterInset();
+  const sideBarInset = hasFloatingFooter ? platterInset : undefined;
+  const footerSlot = useFloatingFooterHeight(bottomClearance, sideBarInset, safeAreaBottom);
   // The scroll view ends at the slot's bottom edge too, except beside a side bar, where it runs
   // to the window's bottom and UIKit adds the home-indicator inset to its content itself (the
   // switch in `bottom-clearance.ts`): the padding is the height less that inset. Under a bottom
@@ -259,6 +265,7 @@ const Screen: FC<ScreenProps> = ({
           footer={footer}
           floatingFooter={floatingFooter}
           bottomClearance={bottomClearance}
+          safeAreaBottom={safeAreaBottom}
           sideBarInset={sideBarInset}
           contentMargin={contentMargin}
           capStyle={contentCap}
@@ -284,8 +291,8 @@ const Screen: FC<ScreenProps> = ({
   // owns ALL of its own padding — top (via `contentInsetAdjustmentBehavior`
   // "automatic" + its own content-container top padding), horizontal, AND the
   // floating tab-bar bottom clearance (the same `bleedBottom` contract Home's
-  // list follows, via `useBottomClearance()`). The top safe-area edge is
-  // dropped here for the same reason the scroll branch drops it: the large-title
+  // list follows, via `useFloatingFooterBottom`, built on `useBottomClearance()`). The top
+  // safe-area edge is dropped here for the same reason the scroll branch drops it: the large-title
   // header owns the top inset. A `footer` still sits pinned below the child as a
   // sibling, with its own clearance, exactly as in the other two branches.
   if (bleedTop) {
@@ -297,6 +304,7 @@ const Screen: FC<ScreenProps> = ({
           footer={footer}
           floatingFooter={floatingFooter}
           bottomClearance={bottomClearance}
+          safeAreaBottom={safeAreaBottom}
           sideBarInset={sideBarInset}
           contentMargin={contentMargin}
           capStyle={contentCap}
@@ -341,6 +349,7 @@ const Screen: FC<ScreenProps> = ({
         footer={footer}
         floatingFooter={floatingFooter}
         bottomClearance={bottomClearance}
+        safeAreaBottom={safeAreaBottom}
         sideBarInset={sideBarInset}
         contentMargin={contentMargin}
         capStyle={bleedBottom ? contentCap : undefined}

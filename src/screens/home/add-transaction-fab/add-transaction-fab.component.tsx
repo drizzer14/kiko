@@ -13,26 +13,23 @@ import type { AddTransactionFabProps } from './add-transaction-fab.props';
 // (bottom-left beside a vertical tab bar on the leading edge) —
 // the global way to add a manual transaction from anywhere, opening the shared
 // create form with NO holding fixed (the form then shows its own primary-leg
-// holding picker). It sits OUTSIDE the list's scroll content and lifts itself
-// above the floating tab bar via the list's own `bottomOffset`. The visible
+// holding picker). It sits OUTSIDE the list's scroll content, at the `bottom`
+// Home computes for it and for the list's end space. The visible
 // circle is the shared design-system `GlassSurface` (neutral `transparent`
 // variant — real Liquid Glass on iOS 26, a themed translucent fallback
 // otherwise), never a hand-rolled glass effect or a flat accent fill; the
 // Pressable stays the positioned, sized touch target and navigation is
 // injected through `onPress` so the component stays presentational and
 // decoupled from any stack's param typing.
-const AddTransactionFab: FC<AddTransactionFabProps> = ({ onPress, bottomOffset }) => {
+const AddTransactionFab: FC<AddTransactionFabProps> = ({ onPress, bottom }) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const verticalBarEdge = useVerticalBarEdge();
 
-  // `bottomOffset` and the bar edge are runtime values, so the positioned base
+  // `bottom` and the bar edge are runtime values, so the positioned base
   // style is a function call — memoized so a Home re-render (e.g. a reactive
   // fire during a sync) does not rebuild an identical style object each time.
-  const fabStyle = useMemo(
-    () => styles.fab(bottomOffset, verticalBarEdge),
-    [bottomOffset, verticalBarEdge],
-  );
+  const fabStyle = useMemo(() => styles.fab(bottom, verticalBarEdge), [bottom, verticalBarEdge]);
 
   return (
     <Pressable
