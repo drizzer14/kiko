@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native-unistyles';
 
-import { FAB_FOOTPRINT_STEP, FAB_GAP_STEP } from './add-transaction-fab';
+import { FAB_FOOTPRINT_STEP } from './add-transaction-fab';
 
 export const styles = StyleSheet.create((theme) => ({
   // The scrollable content column: header + filter bar stay fixed height, the
@@ -56,22 +56,14 @@ export const styles = StyleSheet.create((theme) => ({
   // `flexGrow` (not `flex`) on the content container: rows still stack from
   // the top and the container scrolls once its content overflows, but an
   // empty/short list still grows to fill the viewport so `empty` can center.
-  // Bottom padding is lifted clear of the floating native glass tab bar by
-  // `bottomClearance` — the bar's measured height MINUS the bottom safe-area
-  // inset, computed at the call site through `useBottomClearance`
-  // (design-system/components/screen/use-bottom-clearance.ts). The inset is
-  // subtracted, not added: Screen's `SafeAreaView` already reserves it around
-  // this content, so including it here would count it twice.
-  //
   // The "+" button floats over the rows while they scroll. At full scroll the last row ends one
-  // gap above the button's top edge: the padding is the same `bottomClearance` that lifts the
-  // button, plus the button's own lift (`FAB_GAP_STEP`), plus its footprint (its size and the
-  // gap above it). Both the list and the button sit in the same box, so on every tab bar
-  // placement (bottom, side, top) the padding and the button move together.
-  listContent: (bottomClearance: number) => ({
+  // gap above the button's top edge: the padding is the button's own bottom (`fabBottom`, which
+  // Home computes once and also gives the button) plus its footprint (its size and the gap above
+  // it). Both the list and the button sit in the same box, so on every tab bar placement
+  // (bottom, side, top) the padding and the button move together.
+  listContent: (fabBottom: number) => ({
     flexGrow: 1,
-    paddingBottom:
-      bottomClearance + theme.spacing(FAB_GAP_STEP) + theme.spacing(FAB_FOOTPRINT_STEP),
+    paddingBottom: fabBottom + theme.spacing(FAB_FOOTPRINT_STEP),
   }),
   // Empty-state container: fills the list viewport and centers its Text.
   empty: {

@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 import type { VerticalBarEdge } from '@kiko/display-regions';
 
-import { FAB_GAP_STEP, FAB_SIZE_STEP } from './fab-footprint';
+import { FAB_SIZE_STEP } from './fab-footprint';
 
 // The side of the window the button sits on, nearest the tab bar: beside a vertical bar it is the
 // bar's side (in a pane that does not touch the bar, the side of the fold), with no vertical bar
@@ -13,8 +13,7 @@ const FAB_SIDE: Record<VerticalBarEdge, 'left' | 'right'> = {
 };
 
 export const styles = StyleSheet.create((theme) => ({
-  // The circular touch target, pinned bottom-right and lifted clear of the
-  // floating tab bar by the Home list's own clearance plus one standard gap.
+  // The circular touch target, pinned bottom-right at the `bottom` Home computes for it.
   // A vertical tab bar on the leading edge moves it to the bottom-left, the
   // side the bar is on; the enclosing Screen's SafeAreaView already
   // reserves the bar's own width on either side.
@@ -22,12 +21,12 @@ export const styles = StyleSheet.create((theme) => ({
   // too (not only on `glass` below) so an Android ripple stays clipped to the
   // circle. No `backgroundColor`: the visible fill is the translucent
   // `GlassSurface` child, never a flat paint on the touch target itself.
-  // Runtime `bottomOffset` and bar edge, so this is a style FUNCTION rather
+  // Runtime `bottom` and bar edge, so this is a style FUNCTION rather
   // than a static entry.
-  fab: (bottomOffset: number, verticalBarEdge: VerticalBarEdge) => ({
+  fab: (bottom: number, verticalBarEdge: VerticalBarEdge) => ({
     position: 'absolute' as const,
     [FAB_SIDE[verticalBarEdge]]: theme.spacing(4),
-    bottom: bottomOffset + theme.spacing(FAB_GAP_STEP),
+    bottom,
     width: theme.spacing(FAB_SIZE_STEP),
     height: theme.spacing(FAB_SIZE_STEP),
     borderRadius: theme.radii.full,

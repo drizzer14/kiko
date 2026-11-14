@@ -20,9 +20,11 @@ import { ratesRepo } from '@kiko/rates/repo';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import Screen, {
-  useBottomClearance,
   useContentCap,
+  useSideBarPlatterInset,
   useScrollIndicatorProps,
+  useFloatingFooterBottom,
+  useBottomSafeAreaReservation,
 } from '@kiko/design-system/components/screen';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
@@ -128,17 +130,17 @@ const withinBounds = (time: number, bounds: DateRangeBounds): boolean => {
 const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   const { t, i18n } = useTranslation();
 
-  // The floating native glass tab bar sits over this screen's bottom edge, so
-  // this SectionList — which owns the true bottom edge, since Home passes
-  // `bleedBottom` — reserves the clearance itself. It is the tab-bar height
-  // MINUS the bottom safe-area inset, because Screen's plain-branch
-  // `SafeAreaView` already reserves that inset natively around this content:
-  // adding the full bar height on top of it double-counted the inset and left
-  // 130pt of dead space under the last row, against 96pt everywhere else. One
-  // shared computation, in `useBottomClearance`, which Screen itself uses: Home
-  // applies it because it opts out of Screen's own bottom handling with
-  // `bleedBottom`. In a pane that is not at the window's bottom it is 0.
-  const listBottomClearance = useBottomClearance();
+  // The "+" button's bottom edge, computed once for the button and for the list's end space. It
+  // is the floating footer's line (`useFloatingFooterBottom`), the one a form's bottom button
+  // sits on: the platter's inset beside a side bar, else the safe-area inset, the gap and the
+  // tab-bar clearance. That line is measured from the window's bottom, while this screen's
+  // `SafeAreaView` already reserves `homeBottomOffset` of it around the content the button sits
+  // in, so the button's own `bottom` subtracts it (counting it twice left dead space under the
+  // last row). Home passes `bleedBottom`, so the list owns the true bottom edge and the same
+  // number sets its end space.
+  const sideBarInset = useSideBarPlatterInset();
+  const homeBottomOffset = useBottomSafeAreaReservation();
+  const fabBottom = useFloatingFooterBottom(sideBarInset) - homeBottomOffset;
   // In a pane the list takes the whole pane, so its scroll indicator stays at the pane edge, and
   // only what sits in it is capped and centred (except in a pane under a top tab bar): the fixed
   // header and the list's content.
@@ -629,7 +631,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
             testID="home-loading-scroll"
             {...scrollIndicatorProps}
             style={styles.list}
-            contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
+            contentContainerStyle={[styles.listContent(fabBottom), contentCap]}
             // `syncAll` fans a job out over the `accounts` query's own data
             // (`useSyncAll(accounts)` above) — pulling before that query has
             // loaded would fan out over an empty list, syncing nothing while
@@ -766,7 +768,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           stickySectionHeadersEnabled={false}
           {...scrollIndicatorProps}
           style={styles.list}
-          contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
+          contentContainerStyle={[styles.listContent(fabBottom), contentCap]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             transactionsLoading ? (
@@ -789,8 +791,8 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
         {/* The global-add FAB is an ADDITIVE sibling of the SectionList, OUTSIDE
             its scroll content, pinned bottom-right and lifted clear of the
-            floating tab bar by the same `listBottomClearance` the list uses. */}
-        <AddTransactionFab onPress={handleAddTransaction} bottomOffset={listBottomClearance} />
+            floating tab bar by the same `fabBottom` the list's end space uses. */}
+        <AddTransactionFab onPress={handleAddTransaction} bottom={fabBottom} />
       </Box>
     </Screen>
   );
