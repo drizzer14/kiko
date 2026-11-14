@@ -406,6 +406,32 @@ next layout pass applies Inline once more. Drop it once iOS stops stacking the t
 on a 27.2 or later split left pane with the lever removed, and if the large title shares the bar
 row, delete the function, its call and the pin.
 
+The minimized fraction of the bar: the `onHeaderHeightChange` event carries `minimizedFraction`
+(one minus the alpha of the navigation bar's background, found by its shape and never by a class
+name: the one visible subview as wide as the bar and taller than its bounds, because it reaches
+behind the status strip while the content view is exactly the bar's height and the pointer view
+is empty; read on the same layout pass as the header height; 0 for no such subview, more than
+one, a hidden bar, no
+navigation controller, and always below iOS 27, where the walk sits behind
+`@available(iOS 27.0, *)` and the literal `return 0;` follows its `#endif`). The Tables status
+band reads it through the `useHeaderMinimization` hook of the same patch: `InnerScreen` attaches
+one `Animated.Value` to its own header height event with `Animated.attachNativeEvent` (beside
+native-stack's own `Animated.event` on that event, detached on cleanup, attached again when the
+rendered native component changes) and provides it as `HeaderMinimizationContext`; the hook
+returns `undefined` outside a native stack screen (details and the pins in
+`docs/harness/documented-exceptions.md`). The screen also renders one empty 0 by 0
+`Animated.View` of that value after its children, so the value keeps its native node when the
+band unmounts (an empty table) and returns. A re-derived patch must keep the field in the codegen
+spec, the event body, the Fabric emit and the wrapper, and the context, the hook, the attach,
+that view and their `lib/commonjs` and `lib/typescript` copies. Drop it once upstream exposes a
+minimization state of the bar (a field of the header height event or a public bar state): move
+the band to that and delete the field, the walk, the context, the hook, the attach, the view and
+the pins;
+re-measure on a 27.x device that the shape still matches exactly one subview, since a bar whose
+background no longer reaches past the bar's bounds would silently give 0 and no band, and that
+the second mapping reaches the
+native driver (the band fades with the bar and does not jump).
+
 The 20 to 0 restore path (the margins captured when the value first went above 0 are put back)
 is an ordinary event on a Surface Duo without a stack view being recycled: rotating from a
 side-bar pose to the bottom-bar pose (inner landscape to inner portrait) takes the value from 20

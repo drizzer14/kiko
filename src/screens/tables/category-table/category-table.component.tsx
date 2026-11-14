@@ -89,6 +89,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
   onOpenTransaction,
   topContent,
   barInset,
+  barMinimization,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
@@ -214,6 +215,7 @@ const CategoryTable: FC<CategoryTableProps> = ({
         emptyContent={emptyContent}
         initialColumnIndex={openingColumnIndexOf(months)}
         barInset={barInset}
+        barMinimization={barMinimization}
         testID="category-table"
       />
 

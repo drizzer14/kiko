@@ -1,7 +1,8 @@
 import { join } from 'node:path';
+import { Animated } from 'react-native';
 import { createElement, useContext } from 'react';
 import { readFileSync, readdirSync } from 'node:fs';
-import { render } from '@testing-library/react-native';
+import { act, render, renderHook } from '@testing-library/react-native';
 
 const ROOT = join(__dirname, '..');
 const SCROLL_VIEW_FILE =
@@ -248,6 +249,393 @@ describe('the react-native-screens fixed content margin patch', () => {
       expect(headerHeight).toContain(
         '[self calculateMinimizationAwareHeaderHeightInNavigationController:navctr]',
       );
+    });
+  });
+
+  // The header height event also carries how far the iOS 27 bar has minimized, read from its
+  // background's alpha on the same layout pass, so the Tables status band follows the bar with no
+  // JS in between. These pins hold the shipped text: that the iOS 27 bar really behaves so is shown
+  // on a device, not by Jest.
+  describe('minimized fraction of the bar', () => {
+    const fractionMethod = (source: string) =>
+      methodCode(source, '- (CGFloat)calculateMinimizedFractionIsModal:');
+
+    it('adds the field to the codegen spec and its typed copy, after the header height', () => {
+      expect(read('src/fabric/ScreenNativeComponent.ts')).toMatch(
+        /headerHeight: CT\.Double;\s*(?:\/\/[^\n]*\s*)*minimizedFraction: CT\.Double;/,
+      );
+      expect(read('lib/typescript/fabric/ScreenNativeComponent.d.ts')).toMatch(
+        /headerHeight: CT\.Double;\s*minimizedFraction: CT\.Double;/,
+      );
+    });
+
+    it('leaves the modal screen spec as it is, and no native file uses its event emitter', () => {
+      expect(read('src/fabric/ModalScreenNativeComponent.ts')).not.toContain('minimizedFraction');
+      expect(read('ios/RNSScreen.mm')).not.toContain('RNSModalScreenEventEmitter');
+      expect(read('ios/RNSScreenStack.mm')).not.toContain('RNSModalScreenEventEmitter');
+    });
+
+    it('types the field as an optional number, for iOS only', () => {
+      expect(read('src/types.tsx')).toMatch(
+        /HeaderHeightChangeEventType = \{\s*headerHeight: number;\s*(?:\/\/[^\n]*\s*)*minimizedFraction\?: number;\s*\};/,
+      );
+      expect(read('lib/typescript/types.d.ts')).toMatch(
+        /HeaderHeightChangeEventType = \{\s*headerHeight: number;\s*minimizedFraction\?: number;\s*\};/,
+      );
+    });
+
+    it('hands the fraction to the Fabric emit and to the event the native driver reads', () => {
+      const notify = methodCode(read('ios/RNSScreen.mm'), '- (void)notifyHeaderHeightChange:');
+
+      expect(read('ios/RNSScreen.h')).toContain(
+        '- (void)notifyHeaderHeightChange:(double)height minimizedFraction:(double)minimizedFraction;',
+      );
+      expect(notify).toContain(
+        'OnHeaderHeightChange{ .headerHeight = headerHeight, .minimizedFraction = minimizedFraction}',
+      );
+      expect(notify).toContain('headerHeight:headerHeight minimizedFraction:minimizedFraction];');
+    });
+
+    it('puts the fraction in the body of the event, and leaves its coalescing key alone', () => {
+      const header = read('ios/events/RNSHeaderHeightChangeEvent.h');
+      const source = read('ios/events/RNSHeaderHeightChangeEvent.mm');
+
+      expect(header).toContain('headerHeight:(double)headerHeight');
+      expect(header).toContain('minimizedFraction:(double)minimizedFraction;');
+      expect(source).toContain('_minimizedFraction = minimizedFraction;');
+      expect(source).toContain('@"minimizedFraction" : @(_minimizedFraction),');
+      expect(source).toContain('return _headerHeight;');
+    });
+
+    it('sends the fraction from the same pass that sends the header height', () => {
+      const notified = methodCode(
+        read('ios/RNSScreen.mm'),
+        '- (void)calculateAndNotifyHeaderHeightChangeIsModal:',
+      );
+
+      expect(notified).toContain('[self calculateMinimizedFractionIsModal:isModal]');
+      expect(notified).toContain(
+        '[self.screenView notifyHeaderHeightChange:totalHeight minimizedFraction:minimizedFraction];',
+      );
+    });
+
+    it('is 0 without a navigation controller or with the bar hidden, as the height is', () => {
+      const fraction = fractionMethod(read('ios/RNSScreen.mm'));
+
+      expect(fraction).toContain(
+        'UINavigationController *navctr = [self getVisibleNavigationControllerIsModal:isModal];',
+      );
+      expect(fraction).toContain(
+        'if (navctr == nil || navctr.isNavigationBarHidden) { return 0; }',
+      );
+    });
+
+    it('reads the bar only on iOS 27 and returns the literal 0 outside that block', () => {
+      const source = read('ios/RNSScreen.mm');
+      const fraction = fractionMethod(source);
+      const guarded = fraction.indexOf('@available(iOS 27.0, *)');
+      const closed = fraction.indexOf('#endif');
+
+      expect(fraction).toContain('#if RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV');
+      expect(guarded).toBeGreaterThan(-1);
+      expect(
+        fraction.indexOf('[self calculateMinimizedFractionInNavigationController:navctr]'),
+      ).toBeGreaterThan(guarded);
+      expect(fraction.slice(closed).trim()).toBe(
+        '#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV return 0; }',
+      );
+    });
+
+    it('walks the bar inside the same iOS 27 block as the minimization-aware height', () => {
+      const source = read('ios/RNSScreen.mm');
+      const walker = source.indexOf('- (CGFloat)calculateMinimizedFractionInNavigationController:');
+      const block = source.lastIndexOf('#if RNS_IPHONE_OS_VERSION_AVAILABLE(27_0)', walker);
+      const closed = source.indexOf('#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0)', walker);
+      const heightWalker = source.indexOf(
+        '- (CGFloat)calculateMinimizationAwareHeaderHeightInNavigationController:',
+      );
+
+      expect(heightWalker).toBeGreaterThan(block);
+      expect(heightWalker).toBeLessThan(walker);
+      expect(closed).toBeLessThan(source.indexOf('- (CGFloat)calculateMinimizedFractionIsModal:'));
+      expect(
+        methodCode(source, '- (CGFloat)calculateMinimizedFractionInNavigationController:'),
+      ).toContain('API_AVAILABLE(ios(27.0))');
+    });
+
+    // The bar's background is told apart from its content view, its empty pointer-effect view and
+    // a transition container by its shape: it is as wide as the bar and taller than the bar's
+    // bounds (it reaches behind the status strip), at rest and slid away. The others are exactly
+    // the bar's height or empty.
+    it('is the opposite of the alpha of the one visible bar-wide view taller than the bar', () => {
+      const walker = methodCode(
+        read('ios/RNSScreen.mm'),
+        '- (CGFloat)calculateMinimizedFractionInNavigationController:',
+      );
+
+      expect(walker).toContain('UINavigationBar *navbar = navctr.navigationBar;');
+      expect(walker).toContain('for (UIView *subview in navbar.subviews) {');
+      expect(walker).toContain(
+        'if (subview.isHidden || CGRectIsEmpty(subview.frame)) { continue; }',
+      );
+      expect(walker).toContain(
+        'if (fabs(CGRectGetWidth(subview.frame) - CGRectGetWidth(navbar.bounds)) > 0.5) {',
+      );
+      expect(walker).toContain(
+        'if (CGRectGetHeight(subview.frame) <= CGRectGetHeight(navbar.bounds) + 0.5) {',
+      );
+      expect(walker).toContain('if (background != nil) { return 0; }');
+      expect(walker).toContain('if (background == nil) { return 0; }');
+      expect(walker).toContain('return 1 - MIN(1, MAX(0, background.alpha));');
+    });
+
+    it('does not filter the background on its alpha, which is the signal itself', () => {
+      const walker = methodCode(
+        read('ios/RNSScreen.mm'),
+        '- (CGFloat)calculateMinimizedFractionInNavigationController:',
+      );
+
+      expect(walker.slice(0, walker.indexOf('return 1 - MIN'))).not.toContain('.alpha');
+    });
+
+    // Apple's 2.5.1 scan matches private-symbol strings, so the bar background is found by shape:
+    // no private class name and no runtime lookup in what the patch adds (kiko-compliance, "2.5.1
+    // - public APIs only").
+    describe('adds no private class name and no private API call', () => {
+      const addedLines = () =>
+        readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8')
+          .split('\n')
+          .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+          .join('\n');
+
+      it('has no _UIBarBackground, no NSStringFromClass and no _UI string literal', () => {
+        const added = addedLines();
+
+        expect(added).not.toContain('_UIBarBackground');
+        expect(added).not.toContain('NSStringFromClass');
+        expect(added).not.toMatch(/@?"_UI/);
+      });
+
+      it.each([
+        'performSelector',
+        'valueForKey',
+        'setValue:forKey',
+        'NSClassFromString',
+        'NSSelectorFromString',
+      ])('adds no %s', (token) => {
+        expect(addedLines()).not.toContain(token);
+      });
+    });
+
+    it('touches the event files besides the screen files', () => {
+      const patch = readFileSync(join(ROOT, SCREENS_PATCH_FILE), 'utf8');
+
+      expect(patch).toContain(`${SCREENS_DIRECTORY}/ios/events/RNSHeaderHeightChangeEvent.mm`);
+      expect(patch).toContain(`${SCREENS_DIRECTORY}/ios/RNSScreen.mm`);
+    });
+  });
+
+  // The minimized fraction reaches the JS side as one native-driven value: the screen attaches it
+  // to its own header height event beside the native stack's mapping and hands it down like the
+  // transition progress. The text pins hold the three copies Metro, Jest and tsc load; that the
+  // native driver really receives the second mapping is shown on a device, not by Jest.
+  describe('the bar minimized fraction context', () => {
+    const SCREEN_COPIES = ['src/components/Screen.tsx', 'lib/commonjs/components/Screen.js'];
+
+    it('defines the context with no value outside a screen, in every copy', () => {
+      expect(read('src/contexts.tsx')).toMatch(
+        /HeaderMinimizationContext = React\.createContext<\s*Animated\.Value \| undefined\s*>\(\s*undefined,?\s*\)/,
+      );
+      expect(read('lib/commonjs/contexts.js')).toMatch(
+        /HeaderMinimizationContext = exports\.HeaderMinimizationContext = (?:\/\*#__PURE__\*\/)?[\w.]*createContext\(undefined\)/,
+      );
+      expect(read('lib/typescript/contexts.d.ts')).toContain(
+        'HeaderMinimizationContext: React.Context<Animated.Value | undefined>',
+      );
+    });
+
+    it('keeps the hook in a file of its own, beside useTransitionProgress, in every copy', () => {
+      expect(read('src/useHeaderMinimization.tsx')).toContain(
+        'export default function useHeaderMinimization()',
+      );
+      expect(read('src/useHeaderMinimization.tsx')).not.toContain('throw');
+      expect(read('lib/commonjs/useHeaderMinimization.js')).toContain(
+        'exports.default = useHeaderMinimization;',
+      );
+      expect(read('lib/commonjs/useHeaderMinimization.js')).not.toContain('throw');
+      expect(read('lib/typescript/useHeaderMinimization.d.ts')).toContain(
+        'export default function useHeaderMinimization(): Animated.Value | undefined;',
+      );
+    });
+
+    it('exports the context and the hook from the package index, in every copy', () => {
+      for (const path of ['src/index.tsx', 'lib/commonjs/index.js', 'lib/typescript/index.d.ts']) {
+        expect(read(path)).toContain('HeaderMinimizationContext');
+        expect(read(path)).toContain('useHeaderMinimization');
+      }
+    });
+
+    it.each(SCREEN_COPIES)(
+      'attaches one value to the header height event and provides it to the children, in %s',
+      (path) => {
+        const source = read(path);
+
+        expect(source.match(/Animated\.Value\(0\)/g)).toHaveLength(4);
+        expect(source).toMatch(
+          /Animated\.attachNativeEvent\(\s*innerRef\.current,\s*'onHeaderHeightChange',\s*\[\s*\{\s*nativeEvent: \{\s*minimizedFraction: headerMinimization\s*\}\s*\}\s*\]/,
+        );
+        expect(source).toMatch(/return \(\) => \{?\s*attached\.detach\(\);?/);
+        expect(source).toMatch(
+          /HeaderMinimizationContext\.Provider[\s\S]{0,40}value(?:=\{|: )headerMinimization/,
+        );
+      },
+    );
+
+    // The ref callback is a new function on every render, so attaching from it would detach and
+    // attach again at each render; the effect depends on the rendered native component instead.
+    it.each(SCREEN_COPIES)(
+      'attaches again when the rendered native component changes, not on every render, in %s',
+      (path) => {
+        const source = read(path);
+
+        expect(source.indexOf('const AnimatedScreen =')).toBeLessThan(
+          source.indexOf('attachNativeEvent'),
+        );
+        expect(source).toMatch(
+          /\[\s*AnimatedScreen,\s*attachesHeaderMinimization,\s*headerMinimization\s*\]/,
+        );
+      },
+    );
+
+    // A value drops its native node when its last consumer unmounts, and the screen's attached
+    // event goes on writing the dropped node. The view that never unmounts is last in the screen,
+    // after the children: RNS and UIKit look for the large title's scroll view in the first
+    // subview, so it must not be that.
+    it.each([
+      [
+        'src/components/Screen.tsx',
+        /\{children\}\s*\{\/\*[\s\S]*?\*\/\}\s*<Animated\.View\s+pointerEvents="none"\s+collapsable=\{false\}\s+accessibilityElementsHidden\s+importantForAccessibility="no-hide-descendants"\s+style=\{\{\s*position: 'absolute',\s*width: 0,\s*height: 0,\s*opacity: headerMinimization,\s*\}\}\s*\/>\s*<\/HeaderMinimizationContext\.Provider>/,
+      ],
+      [
+        'lib/commonjs/components/Screen.js',
+        /\}, children,(?:\s*\/\/[^\n]*)+\s*(?:\/\*#__PURE__\*\/)?_react\.default\.createElement\(_reactNative\.Animated\.View, \{\s*pointerEvents: "none",\s*collapsable: false,\s*accessibilityElementsHidden: true,\s*importantForAccessibility: "no-hide-descendants",\s*style: \{\s*position: 'absolute',\s*width: 0,\s*height: 0,\s*opacity: headerMinimization\s*\}\s*\}\)\)\)\)\);/,
+      ],
+    ])('keeps a view of the value after the children, hidden and empty, in %s', (path, pattern) => {
+      const source = read(path);
+
+      expect(source).toMatch(pattern);
+      expect(source).toContain('Kiko patch: a value drops its native node when its last consumer');
+    });
+
+    it('reads undefined outside a screen and does not throw', async () => {
+      const { useHeaderMinimization } = require('react-native-screens');
+      const { result } = await renderHook(() => useHeaderMinimization());
+
+      expect(result.current).toBeUndefined();
+    });
+
+    describe('on a mounted screen', () => {
+      const mount = async (props: Record<string, unknown> = {}, isBandShown?: boolean) => {
+        const { Screen, useHeaderMinimization } = require('react-native-screens');
+        const seen: unknown[] = [];
+        const handles: { detach: jest.Mock }[] = [];
+        const attach = jest.spyOn(Animated, 'attachNativeEvent').mockImplementation(() => {
+          handles.push({ detach: jest.fn() });
+
+          return handles[handles.length - 1];
+        });
+        const Reader = () => {
+          seen.push(useHeaderMinimization());
+
+          return null;
+        };
+        // Reads the value in the component that stays mounted and draws a view of it only while
+        // shown, as the DataTable band does under the Tables screen.
+        const Band = ({ isShown }: { isShown: boolean }) => {
+          const minimization = useHeaderMinimization();
+
+          seen.push(minimization);
+
+          return isShown
+            ? createElement(Animated.View, { style: { opacity: minimization } })
+            : null;
+        };
+        const element = (extra: Record<string, unknown>, isBandShown?: boolean) =>
+          createElement(
+            Screen,
+            { isNativeStack: true, activityState: 2, ...props, ...extra },
+            isBandShown === undefined
+              ? createElement(Reader)
+              : createElement(Band, { isShown: isBandShown }),
+          );
+        const rendered = await render(element({}, isBandShown));
+
+        return { attach, handles, seen, rendered, element };
+      };
+
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      it('attaches the value the children read to onHeaderHeightChange of the native view', async () => {
+        const { attach, seen } = await mount();
+
+        expect(seen[0]).toBeInstanceOf(Animated.Value);
+        expect(attach).toHaveBeenCalledTimes(1);
+        expect(attach).toHaveBeenCalledWith(expect.anything(), 'onHeaderHeightChange', [
+          { nativeEvent: { minimizedFraction: seen[0] } },
+        ]);
+      });
+
+      it('detaches when the screen unmounts', async () => {
+        const { handles, rendered } = await mount();
+
+        await rendered.unmount();
+
+        expect(handles.map((handle) => handle.detach.mock.calls.length)).toEqual([1]);
+      });
+
+      it('keeps one attachment across renders of the same native component', async () => {
+        const { attach, rendered, element } = await mount();
+
+        await rendered.rerender(element({ activityState: 2 }));
+
+        expect(attach).toHaveBeenCalledTimes(1);
+      });
+
+      it('attaches the same value again when the presentation switches the native component', async () => {
+        const { attach, handles, seen, rendered, element } = await mount();
+
+        await rendered.rerender(element({ stackPresentation: 'modal' }));
+
+        expect(attach).toHaveBeenCalledTimes(2);
+        expect(handles[0].detach).toHaveBeenCalledTimes(1);
+        expect(attach.mock.calls[1][2]).toEqual([{ nativeEvent: { minimizedFraction: seen[0] } }]);
+        expect(seen[seen.length - 1]).toBe(seen[0]);
+      });
+
+      // A value whose last consumer unmounts drops its native node and the one attachment made
+      // for the screen keeps writing the dropped one, so a consumer that comes back would sit
+      // frozen. The listener is what the drop clears, in this JS-only environment too.
+      it('keeps the value alive when its only view unmounts and comes back', async () => {
+        const { attach, seen, rendered, element } = await mount({}, true);
+        const listener = jest.fn();
+
+        (seen[0] as Animated.Value).addListener(listener);
+        await rendered.rerender(element({}, false));
+        await rendered.rerender(element({}, true));
+        await act(async () => (seen[0] as Animated.Value).setValue(0.5));
+
+        expect(listener).toHaveBeenCalledWith({ value: 0.5 });
+        expect(attach).toHaveBeenCalledTimes(1);
+      });
+
+      it('gives no value and attaches nothing outside a native stack', async () => {
+        const { attach, seen } = await mount({ isNativeStack: false });
+
+        expect(attach).not.toHaveBeenCalled();
+        expect(seen[0]).toBeUndefined();
+      });
     });
   });
 
