@@ -202,13 +202,46 @@ describe('the reconcile of the Funding ledger on real SQLite', () => {
       expect(storedKeys('ledger')).toEqual([ledgerKey('late')]);
     });
 
-    it('a row that becomes held, because a free source lies within the window, is removed too', async () => {
+    it('a row that becomes held, because a free source lies within the window, is kept like a waiting one', async () => {
       await listFirst([ledgerRowOf(ledgerKey('odd'), ago(20), { amount: '99' })]);
 
       await store([sourceRowOf(depositKey('1'), 'deposit', ago(20))]);
       await reconcile();
 
+      expect(rowKeys()).toEqual([ledgerKey('odd')]);
+      expect(heldCount()).toBe(1);
+    });
+
+    it('a written row with a note and category survives a new deposit of its coin within the window', async () => {
+      await listFirst([ledgerRowOf(ledgerKey('noted'), ago(20), { amount: '99' })]);
+      mockDatabase
+        .prepare(
+          "UPDATE transactions SET comment = 'rent', category = 'rent' WHERE external_id = ?",
+        )
+        .run(ledgerKey('noted'));
+
+      await store([sourceRowOf(depositKey('lagging'), 'deposit', ago(18))]);
+      await reconcile();
+
+      expect(transactionRows()).toEqual([
+        expect.objectContaining({
+          external_id: ledgerKey('noted'),
+          comment: 'rent',
+          category: 'rent',
+        }),
+      ]);
+    });
+
+    it('an unwritten held record is not listed', async () => {
+      await store([
+        sourceRowOf(depositKey('free'), 'deposit', ago(20)),
+        ledgerRowOf(ledgerKey('odd'), ago(20), { amount: '99' }),
+      ]);
+
+      await reconcile();
+
       expect(rowKeys()).toEqual([]);
+      expect(heldCount()).toBe(1);
     });
 
     it('an Earn row is removed when the clause reads Earn, and listed when it does not', async () => {
