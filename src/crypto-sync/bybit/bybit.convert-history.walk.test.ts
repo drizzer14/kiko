@@ -217,6 +217,84 @@ describe('the convert walk: the pass', () => {
       expect(walk.marks()).toEqual({});
     });
 
+    it('a refusal with a Bybit code of the class any other ends the pass at page 3 and keeps the point owed on the pages before it', async () => {
+      const walk = newWalk({ refuseAt: { index: 3, retCode: UNKNOWN_REFUSAL_CODE } });
+      walk.serve([[initAt(AT)], pagesOf(1)[0]]);
+
+      const result = await walk.run();
+
+      expect(walk.indexes).toEqual([1, 2, 3]);
+      expect(result).toEqual({ imported: 2, complete: true });
+      expect(walk.marks()).toEqual({
+        cursor: NOW,
+        pending: [pointAt(AT)],
+        passOwed: [],
+        pageIndex: 1,
+      });
+    });
+
+    it.each<[string, number, boolean]>([
+      ['the lowest Bybit code, 10000, is the end of the list', 10_000, true],
+      ['a code below it, 9999, is no end of the list', 9_999, false],
+    ])('%s', async (_title, retCode, endsPass) => {
+      const walk = newWalk({ refuseAt: { index: 2, retCode } });
+      walk.serve(pagesOf(2));
+
+      if (endsPass) {
+        await expect(walk.run()).resolves.toEqual({ imported: 2, complete: true });
+        expect(walk.marks().cursor).toBe(NOW);
+      } else {
+        await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: retCode });
+        expect(walk.marks()).toEqual({ pageIndex: 2 });
+      }
+    });
+
+    it.each([500, 502, 503])(
+      'an HTTP %i with no Bybit code at page 3 rejects the run, keeps the point owed on the pages before it and moves no cursor',
+      async (status) => {
+        const walk = newWalk({ httpFailAt: { index: 3, status } });
+        walk.serve([[initAt(AT)], ...pagesOf(2)]);
+
+        await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: status });
+
+        expect(walk.indexes).toEqual([1, 2, 3]);
+        expect(walk.marks()).toEqual({
+          pending: [pointAt(AT)],
+          passOwed: [pointAt(AT)],
+          pageIndex: 3,
+        });
+      },
+    );
+
+    it('a later run resumes at the page an HTTP failure stopped at, and the point owed before it is not lost', async () => {
+      const state = walkStateFake({ accountId: ACCOUNT_ID, marks: { convert: {} } });
+      const pages = [[initAt(AT)], ...pagesOf(2)];
+      const failing = convertWalkOf({ state, httpFailAt: { index: 3, status: 502 } });
+      failing.serve(pages);
+
+      await expect(failing.run()).rejects.toMatchObject({ code: 502 });
+
+      const recovered = convertWalkOf({ state });
+      recovered.serve(pages);
+      await recovered.run();
+
+      expect(recovered.indexes).toEqual([3, 4]);
+      expect(recovered.marks()).toEqual({
+        cursor: NOW,
+        pending: [pointAt(AT)],
+        passOwed: [],
+        pageIndex: 1,
+      });
+    });
+
+    it('an HTTP failure at page 1 rejects the run and moves no mark', async () => {
+      const walk = newWalk({ httpFailAt: { index: 1, status: 502 } });
+
+      await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: 502 });
+
+      expect(walk.marks()).toEqual({});
+    });
+
     it('a refusal of the key at a later page still rejects the run and keeps the pass where it is', async () => {
       const walk = newWalk({ refuseAt: { index: 3, retCode: 10005 } });
       walk.serve(pagesOf(5));
