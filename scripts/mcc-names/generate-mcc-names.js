@@ -48,6 +48,10 @@ const FIRST_MERCHANT_GROUP_CODE = 3000;
 const LAST_MERCHANT_GROUP_CODE = 3999;
 const EM_DASH_SEPARATOR = ' — ';
 
+// A Ukrainian name the pinned Sominemo file misspells; the corrected name replaces it at the end
+// of `ukrainianNameOf`, so regenerating keeps the fix.
+const UKRAINIAN_NAME_OVERRIDES = { '0763': 'Сільськогосподарські кооперативи' };
+
 const tidy = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
 
 const padCode = (value) => {
@@ -89,7 +93,11 @@ const ukrainianNameOf = (sominemo, code) => {
     MODIFIER_LETTER_APOSTROPHE,
   );
 
-  return name === '' ? undefined : name;
+  if (name === '') {
+    return undefined;
+  }
+
+  return Object.hasOwn(UKRAINIAN_NAME_OVERRIDES, code) ? UKRAINIAN_NAME_OVERRIDES[code] : name;
 };
 
 const englishNamesByCode = (greggles) => {
