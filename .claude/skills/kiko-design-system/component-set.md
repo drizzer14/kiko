@@ -185,10 +185,11 @@ new component can land between reviews of this skill:
   subtracted at render. The measure layer is the scroll's last child. With `barInset` the shifted
   header also holds a status band: an absolute child at `top: -STATUS_BAND_HEIGHT` of that fixed
   height (200, taller than any bar frame reported as minimized; the scroll frame clips what rises
-  above the window), over the full scroll width (`-sideMargin` each side), in `surface` (the
-  header's own ground; no blur, no hairline, no `expo-blur`), `pointerEvents="none"` and hidden
-  from VoiceOver. Its opacity is stuck x `barMinimization` as one native-driven expression (twin
-  `resolveStatusBandOpacity(shift, minimizedFraction)` in `data-table.layout.ts`): the prop is
+  above the window), spanning the header row's width (`left: 0, right: 0`, no `-sideMargin`), in
+  `surface` (the header's own ground; no blur, no hairline, no `expo-blur`),
+  `pointerEvents="none"` and hidden from VoiceOver. Its opacity is stuck x `barMinimization` as
+  one native-driven expression (twin `resolveStatusBandOpacity(shift, minimizedFraction)` in
+  `data-table.layout.ts`): the prop is
   the native stack's minimized fraction of the bar, `useHeaderMinimization()` from our
   react-native-screens patch (0 to 1; `undefined` outside a screen; always 0 below iOS 27), so
   the band fills the strip above the stuck header only while the bar is minimized, fades with the

@@ -276,7 +276,8 @@ const DataTable: FC<DataTableProps> = ({
   // The strip above a minimized bar's header is the bar's own frame, with nothing drawn in it, so
   // the rows would scroll through it. The band is a fixed height, taller than any frame the native
   // stack reports as minimized, and shows only while that fraction and the header's stick say so;
-  // the scroll frame clips what rises above the window.
+  // the scroll frame clips what rises above the window. The band spans the header row, so the
+  // gutters beside it show the screen background, like the rows.
   const statusBand = foldMap(maybe(statusBandOpacity), (opacity) => (
     <NativeAnimated.View
       style={[
@@ -284,8 +285,8 @@ const DataTable: FC<DataTableProps> = ({
         {
           top: -STATUS_BAND_HEIGHT,
           height: STATUS_BAND_HEIGHT,
-          left: -sideMargin,
-          right: -sideMargin,
+          left: 0,
+          right: 0,
           opacity,
         },
       ]}

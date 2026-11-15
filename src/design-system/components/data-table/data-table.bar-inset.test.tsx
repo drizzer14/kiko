@@ -223,7 +223,7 @@ describe('DataTable with a bar inset', () => {
       barMinimization: new Animated.Value(1),
     });
 
-    it('is a hidden surface block above the header, inside the shifted header, full scroll width', async () => {
+    it('is a hidden surface block above the header, inside the shifted header, as wide as the header row', async () => {
       const rendered = await render(tableUnder(0, minimizedBar()));
       const shifted = rendered.getByTestId(`${PREFIX}-header-shift`, {
         includeHiddenElements: true,
@@ -239,8 +239,8 @@ describe('DataTable with a bar inset', () => {
         position: 'absolute',
         top: -STATUS_BAND_HEIGHT,
         height: STATUS_BAND_HEIGHT,
-        left: -SIDE_MARGIN,
-        right: -SIDE_MARGIN,
+        left: 0,
+        right: 0,
         backgroundColor: flat(headerRow).backgroundColor,
       });
       expect(flat(band).backgroundColor).toBe(darkTheme.colors.surface);
