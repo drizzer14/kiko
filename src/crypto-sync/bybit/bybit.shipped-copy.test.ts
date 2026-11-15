@@ -44,7 +44,7 @@ describe('the Bybit copy', () => {
       /Kiko waits before trying again, up to 10 minutes\.$/,
     );
     expect(uk.accountDetail.bybitForbidden).toMatch(
-      /Кіко зачекає, перш ніж спробувати знову, до 10 хвилин\.$/,
+      /Кіко чекатиме перед наступною спробою до 10 хвилин\.$/,
     );
   });
 
