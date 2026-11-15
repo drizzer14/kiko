@@ -88,7 +88,7 @@ describe('the key expiry a Bybit balance read returns', () => {
     deps.fetchKeyInfo.mockRejectedValue(new BybitRateLimitError(10006, 60_000));
 
     await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toThrow(
-      i18n.t('accountDetail.bybitForbidden'),
+      i18n.t('accountDetail.bybitRateLimited'),
     );
   });
 

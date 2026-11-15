@@ -105,6 +105,8 @@ describe('bybitKeyRefusalOf', () => {
         () => i18n.t('accountDetail.bybitComplianceRefused'),
       ],
       ['an HTTP 403', { status: 403 }, () => i18n.t('accountDetail.bybitForbidden')],
+      ['a rate code', refusalAnswer(10006), () => i18n.t('accountDetail.bybitRateLimited')],
+      ['an HTTP 429', { status: 429 }, () => i18n.t('accountDetail.bybitRateLimited')],
       [
         'an unknown code',
         refusalAnswer(99999),

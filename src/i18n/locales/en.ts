@@ -1023,6 +1023,7 @@ export const en = {
     },
     bybitLogLeftOut: 'Unified log entries not imported: {{kinds}}.',
     bybitMissingBalances: 'Bybit account response did not contain a balances list',
+    bybitRateLimited: 'Bybit received too many requests. Wait a few minutes, then try again.',
     bybitRequestFailed: 'Bybit request failed: {{code}}',
     bybitRequestFailedNoCode: 'Bybit request failed.',
     bybitSyncDetails: 'Sync details',

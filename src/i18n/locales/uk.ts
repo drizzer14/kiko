@@ -918,6 +918,7 @@ export const uk: typeof en = {
     },
     bybitLogLeftOut: 'Записи журналу Unified, які не імпортовано: {{kinds}}.',
     bybitMissingBalances: 'Відповідь рахунку Bybit не містила списку балансів',
+    bybitRateLimited: 'Bybit отримав забагато запитів. Зачекайте кілька хвилин і спробуйте ще раз.',
     bybitRequestFailed: 'Запит до Bybit не вдався: {{code}}',
     bybitRequestFailedNoCode: 'Запит до Bybit не вдався.',
     bybitSyncDetails: 'Деталі синхронізації',

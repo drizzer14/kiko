@@ -70,11 +70,34 @@ describe('bybitFailureOf', () => {
     [10006, 60_000],
     [10018, 60_000],
     [429, 60_000],
-  ])('shows the wait text, not a bare code, for the rate refusal %i', (code, wait) => {
-    const text = textOf(bybitFailureOf(new BybitRateLimitError(code, wait)));
+  ])(
+    'shows the wait-a-few-minutes text, not a bare code, for the rate refusal %i',
+    (code, wait) => {
+      const text = textOf(bybitFailureOf(new BybitRateLimitError(code, wait)));
 
-    expect(text).toBe(i18n.t('accountDetail.bybitForbidden'));
-    expect(text).not.toContain(String(code));
+      expect(text).toBe(i18n.t('accountDetail.bybitRateLimited'));
+      expect(text).not.toContain(String(code));
+      expect(text).not.toContain('Kiko waits');
+    },
+  );
+
+  it.each([
+    [10006, 60_000],
+    [10018, 60_000],
+    [429, 60_000],
+  ])(
+    'shows that text at connect for the rate refusal %i, which sets no cooldown there',
+    (code, wait) => {
+      expect(bybitConnectFailureText(new BybitRateLimitError(code, wait))).toBe(
+        i18n.t('accountDetail.bybitRateLimited'),
+      );
+    },
+  );
+
+  it('shows the forbidden text at connect for an HTTP 403', () => {
+    expect(bybitConnectFailureText(new BybitRateLimitError(403, 600_000))).toBe(
+      i18n.t('accountDetail.bybitForbidden'),
+    );
   });
 
   it.each(['sign', 'window', 'ip', 'notUnified', 'unknown'] as const)(
@@ -121,6 +144,13 @@ describe('bybitFailureOf', () => {
       expect(textOf(bybitFailureOf(new BybitRefusalError('compliance', 10024)))).toBe(
         i18n.t('accountDetail.bybitComplianceRefused'),
       );
+    });
+
+    it('gives a rate refusal the Ukrainian wait-a-few-minutes text', () => {
+      expect(textOf(bybitFailureOf(new BybitRateLimitError(10006, 60_000)))).toBe(
+        i18n.t('accountDetail.bybitRateLimited'),
+      );
+      expect(i18n.t('accountDetail.bybitRateLimited')).toContain('Зачекайте кілька хвилин');
     });
 
     it('gives a generic text with no dangling code when the refusal has no code', () => {

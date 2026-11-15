@@ -42,7 +42,7 @@ const FAILURES: [string, () => Error, () => string][] = [
   [
     'a rate refusal',
     () => new BybitRateLimitError(10006, 60_000),
-    () => i18n.t('accountDetail.bybitForbidden'),
+    () => i18n.t('accountDetail.bybitRateLimited'),
   ],
   [
     'a malformed answer',
@@ -264,7 +264,7 @@ describe('bybitProvider', () => {
 
     describe('refused for its rate or its network location, through the real client', () => {
       const refusals: [string, ReturnType<typeof okAnswer>, () => string][] = [
-        ['a rate refusal', refusalAnswer(10006), () => i18n.t('accountDetail.bybitForbidden')],
+        ['a rate refusal', refusalAnswer(10006), () => i18n.t('accountDetail.bybitRateLimited')],
         [
           'a forbidden answer',
           { status: 403, notJson: true },

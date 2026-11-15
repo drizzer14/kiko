@@ -48,6 +48,15 @@ describe('the Bybit copy', () => {
     );
   });
 
+  it('the rate-limited text names a wait of a few minutes and no wait Kiko keeps, in en and uk', () => {
+    expect(en.accountDetail.bybitRateLimited).toBe(
+      'Bybit received too many requests. Wait a few minutes, then try again.',
+    );
+    expect(uk.accountDetail.bybitRateLimited).toBe(
+      'Bybit отримав забагато запитів. Зачекайте кілька хвилин і спробуйте ще раз.',
+    );
+  });
+
   it('the clock text names the iOS switch as the uk Date & Time settings spell it', () => {
     expect(uk.accountDetail.bybitClockOff).toMatch(
       /Увімкніть «Задавати автоматично» в налаштуваннях дати й часу\.$/,
