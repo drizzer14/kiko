@@ -6,7 +6,9 @@
 //   commit df792275c567946119a8903d36dbd33e44a248bf
 //   SHA-256 60fff0a4457e18dd03731a8971f219f2d1e4b22a13c1d930aaac07badbfe8e68
 //
-// Ukrainian names, MIT, "Copyright (c) 2020 Sominemo" (the notice ships with the app):
+// Ukrainian names, MIT, "Copyright (c) 2020 Sominemo" (the notice ships with the app). They come
+// straight from this file, except that a source misspelling is fixed in UKRAINIAN_NAME_OVERRIDES,
+// the one place to correct it, so regenerating keeps the fix:
 //   https://raw.githubusercontent.com/Sominemo/MCC-Localize-Dataset/7b3cbceeb3fbbd6a27dbe489b25abe82552ddff2/mcc-loc.json
 //   commit 7b3cbceeb3fbbd6a27dbe489b25abe82552ddff2
 //   SHA-256 ed32d9bfca87862580d3228b1a23203a07e9a9152b4b1cca6bd2f0c765a01347
