@@ -37,6 +37,9 @@ type CryptoSyncFormProps = {
   // Forwarded to the Bybit field: the text of a failed Connect, which a screen that keeps no
   // error line of its own passes so the user reads the refusal and not only that Connect failed.
   bybitConnectError?: string;
+  // Forwarded to the Bybit field: runs when the user edits the key or the secret, so the screen
+  // that keeps `bybitConnectError` drops it.
+  onBybitKeyChange?: () => void;
 };
 
 // The "not yet connected" crypto sync entry form: the entry field of the exchange or wallet the
@@ -56,6 +59,7 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
   onBybitStoredWhileUnmounted,
   keepsBybitHoldings,
   bybitConnectError,
+  onBybitKeyChange,
 }) => {
   return match(source)
     .with('btc_wallet', () => (
@@ -77,6 +81,7 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
         onStoredWhileUnmounted={onBybitStoredWhileUnmounted}
         keepsBybitHoldings={keepsBybitHoldings}
         connectError={bybitConnectError}
+        onKeyChange={onBybitKeyChange}
       />
     ))
     .with('other', () => null)

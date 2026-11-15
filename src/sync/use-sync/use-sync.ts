@@ -9,6 +9,8 @@ export type SyncAction<Input> = {
   error: string | undefined;
   /** Resolves `true` on success, `false` when the run failed (the failure is in `error`). */
   sync: (input: Input) => Promise<boolean>;
+  /** Drops the error a failed run left, for a screen whose input made it stale. */
+  clearError: () => void;
 };
 
 type UseSync = {
@@ -63,7 +65,9 @@ export const useSyncAction = <Input>(
     return true;
   };
 
-  return { isSyncing, error, sync };
+  const clearError = (): void => setError(undefined);
+
+  return { isSyncing, error, sync, clearError };
 };
 
 /** The Monobank sync action used by Home, Settings and the bank account detail. */

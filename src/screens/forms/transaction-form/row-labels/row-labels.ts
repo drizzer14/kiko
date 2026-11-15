@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
@@ -20,12 +21,23 @@ export type Sign = 'income' | 'expense';
 // deposit contribution rows), never persisted.
 export type ChangeReturnRow = { id: number; holdingId: string | null; amount: string };
 
-// The notice text for a read-only row: a statement-imported row names its file,
-// every other non-manual row (a sync's) says it was synced.
+// The notice text for a read-only row: a statement-imported row names its file, every other
+// non-manual row (a sync's) says it was synced. The recurring mark is offered on a debit of a bank
+// or cash account only (`isRecurringCandidate`), so the notice of a crypto sync's row, which sits
+// on a crypto account, leaves it out.
+type ReadOnlyNoticeKey =
+  | 'forms.transaction.importedNotice'
+  | 'forms.transaction.syncedNotice'
+  | 'forms.transaction.syncedCryptoNotice';
+
 export const readOnlyNoticeKey = (
   source: TransactionRow['source'] | undefined,
-): 'forms.transaction.importedNotice' | 'forms.transaction.syncedNotice' =>
-  source === 'import' ? 'forms.transaction.importedNotice' : 'forms.transaction.syncedNotice';
+): ReadOnlyNoticeKey =>
+  match(source)
+    .returnType<ReadOnlyNoticeKey>()
+    .with('import', () => 'forms.transaction.importedNotice')
+    .with('btc_wallet', 'binance', 'bybit', () => 'forms.transaction.syncedCryptoNotice')
+    .otherwise(() => 'forms.transaction.syncedNotice');
 
 // The header title reflects the mode: a template mode names itself, a synced row is a plain
 // read-only view, an existing manual row is an edit, and no id at all is a fresh add. The

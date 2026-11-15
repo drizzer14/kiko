@@ -369,6 +369,9 @@ type ConnectExchangeProps = {
   onConnectWallet: (address: string) => Promise<boolean>;
   onConnectBinance: () => Promise<boolean>;
   onConnectBybit: () => Promise<boolean>;
+  // Drops the error of a failed Connect, which the section shows under the form: an edit of the
+  // Bybit key and a switch to another provider both leave it saying nothing of what is shown.
+  onClearError: () => void;
 };
 
 // The bank section's "Add a bank" pattern for a crypto account: the provider's field directly when
@@ -381,6 +384,7 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
   onConnectWallet,
   onConnectBinance,
   onConnectBybit,
+  onClearError,
 }) => {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<ExchangeCatalogId | undefined>(undefined);
@@ -429,6 +433,7 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
               onConnectBinance={onConnectBinance}
               onConnectBybit={onConnectBybit}
               keepsBybitHoldings={keepsBybitHoldings(holdings)}
+              onBybitKeyChange={onClearError}
             />
           )}
 
@@ -439,7 +444,10 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
               variant="secondaryTonal"
               size="small"
               fullWidth={false}
-              onPress={() => setSelectedId(undefined)}
+              onPress={() => {
+                setSelectedId(undefined);
+                onClearError();
+              }}
             >
               {t('accountDetail.changeExchangeAction')}
             </Button>
@@ -467,7 +475,7 @@ const ConnectExchange: FC<ConnectExchangeProps> = ({
 const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) => {
   const { t } = useTranslation();
   const clock = useTimeClock();
-  const { isSyncing, error, sync } = useCryptoSync();
+  const { isSyncing, error, sync, clearError } = useCryptoSync();
   // The history walks' marks live in this account's own `sync_state` row, read through its own
   // live query and gated on its own isLoading: the caption never answers "behind" from a row that
   // is still on its first load (kiko-architecture's useLiveQuery consumer rule).
@@ -698,6 +706,7 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
         onConnectWallet={connectWallet}
         onConnectBinance={connectBinance}
         onConnectBybit={connectBybit}
+        onClearError={clearError}
       />
 
       {error !== undefined && <ErrorNotice message={error} />}

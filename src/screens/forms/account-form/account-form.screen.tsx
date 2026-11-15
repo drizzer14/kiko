@@ -452,7 +452,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const { sync: syncCrypto } = useCryptoSync();
   // Its own instance, so a refusal text shows only under the Bybit field: a failed Binance or
   // wallet connect, then a switch to Bybit, would otherwise leave that text there.
-  const { sync: syncBybit, error: bybitConnectError } = useCryptoSync();
+  const {
+    sync: syncBybit,
+    error: bybitConnectError,
+    clearError: clearBybitConnectError,
+  } = useCryptoSync();
 
   // The account's id is pre-generated once for this create session so the
   // per-source fields — which bind to an EXISTING account id (a per-account
@@ -1112,6 +1116,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
                 onBinanceStoredWhileUnmounted={clearBinancePairIfRowMissing}
                 onBybitStoredWhileUnmounted={clearBybitPairIfRowMissing}
                 bybitConnectError={bybitConnectError}
+                onBybitKeyChange={clearBybitConnectError}
               />
             ))}
           </Box>

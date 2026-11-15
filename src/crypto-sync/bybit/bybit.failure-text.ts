@@ -3,9 +3,6 @@ import { i18n } from '@kiko/i18n/init';
 
 import { BybitRateLimitError, type BybitRefusalClass, BybitRefusalError } from './bybit.client';
 
-/** HTTP 403 as the client reports it: a banned IP and a US or China IP answer alike. */
-const FORBIDDEN_STATUS = 403;
-
 const generic = (code: number | undefined): string =>
   code === undefined
     ? i18n.t('accountDetail.bybitRequestFailedNoCode')
@@ -28,15 +25,16 @@ const textOfRefusal = (refusal: BybitRefusalClass, code: number | undefined): st
     .exhaustive();
 
 /**
- * The error of a sync the cooldown stopped. The cooldown keeps no cause, and this text fits a rate
- * refusal and a 403 alike: it names both and states the wait as "up to 10 minutes". No cooldown
- * lasts longer than that (`retryAfterMsOf` keeps a reset time only within it), and a rate refusal
- * can cool the account for less.
+ * The text of every `BybitRateLimitError`: a rate refusal (codes 10006, 10018, HTTP 429) and an
+ * HTTP 403 (a banned IP, a US or China IP) alike. It names both reasons and states the wait as "up
+ * to 10 minutes". No cooldown lasts longer than that (`retryAfterMsOf` keeps a reset time only
+ * within it), and a rate refusal can cool the account for less. The same text shows for a sync the
+ * cooldown stopped, which keeps no cause, so a refusal and its follow-up read alike.
  */
-export const bybitCoolingFailure = (): Error => new Error(i18n.t('accountDetail.bybitForbidden'));
+const rateLimitText = (): string => i18n.t('accountDetail.bybitForbidden');
 
-const textOfRateLimit = (code: number): string =>
-  code === FORBIDDEN_STATUS ? i18n.t('accountDetail.bybitForbidden') : generic(code);
+/** The error of a sync the cooldown stopped. */
+export const bybitCoolingFailure = (): Error => new Error(rateLimitText());
 
 /**
  * A typed Bybit refusal as the localized error the sync shows (`useSyncAction` surfaces its
@@ -46,7 +44,7 @@ const textOfRateLimit = (code: number): string =>
 export const bybitFailureOf = (error: unknown): unknown =>
   match(error)
     .returnType<unknown>()
-    .with(P.instanceOf(BybitRateLimitError), ({ code }) => new Error(textOfRateLimit(code)))
+    .with(P.instanceOf(BybitRateLimitError), () => new Error(rateLimitText()))
     .with(
       P.instanceOf(BybitRefusalError),
       ({ refusal, code }) => new Error(textOfRefusal(refusal, code)),
@@ -65,6 +63,6 @@ export const bybitConnectFailureText = (error: unknown): string =>
     .with(P.intersection(P.instanceOf(BybitRefusalError), { refusal: 'rejected' }), () =>
       i18n.t('accountDetail.bybitKeyRejected'),
     )
-    .with(P.instanceOf(BybitRateLimitError), ({ code }) => textOfRateLimit(code))
+    .with(P.instanceOf(BybitRateLimitError), rateLimitText)
     .with(P.instanceOf(BybitRefusalError), ({ refusal, code }) => textOfRefusal(refusal, code))
     .otherwise(() => generic(undefined));

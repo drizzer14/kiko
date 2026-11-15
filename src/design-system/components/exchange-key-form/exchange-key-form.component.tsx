@@ -49,6 +49,11 @@ type ExchangeKeyFormProps = {
    * Without it the pair stays where it was stored.
    */
   onStoredWhileUnmounted?: (stored: WriteToken) => Promise<void>;
+  /**
+   * Runs when the user types or pastes into either input, so a screen that shows the text of an
+   * earlier failed Connect outside this form can drop it: it says nothing of the new text.
+   */
+  onKeyChange?: () => void;
   copy: ExchangeKeyFormCopy;
   /** The exchange's page where the user makes a key. */
   managementUrl: string;
@@ -109,6 +114,7 @@ const ExchangeKeyForm: FC<ExchangeKeyFormProps> = ({
   onConnect,
   reminder,
   onStoredWhileUnmounted,
+  onKeyChange,
   copy,
   managementUrl,
   isCoolingDown,
@@ -148,6 +154,7 @@ const ExchangeKeyForm: FC<ExchangeKeyFormProps> = ({
     }
 
     setStatus({ kind: 'idle' });
+    onKeyChange?.();
 
     // Either input alone is a draft, so the other one's current text counts too.
     const otherValue = field === 'apiKey' ? secret : apiKey;

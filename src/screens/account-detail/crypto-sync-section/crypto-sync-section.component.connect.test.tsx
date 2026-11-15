@@ -35,7 +35,12 @@ jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/sync/use-crypto-sync', () => ({
-  useCryptoSync: () => ({ isSyncing: false, error: undefined, sync: mockSync }),
+  useCryptoSync: () => ({
+    isSyncing: false,
+    error: undefined,
+    sync: mockSync,
+    clearError: () => undefined,
+  }),
 }));
 jest.mock('@kiko/crypto-sync/disconnect', () => ({
   disconnectCryptoAccount: (...args: unknown[]) => mockDisconnect(...args),

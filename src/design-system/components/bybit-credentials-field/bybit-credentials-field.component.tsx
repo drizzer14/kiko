@@ -46,6 +46,8 @@ type BybitCredentialsFieldProps = {
    * screen with an error line of its own leaves this off.
    */
   connectError?: string;
+  /** Runs when the user edits the key or the secret, so the screen drops its `connectError`. */
+  onKeyChange?: () => void;
 };
 
 // The Bybit counterpart of the Binance field, over the shared `ExchangeKeyForm`. Connect refuses a
@@ -60,6 +62,7 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
   onStoredWhileUnmounted,
   keepsBybitHoldings = false,
   connectError,
+  onKeyChange,
 }) => {
   const { t } = useTranslation();
   const [introExpanded, setIntroExpanded] = useState(false);
@@ -71,6 +74,7 @@ const BybitCredentialsField: FC<BybitCredentialsFieldProps> = ({
         onConnect={onConnect}
         reminder={reminder}
         onStoredWhileUnmounted={onStoredWhileUnmounted}
+        onKeyChange={onKeyChange}
         managementUrl={BYBIT_API_MANAGEMENT_URL}
         copy={{
           openLink: t('accountDetail.openBybitLink'),
