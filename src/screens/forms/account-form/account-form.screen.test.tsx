@@ -1614,7 +1614,7 @@ describe('AccountFormScreen in the light world', () => {
   it('paints the swatches light and rings the default kind color', async () => {
     const { getByLabelText, getByTestId } = await renderForm();
 
-    expect(getByLabelText('Color white').props.accessibilityState.selected).toBe(true);
+    expect(getByLabelText('Color graphite').props.accessibilityState.selected).toBe(true);
     expect(StyleSheet.flatten(getByTestId('color-swatch-white').props.style).backgroundColor).toBe(
       entityColorsLight.white,
     );

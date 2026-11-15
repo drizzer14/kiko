@@ -455,12 +455,23 @@ type PageRead = { kind: 'rows'; items: ConvertItem[] } | { kind: 'over' };
 const pageOf = (page: PageRead): SpanRead<PageRead> => ({ kind: 'page', page });
 
 /**
- * Bybit does not say what an index past the end gives. A refusal of the class "any other" at an
- * index after the first is taken for the end of the list; a refusal at the first index is a real
- * failure, and so is every refusal that names its cause.
+ * The lowest code Bybit puts in a body; below it a code is an HTTP status. Only a refusal of the
+ * class "any other" with this code or more can end a pass; a code with a class of its own does not.
+ */
+const FIRST_BYBIT_CODE = 10_000;
+
+/**
+ * Bybit does not say what an index past the end gives. A refusal of the class "any other" that
+ * carries a Bybit code, at an index after the first, is taken for the end of the list; a refusal
+ * at the first index is a real failure, and so is every refusal that names its cause. An HTTP
+ * failure with no code in its body (a gateway's 502) says nothing of the list, so it rejects the
+ * run and the pass resumes at its page, with the points it owes kept.
  */
 const isPastTheEnd = (error: unknown, index: number): boolean =>
-  index > 1 && error instanceof BybitRefusalError && error.refusal === 'unknown';
+  index > 1 &&
+  error instanceof BybitRefusalError &&
+  error.refusal === 'unknown' &&
+  (error.code ?? 0) >= FIRST_BYBIT_CODE;
 
 /**
  * One page, in the convert lane, paced by the shared gate. `undefined` is a clean stop: Bybit

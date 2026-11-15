@@ -2,7 +2,7 @@
 
 > 🇺🇦 [Українською](./privacy-policy.md) · 🇬🇧 English
 
-**Effective date:** 9 November 2026
+**Effective date:** 15 November 2026
 
 Kiko is a personal finance app developed by Dmytro Vasylkivskyi ("we", "us").
 This policy explains how Kiko handles your information.

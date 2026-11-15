@@ -290,7 +290,7 @@ describe('recurrence text in Ukrainian', () => {
       'Зараз тут немає транзакцій, близьких до позначеної суми, які враховуються. ' +
       'Перекази, обміни й платежі за кредитом не враховуються.',
     lastCharge: 'Останнє списання 15.08.2026',
-    quiet: '«Netflix»: немає новіших транзакцій за 20.08.2026',
+    quiet: '«Netflix»: немає новіших транзакцій з 20.08.2026',
   });
 
   describe('recurrenceLine', () => {
@@ -372,7 +372,7 @@ describe('recurrence text in Ukrainian', () => {
             quiet: { since: QUIET_SINCE, holdingName: 'Monobank black' },
           }),
         ),
-      ).toBe('«Monobank black»: немає новіших транзакцій за 20.08.2026');
+      ).toBe('«Monobank black»: немає новіших транзакцій з 20.08.2026');
     });
 
     it('keeps the guillemets around the quiet holding name, never straight quotes', () => {

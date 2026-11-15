@@ -45,9 +45,15 @@ let mockAccounts: unknown[] = [];
 let mockSettings: unknown[] = [];
 
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (query: { table: string }) => ({
-    data: query.table === 'settings' ? mockSettings : mockAccounts,
-  }),
+  useLiveQuery: (query?: { table: string }) => {
+    // The holdings repo below is a catch-all that builds no query, so a crypto create form's read
+    // of its pending account's holdings gets no rows.
+    if (query === undefined) {
+      return { data: [] };
+    }
+
+    return { data: query.table === 'settings' ? mockSettings : mockAccounts };
+  },
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ table: 'settings' }) },

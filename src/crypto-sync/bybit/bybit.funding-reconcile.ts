@@ -41,8 +41,11 @@ const FUNDING_MARKS_UNREADABLE = 'funding-marks-unreadable';
  */
 const SHIPPED_EARN_CLAUSE: FundingEarnClause = 'notCounted';
 
-/** The verdicts that take a listed row back; `waiting` is not one, a doubt removes nothing. */
-const REMOVING_VERDICTS: readonly FundingVerdict[] = ['explained', 'held', 'earnMove'];
+/**
+ * The verdicts that take a listed row back. `waiting` and `held` are not: a free source nearby
+ * does not prove the row is that move, and a removal also takes the user's note and category.
+ */
+const REMOVING_VERDICTS: readonly FundingVerdict[] = ['explained', 'earnMove'];
 
 type NewRow = Parameters<typeof addManyDedupDatabaseTransaction>[1][number];
 
@@ -167,9 +170,9 @@ const plannedRowsOf = (ledger: FundingMatchRow): PlannedLedgerRow[] => {
 /**
  * Only the difference against the rows already written is written, and a removal names only the
  * key of a stored ledger record: a removal also takes the user's note and category, with no
- * trace, so a verdict in doubt (`waiting`) and a row whose record a reconnect, a partly read set
- * or a prune left out must never reach it. A holding it cannot find rejects before any write, so
- * the caller's log names the stop and the next run starts from the same stored set.
+ * trace, so a verdict in doubt (`waiting`, `held`) and a row whose record a reconnect, a partly
+ * read set or a prune left out must never reach it. A holding it cannot find rejects before any
+ * write, so the caller's log names the stop and the next run starts from the same stored set.
  */
 export const reconcileBybitFundingLedger = async (
   request: { targetAccountId: string },
@@ -219,7 +222,10 @@ export const reconcileBybitFundingLedger = async (
     pruneBefore: floor - 2 * FUNDING_MATCH_WINDOW_MS,
   });
 
-  const held = [...verdicts].filter(([key, verdict]) => live.has(key) && verdict === 'held').length;
+  // A held row that is written stays in the list, like a waiting one, so it is no move left out.
+  const held = [...verdicts].filter(
+    ([key, verdict]) => live.has(key) && verdict === 'held' && !written.has(key),
+  ).length;
 
   if (held !== heldCount) {
     await deps.patchExchangeState(accountId, [{ kind: 'fundingHeld', count: held }]);

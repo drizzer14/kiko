@@ -34,9 +34,14 @@ import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import { type FundingMatchRow, accounts, database, write } from '@kiko/db';
 import { BinanceWalkStop, exchangeStateDepsOf } from '@kiko/crypto-sync/exchange/walk';
 
+import {
+  FUNDING_MATCH_HOLD_MS,
+  FUNDING_MATCH_WINDOW_MS,
+  type FundingVerdict,
+  matchFundingLedger,
+} from './bybit.funding-match';
 import { historyFloorOf } from './bybit.walk-run';
 import { NOW } from './bybit.client-test-fixtures';
-import { FUNDING_MATCH_WINDOW_MS } from './bybit.funding-match';
 import { bybitFundingMatchRepo } from './bybit.funding-match.repo';
 import { reconcileBybitFundingLedger } from './bybit.funding-reconcile';
 import { ledgerRowOf, sourceRowOf } from './bybit.funding-test-fixtures';
@@ -95,6 +100,21 @@ const stateText = (): string | undefined =>
   )?.exchange_state;
 
 const heldCount = (): unknown => JSON.parse(stateText() ?? '{}').fundingHeld;
+
+// The verdict the reconcile takes on a stored row, read the way it reads it, so a test of what a
+// verdict does can prove the row is in that verdict at all.
+const verdictOf = async (key: string): Promise<FundingVerdict | undefined> => {
+  const settled = { cursor: NOW, pending: [] };
+
+  return matchFundingLedger({
+    rows: await bybitFundingMatchRepo.readByAccount(ACCOUNT),
+    marks: { capital: settled, transfer: settled, convert: settled },
+    earnClause: 'notCounted',
+    now: NOW,
+    windowMs: FUNDING_MATCH_WINDOW_MS,
+    holdMs: FUNDING_MATCH_HOLD_MS,
+  }).get(key);
+};
 
 const store = (rows: FundingMatchRow[]): Promise<void> =>
   write((databaseTransaction) =>
@@ -202,13 +222,48 @@ describe('the reconcile of the Funding ledger on real SQLite', () => {
       expect(storedKeys('ledger')).toEqual([ledgerKey('late')]);
     });
 
-    it('a row that becomes held, because a free source lies within the window, is removed too', async () => {
+    it('a row that becomes held, because a free source lies within the window, is kept like a waiting one', async () => {
       await listFirst([ledgerRowOf(ledgerKey('odd'), ago(20), { amount: '99' })]);
 
       await store([sourceRowOf(depositKey('1'), 'deposit', ago(20))]);
       await reconcile();
 
+      expect(await verdictOf(ledgerKey('odd'))).toBe('held');
+      expect(rowKeys()).toEqual([ledgerKey('odd')]);
+      expect(heldCount()).toBeUndefined();
+    });
+
+    it('a written row with a note and category survives a new deposit of its coin within the window', async () => {
+      await listFirst([ledgerRowOf(ledgerKey('noted'), ago(20), { amount: '99' })]);
+      mockDatabase
+        .prepare(
+          "UPDATE transactions SET comment = 'rent', category = 'rent' WHERE external_id = ?",
+        )
+        .run(ledgerKey('noted'));
+
+      await store([sourceRowOf(depositKey('lagging'), 'deposit', ago(18))]);
+      await reconcile();
+
+      expect(await verdictOf(ledgerKey('noted'))).toBe('held');
+      expect(transactionRows()).toEqual([
+        expect.objectContaining({
+          external_id: ledgerKey('noted'),
+          comment: 'rent',
+          category: 'rent',
+        }),
+      ]);
+    });
+
+    it('an unwritten held record is not listed', async () => {
+      await store([
+        sourceRowOf(depositKey('free'), 'deposit', ago(20)),
+        ledgerRowOf(ledgerKey('odd'), ago(20), { amount: '99' }),
+      ]);
+
+      await reconcile();
+
       expect(rowKeys()).toEqual([]);
+      expect(heldCount()).toBe(1);
     });
 
     it('an Earn row is removed when the clause reads Earn, and listed when it does not', async () => {

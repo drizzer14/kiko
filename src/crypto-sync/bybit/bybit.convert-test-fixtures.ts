@@ -16,6 +16,8 @@ type RouteOptions = {
   pastEnd?: PastEnd;
   /** Answers one index with this code instead of its page. */
   refuseAt?: { index: number; retCode: number };
+  /** Answers one index with an HTTP failure and a page that is not JSON (a gateway page). */
+  httpFailAt?: { index: number; status: number };
 };
 
 /** A code the client does not know, so its class is "any other". */
@@ -34,7 +36,7 @@ const pastEndPageOf = (pastEnd: PastEnd, pages: Page[], index: number): Page => 
  * first) and records the index of every read.
  */
 export const convertRouteOf = (options: RouteOptions = {}) => {
-  const { pastEnd = 'empty', refuseAt } = options;
+  const { pastEnd = 'empty', refuseAt, httpFailAt } = options;
   const world = { pages: [] as Page[] };
   const indexes: number[] = [];
 
@@ -54,6 +56,17 @@ export const convertRouteOf = (options: RouteOptions = {}) => {
     const index = Number(new URL(input).searchParams.get('index'));
 
     indexes.push(index);
+
+    if (httpFailAt?.index === index) {
+      return {
+        ok: false,
+        status: httpFailAt.status,
+        headers: new Headers(),
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON');
+        },
+      };
+    }
 
     return { ok: true, status: 200, headers: new Headers(), json: async () => bodyOf(index) };
   }) as unknown as typeof fetch;

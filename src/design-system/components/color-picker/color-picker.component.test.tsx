@@ -203,6 +203,31 @@ describe('ColorPicker', () => {
       },
     );
 
+    it('names the charcoal light white swatch graphite, so VoiceOver reads the color it shows', async () => {
+      const onSelect = jest.fn();
+      const { getByLabelText, getByTestId, queryByLabelText } = await render(
+        <ColorPicker swatchSet="entity" value={entityColorsDark.white} onSelect={onSelect} />,
+      );
+
+      expect(queryByLabelText('Color white')).toBeNull();
+      expect(getByLabelText('Color graphite').props.accessibilityState.selected).toBe(true);
+      expect(
+        StyleSheet.flatten(getByTestId('color-swatch-white').props.style).backgroundColor,
+      ).toBe(entityColorsLight.white);
+
+      await fireEvent.press(getByLabelText('Color graphite'));
+
+      expect(onSelect).toHaveBeenCalledWith(entityColorsDark.white);
+    });
+
+    it('keeps the other swatch names in the light world', async () => {
+      const { getByLabelText } = await render(
+        <ColorPicker swatchSet="category" value={entityColorsDark.white} onSelect={jest.fn()} />,
+      );
+
+      expect(getByLabelText('Color gray')).toBeTruthy();
+    });
+
     it('reports the dark hex from the category set too', async () => {
       const onSelect = jest.fn();
       const { getByLabelText } = await render(
@@ -233,6 +258,29 @@ describe('ColorPicker', () => {
 
       expect(getByLabelText('Колір white')).toBeTruthy();
       expect(queryByLabelText('Color white')).toBeNull();
+    });
+
+    describe('in the light world', () => {
+      beforeEach(async () => {
+        registerLightThemeFirst();
+
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
+      afterEach(() => {
+        restoreThemeOrder();
+      });
+
+      it('names the light white swatch graphite in Ukrainian', async () => {
+        const { getByLabelText, queryByLabelText } = await render(
+          <ColorPicker swatchSet="entity" value={entityColorsDark.white} onSelect={jest.fn()} />,
+        );
+
+        expect(getByLabelText('Колір графітовий')).toBeTruthy();
+        expect(queryByLabelText('Колір white')).toBeNull();
+      });
     });
   });
 });

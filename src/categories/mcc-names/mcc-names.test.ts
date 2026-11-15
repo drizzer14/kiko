@@ -86,6 +86,10 @@ describe('MCC_NAMES', () => {
     ).toEqual([]);
   });
 
+  it('names code 0763 with the correct Ukrainian spelling of the agricultural adjective', () => {
+    expect(nameOfCode('0763')?.uk).toBe('Сільськогосподарські кооперативи');
+  });
+
   it('names every code the category map knows except the codes the sources leave out', () => {
     const named = new Set(MCC_NAMES.map((entry) => Number(entry.code)));
     const unnamedMappedCodes = Array.from({ length: 10_000 }, (_, code) => code).filter(

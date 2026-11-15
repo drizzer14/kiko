@@ -92,6 +92,55 @@ describe('the Funding ledger walk: what each row is', () => {
       expect(walk.ledgerRecords()[0].amount).toBe('0.1234567890123456789');
     });
 
+    // No page with a real Out row was read: a sign on the amount may or may not be sent, and the
+    // direction is ioDirection's either way, so a minus sign must never flip it or drop the row.
+    it.each([
+      ['I', '12.5'],
+      ['I', '-12.5'],
+      ['I', '+12.5'],
+      ['O', '12.5'],
+      ['O', '-12.5'],
+      ['O', '+12.5'],
+    ])(
+      'an ioDirection %s with a txnAmt of %s writes the unsigned magnitude and that direction',
+      async (ioDirection, txnAmt) => {
+        const walk = newWalk();
+        walk.world.fundingLedger = [ledgerAt(AT, { currcCursor: 'signed', ioDirection, txnAmt })];
+
+        const result = await walk.run();
+
+        expect(walk.ledgerRecords().map(({ direction, amount }) => [direction, amount])).toEqual([
+          [ioDirection, '12.5'],
+        ]);
+        expect(walk.marks().pending).toEqual([]);
+        expect(result.complete).toBe(true);
+      },
+    );
+
+    it('keeps a signed amount as decimal text too: no float reaches it', async () => {
+      const walk = newWalk();
+      walk.world.fundingLedger = [
+        ledgerAt(AT, { ioDirection: 'O', txnAmt: '-0.1234567890123456789' }),
+      ];
+
+      await walk.run();
+
+      expect(walk.ledgerRecords()[0].amount).toBe('0.1234567890123456789');
+    });
+
+    it('is no conflict when two rows of one key hold one amount, one of them signed', async () => {
+      const walk = newWalk();
+      walk.world.fundingLedger = [
+        ledgerAt(AT, { currcCursor: 'dup', ioDirection: 'O', txnAmt: '5' }),
+        ledgerAt(AT, { currcCursor: 'dup', ioDirection: 'O', txnAmt: '-5' }),
+      ];
+
+      await walk.run();
+
+      expect(walk.ledgerKeys()).toEqual([ledgerKeyOf('dup')]);
+      expect(walk.marks().pending).toEqual([]);
+    });
+
     it('stores an Earn row with its boolean and no word, and an interest row without it', async () => {
       const walk = newWalk();
       walk.world.fundingLedger = [
@@ -209,7 +258,13 @@ describe('the Funding ledger walk: what each row is', () => {
   describe('a row the walk cannot trust owes its span as one range, never a point', () => {
     it.each([
       ['an ioDirection outside I and O', { ioDirection: 'X' }],
-      ['a negative txnAmt', { txnAmt: '-100' }],
+      ['a signed zero txnAmt', { txnAmt: '-0' }],
+      ['a signed zero txnAmt with a fraction', { txnAmt: '-0.00' }],
+      ['a txnAmt of a sign alone', { txnAmt: '-' }],
+      ['a txnAmt with two signs', { txnAmt: '--5' }],
+      ['a txnAmt with a sign after its digits', { txnAmt: '5-' }],
+      ['a signed txnAmt in exponent form', { txnAmt: '-1e5' }],
+      ['a signed txnAmt with a comma', { txnAmt: '-1,000' }],
       ['a zero txnAmt', { txnAmt: '0' }],
       ['a zero txnAmt with a fraction', { txnAmt: '0.000' }],
       ['a txnAmt that is no number', { txnAmt: 'abc' }],
@@ -238,19 +293,10 @@ describe('the Funding ledger walk: what each row is', () => {
       },
     );
 
-    it('a signed Out amount is never written as a credit', async () => {
-      const walk = newWalk();
-      walk.world.fundingLedger = [ledgerAt(AT, { ioDirection: 'O', txnAmt: '-100' })];
-
-      await walk.run();
-
-      expect(walk.ledgerRecords()).toEqual([]);
-    });
-
     it('fifty bad rows leave one range and no point', async () => {
       const walk = newWalk();
       walk.world.fundingLedger = Array.from({ length: 50 }, (_unused, index) =>
-        ledgerAt(AT + index * SECOND_MS, { currcCursor: `bad-${index}`, txnAmt: '-1' }),
+        ledgerAt(AT + index * SECOND_MS, { currcCursor: `bad-${index}`, txnAmt: 'abc' }),
       );
 
       await walk.run();
@@ -273,7 +319,7 @@ describe('the Funding ledger walk: what each row is', () => {
 
     it('a range owed is read again by a later run, and clears once the row reads well', async () => {
       const walk = newWalk();
-      walk.world.fundingLedger = [ledgerAt(AT, { currcCursor: 'fixed', txnAmt: '-5' })];
+      walk.world.fundingLedger = [ledgerAt(AT, { currcCursor: 'fixed', txnAmt: 'abc' })];
 
       await walk.run();
 

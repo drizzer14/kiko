@@ -44,7 +44,16 @@ describe('the Bybit copy', () => {
       /Kiko waits before trying again, up to 10 minutes\.$/,
     );
     expect(uk.accountDetail.bybitForbidden).toMatch(
-      /Кіко зачекає, перш ніж спробувати знову, до 10 хвилин\.$/,
+      /Кіко чекатиме до 10 хвилин перед наступною спробою\.$/,
+    );
+  });
+
+  it('the rate-limited text names a wait of a few minutes and no wait Kiko keeps, in en and uk', () => {
+    expect(en.accountDetail.bybitRateLimited).toBe(
+      'Bybit received too many requests. Wait a few minutes, then try again.',
+    );
+    expect(uk.accountDetail.bybitRateLimited).toBe(
+      'Bybit отримав забагато запитів. Зачекайте кілька хвилин і спробуйте ще раз.',
     );
   });
 

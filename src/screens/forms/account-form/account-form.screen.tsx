@@ -18,6 +18,7 @@ import {
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import {
   type FormHeaderItemsOptions,
   useFormHeaderItems,
@@ -52,9 +53,9 @@ import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { clearBybitCredentialsIfWrittenBy } from '@kiko/crypto-sync/bybit';
 import type { ExchangeCatalogId } from '@kiko/crypto-sync/exchange-catalog';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
-import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
 import { useActiveColorScheme } from '@kiko/design-system/active-color-scheme';
+import { keepsBybitHoldings } from '@kiko/crypto-sync/conflicting-exchange-holdings';
 import { handBackCreatedOption } from '@kiko/screens/forms/use-select-created-option';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
@@ -63,6 +64,7 @@ import MonobankConnectField from '@kiko/design-system/components/monobank-connec
 import { entityDisplayColor, resolveEntityColor } from '@kiko/design-system/entity-tint';
 import { type BinanceWriteToken, clearCredentialsIfWrittenBy } from '@kiko/crypto-sync/binance';
 import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
+import { type ComponentProps, type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { usePendingRowLock } from './use-pending-row-lock';
 import { useConnectReminder } from './use-connect-reminder';
@@ -356,6 +358,19 @@ const AccountCurrencyField: FC<AccountCurrencyFieldProps> = ({
   );
 };
 
+// A first Connect stores the owner of its key, and writes a Bybit holding only when the account has
+// a coin to show, so the next key is compared only while the pending account keeps one: its own
+// component, so no other kind of form builds the holdings read.
+const PendingCryptoSyncForm: FC<
+  Omit<ComponentProps<typeof CryptoSyncForm>, 'keepsBybitHoldings'>
+> = (props) => {
+  const { data: holdings } = useLiveQuery(holdingsRepo.listByAccountQuery(props.accountId), [
+    'holdings',
+  ]);
+
+  return <CryptoSyncForm {...props} keepsBybitHoldings={keepsBybitHoldings(holdings)} />;
+};
+
 const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) => {
   // An `accountId` in the route params switches the form to EDIT mode: the same
   // fields, seeded from the existing account, saving through the update path
@@ -437,7 +452,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const { sync: syncCrypto } = useCryptoSync();
   // Its own instance, so a refusal text shows only under the Bybit field: a failed Binance or
   // wallet connect, then a switch to Bybit, would otherwise leave that text there.
-  const { sync: syncBybit, error: bybitConnectError } = useCryptoSync();
+  const {
+    sync: syncBybit,
+    error: bybitConnectError,
+    clearError: clearBybitConnectError,
+  } = useCryptoSync();
 
   // The account's id is pre-generated once for this create session so the
   // per-source fields — which bind to an EXISTING account id (a per-account
@@ -1085,7 +1104,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             />
 
             {foldMap(maybe(exchangeId), (source) => (
-              <CryptoSyncForm
+              <PendingCryptoSyncForm
                 accountId={pendingAccountId}
                 source={source}
                 onConnectWallet={connectWallet}
@@ -1097,6 +1116,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
                 onBinanceStoredWhileUnmounted={clearBinancePairIfRowMissing}
                 onBybitStoredWhileUnmounted={clearBybitPairIfRowMissing}
                 bybitConnectError={bybitConnectError}
+                onBybitKeyChange={clearBybitConnectError}
               />
             ))}
           </Box>

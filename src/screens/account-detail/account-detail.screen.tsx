@@ -467,7 +467,7 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         {isCryptoAccount && account && (
           <>
             <Divider spacing={2} />
-            <CryptoSyncSection account={account} holdings={activeHoldings} />
+            <CryptoSyncSection account={account} holdings={holdings} />
           </>
         )}
 

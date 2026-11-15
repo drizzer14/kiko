@@ -168,6 +168,17 @@ describe('generate MCC names', () => {
       expect(entries.map(({ uk }) => uk)).toEqual(['Курʼєри', 'Мобільний звʼязок', 'Мʼясо']);
     });
 
+    it('replaces the pinned source misspelling of code 0763 with the corrected name', () => {
+      const { entries } = build(
+        [row('0763', 'Agricultural Co-operatives')],
+        ukOf(['0763', 'Сільскогосподарські кооперативи']),
+      );
+
+      expect(entries).toEqual([
+        { code: '0763', en: 'Agricultural Co-operatives', uk: 'Сільськогосподарські кооперативи' },
+      ]);
+    });
+
     it('leaves a quote outside a word', () => {
       const { entries } = build(
         [row('4829', 'Wire'), row('5411', 'Grocery'), row('5812', 'Cafe')],

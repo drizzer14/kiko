@@ -233,7 +233,7 @@ describe('RecurringMarkField', () => {
     it('reads the label and the value in Ukrainian', async () => {
       const rendered = await showField(UNMARKED);
 
-      expect(rendered.getByText('Позначити як регулярний')).toBeTruthy();
+      expect(rendered.getByText('Позначити як регулярну')).toBeTruthy();
       expect(rendered.getByText('Не позначено')).toBeTruthy();
     });
 

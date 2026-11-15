@@ -320,14 +320,25 @@ export const bybitProvider: BalanceProvider<BybitDeps> = {
     // The account is what a rate refusal puts in cooldown: a read without it still works and
     // only loses the cooldown, so every read below passes it. The stored end of the key turns a
     // refusal that says only "no" past that end into the expired class.
-    const options: BybitReadOptions = {
+    const baseOptions: BybitReadOptions = {
       fetchImpl: deps.fetchImpl,
       now: deps.now,
       accountId: target.accountId,
+    };
+    const keyCheckOptions: BybitReadOptions = {
+      ...baseOptions,
       ...foldMap(maybe(expiredAtMs), (value) => ({ expiredAtMs: value })),
     };
 
-    const keyInfo = await checkKey(deps, apiKey, secret, options);
+    const keyInfo = await checkKey(deps, apiKey, secret, keyCheckOptions);
+    // A key read that answered replaces the stored end (`keyExpiryPatchesOf`), so a renewed key
+    // is not judged by the end it had before, whatever that read gave. A read that failed and was
+    // tolerated leaves the stored end to judge by.
+    const options: BybitReadOptions =
+      foldMap(maybe(keyInfo), (info) => ({
+        ...baseOptions,
+        ...foldMap(maybe(info.expiredAtMs), (value) => ({ expiredAtMs: value })),
+      })) ?? keyCheckOptions;
 
     // UNIFIED must succeed: it is the connection's proof of life, so its failure fails the sync
     // and nothing is written. A read that threw never gets past this line, so an empty list

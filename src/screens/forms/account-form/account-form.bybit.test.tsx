@@ -125,13 +125,48 @@ describe('the crypto create form — the first Connect of a Bybit key', () => {
     expect(view.queryByText('Bybit connected')).toBeNull();
   });
 
-  it("shows a rate refusal's own text, which names the wait", async () => {
-    const { BybitRateLimitError } = jest.requireActual('@kiko/crypto-sync/bybit/bybit.client');
-    mockFetchKeyInfo.mockRejectedValue(new BybitRateLimitError(403, 600_000));
+  it.each([
+    ['an HTTP 403', 403, 600_000, 'accountDetail.bybitForbidden'],
+    ['a rate code 10006', 10006, 60_000, 'accountDetail.bybitRateLimited'],
+    ['an HTTP 429', 429, 60_000, 'accountDetail.bybitRateLimited'],
+  ] as const)(
+    'shows the own text of %s in the form, so a rate refusal claims no wait Kiko keeps',
+    async (_title, code, wait, key) => {
+      const { BybitRateLimitError } = jest.requireActual('@kiko/crypto-sync/bybit/bybit.client');
+      mockFetchKeyInfo.mockRejectedValue(new BybitRateLimitError(code, wait));
+
+      const view = await connectOnBybitForm();
+
+      expect(await view.findByText(i18n.t(key))).toBeTruthy();
+    },
+  );
+
+  it.each(['Bybit API key', 'Bybit API secret'])(
+    'drops the refusal once the user edits the %s field, since it says nothing of the new text',
+    async (placeholder) => {
+      const { BybitRefusalError } = jest.requireActual('@kiko/crypto-sync/bybit/bybit.client');
+      mockFetchKeyInfo.mockRejectedValue(new BybitRefusalError('expired', 33004));
+
+      const view = await connectOnBybitForm();
+      await view.findByText(i18n.t('accountDetail.bybitKeyRefusedExpired'));
+      await fireEvent.changeText(view.getByPlaceholderText(placeholder), 'edited-fixture');
+
+      expect(view.queryByText(i18n.t('accountDetail.bybitKeyRefusedExpired'))).toBeNull();
+    },
+  );
+
+  it('shows the same refusal again when the edited key is refused again', async () => {
+    const { BybitRefusalError } = jest.requireActual('@kiko/crypto-sync/bybit/bybit.client');
+    mockFetchKeyInfo.mockRejectedValue(new BybitRefusalError('expired', 33004));
 
     const view = await connectOnBybitForm();
+    await view.findByText(i18n.t('accountDetail.bybitKeyRefusedExpired'));
+    await fireEvent.changeText(view.getByPlaceholderText('Bybit API key'), 'edited-fixture');
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect Bybit'));
+    });
 
-    expect(await view.findByText(i18n.t('accountDetail.bybitForbidden'))).toBeTruthy();
+    expect(await view.findByText(i18n.t('accountDetail.bybitKeyRefusedExpired'))).toBeTruthy();
   });
 
   it('creates the row under the pending id before the sync that the refusal ends', async () => {

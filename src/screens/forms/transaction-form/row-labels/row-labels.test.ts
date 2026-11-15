@@ -1,6 +1,7 @@
 import { i18n } from '@kiko/i18n/init';
 
 import {
+  readOnlyNoticeKey,
   resolveBlankLabel,
   resolveDescriptionPlaceholder,
   resolveRuleDescription,
@@ -191,5 +192,48 @@ describe('resolveBlankLabel', () => {
         t: i18n.t,
       }),
     ).toBeNull();
+  });
+});
+
+// The recurring mark is offered on a debit of a bank or cash account only (`isRecurringCandidate`),
+// so a statement import and a Monobank sync can show it, and a crypto sync never can.
+const BANK_SOURCES = ['import', 'monobank'] as const;
+const CRYPTO_SOURCES = ['btc_wallet', 'binance', 'bybit'] as const;
+
+describe('readOnlyNoticeKey', () => {
+  it('names the statement for an import, and the sync for the rest', () => {
+    expect(readOnlyNoticeKey('import')).toBe('forms.transaction.importedNotice');
+    expect(readOnlyNoticeKey('monobank')).toBe('forms.transaction.syncedNotice');
+  });
+
+  it.each(CRYPTO_SOURCES)(
+    'gives a %s sync the notice of a row with no recurring mark',
+    (source) => {
+      expect(readOnlyNoticeKey(source)).toBe('forms.transaction.syncedCryptoNotice');
+    },
+  );
+
+  describe.each([
+    ['en', 'recurring mark', 'category and loan link'],
+    ['uk', 'регулярного платежу', 'категорію та звʼязок із кредитом'],
+  ])('in %s', (language, markWords, fixedWords) => {
+    beforeEach(async () => {
+      await i18n.changeLanguage(language);
+    });
+
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it.each(BANK_SOURCES)('names the recurring mark in the notice of a %s row', (source) => {
+      expect(i18n.t(readOnlyNoticeKey(source))).toContain(markWords);
+    });
+
+    it.each(CRYPTO_SOURCES)('names no recurring mark in the notice of a %s row', (source) => {
+      const text = i18n.t(readOnlyNoticeKey(source));
+
+      expect(text).not.toContain(markWords);
+      expect(text).toContain(fixedWords);
+    });
   });
 });

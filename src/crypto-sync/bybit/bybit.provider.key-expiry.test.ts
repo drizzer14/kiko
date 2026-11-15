@@ -88,7 +88,7 @@ describe('the key expiry a Bybit balance read returns', () => {
     deps.fetchKeyInfo.mockRejectedValue(new BybitRateLimitError(10006, 60_000));
 
     await expect(bybitProvider.fetchBalances(deps, freshTarget())).rejects.toThrow(
-      i18n.t('accountDetail.bybitRequestFailed', { code: 10006 }),
+      i18n.t('accountDetail.bybitRateLimited'),
     );
   });
 
@@ -133,24 +133,77 @@ describe('the key expiry a Bybit balance read returns', () => {
 });
 
 describe('the stored end of the key on every read', () => {
-  it.each(['fetchKeyInfo', 'fetchUnifiedBalance', 'fetchFundBalance'] as const)(
-    'reaches %s as the date a refusal is read against',
+  it('reaches fetchKeyInfo as the date a refusal is read against', async () => {
+    const deps = makeDeps();
+    const target = freshTarget();
+    deps.readExpiredAtMs.mockResolvedValue(END);
+
+    await bybitProvider.fetchBalances(deps, target);
+
+    expect(deps.readExpiredAtMs).toHaveBeenCalledWith(target.accountId);
+    expect(deps.fetchKeyInfo).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      fetchImpl: deps.fetchImpl,
+      now: deps.now,
+      accountId: target.accountId,
+      expiredAtMs: END,
+    });
+  });
+
+  it.each(['fetchUnifiedBalance', 'fetchFundBalance'] as const)(
+    'reaches %s as the end the key read of the same sync gave, not the stored one',
     async (read) => {
       const deps = makeDeps();
       const target = freshTarget();
       deps.readExpiredAtMs.mockResolvedValue(END);
+      deps.fetchKeyInfo.mockResolvedValue(keyInfoOf(RENEWED_END, 90));
 
       await bybitProvider.fetchBalances(deps, target);
 
-      expect(deps.readExpiredAtMs).toHaveBeenCalledWith(target.accountId);
       expect(deps[read]).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
         fetchImpl: deps.fetchImpl,
         now: deps.now,
         accountId: target.accountId,
-        expiredAtMs: END,
+        expiredAtMs: RENEWED_END,
       });
     },
   );
+
+  it.each(['fetchUnifiedBalance', 'fetchFundBalance'] as const)(
+    'reaches %s with no date when the key read of the same sync gave none, as it replaces the stored one',
+    async (read) => {
+      const deps = makeDeps();
+      deps.readExpiredAtMs.mockResolvedValue(END);
+      deps.fetchKeyInfo.mockResolvedValue(keyInfoOf(undefined, undefined));
+
+      await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(deps[read].mock.calls[0]?.[2]).not.toHaveProperty('expiredAtMs');
+    },
+  );
+
+  it.each(['fetchUnifiedBalance', 'fetchFundBalance'] as const)(
+    'keeps the stored date for %s when the key read of the same sync failed and was tolerated',
+    async (read) => {
+      const deps = makeDeps();
+      deps.readExpiredAtMs.mockResolvedValue(END);
+      deps.fetchKeyInfo.mockRejectedValue(new TypeError('Network request failed'));
+
+      await bybitProvider.fetchBalances(deps, freshTarget());
+
+      expect(deps[read].mock.calls[0]?.[2]).toHaveProperty('expiredAtMs', END);
+    },
+  );
+
+  it('shows a renewed key that a later read refuses as refused, not as ended', async () => {
+    const { deps } = routedDeps({
+      [KEY_INFO_PATH]: okAnswer({ expiredAt: '2027-05-05T16:54:00Z', deadlineDay: 90 }),
+      [UNIFIED_PATH]: refusalAnswer(10003),
+    });
+
+    await expect(
+      bybitProvider.fetchBalances({ ...deps, readExpiredAtMs: async () => NOW - 1 }, freshTarget()),
+    ).rejects.toThrow(i18n.t('accountDetail.bybitKeyRefused'));
+  });
 
   it.each([
     ['past the stored date', NOW - 1, 'accountDetail.bybitKeyRefusedExpired'],

@@ -165,7 +165,7 @@ describe('the convert walk: the pass', () => {
     });
   });
 
-  describe('reads by index to an empty page, resumes at the stored index, and an empty page, a repeated page, an unknown refusal past page 1 and the page limit each end the pass and move the cursor', () => {
+  describe('reads by index to an empty page, resumes at the stored index, and an empty page, a repeated page, a refusal with a Bybit code past page 1 and the page limit each end the pass and move the cursor', () => {
     it('a repeated page ends the pass without reading its rows again', async () => {
       const walk = newWalk({ pastEnd: 'repeat' });
       walk.serve(pagesOf(2));
@@ -198,7 +198,7 @@ describe('the convert walk: the pass', () => {
       expect(walk.indexes).toEqual([1, 2, 3]);
     });
 
-    it('a refusal of the class any other at index 2 or more ends the pass and moves the cursor', async () => {
+    it('a refusal of the class any other with a Bybit code at index 2 or more ends the pass and moves the cursor', async () => {
       const walk = newWalk({ pastEnd: 'refuse' });
       walk.serve(pagesOf(1));
 
@@ -213,6 +213,84 @@ describe('the convert walk: the pass', () => {
       const walk = newWalk({ refuseAt: { index: 1, retCode: UNKNOWN_REFUSAL_CODE } });
 
       await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown' });
+
+      expect(walk.marks()).toEqual({});
+    });
+
+    it('a refusal with a Bybit code of the class any other ends the pass at page 3 and keeps the point owed on the pages before it', async () => {
+      const walk = newWalk({ refuseAt: { index: 3, retCode: UNKNOWN_REFUSAL_CODE } });
+      walk.serve([[initAt(AT)], pagesOf(1)[0]]);
+
+      const result = await walk.run();
+
+      expect(walk.indexes).toEqual([1, 2, 3]);
+      expect(result).toEqual({ imported: 2, complete: true });
+      expect(walk.marks()).toEqual({
+        cursor: NOW,
+        pending: [pointAt(AT)],
+        passOwed: [],
+        pageIndex: 1,
+      });
+    });
+
+    it('the lowest Bybit code, 10000, is the end of the list', async () => {
+      const walk = newWalk({ refuseAt: { index: 2, retCode: 10_000 } });
+      walk.serve(pagesOf(2));
+
+      await expect(walk.run()).resolves.toEqual({ imported: 2, complete: true });
+      expect(walk.marks().cursor).toBe(NOW);
+    });
+
+    it('a code below it, 9999, is no end of the list', async () => {
+      const walk = newWalk({ refuseAt: { index: 2, retCode: 9_999 } });
+      walk.serve(pagesOf(2));
+
+      await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: 9_999 });
+      expect(walk.marks()).toEqual({ pageIndex: 2 });
+    });
+
+    it.each([500, 502, 503])(
+      'an HTTP %i with no Bybit code at page 3 rejects the run, keeps the point owed on the pages before it and moves no cursor',
+      async (status) => {
+        const walk = newWalk({ httpFailAt: { index: 3, status } });
+        walk.serve([[initAt(AT)], ...pagesOf(2)]);
+
+        await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: status });
+
+        expect(walk.indexes).toEqual([1, 2, 3]);
+        expect(walk.marks()).toEqual({
+          pending: [pointAt(AT)],
+          passOwed: [pointAt(AT)],
+          pageIndex: 3,
+        });
+      },
+    );
+
+    it('a later run resumes at the page an HTTP failure stopped at, and the point owed before it is not lost', async () => {
+      const state = walkStateFake({ accountId: ACCOUNT_ID, marks: { convert: {} } });
+      const pages = [[initAt(AT)], ...pagesOf(2)];
+      const failing = convertWalkOf({ state, httpFailAt: { index: 3, status: 502 } });
+      failing.serve(pages);
+
+      await expect(failing.run()).rejects.toMatchObject({ code: 502 });
+
+      const recovered = convertWalkOf({ state });
+      recovered.serve(pages);
+      await recovered.run();
+
+      expect(recovered.indexes).toEqual([3, 4]);
+      expect(recovered.marks()).toEqual({
+        cursor: NOW,
+        pending: [pointAt(AT)],
+        passOwed: [],
+        pageIndex: 1,
+      });
+    });
+
+    it('an HTTP failure at page 1 rejects the run and moves no mark', async () => {
+      const walk = newWalk({ httpFailAt: { index: 1, status: 502 } });
+
+      await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: 502 });
 
       expect(walk.marks()).toEqual({});
     });

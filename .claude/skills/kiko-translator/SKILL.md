@@ -80,7 +80,9 @@ here; it drifts the moment either catalogue gains a key.
 
 Merchant-code (MCC) names are not catalogue keys: they live in
 `src/categories/mcc-names/mcc-names.data.json` (en from greggles, Unlicense; uk from Sominemo,
-MIT). The label separator is the code constant `MCC_NAME_SEPARATOR` in
+MIT; a uk name is corrected only in `UKRAINIAN_NAME_OVERRIDES` in
+`scripts/mcc-names/generate-mcc-names.js`, never by hand-editing the JSON). The label separator
+is the code constant `MCC_NAME_SEPARATOR` in
 `src/categories/mcc-names/mcc-names.ts`, the same in en and uk (an en dash). The 3000-3999
 uk names join «<uk group> — <en merchant>» (user ruling A, 2026-11-09) with `EM_DASH_SEPARATOR`
 (an em dash with spaces, exported from `scripts/mcc-names/generate-mcc-names.js`). Both are

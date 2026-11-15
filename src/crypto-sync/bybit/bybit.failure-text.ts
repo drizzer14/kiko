@@ -3,9 +3,6 @@ import { i18n } from '@kiko/i18n/init';
 
 import { BybitRateLimitError, type BybitRefusalClass, BybitRefusalError } from './bybit.client';
 
-/** HTTP 403 as the client reports it: a banned IP and a US or China IP answer alike. */
-const FORBIDDEN_STATUS = 403;
-
 const generic = (code: number | undefined): string =>
   code === undefined
     ? i18n.t('accountDetail.bybitRequestFailedNoCode')
@@ -27,16 +24,24 @@ const textOfRefusal = (refusal: BybitRefusalClass, code: number | undefined): st
     .with(P.union('sign', 'window', 'ip', 'notUnified', 'unknown'), () => generic(code))
     .exhaustive();
 
+const HTTP_FORBIDDEN = 403;
+
 /**
- * The error of a sync the cooldown stopped. The cooldown keeps no cause, and this text fits a rate
- * refusal and a 403 alike: it names both and states the wait as "up to 10 minutes". No cooldown
- * lasts longer than that (`retryAfterMsOf` keeps a reset time only within it), and a rate refusal
- * can cool the account for less.
+ * The text of a `BybitRateLimitError`. An HTTP 403 (a banned IP, a US or China IP) gets the text
+ * that names both reasons and states the wait as "up to 10 minutes". A rate refusal (codes 10006,
+ * 10018, HTTP 429) gets a text that claims no wait Kiko keeps: the connect check starts no cooldown
+ * (it has no account), so a second Connect tap sends every request again.
+ */
+const rateLimitText = (error: BybitRateLimitError): string =>
+  error.code === HTTP_FORBIDDEN
+    ? i18n.t('accountDetail.bybitForbidden')
+    : i18n.t('accountDetail.bybitRateLimited');
+
+/**
+ * The error of a sync the cooldown stopped. The cooldown keeps no cause, so it reads the text that
+ * fits a rate refusal and a 403 alike, and it does start a wait Kiko keeps.
  */
 export const bybitCoolingFailure = (): Error => new Error(i18n.t('accountDetail.bybitForbidden'));
-
-const textOfRateLimit = (code: number): string =>
-  code === FORBIDDEN_STATUS ? i18n.t('accountDetail.bybitForbidden') : generic(code);
 
 /**
  * A typed Bybit refusal as the localized error the sync shows (`useSyncAction` surfaces its
@@ -46,7 +51,7 @@ const textOfRateLimit = (code: number): string =>
 export const bybitFailureOf = (error: unknown): unknown =>
   match(error)
     .returnType<unknown>()
-    .with(P.instanceOf(BybitRateLimitError), ({ code }) => new Error(textOfRateLimit(code)))
+    .with(P.instanceOf(BybitRateLimitError), (limit) => new Error(rateLimitText(limit)))
     .with(
       P.instanceOf(BybitRefusalError),
       ({ refusal, code }) => new Error(textOfRefusal(refusal, code)),
@@ -65,6 +70,6 @@ export const bybitConnectFailureText = (error: unknown): string =>
     .with(P.intersection(P.instanceOf(BybitRefusalError), { refusal: 'rejected' }), () =>
       i18n.t('accountDetail.bybitKeyRejected'),
     )
-    .with(P.instanceOf(BybitRateLimitError), ({ code }) => textOfRateLimit(code))
+    .with(P.instanceOf(BybitRateLimitError), rateLimitText)
     .with(P.instanceOf(BybitRefusalError), ({ refusal, code }) => textOfRefusal(refusal, code))
     .otherwise(() => generic(undefined));
