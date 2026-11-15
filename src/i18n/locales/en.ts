@@ -1759,6 +1759,9 @@ export const en = {
     bybitCredentialsField: {
       connectionDetails: 'Connection details',
     },
+    colorPicker: {
+      graphite: 'graphite',
+    },
     currencyField: {
       groups: {
         target: 'Holding currency',

@@ -1,8 +1,9 @@
 import type { ReactElement } from 'react';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-import { type SwatchName, entityColorsDark } from '@kiko/design-system/palette';
+import { type ColorScheme, type SwatchName, entityColorsDark } from '@kiko/design-system/palette';
 
 import Box from '../box';
 import Text from '../text';
@@ -12,6 +13,17 @@ import type { ColorPickerProps } from './color-picker.props';
 
 // The theme field each `swatchSet` paints from.
 const PAINT_SET_KEY = { entity: 'entityColors', category: 'categoryColors' } as const;
+
+// The catalogue key of a swatch's spoken name where its paint contradicts the color word of its
+// swatch name: the light palette paints `white` charcoal, so VoiceOver reads graphite there. A
+// swatch without an entry is spoken as its swatch name.
+const SPOKEN_NAME_KEY: Record<
+  ColorScheme,
+  Partial<Record<SwatchName, 'components.colorPicker.graphite'>>
+> = {
+  dark: {},
+  light: { white: 'components.colorPicker.graphite' },
+};
 
 // A labeled single-select row of color swatches, one per named swatch of the
 // dark palette. The account and holding create forms use it to color the entity;
@@ -34,6 +46,8 @@ const ColorPicker = ({
     (name) => [name, entityColorsDark[name], paintSet[name]] as const,
   );
   const resolvedAccessibilityLabelPrefix = accessibilityLabelPrefix ?? t('forms.fields.color');
+  const spokenNameOf = (name: SwatchName): string =>
+    foldMap(maybe(SPOKEN_NAME_KEY[theme.colorScheme][name]), (key) => t(key)) ?? name;
 
   return (
     <Box gap={1}>
@@ -52,7 +66,7 @@ const ColorPicker = ({
               key={name}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              accessibilityLabel={`${resolvedAccessibilityLabelPrefix} ${name}`}
+              accessibilityLabel={`${resolvedAccessibilityLabelPrefix} ${spokenNameOf(name)}`}
               onPress={() => onSelect(canonicalHex)}
               style={styles.swatchCell}
             >

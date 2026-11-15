@@ -1541,6 +1541,9 @@ export const uk: typeof en = {
     bybitCredentialsField: {
       connectionDetails: 'Деталі підключення',
     },
+    colorPicker: {
+      graphite: 'графітовий',
+    },
     currencyField: {
       groups: {
         target: 'Валюта активу',

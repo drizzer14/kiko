@@ -15,7 +15,8 @@ export type ColorPickerProps = {
   // tone="textSecondary"`), matching the ChipRow/field-label treatment so the
   // picker reads as a labeled field alongside the other form controls.
   label?: string;
-  // Optional prefix for each swatch's accessibility label (`${prefix} ${name}`),
+  // Optional prefix for each swatch's accessibility label (`${prefix} ${spoken name}`; the spoken
+  // name is the swatch name, except where the active scheme paints it another color word),
   // defaulting to the catalog's forms.fields.color ('Color'/'Колір'). When
   // several pickers render at once (e.g. one per category row), pass a
   // per-instance prefix so VoiceOver — and label-based test queries — can tell
