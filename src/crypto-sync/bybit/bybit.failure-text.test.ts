@@ -70,10 +70,11 @@ describe('bybitFailureOf', () => {
     [10006, 60_000],
     [10018, 60_000],
     [429, 60_000],
-  ])('shows the generic text with the code for the rate refusal %i', (code, wait) => {
-    expect(textOf(bybitFailureOf(new BybitRateLimitError(code, wait)))).toBe(
-      i18n.t('accountDetail.bybitRequestFailed', { code }),
-    );
+  ])('shows the wait text, not a bare code, for the rate refusal %i', (code, wait) => {
+    const text = textOf(bybitFailureOf(new BybitRateLimitError(code, wait)));
+
+    expect(text).toBe(i18n.t('accountDetail.bybitForbidden'));
+    expect(text).not.toContain(String(code));
   });
 
   it.each(['sign', 'window', 'ip', 'notUnified', 'unknown'] as const)(

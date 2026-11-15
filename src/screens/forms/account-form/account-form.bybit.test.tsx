@@ -134,6 +134,34 @@ describe('the crypto create form — the first Connect of a Bybit key', () => {
     expect(await view.findByText(i18n.t('accountDetail.bybitForbidden'))).toBeTruthy();
   });
 
+  it.each(['Bybit API key', 'Bybit API secret'])(
+    'drops the refusal once the user edits the %s field, since it says nothing of the new text',
+    async (placeholder) => {
+      const { BybitRefusalError } = jest.requireActual('@kiko/crypto-sync/bybit/bybit.client');
+      mockFetchKeyInfo.mockRejectedValue(new BybitRefusalError('expired', 33004));
+
+      const view = await connectOnBybitForm();
+      await view.findByText(i18n.t('accountDetail.bybitKeyRefusedExpired'));
+      await fireEvent.changeText(view.getByPlaceholderText(placeholder), 'edited-fixture');
+
+      expect(view.queryByText(i18n.t('accountDetail.bybitKeyRefusedExpired'))).toBeNull();
+    },
+  );
+
+  it('shows the same refusal again when the edited key is refused again', async () => {
+    const { BybitRefusalError } = jest.requireActual('@kiko/crypto-sync/bybit/bybit.client');
+    mockFetchKeyInfo.mockRejectedValue(new BybitRefusalError('expired', 33004));
+
+    const view = await connectOnBybitForm();
+    await view.findByText(i18n.t('accountDetail.bybitKeyRefusedExpired'));
+    await fireEvent.changeText(view.getByPlaceholderText('Bybit API key'), 'edited-fixture');
+    await act(async () => {
+      await fireEvent.press(view.getByText('Connect Bybit'));
+    });
+
+    expect(await view.findByText(i18n.t('accountDetail.bybitKeyRefusedExpired'))).toBeTruthy();
+  });
+
   it('creates the row under the pending id before the sync that the refusal ends', async () => {
     const { BybitRefusalError } = jest.requireActual('@kiko/crypto-sync/bybit/bybit.client');
     mockFetchKeyInfo.mockRejectedValue(new BybitRefusalError('expired', 33004));

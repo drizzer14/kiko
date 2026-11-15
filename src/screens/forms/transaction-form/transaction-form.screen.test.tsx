@@ -2038,6 +2038,12 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
     expect(getByText(/was synced/i)).toBeTruthy();
   });
 
+  it('names the recurring mark in the notice, as a Monobank debit offers it', async () => {
+    const { getByText } = await renderEdit('txn-9');
+
+    expect(getByText(/recurring mark/i)).toBeTruthy();
+  });
+
   it('offers no Save action and never writes', async () => {
     await renderEdit('txn-9');
     expect(saveItem(navigation.setOptions)).toBeUndefined();
@@ -2095,7 +2101,7 @@ describe('TransactionFormScreen — read-only mode (imported statement row)', ()
 
     expect(
       getByText(
-        'This was imported from a statement, so only the category and loan link can be changed.',
+        'This was imported from a statement, so only the category, loan link and recurring mark can be changed.',
       ),
     ).toBeTruthy();
     expect(queryByText(/was synced/i)).toBeNull();
@@ -2264,6 +2270,12 @@ describe('TransactionFormScreen — synced (binance) row', () => {
     // A Binance row must not claim it came from Monobank.
     expect(getByText(/was synced/i)).toBeTruthy();
     expect(queryByText(/Monobank/i)).toBeNull();
+  });
+
+  it('names no recurring mark in the notice of a binance row, which never offers one', async () => {
+    const { queryByText } = await renderEdit('txn-b');
+
+    expect(queryByText(/recurring mark/i)).toBeNull();
   });
 
   it('still shows the editable category control on a read-only binance row', async () => {
