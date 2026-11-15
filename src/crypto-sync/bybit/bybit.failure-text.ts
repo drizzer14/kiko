@@ -24,17 +24,24 @@ const textOfRefusal = (refusal: BybitRefusalClass, code: number | undefined): st
     .with(P.union('sign', 'window', 'ip', 'notUnified', 'unknown'), () => generic(code))
     .exhaustive();
 
-/**
- * The text of every `BybitRateLimitError`: a rate refusal (codes 10006, 10018, HTTP 429) and an
- * HTTP 403 (a banned IP, a US or China IP) alike. It names both reasons and states the wait as "up
- * to 10 minutes". No cooldown lasts longer than that (`retryAfterMsOf` keeps a reset time only
- * within it), and a rate refusal can cool the account for less. The same text shows for a sync the
- * cooldown stopped, which keeps no cause, so a refusal and its follow-up read alike.
- */
-const rateLimitText = (): string => i18n.t('accountDetail.bybitForbidden');
+const HTTP_FORBIDDEN = 403;
 
-/** The error of a sync the cooldown stopped. */
-export const bybitCoolingFailure = (): Error => new Error(rateLimitText());
+/**
+ * The text of a `BybitRateLimitError`. An HTTP 403 (a banned IP, a US or China IP) gets the text
+ * that names both reasons and states the wait as "up to 10 minutes". A rate refusal (codes 10006,
+ * 10018, HTTP 429) gets a text that claims no wait Kiko keeps: the connect check starts no cooldown
+ * (it has no account), so a second Connect tap sends every request again.
+ */
+const rateLimitText = (error: BybitRateLimitError): string =>
+  error.code === HTTP_FORBIDDEN
+    ? i18n.t('accountDetail.bybitForbidden')
+    : i18n.t('accountDetail.bybitRateLimited');
+
+/**
+ * The error of a sync the cooldown stopped. The cooldown keeps no cause, so it reads the text that
+ * fits a rate refusal and a 403 alike, and it does start a wait Kiko keeps.
+ */
+export const bybitCoolingFailure = (): Error => new Error(i18n.t('accountDetail.bybitForbidden'));
 
 /**
  * A typed Bybit refusal as the localized error the sync shows (`useSyncAction` surfaces its
@@ -44,7 +51,7 @@ export const bybitCoolingFailure = (): Error => new Error(rateLimitText());
 export const bybitFailureOf = (error: unknown): unknown =>
   match(error)
     .returnType<unknown>()
-    .with(P.instanceOf(BybitRateLimitError), () => new Error(rateLimitText()))
+    .with(P.instanceOf(BybitRateLimitError), (limit) => new Error(rateLimitText(limit)))
     .with(
       P.instanceOf(BybitRefusalError),
       ({ refusal, code }) => new Error(textOfRefusal(refusal, code)),
