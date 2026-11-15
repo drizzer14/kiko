@@ -165,7 +165,7 @@ describe('the convert walk: the pass', () => {
     });
   });
 
-  describe('reads by index to an empty page, resumes at the stored index, and an empty page, a repeated page, an unknown refusal past page 1 and the page limit each end the pass and move the cursor', () => {
+  describe('reads by index to an empty page, resumes at the stored index, and an empty page, a repeated page, a refusal with a Bybit code past page 1 and the page limit each end the pass and move the cursor', () => {
     it('a repeated page ends the pass without reading its rows again', async () => {
       const walk = newWalk({ pastEnd: 'repeat' });
       walk.serve(pagesOf(2));
@@ -198,7 +198,7 @@ describe('the convert walk: the pass', () => {
       expect(walk.indexes).toEqual([1, 2, 3]);
     });
 
-    it('a refusal of the class any other at index 2 or more ends the pass and moves the cursor', async () => {
+    it('a refusal of the class any other with a Bybit code at index 2 or more ends the pass and moves the cursor', async () => {
       const walk = newWalk({ pastEnd: 'refuse' });
       walk.serve(pagesOf(1));
 
@@ -233,20 +233,20 @@ describe('the convert walk: the pass', () => {
       });
     });
 
-    it.each<[string, number, boolean]>([
-      ['the lowest Bybit code, 10000, is the end of the list', 10_000, true],
-      ['a code below it, 9999, is no end of the list', 9_999, false],
-    ])('%s', async (_title, retCode, endsPass) => {
-      const walk = newWalk({ refuseAt: { index: 2, retCode } });
+    it('the lowest Bybit code, 10000, is the end of the list', async () => {
+      const walk = newWalk({ refuseAt: { index: 2, retCode: 10_000 } });
       walk.serve(pagesOf(2));
 
-      if (endsPass) {
-        await expect(walk.run()).resolves.toEqual({ imported: 2, complete: true });
-        expect(walk.marks().cursor).toBe(NOW);
-      } else {
-        await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: retCode });
-        expect(walk.marks()).toEqual({ pageIndex: 2 });
-      }
+      await expect(walk.run()).resolves.toEqual({ imported: 2, complete: true });
+      expect(walk.marks().cursor).toBe(NOW);
+    });
+
+    it('a code below it, 9999, is no end of the list', async () => {
+      const walk = newWalk({ refuseAt: { index: 2, retCode: 9_999 } });
+      walk.serve(pagesOf(2));
+
+      await expect(walk.run()).rejects.toMatchObject({ refusal: 'unknown', code: 9_999 });
+      expect(walk.marks()).toEqual({ pageIndex: 2 });
     });
 
     it.each([500, 502, 503])(

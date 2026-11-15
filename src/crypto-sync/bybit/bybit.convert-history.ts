@@ -454,7 +454,10 @@ type PageRead = { kind: 'rows'; items: ConvertItem[] } | { kind: 'over' };
 
 const pageOf = (page: PageRead): SpanRead<PageRead> => ({ kind: 'page', page });
 
-/** A Bybit body code of this or more ends a pass; a refusal below it rejects the run. */
+/**
+ * The lowest code Bybit puts in a body; below it a code is an HTTP status. Only a refusal of the
+ * class "any other" with this code or more can end a pass; a code with a class of its own does not.
+ */
 const FIRST_BYBIT_CODE = 10_000;
 
 /**
