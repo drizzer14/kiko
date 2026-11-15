@@ -76,21 +76,22 @@ export const resolveRowHeights = (
 export const resolveHeaderShift = (scrollOffset: number, barInset: number, headerOffset: number) =>
   Math.max(0, scrollOffset + barInset - headerOffset);
 
-// The bar's height past the safe-area top over which the band fades out as the bar returns from its
-// minimized pose: the component's interpolate ranges read the same two points.
-export const STATUS_BAND_FADE_START = 1;
-export const STATUS_BAND_FADE_END = 12;
-
-const FADE_SPAN = STATUS_BAND_FADE_END - STATUS_BAND_FADE_START;
+// The band is taller than any bar height at which the native stack still reports a minimized
+// fraction above 0 (82 on a Surface Duo pane, 116 on an iPhone 18 Pro in portrait), so it covers
+// the whole minimized bar frame; the part above the window's top is clipped by the scroll frame.
+// The text size does not make it too short: the band shows only while the bar is minimized, and
+// then the strip it covers is the minimized inset (24 on the Duo at the sizes measured), the
+// status zone, which does not grow with the text. A bar made tall by a large text size is not
+// minimized (fraction 0), so no band is drawn over it.
+export const STATUS_BAND_HEIGHT = 200;
 
 // How much of the band above the stuck header shows: all of it while the header is stuck and the
-// bar is minimized to the status zone, none at rest, none as the bar returns, so the band never
-// stacks on the bar's own background. The component draws this as one native `Animated`
+// native stack says the bar is minimized, none at rest, and the bar's own fading background as it
+// returns, so the band never stacks on it. The component draws this as one native `Animated`
 // expression; this is the same rule in plain numbers.
-export const resolveStatusBandOpacity = (shift: number, barInset: number, safeTop: number) => {
+export const resolveStatusBandOpacity = (shift: number, minimizedFraction: number) => {
   const stuck = Math.min(1, Math.max(0, shift));
-  const ramp = (safeTop + STATUS_BAND_FADE_END - barInset) / FADE_SPAN;
-  const minimized = Math.min(1, Math.max(0, ramp));
+  const minimized = Math.min(1, Math.max(0, minimizedFraction));
 
   return stuck * minimized;
 };

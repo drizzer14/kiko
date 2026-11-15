@@ -123,6 +123,7 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
   onOpenTransaction,
   topContent,
   barInset,
+  barMinimization,
 }) => {
   const { t } = useTranslation();
   const locale = activeLocale();
@@ -242,6 +243,7 @@ const CashFlowTable: FC<CashFlowTableProps> = ({
         emptyContent={emptyContent}
         initialColumnIndex={openingColumnIndexOf(months)}
         barInset={barInset}
+        barMinimization={barMinimization}
         testID="cash-flow-table"
       />
 

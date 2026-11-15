@@ -30,4 +30,6 @@ export type CashFlowTableProps = {
   topContent: ReactNode;
   /** The live height of the bar the table scrolls under, handed to the table as it is. */
   barInset?: DataTableProps['barInset'];
+  /** The bar's minimized fraction, handed to the table as it is; it draws the status band. */
+  barMinimization?: DataTableProps['barMinimization'];
 };

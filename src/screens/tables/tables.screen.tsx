@@ -15,6 +15,7 @@ import Box from '@kiko/design-system/components/box';
 import { rowContextOf } from '@kiko/statistics/cell-rows';
 import Screen from '@kiko/design-system/components/screen';
 import { useVerticalBarEdge } from '@kiko/display-regions';
+import { useHeaderMinimization } from 'react-native-screens';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import FilterMenu from '@kiko/design-system/components/filter-menu';
 import { useSpendingLedger } from '@kiko/statistics/spending-ledger';
@@ -73,8 +74,10 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
   // header row flush below; read here so the design system's table stays free of navigation. On
   // iOS 27 the bar minimizes natively while the table scrolls (on the Duo, 82 at rest and 24 at
   // the status bar), and react-native-screens reports the minimized height, so the header follows
-  // it.
+  // it. The minimized fraction beside it comes from the same patched react-native-screens event and
+  // is undefined outside a native stack screen, which draws no status band.
   const barInset = useAnimatedHeaderHeight();
+  const barMinimization = useHeaderMinimization();
   const scheme = useActiveColorScheme();
   // Visibility, not focus: in two panes the panes behind this screen are in view without being the
   // focused route, and this screen is the only one read while it shows.
@@ -324,6 +327,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
             onOpenTransaction={openTransaction}
             topContent={controls}
             barInset={barInset}
+            barMinimization={barMinimization}
           />
         ))
         .with('cashFlow', () => (
@@ -340,6 +344,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
             onOpenTransaction={openTransaction}
             topContent={controls}
             barInset={barInset}
+            barMinimization={barMinimization}
           />
         ))
         .with('netWorth', () => (
@@ -356,6 +361,7 @@ const TablesScreen: FC<TablesScreenProps> = ({ route, navigation }) => {
             backfillState={backfillStatus.state}
             topContent={controls}
             barInset={barInset}
+            barMinimization={barMinimization}
           />
         ))
         .exhaustive()}

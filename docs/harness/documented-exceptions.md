@@ -1318,6 +1318,106 @@ verified usage, not dead weight:
     window, a title view over 0.5 pt tall and at least 0.5 pt below the bar's top, mode Always),
     so it shares the bar row as in 27.1; it is inert otherwise, and the drop rule is in
     `docs/harness/dependency-hygiene.md`.
+    Minimized fraction of the bar (the Tables status band, `DataTable` `barMinimization`): the
+    `onHeaderHeightChange` event carries a second field, `minimizedFraction` (a `CT.Double` after
+    `headerHeight` in `ScreenNativeComponent.ts` and its `lib/typescript` copy, an optional
+    `number` in `HeaderHeightChangeEventType` of `types.tsx` and its copy; the iOS 27 bar
+    minimizes to the status zone and the Tables header then needs a band behind it, but the
+    header height alone cannot tell a minimized bar from an inline one on a Duo whose safe top is
+    0). `notifyHeaderHeightChange:minimizedFraction:` in `RNSScreen.mm` and `.h` hands it to both
+    the Fabric emit (`.headerHeight = ..., .minimizedFraction = ...`, in the codegen's
+    declaration order) and `RNSHeaderHeightChangeEvent` (`ios/events`, a new init parameter, a new
+    `body` key, the coalescing key unchanged), and the native `Animated` driver reads the body of
+    that event. `calculateMinimizedFractionIsModal:` mirrors `calculateHeaderHeightIsModal:` (the
+    same controller, 0 for no navigation controller or a hidden bar) and calls
+    `calculateMinimizedFractionInNavigationController:` only under `@available(iOS 27.0, *)`,
+    inside the same `RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV` block as
+    `calculateMinimizationAwareHeaderHeightInNavigationController:`; outside that block the
+    literal `return 0;` ends the method, so iOS 26.5, 18.6 and tvOS send 0. The walk takes the
+    navigation bar's subviews for the one bar background by its shape, never by a class name (user
+    ruling 2026-11-14: no private class-name string in the binary, so no `_UIBarBackground`, no
+    `NSStringFromClass`, no `_UI` literal): a subview that is not hidden, not empty, as wide as the
+    bar's bounds (0.5 pt) and taller than them by more than 0.5 pt, because it reaches behind the
+    status strip (68 or 82 against 58 on the Duo, at rest and slid away) while the bar's content
+    view is exactly the bar's height and the pointer-effect view is empty
+    (`probe-rns430-maxy.md`). It returns 1 minus that subview's alpha clamped to 0 to 1; none, or
+    more than one, returns 0 (alpha is not part of the shape: 0 is the signal). The diff comment,
+    verbatim: "Kiko patch: the bar fades its background out as it minimizes, so one minus that
+    alpha is how far it has minimized, read on the same layout pass as the header height. The
+    background is found by its shape, never by a class name: the one visible subview as wide as
+    the bar and taller than its bounds, because it reaches behind the status strip while the
+    content view is exactly the bar's height and the pointer view is empty. It reports 0 (not
+    minimized) unless exactly one subview has that shape, so it never guesses." and, on the
+    wrapper, "Kiko patch: 0 wherever the header height has no minimization to follow: no
+    navigation controller, a hidden bar or below iOS 27." The modal screen spec
+    `ModalScreenNativeComponent.ts` is not touched (no native file uses
+    `RNSModalScreenEventEmitter`). Files added to this patch:
+    `RNSScreen.h`, `RNSScreen.mm`, `RNSHeaderHeightChangeEvent.h` and `.mm` (the package's own
+    `ios` and `ios/events`), `ScreenNativeComponent.ts` and `types.tsx` of its `src`, and their
+    `lib/typescript` copies (`ScreenNativeComponent.d.ts` and `types.d.ts`). Pinned by
+    the "minimized fraction of the bar" describe of `__tests__/react-native-patch.test.ts` (the
+    spec and type text, the emit and event text, the 0 paths, the iOS 27 block, the shape rule,
+    the clamp, and that the patch's added lines hold no `_UIBarBackground`, `NSStringFromClass`,
+    `_UI` literal, `performSelector`, `valueForKey`, `setValue:forKey`, `NSClassFromString` or
+    `NSSelectorFromString`). That the iOS 27 bar really fades its background over its
+    minimization, that exactly one subview has the shape on iOS 27.0, 27.1 and 27.2, and that the
+    event reaches the native driver, are shown by the device build, not by Jest.
+    The spec and type comments, verbatim: "Kiko patch: iOS only; 0 (not minimized) to 1 (fully
+    minimized), always 0 below iOS 27." (the codegen spec) and "Kiko patch: sent on iOS only; 0
+    (not minimized) to 1 (fully minimized), always 0 below iOS 27." (the event type).
+    The JS side (the `DataTable` `barMinimization` prop reads it through `useHeaderMinimization`):
+    `InnerScreen` of `Screen.tsx` holds one `Animated.Value(0)` in a ref and, in an effect, calls
+    `Animated.attachNativeEvent(innerRef.current, 'onHeaderHeightChange', [{ nativeEvent: {
+    minimizedFraction } }])`, detaching on cleanup, beside native-stack's own `Animated.event`
+    on the same event (the native animated driver keeps several drivers per view and event name,
+    so both mappings run; the app never holds the native view or that prop, which native-stack
+    owns, so no app-side route exists and no sixth patched package is needed). The attach runs
+    only for a native stack screen with screens enabled on a native platform, and its effect
+    depends on the rendered native component (`AnimatedScreen`, now chosen above the branch it
+    was chosen in) so a modal presentation, which renders `AnimatedNativeModalScreen`, attaches
+    to its own view again; the ref callback is not the attach point because it is a new function
+    on every render. `HeaderMinimizationContext` (`contexts.tsx`, default `undefined`) wraps the
+    children beside `TransitionProgressContext.Provider`, in the native-stack branch only, and
+    `useHeaderMinimization` (its own file beside `useTransitionProgress`, no throw) reads it, so
+    outside a native stack screen it returns `undefined`; both are exported from `index.tsx`.
+    The same edits are in the `lib/commonjs` and `lib/typescript` copies. The context diff
+    comment, verbatim: "Kiko patch: how far the screen's iOS 27 navigation bar has minimized, 0
+    to 1, as one value the native driver writes from the screen's header height event; undefined
+    outside a native stack screen, so a reader never throws." The attach diff comment, verbatim:
+    "Kiko patch: native-stack owns this screen's `onHeaderHeightChange` prop for its own header
+    height mapping, so the minimized fraction of the same event is attached to the native view
+    from here and the native driver keeps both mappings. It attaches again when the rendered
+    native component changes (a modal presentation renders another one, so the view is another);
+    the ref callback is a new function on every render and so cannot be the attach point."
+    A value drops its native node when its last child unmounts (React Native's `__removeChild`
+    to no children, then `__detach`, which clears the node's native tag), while
+    `Animated.attachNativeEvent` takes the tag once; the band is the value's only child, and it
+    unmounts when the table goes empty or a view switch renders an empty table first, so it
+    would return bound to a new node while the screen's event still wrote the old one, and stay
+    frozen for the screen's life. So a native stack `Screen` renders, inside the providers and
+    after `{children}`, one empty `Animated.View` that is the consumer that never unmounts: 0 by
+    0, `position: 'absolute'`, `opacity: headerMinimization`, `pointerEvents="none"`,
+    `collapsable={false}` (Fabric keeps the view the native driver connects to) and hidden from
+    accessibility. It is last because the large title looks for its scroll view in the first
+    subview. The cost is one native view per native stack screen and one native opacity update
+    on it while the fraction changes. The consumer side was not chosen: the Tables screen that
+    reads the hook and `DataTable` stay mounted through an empty table and a view switch, only
+    the band comes and goes, so a count of the hook's callers would never fire again. The diff
+    comment, verbatim, in `Screen.tsx` (a JSX comment) and `lib/commonjs` (a line comment):
+    "Kiko patch: a value drops its native node when its last consumer unmounts, and the attached
+    event goes on writing the dropped node, so a consumer that comes back stays frozen. This view
+    is the consumer that never unmounts; it is last so the first subview, where the large title
+    looks, stays the content." `lib/typescript` is unchanged by it.
+    Files added to the patch: `contexts.tsx`, `index.tsx` (already patched), `Screen.tsx`,
+    `useHeaderMinimization.tsx` (new), and their `lib/commonjs` and `lib/typescript` copies. Pinned
+    by the "the bar minimized fraction context" describe of
+    `__tests__/react-native-patch.test.ts` (the text of every copy, the effect and its deps, the
+    view after the children in `Screen.tsx` and `lib/commonjs`, and a mounted `Screen`: one attach
+    with the value the children read, detach on unmount, a second attach with the same value when
+    the presentation changes, a listener on the value that survives the unmount and return of
+    the only view that reads it, none outside a native stack, and the hook returning `undefined`
+    outside a screen). That the native driver receives the second mapping, and that a table that
+    went empty and came back still follows the bar, are shown by the device build, not by Jest.
     How the default path stays the same: with 0 `updateProps` still assigns the property, but
     the setter returns on its first line for an equal value,
     `applyFixedContentMargin` returns on its first line, and no margin or
