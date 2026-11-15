@@ -52,7 +52,8 @@ uploads to the App Store on the user's behalf.
    - Set `MARKETING_VERSION = X.Y.Z` in ALL configs in
      `ios/Kiko.xcodeproj/project.pbxproj`.
    - Add 1 to `CURRENT_PROJECT_VERSION` (all configs).
-   - Set `package.json` `"version"` to `X.Y.Z`.
+   - Set `package.json` `"version"` to `X.Y.Z`, and the `package-lock.json` top `"version"`
+     fields (the root and `packages[""]`) to the same.
    - Commit as `chore(release): vX.Y.Z`.
 4. Tag and push: `git tag vX.Y.Z` on the release commit, then
    `git push origin <branch> --follow-tags`. The tag waits for App Store

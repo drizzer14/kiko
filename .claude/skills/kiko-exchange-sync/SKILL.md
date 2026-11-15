@@ -1083,10 +1083,17 @@ one Bybit section: extend it, never add a second.
   connect, and kept after a disconnect (`ownerAfterDisconnect` in
   `src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`). It
   rides in the `.kiko` file; the raw id is never stored (A31). A stored value with an unreadable
-  id gives `bybitRequestFailedNoCode`, not a rejected key.
+  id gives `bybitRequestFailedNoCode`, not a rejected key. The owner check runs only when
+  `keepsBybitHoldings`
+  (`src/crypto-sync/conflicting-exchange-holdings/conflicting-exchange-holdings.ts`)
+  says the pending account keeps a holding with `bybitAsset`; the create form reads that account's
+  live holdings for it, and closed holdings count in the refusal checks.
 - Key expiry: `keyExpiryStateOf` (`bybit.key-expiry.ts`); the caption is `KeyExpiryLine` in
   `src/screens/account-detail/crypto-sync-section/crypto-sync-section.component.tsx`.
-- Cooldown: module-level per account (`bybit.cooldown.ts`). Connect shows `bybitForbidden`
+- Failure text: read the mapping in `src/crypto-sync/bybit/bybit.failure-text.ts` (a rate
+  refusal reads `accountDetail.bybitRateLimited`; an HTTP 403 and the cooldown follow-up read
+  `accountDetail.bybitForbidden`); do not restate it here.
+- Cooldown: module-level per account (`bybit.cooldown.ts`). Connect shows the failure text
   (`src/design-system/components/bybit-credentials-field/bybit-credentials-field.component.tsx`).
 - Ids: `holdingKeyOf` gives `<COIN>:<wallet>` (`bybit.holding-keys.ts`, under `bybitAsset`);
   `exchangePairIdOf` is in the same file. A tracked coin passes `isTrackedBybitAsset`
@@ -1164,11 +1171,24 @@ Balance sync, notes, set-aside coins, cooling and the history walks:
   (`crypto-sync-section.component.tsx`).
   - The match row and the synced row go in one write: `addManyDedupDatabaseTransaction` and
     `removeSyncedRowsDatabaseTransaction` in `src/transactions/repo/transactions.repo.ts`.
+  - `txnAmt` may arrive signed (a leading minus); the row stores the unsigned magnitude and the
+    direction comes only from `ioDirection` (`bybit.funding-ledger.ts`).
+  - A written `held` funding verdict is kept like `waiting` and is not counted as unlisted
+    (`bybit.funding-reconcile.ts`).
   - The reconcile writes nothing for a ledger row that starts before `historyFloorOf(now)`
     (PLANNER CALL 143).
   - The dense mark and span are read in `bybit.dense-read.ts`; `series` is a parameter there.
     `LOG_MIN_SPLIT_MS` and `LOG_REREAD_MIN_SPLIT_MS` stay in `bybit.log-history.ts`.
 
+- The convert pass (`src/crypto-sync/bybit/bybit.convert-history.ts`) ends past page 1 only on a
+  Bybit code at or above `FIRST_BYBIT_CODE`; an HTTP-status failure rejects the run and the next
+  run resumes at that page.
+- Read-only notice: `readOnlyNoticeKey`
+  (`src/screens/forms/transaction-form/row-labels/row-labels.ts`)
+  gives the one `syncedCryptoNotice` text for the btc_wallet, binance and bybit sources.
+  `useSyncAction.clearError` (`src/sync/use-sync/use-sync.ts`) and the credentials field's
+  `onKeyChange` clear a stale Bybit refusal on both screens when the key is edited; a good
+  `fetchKeyInfo` in the same sync replaces the stored key end.
 - The provider (`bybit.provider.ts`) returns state patches. Patch kind `balanceNotes`
   (`src/crypto-sync/exchange/walk-state/exchange-state-patch.ts`, `withBalanceNotes`): a good read
   of a wallet replaces that wallet's entry whole. A failed FUND read keeps the entry and adds
